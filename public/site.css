@@ -394,6 +394,15 @@ button.me[aria-expanded="true"]{border-color:var(--ink)}
 .cbox{padding:0 24px;display:flex;flex-direction:column;gap:10px}
 .crow-h{font-size:1.55rem}
 .hdays{padding:0 24px;max-width:900px}
+.hrul{display:flex;flex-direction:column;gap:14px;margin:0 0 18px}
+.hrh{margin:0 0 6px;font-family:var(--font-display);font-weight:var(--display-weight);font-size:1.15rem}
+.hrr{border:1px solid var(--line);border-radius:10px;background:var(--surface);padding:10px 14px;margin:0 0 8px;display:flex;flex-direction:column;gap:6px}
+.hrr p{margin:0}
+.hrn{font-family:var(--font-mono);font-size:.7rem;font-weight:700;color:var(--ink-muted)}
+.hrq{font-weight:700;font-size:.92rem}
+.hrp{display:flex;flex-wrap:wrap;gap:6px}
+.hrp:empty{display:none}
+.hrt{font-size:.88rem;white-space:pre-line}
 .log{list-style:none;margin:0;padding:0}
 .log li{padding:8px 0;border-top:1px solid var(--line);font-size:.88rem;color:var(--ink-muted)}
 .log li b{color:var(--ink);font-weight:700;font-family:var(--font-mono);font-size:.7rem}
