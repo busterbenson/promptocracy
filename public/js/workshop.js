@@ -335,7 +335,7 @@ ${f.drafts.map((d, i) => `<div class="wkdraft"><span>${esc(d)}</span><button typ
 <label for="wfTasks">Tasks</label><textarea id="wfTasks" rows="3"${off}>${esc(f.tasks)}</textarea>
 <label>Price</label><p class="wkprice">${esc(points(t.price))}${t.price_reason ? `<span class="mnote"> · ${esc(t.price_reason)}</span>` : ""}</p>
 ${S.err ? `<p class="notice err" role="alert">${esc(S.err)}</p>` : ""}${S.note ? `<p class="vmsg" role="status">${esc(S.note)}</p>` : ""}
-<div class="row"><button class="btn small" type="button" data-w="confirm"${off}${can && !nothing ? "" : " disabled"}>Put it on tomorrow's ballot</button><button class="btn ghost small" type="button" data-w="save"${off}${t.can.edit.allowed ? "" : " disabled"}>Save</button>${chat && chat() && player() ? `<button class="btn ghost small" type="button" data-w="gremlin">Talk to Gremlin</button>` : ""}${can ? `<span class="mnote" id="wfWhy"${nothing ? "" : " hidden"}>It makes nothing yet.</span>` : `<span class="mnote">${esc(t.can.confirm.reason || "")}</span>`}</div></div>`;
+<div class="row"><button class="btn small" type="button" data-w="confirm"${off}${can && !nothing ? "" : " disabled"}>Lock it in</button><button class="btn ghost small" type="button" data-w="save"${off}${t.can.edit.allowed ? "" : " disabled"}>Save</button>${chat && chat() && player() ? `<button class="btn ghost small" type="button" data-w="gremlin">Talk to Gremlin</button>` : ""}${can ? `<span class="mnote" id="wfWhy"${nothing ? "" : " hidden"}>It makes nothing yet.</span>` : `<span class="mnote">${esc(t.can.confirm.reason || "")}</span>`}</div></div>`;
   }
   /** @rule 801.2, 801.4, 803.1 */
   function factsHTML(t) {
@@ -474,7 +474,7 @@ ${editing ? formHTML(t) : factsHTML(t)}${reopenHTML(t)}${editing ? "" : tasksHTM
     }
     if (entry || (Object.hasOwn(FIELD, el.id) && S.form)) {
       if (!entry) { S.form[FIELD[el.id]] = el.value; S.touched.add(FIELD[el.id]); }
-      // the Put-it-on-the-ballot button follows what the form makes (rule 801.3), without redrawing under the caret
+      // the Lock it in button follows what the form makes (rule 801.3), without redrawing under the caret
       const b = document.querySelector('#mroot [data-w="confirm"]');
       const why = document.getElementById("wfWhy"); if (why) why.hidden = !makesNothing(S.form);
       if (b) b.disabled = S.busy || makesNothing(S.form) || !(S.detail[S.form.n] && S.detail[S.form.n].can.confirm.allowed);

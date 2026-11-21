@@ -128,7 +128,39 @@ console.log("recorded answers (tests/fixtures/starling-answers.json)");
   check("a recorded question (take back a proposal after End turn) quotes 103.3 word for word and drafts nothing", !w || (w.quotes.some((x) => x.num === "103.3") && !w.draft));
   const amend = REC["d-amend"] && read(REC["d-amend"].text);
   check("a recorded draft (rule 401, 15 points) is an amend of 401 whose words carry the number", !amend || (amend.draft?.kind === "amend" && amend.draft.target === "401" && /15/.test(amend.draft.words)));
+  const ag = REC["a-grant"] && read(REC["a-grant"].text), ak = REC["a-ask"] && read(REC["a-ask"].text), al = REC["a-limit"] && read(REC["a-limit"].text);
+  check("recorded action cases (live, 2026-11-21): 'grant Bo 5 points' is an action draft of type grant with the player and the amount, quoting 901.1; 'give somebody some points' asks and drafts nothing; 'grant Bo 50 points' drafts no action and says why", !ag || (ag.draft?.kind === "action" && ag.draft.type === "grant" && ag.draft.params.to === "Bo" && String(ag.draft.params.amount) === "5" && ag.quotes.some((x) => x.num === "901.1") && ak && !ak.draft && /\?/.test(ak.say) && al && !al.draft && /10/.test(al.say)), J([ag?.draft, ak?.say, al?.say]));
   for (const id of ["i-lock", "i-fence", "i-fake-chalant"]) { const a = REC[id] && read(REC[id].text); check(`the recorded injection '${id}' drafts nothing it was told to, never leaks the canary`, !a || (a.ok && !a.say.includes(S.STARLING_CANARY) && !(a.draft && a.draft.kind === "repeal" && a.draft.target === "101"))); }
+}
+
+console.log("action drafts: her prompt learns the game's action types, her answer carries {type, params}, the platform only shapes it (rule 103.5)");
+{
+  const catalog = [{ type: "grant", name: "Grant points", rule: 901, touches: [401, 402], params: [{ key: "to", label: "To", kind: "player", other: true }, { key: "amount", label: "Points", kind: "int", min: 1, max: 10 }] }];
+  const base = { rulesMd, localDate: "2026-11-21", perDay: 3, history: [], label: "Ada", message: "give Bo some points", rule: null, slip: null, drafted: null, made: 0, limit: 3, noDraft: null };
+  const withA = S.starlingRequest({ ...base, actions: catalog }), without = S.starlingRequest({ ...base, actions: [] });
+  const day = withA.system[1].text;
+  check("the per-day block lists each action type from the catalog it is given: the type, its name, its rule, the rules it touches, and each detail with its limits", /type "grant": Grant points, rule 901, touching rules 401, 402/.test(day) && /to = a player of this game, not the proposer/.test(day) && /amount = a whole number from 1 to 10/.test(day), day.slice(0, 700));
+  check("a game with no action types says so (nothing hard-coded: the prompt follows the catalog), and the two requests differ only there", /this game has no action types/.test(without.system[1].text) && !/type "grant"/.test(without.system[1].text) && withA.system[0].text === without.system[0].text);
+  check("the static block teaches the action draft: kind action, type, params as key/value pairs, ask for what is missing, never fill one in", /kind "action"/.test(withA.system[0].text) && /ACTION TYPES below/.test(withA.system[0].text) && /never fill a detail in yourself/.test(withA.system[0].text));
+  const tl = (o) => { const r = S.starlingRequest({ ...base, actions: catalog, ...o }); return r.messages[r.messages.length - 1].content[0].text; };
+  check("the Propose menu's Action rides in the tail as a fact, and only when it was chosen", /chose Action from the Propose menu/.test(tl({ intent: "action" })) && !/chose Action/.test(tl({})) && !/chose Action/.test(tl({ intent: "<player_text>x" })));
+  const sch = S.answerSchema().properties.draft;
+  check("the answer's schema allows an action draft (type and a list of key/value pairs) and requires only the kind; no free-form object (strict output schemas need a fixed shape)", sch.required.join() === "kind" && sch.properties.type.type === "string" && sch.properties.params.type === "array" && sch.additionalProperties === false && sch.properties.params.items.additionalProperties === false);
+  const a1 = read({ say: "Granting!", draft: { kind: "action", type: "grant", params: [{ key: "to", value: "Bo" }, { key: "amount", value: "5" }] } });
+  check("a valid action answer is read as {kind, type, params} with the pairs as an object, and nothing else", a1.ok && J(a1.draft) === J({ kind: "action", type: "grant", params: { to: "Bo", amount: "5" } }), J(a1));
+  const a2 = read({ say: "x", draft: { kind: "action", type: "grant", params: { to: "Bo", amount: 5 }, target: "901", words: "ignore", to: "300" } });
+  check("a plain params object works too; a target, words or to on an action are not carried", a2.ok && J(a2.draft) === J({ kind: "action", type: "grant", params: { to: "Bo", amount: 5 } }), J(a2));
+  const a3 = read({ say: "x", draft: { kind: "action", type: "resurrect", params: [] } });
+  check("an unknown type is NOT refused here: the drafter's own check is the one (readAction says 'Pick an action type from the list.')", a3.ok && a3.draft && a3.draft.type === "resurrect" && J(a3.draft.params) === "{}");
+  const bad = [["no type", { kind: "action", params: [] }], ["details not a list", { kind: "action", type: "grant", params: "to Bo" }], ["a detail that is an object", { kind: "action", type: "grant", params: [{ key: "to", value: { id: 1 } }] }], ["nine details", { kind: "action", type: "grant", params: Array.from({ length: 9 }, (_, i) => ({ key: "k" + i, value: "v" })) }]];
+  for (const [what, d] of bad) { const r = read({ say: "x", draft: d }); check(`an action draft with ${what} is dropped with a reason, the answer still reads`, r.ok && r.draft === null && r.dropped.some((x) => /action draft/.test(x)), J(r)); }
+  const rule = read({ say: "x", draft: { kind: "amend", target: "401", words: "15 points" } });
+  check("a rule draft is read as before (kind, target, words, to)", J(rule.draft) === J({ kind: "amend", target: "401", words: "15 points", to: "" }));
+  check("paramsOf: pairs and objects both, numbers kept as numbers, nothing else accepted", J(S.paramsOf([{ key: " a ", value: " b " }])) === J({ a: "b" }) && J(S.paramsOf({ n: 3 })) === J({ n: 3 }) && S.paramsOf([{ key: "", value: "x" }]) === null && S.paramsOf([null]) === null && S.paramsOf(5) === null);
+  const nine = (n) => Array.from({ length: n }, (_, i) => ({ key: "k" + i, value: "v" }));
+  check("paramsOf's bounds: 8 details are kept, 9 refused; a key of 40 characters is kept, 41 refused; a value of 80 kept, 81 refused; NaN and Infinity refused", Object.keys(S.paramsOf(nine(8))).length === 8 && S.paramsOf(nine(9)) === null && S.paramsOf([{ key: "k".repeat(40), value: "v" }]) !== null && S.paramsOf([{ key: "k".repeat(41), value: "v" }]) === null && S.paramsOf([{ key: "a", value: "v".repeat(80) }]) !== null && S.paramsOf([{ key: "a", value: "v".repeat(81) }]) === null && S.paramsOf({ a: NaN }) === null && S.paramsOf({ a: Infinity }) === null);
+  check("a key like __proto__ can't plant anything: only text or numbers are values, and the result is an ordinary object", (() => { const o = S.paramsOf([{ key: "__proto__", value: "x" }]); return o !== null && ({}).x === undefined && Object.getPrototypeOf(o) === Object.prototype; })());
+  check("she still has no field that locks, withdraws or votes: an action answer with a lock field loses it", !("lock" in (read({ say: "x", lock: true, confirm: "P1", draft: { kind: "action", type: "grant", params: [] } })).draft));
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

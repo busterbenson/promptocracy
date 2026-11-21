@@ -176,7 +176,6 @@ export function mountRulebook(root, md, { settings = {}, revisions = {}, propose
   root.innerHTML = `<div class="rbmain">
 <div class="toolbar"><div class="search"><svg width="15" height="15" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10" cy="10" r="6.5" style="fill:none;stroke:var(--ink-muted);stroke-width:2.2"/><path d="M15 15l6 6" style="stroke:var(--ink-muted);stroke-width:2.2"/></svg><input class="input" id="rb-q" type="search" placeholder="Search rules, or a number" aria-label="Search the rules"></div>
 <div class="sresult" id="rb-result" hidden></div></div>
-<div id="rb-banner-slot"></div>
 ${RB.warnings.length ? `<div class="sheet" role="alert"><b>This file has ${RB.warnings.length} problem${RB.warnings.length === 1 ? "" : "s"}:</b><ul>${RB.warnings.map((w) => `<li>${esc(w)}</li>`).join("")}</ul></div>` : ""}
 <div id="rb-body"></div>
 <div class="legend" id="rb-legend"><span><i style="background:var(--warm1);border-color:var(--warm-line)"></i>changed this week</span><span><i style="background:var(--surface)"></i>settled</span><span>${LOCKSVG(11)}everyone must agree</span></div></div>`;
@@ -191,7 +190,6 @@ ${RB.warnings.length ? `<div class="sheet" role="alert"><b>This file has ${RB.wa
     const res = $("#rb-result");
     res.hidden = !r.q;
     if (r.q) { const n = Object.hasOwn(RB.byNum, r.q) ? RB.byNum[r.q] : null; res.innerHTML = `${r.matches} rule${r.matches === 1 ? "" : "s"} match “${esc(r.q)}”` + (n && n.kind !== "block" ? ` · <b>Enter</b> to open ${esc(r.q)}` : ""); }
-    $("#rb-banner-slot").innerHTML = P ? P.bannerHTML() : "";
     if (onCount) onCount(count());
     if (cards && cards.isOpen()) cards.redraw();
   };
