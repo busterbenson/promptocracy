@@ -84,7 +84,7 @@ export const actionBodyHTML = (p, rpill) => `<p class="mono head"><b>${esc(p.hea
 
 export function createProposer({ api, me, day, refresh, pill, vote, starling, workshop, goTab, drawBar }) {
   const S = { list: [], draft: null, actions: [], today: null, ui: null, bar: { menu: false, open: false }, champ: false, lockErr: {}, RB: null, redraw: () => {}, openAdd: () => {}, openPick: () => {}, closeAdd: () => {} };
-  /** Both places a flow is drawn: the rulebook (its cards) and the bar (the action form). */
+  /** Both places a flow is drawn: the rulebook (its cards) and the bar (the action form). @rule 103.1 */
   const paint = () => { S.redraw(); if (drawBar) drawBar(); };
 
   /** @rule 103.2 */

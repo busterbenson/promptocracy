@@ -136,7 +136,8 @@ with sync_playwright() as p:
         check("1280-light: Open in Starling opens her window on the Rulebook tab", page.locator("#tab-rules").get_attribute("aria-selected") == "true" and page.locator("#chatcol .chat[data-agent=starling]").is_visible())
         check("1280-light: her header's count is the bar's count ('2 of 3 left' in both: one number)", text(page, "#chatcol .ch-today .n") == left(page) == "2 of 3 left", text(page, "#chatcol .ch-today .n") + " / " + left(page))
         tab(page, "summary")
-        page.locator('#pzone .pcard.draft [data-p="lock"]').click(); wait_text(page, "#pzone .left", "1 of 3 left")
+        page.click('#pzone [data-p="bar-menu"]'); page.wait_for_selector("#pzone .pmenu")
+        page.locator('#pzone .pcard.draft [data-p="lock"]').click(); wait_text(page, "#pzone .left", "1 of 3 left")   # with the menu open: the first click acts, it does not only close the menu
         check("1280-light: Lock it in on the draft card: two filled slots, no DRAFT slot, '1 of 3 left', and the card is now a locked one with Unlock", count(page, "#pzone .pslot.used") == 2 and count(page, "#pzone .pslot.draft") == 0 and count(page, "#pzone .pcard.draft") == 0 and count(page, '#pzone [data-p="unlock"]') == 2, text(page, "#pzone"))
         page.locator('#pzone .pcard [data-p="unlock"]').last.click(); wait_text(page, "#pzone .left", "2 of 3 left")
         check("1280-light: Unlock on a locked card frees its slot: '2 of 3 left', one filled slot, one card", count(page, "#pzone .pslot.used") == 1 and count(page, "#pzone .pcard") == 1, text(page, "#pzone"))
