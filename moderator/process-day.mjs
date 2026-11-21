@@ -651,8 +651,10 @@ export async function rulingsNight({ api, gameNames = async () => [], dir, day, 
     if (!Number.isInteger(r.body.next) || r.body.next <= after) break;
     after = r.body.next;
   }
-  // Everyone in the game, not only the asker and the posters: a public ruling names nobody (the public list; none found = the asker and posters only).
-  const everyone = await gameNames().catch(() => []);
+  // Everyone in the game, not only the asker and the posters: a public ruling names nobody (the public list).
+  // Fails closed: with no list, no ruling is made this pass (and none is counted as failed), so the next run tries again.
+  const everyone = owed.length ? await gameNames().catch(() => null) : [];
+  if (!everyone) { log({ event: "rulings_names_unavailable" }); return { made, timeShort: false, listFailed: true }; }
   let timeShort = false, attempted = 0, ruleAdded = null;
   for (const item of owed.filter((i) => Number.isInteger(i?.id)).sort((a, b) => a.id - b.id)) {
     const resumed = rulingOnMain(dir, item.id);
@@ -682,13 +684,21 @@ export async function rulingsNight({ api, gameNames = async () => [], dir, day, 
 
 // The rulings the night made (or resumed) posted where each question was asked. A 409 means it was already posted. A failure stays owed.
 /** @rule 106.5 */
-export async function postRulings({ api, made, stateDir, slug, log }) {
+export async function postRulings({ api, made, stateDir, slug, log, day, notifyDir, nightLog, dryRun }) {
   for (const m of made) {
     const r = await api("POST", `escalations/${m.id}/ruled`, { body: m.text, path: m.path, question: m.question, relies_on: m.relies_on }).catch((e) => ({ status: 0, body: { error: String(e?.name || "error") } }));
     log({ event: r.status === 200 ? "ruling_posted" : r.status === 409 ? "ruling_already_posted" : "ruling_post_failed", escalation: m.id, status: r.status });
+    const st = readState(stateDir, slug);
     if (r.status === 200 || r.status === 409) {
-      const st = readState(stateDir, slug);
-      if (st.rulingFails?.[m.id]) { const { [m.id]: _gone, ...rest } = st.rulingFails; writeState(stateDir, slug, { ...st, rulingFails: rest }); }
+      const { [m.id]: _a, ...fails } = st.rulingFails ?? {}, { [m.id]: _b, ...posts } = st.rulingPostFails ?? {};
+      writeState(stateDir, slug, { ...st, rulingFails: fails, rulingPostFails: posts });
+    } else if (!dryRun) {
+      // The ruling is on main but didn't land: it stays owed and is posted again from its file next night. Like a failed ruling, it counts per night and
+      // tells Buster (id and count only) on the second.
+      const prior = st.rulingPostFails?.[m.id] ?? { n: 0, day: null };
+      const n = prior.day === day ? prior.n : prior.n + 1;
+      writeState(stateDir, slug, { ...st, rulingPostFails: { ...(st.rulingPostFails ?? {}), [m.id]: { n, day } } });
+      if (n >= RULING_FAILS_BEFORE_NOTICE) notifyFile(notifyDir, `ruling-post-failed-E${m.id}`, `Promptocracy ${slug}: a ruling could not be posted ${n} nights`, `Escalation E${m.id}'s ruling is on main (${m.path}) but the site refused or could not take it (status ${r.status}) on ${n} nights. It stays owed. Night log: ${nightLog}`);
     }
   }
 }
@@ -839,7 +849,9 @@ async function runPass(opts) {
     // The public player list (/api/game, no token): the names a ruling must not carry.
     const gameNames = async () => {
       const r = await fetchImpl(`${opts.api.replace(/\/+$/, "")}/${slug}/api/game`, { signal: AbortSignal.timeout(20_000) });
-      return r.ok ? ((await r.json().catch(() => ({}))).players ?? []).map((p) => p?.name) : [];
+      if (!r.ok) return null;
+      const names = ((await r.json().catch(() => ({}))).players ?? []).map((p) => p?.name).filter((x) => typeof x === "string");
+      return names.length ? names : null; // a game always has players: an empty list means the lookup failed
     };
     const pend = await api("GET", "pending");
     if (pend.status !== 200) throw new Error(`pending answered ${pend.status}`);
@@ -950,7 +962,7 @@ const lastDay = Math.max(0, ...processed.map((d) => d.n));
         const rn = await rulingsNight({ api, gameNames, dir, day: lastDay, left: () => Infinity, model: opts.model, claude: opts.claude, libraryDir: opts.libraryDir ?? LIBRARY_DIR, stateDir, slug, notifyDir, nightLog, log, dryRun: opts.dryRun });
         if (!opts.dryRun && rn.made.some((m) => !m.resumed)) { git(["push", "-q", "origin", "HEAD:main"], dir); pushed = true; }
         if (!opts.dryRun) {
-          await postRulings({ api, made: rn.made, stateDir, slug, log });
+          await postRulings({ api, made: rn.made, stateDir, slug, log, day: lastDay, notifyDir, nightLog });
           if (!rn.timeShort && !rn.listFailed) writeState(stateDir, slug, { ...readState(stateDir, slug), rulingsTriedDay: lastDay });
         }
         rulings = rn.made.length;
@@ -1036,7 +1048,7 @@ const lastDay = Math.max(0, ...processed.map((d) => d.n));
     const outcomes = tonight.map((t, i) => (t.applied ? { number: t.number, seq: i + 1, applied: true, commit: t.commit } : { number: t.number, seq: i + 1, applied: false, reason: `${t.reason}. ${SUGGESTION}`.slice(0, 400) }));
     if (opts.dryRun) return { status: "dry-run", outcomes, head };
     if (tonight.some((t) => t.applied && !t.resumed) || rulingMade.some((m) => !m.resumed) || pushed) git(["push", "-q", "origin", "HEAD:main"], dir);
-    await postRulings({ api, made: rulingMade, stateDir, slug, log });
+    await postRulings({ api, made: rulingMade, stateDir, slug, log, day: job.day, notifyDir, nightLog });
     const c = await api("POST", `days/${job.day}/claim`, { sha: head, outcomes, notes });
     log({ event: "claim", day: job.day, sha: head, status: c.status, body: c.body });
     if (c.status !== 200) {

@@ -81,6 +81,7 @@ async function fakeWorker(state) {
     let body = "";
     for await (const c of req) body += c;
     const send = (code, o) => { res.statusCode = code; res.setHeader("content-type", "application/json"); res.end(J(o)); };
+    if (req.method === "GET" && req.url === "/g/api/game" && state.gameDown) return send(503, {});
     if (req.method === "GET" && req.url === "/g/api/game") return send(200, { players: (state.players ?? ["Pat", "Dana"]).map((name) => ({ name })) });
     if (req.headers.authorization !== `Bearer ${TOKEN}`) return send(401, { error: "Not authorized." });
     if (req.method === "GET" && req.url === "/g/api/moderator/pending") { gets++; state.onGet?.(gets, state); return send(200, { game: state.game, job: state.job, not_applied: state.not_applied ?? [], processed: state.processed ?? [], rulings_owed: (state.rulings ?? []).filter((r) => !r.ruled).length }); }
@@ -89,6 +90,7 @@ async function fakeWorker(state) {
     if (req.method === "POST" && rm) {
       const b = JSON.parse(body), e = (state.rulings ?? []).find((r) => r.id === Number(rm[1]));
       (state.ruledPosts ??= []).push({ id: Number(rm[1]), ...b });
+      if (state.ruledStatus) return send(state.ruledStatus, { error: "no" });
       if (!e || e.ruled) return send(409, { error: "Already ruled." });
       e.ruled = true;
       return send(200, { ok: true });
@@ -714,6 +716,25 @@ const rulingCalls = (t) => t.claude.calls().filter((c) => c.escalation !== null)
   const again = { job: null, processed: [{ n: 1, status: "done", commit_sha: headBefore }], rulings: [ESC(7)] };
   const t2 = await night({ scenario: noModel, state: again, opts: { repo: t.repo, stateDir: join(TMP, "resume-state") } });
   check("resume: it reposts the ruling from the file (same text, path, question) with no model call and no new commit", rulingCalls(t2).length === 0 && t2.claude.calls().length === 0 && again.ruledPosts?.length === 1 && again.ruledPosts[0].body === "A wall isn't a creature (401)." && again.ruledPosts[0].path === "rulings/1-1.md" && g(["rev-parse", "main"], t.repo.bare).trim() === headBefore, J(again.ruledPosts));
+}
+{
+  // The public player list is down: no ruling is made (a name could slip through), none is counted as failed, and the next run tries again.
+  const st = { job: job([]), rulings: [ESC(7)], gameDown: true };
+  const t = await night({ scenario: { apply: {}, ruling: { 7: { answer: ANS() } } }, state: st, opts: { audit: false } });
+  check("names unavailable: the player list failing means no model call, no ruling, no failure count, and the night is not marked tried", t.r.status === "claimed" && rulingCalls(t).length === 0 && log(t.repo.bare)[0] === "day 0" && !JSON.parse(readFileSync(join(t.stateDir, "g.state.json"), "utf8")).rulingFails && JSON.parse(readFileSync(join(t.stateDir, "g.state.json"), "utf8")).rulingsTriedDay === undefined, J(t.r));
+  st.gameDown = false;
+  const t2 = await night({ scenario: { apply: {}, ruling: { 7: { answer: ANS() } } }, state: { job: null, processed: [{ n: 1, status: "done", commit_sha: null }], rulings: [ESC(7)] }, opts: { repo: t.repo, stateDir: t.stateDir } });
+  check("names unavailable: the next run, with the list back, makes it", log(t2.repo.bare)[0] === "Ruling 1-1", J(log(t2.repo.bare)));
+}
+{
+  // The ruling is made and pushed but 'ruled' keeps failing: it stays owed, counts per night, and Buster hears on the second night (id and count only).
+  const st = { job: job([]), rulings: [ESC(7)], ruledStatus: 500 };
+  const t = await night({ scenario: { apply: {}, ruling: { 7: { answer: ANS() } } }, state: st, opts: { audit: false } });
+  const s1 = JSON.parse(readFileSync(join(t.stateDir, "g.state.json"), "utf8"));
+  check("post fails: the ruling is on main, the escalation is still owed, the failure is counted (1 night) and nobody is told yet", log(t.repo.bare)[0] === "Ruling 1-1" && st.rulings[0].ruled !== true && s1.rulingPostFails?.["7"]?.n === 1 && !t.notes.some((f) => /ruling-post-failed/.test(f)), J(s1));
+  const t2 = await night({ scenario: noModel, state: { job: null, processed: [{ n: 2, status: "done", commit_sha: "a".repeat(40) }], rulings: [ESC(7)], ruledStatus: 500 }, opts: { repo: t.repo, stateDir: t.stateDir } });
+  const note = t2.notes.filter((f) => /ruling-post-failed/.test(f)).map((f) => readFileSync(join(t2.notifyDir, f), "utf8")).join("");
+  check("post fails: on the second night Buster is told (id, path, status, count), with no ruling text, and no second model call was made", /E7/.test(note) && /2 nights/.test(note) && !/wall/i.test(note) && t2.claude.calls().length === 0, note);
 }
 {
   // E1 is owed and E15's ruling is on main: E1 must not pick up E15's file (the trailer match is exact).
