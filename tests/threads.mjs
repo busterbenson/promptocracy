@@ -252,7 +252,7 @@ try {
   check("/rulings needs the token, and a bad ?after is 400", (await mod("GET", "rulings", null, "")).status === 401 && (await mod("GET", "rulings", null, "wrong-token-wrong-token-wrong")).status === 401 && (await mod("GET", "rulings?after=x")).status === 400 && (await mod("GET", "escalations?after=-1")).status === 400);
   const pend = (await mod("GET", "pending")).data;
   check("pending counts the rulings owed", pend.rulings_owed === 2, J(pend.rulings_owed));
-  const ruled = (id, b, t = TOKEN) => mod("POST", `escalations/${id}/ruled`, b, t);
+  const ruled = (id, b, t = TOKEN) => mod("POST", `escalations/${id}/ruled`, { question: "Is a wall a creature?", relies_on: ["701"], ...b }, t);
   check("ruled needs the token, a rulings/<day>-<n>.md path, plain text of 1 to 2000 characters and nothing else",
     (await ruled(tRul, { body: "x", path: "rulings/1-1.md" }, "")).status === 401 && (await ruled(tRul, { body: "x", path: "rulings/../x.md" })).status === 400 && (await ruled(tRul, { body: "x", path: "rulings/1-1.txt" })).status === 400 && (await ruled(tRul, { body: "x", path: "RULES.md" })).status === 400 && (await ruled(tRul, { body: "<b>x</b>", path: "rulings/1-1.md" })).status === 400 && (await ruled(tRul, { body: "", path: "rulings/1-1.md" })).status === 400 && (await ruled(tRul, { body: "x".repeat(2001), path: "rulings/1-1.md" })).status === 400 && (await ruled(tRul, { body: "x", path: "rulings/1-1.md", extra: 1 })).status === 400 && rowT().answered_at === null && posts(16).length === nPosts16 + 1);
   const notOwed = ins({ k: "ticket_id", v: "'tk-17'", agent: "gremlin", player: id.Ana, reason: "NOT-OWED" });
@@ -260,11 +260,20 @@ try {
   d1(state, `DELETE FROM escalations WHERE id = ${notOwed}`);
   const done = await ruled(tRul, { body: "Chalant rules: a wall is not a creature (rule 701).", path: "rulings/1-1.md" });
   check("ruled posts the ruling in the thread, closes the escalation and records the path; the chip goes", done.status === 200 && posts(16).at(-1).body.startsWith("Chalant rules:") && posts(16).length === nPosts16 + 2 && rowT().answered_at && rowT().ruling_path === "rulings/1-1.md" && (await Cy.get(`${T}/W16`)).data.ticket.escalated === false);
+  check("ruled keeps the restated question, the rules relied on and the text for History, and never the reason", rowT().ruling_question === "Is a wall a creature?" && rowT().ruling_relies_on === '["701"]' && rowT().ruling_text.startsWith("Chalant rules:") && !J(rowT().ruling_question).includes("RULING-T"));
   check("a second ruling on the same escalation is a 409 and posts nothing", (await ruled(tRul, { body: "again", path: "rulings/1-2.md" })).status === 409 && posts(16).length === nPosts16 + 2);
   const doneC = await ruled(cRul, { body: "Chalant rules: private ruling.", path: "rulings/1-3.md" });
   const aHist = (await Ana.get("/wk/api/chat/starling")).data?.messages ?? [];
   check("a private chat's ruling lands only in that player's chat with that agent, never in a thread", doneC.status === 200 && d1(state, "SELECT COUNT(*) AS n FROM chat_messages WHERE role = 'chalant'")[0].n === nChalantChat + 2 && d1(state, "SELECT COUNT(*) AS n FROM ticket_posts WHERE body LIKE '%private ruling%'")[0].n === 0 && d1(state, "SELECT player_id, agent FROM chat_messages WHERE body LIKE '%private ruling%'")[0].player_id === id.Ana && d1(state, "SELECT agent FROM chat_messages WHERE body LIKE '%private ruling%'")[0].agent === "starling", J(aHist.length));
   check("the answered rulings are gone from /rulings and pending's count", !(await mod("GET", "rulings")).data.rulings.some((x) => x.id === tRul || x.id === cRul) && (await mod("GET", "pending")).data.rulings_owed === 0);
+  const gm = (await Cy.get("/wk/api/game")).data, rs = gm.rulings ?? [];
+  check("/api/game lists the night's rulings (day, number, question, rules, text), newest first, from the two that were made", rs.length >= 2 && rs.some((x) => x.day === 1 && x.n === 1 && x.question === "Is a wall a creature?" && J(x.relies_on) === '["701"]' && x.text.startsWith("Chalant rules:")) && rs.some((x) => x.day === 1 && x.n === 3));
+  check("and nothing of the player: not the reason, the chat turn, an id or a name", !["RULING-T", "RULING-C", "RULING-Q", "player_id"].some((s) => J(rs).includes(s)) && rs.every((x) => J(Object.keys(x).sort()) === J(["at", "day", "n", "question", "relies_on", "text"])));
+  const tBad = ins({ k: "ticket_id", v: "'tk-17'", agent: "gremlin", player: id.Bo, reason: "BADRULED" });
+  await mod("POST", `escalations/${tBad}/answer`, { body: HOLD, ruling: true });
+  const badR = (b) => mod("POST", `escalations/${tBad}/ruled`, { body: "x", path: "rulings/3-1.md", ...b });
+  check("ruled needs a question of 1 to 300 plain characters and 1 to 12 rule numbers", (await badR({})).status === 400 && (await badR({ question: "<b>q</b>", relies_on: ["701"] })).status === 400 && (await badR({ question: "q".repeat(301), relies_on: ["701"] })).status === 400 && (await badR({ question: "q", relies_on: [] })).status === 400 && (await badR({ question: "q", relies_on: ["wall"] })).status === 400 && (await badR({ question: "q", relies_on: ["701", 5] })).status === 400 && d1(state, `SELECT answered_at FROM escalations WHERE id = ${tBad}`)[0].answered_at === null);
+  d1(state, `DELETE FROM escalations WHERE id = ${tBad}`);
   const race2 = ins({ k: "ticket_id", v: "'tk-17'", agent: "gremlin", player: id.Bo, reason: "RACE" });
   const nAu = d1(state, "SELECT COUNT(*) AS n FROM agent_calls WHERE purpose = 'escalation'")[0].n;
   const holdU = await mod("POST", `escalations/${race2}/answer`, { body: HOLD, ruling: true, usage: { model: "claude-sonnet-5-5", input_tokens: 100, output_tokens: 10, ms: 1000 } });
