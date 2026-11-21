@@ -705,6 +705,7 @@ button.ptoggle:hover{background:var(--surface-2)}
 .pbar .chev{font-family:var(--font-mono);font-size:.7rem;color:var(--ink-muted);transition:transform .15s}
 .ptoggle[aria-expanded="true"] .chev{transform:rotate(180deg)}
 .tbbr{display:none}
+.pbar .dask,.pbar #day-msg{order:9}
 .tbhead{order:1}.dsteps{order:2}.ptoggle{order:3}.pcell{order:4}.tbend{order:5;margin-left:auto}
 .pcell{display:flex;align-items:center;gap:10px 14px;min-width:0}
 .pstate{font-family:var(--font-mono);font-size:.74rem;font-weight:700;display:inline-flex;align-items:center;gap:6px}
