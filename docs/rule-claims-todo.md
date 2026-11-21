@@ -7,7 +7,7 @@ Every function that carries out the game should say which rule it implements, wi
 `src/` is only reported for now: these functions have no claim yet. Site plumbing such as sign-in and email goes
 under rule 101 or 102; a follow-up change claims them and moves `src/` into the strict set.
 
-158 of 475 functions outside `src/engine/` are unclaimed.
+160 of 479 functions outside `src/engine/` are unclaimed.
 
 ## src/index.ts (5)
 
@@ -155,6 +155,11 @@ under rule 101 or 102; a follow-up change claims them and moves `src/` into the 
 - line 119: `getSettings`
 - line 133: `settingsForSize`
 
+## src/lib/starling.js (2)
+
+- line 100: `detail`
+- line 228: `put`
+
 ## src/lib/tickets.js (1)
 
 - line 180: `pts`
@@ -228,7 +233,7 @@ under rule 101 or 102; a follow-up change claims them and moves `src/` into the 
 
 ## src/routes/api-proposals.ts (1)
 
-- line 26: `out`
+- line 28: `out`
 
 ## src/routes/api-rules.ts (2)
 
@@ -238,7 +243,7 @@ under rule 101 or 102; a follow-up change claims them and moves `src/` into the 
 ## src/routes/api-starling.ts (2)
 
 - line 34: `no`
-- line 170: `stateNow`
+- line 173: `stateNow`
 
 ## src/routes/api-tickets.ts (3)
 

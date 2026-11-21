@@ -11,7 +11,7 @@
 //     workshop()         the Workshop: { commission(), open(n) } (the tab, then a new ticket or an open one); optional
 //     goTab(k)           show a tab
 //     drawBar()          draw the propose bar again (board.html: P.barHTML() into #pzone)
-//   P.barHTML()          the propose bar above the tabs, with your proposals open under it (rules 103.1, 103.2, 103.3)
+//   P.barHTML(turn)      the turn checklist above the tabs: the page's day, Move, Vote and End turn ({head, steps, end, ask}, from board.html) with the Propose row (its circles and count), and your proposals open under it (rules 103.1, 103.2, 103.3)
 //   P.load()             fetch GET /api/proposals
 //   P.attach({ RB, redraw, openAdd, openPick, closeAdd })   rulebook.js: the parsed rules, a redraw, and how to open the "add a rule" and "which block" cards
 // Drafting is free and repeatable; only confirming counts. Nothing here decides what is allowed: the server's answers
@@ -298,15 +298,15 @@ ${S.ui.err ? `<p class="notice err" role="alert">${withPills(S.ui.err)}</p>` : "
   /** @rule 103.1 */
   const por = (cls, name) => `<span class="por ${cls}"><svg aria-hidden="true"><use href="/portraits/${name}.svg#p"/></svg></span>`;
 
-  /** @rule 103.2 */
-  function slotsHTML(limit, items, draft) {
+  /** The Propose row's circles, one per proposal you may make today: a locked-in proposal is filled with its number, a draft is dashed (it does not count, rule 103.1), the rest are dashed empty. @rule 103.1, 103.2 */
+  function marksHTML(limit, items, draft, fz) {
     const out = [];
     for (let i = 0; i < limit; i++) {
       const x = items[i];
-      out.push(x ? `<span class="pslot used${x.kind === "commission" ? " w" : ""}">${esc(slotLabel(x))}</span>`
-        : i === items.length && draft ? `<span class="pslot draft">Draft</span>` : `<span class="pslot empty" aria-hidden="true"></span>`);
+      out.push(x ? `<span class="tkm p" aria-hidden="true">${esc(slotLabel(x))}</span>`
+        : i === items.length && draft ? `<span class="tkm dr" aria-hidden="true">DR</span>` : `<span class="tkm ${fz ? "no" : "e"}" aria-hidden="true">${fz ? "–" : ""}</span>`);
     }
-    return `<span class="pslots">${out.join("")}</span>`;
+    return out.join("");
   }
 
   /** @rule 103.1, 103.5, 402.4, 801.1 */
@@ -315,7 +315,7 @@ ${S.ui.err ? `<p class="notice err" role="alert">${withPills(S.ui.err)}</p>` : "
     const none = !S.actions.length;
     const item = (act, cls, label, note, rule, off) => `<button type="button" role="menuitem" class="pmi" data-p="${act}"${off ? " disabled" : ""}><span class="lr">${cls ? por(...cls) : `<span class="por none" aria-hidden="true">→</span>`}<span class="l"><b>${esc(label)}</b>${note ? `<span class="st">${esc(note)}</span>` : ""}</span></span>${rule ? `<span class="rpill">${esc(rule)}</span>` : ""}</button>`;
     const champ = champAvail() ? item("bar-champ", ["ch", "chalant"], "Champion's change", "", "402.4", false) : "";
-    return `<div class="pmenu drop" role="menu">${item("bar-rule", ["st", "starling"], "Rule change", ready ? "" : "Starling can't be reached", "103.1", !ok)}${item("bar-commission", ["gr", "gremlin"], "Commission", "", "801.1", !ok)}${item("bar-action", null, "Action", ready ? "" : "Starling can't be reached", "103.5", !ok || none)}${champ}</div>`;
+    return `<div class="pmenu tkmenu" role="menu">${item("bar-rule", ["st", "starling"], "Rule change", ready ? "" : "Starling can't be reached", "103.1", !ok)}${item("bar-commission", ["gr", "gremlin"], "Commission", "", "801.1", !ok)}${item("bar-action", ["st", "starling"], "Action", ready ? "" : "Starling can't be reached", "103.5", !ok || none)}${champ}</div>`;
   }
 
   /** One of your proposals, open under the bar: its number, its state, the change, and what you can do with it. @rule 103.1, 103.2, 103.3 */
@@ -330,8 +330,23 @@ ${S.ui.err ? `<p class="notice err" role="alert">${withPills(S.ui.err)}</p>` : "
     return `<article class="pcard${isDraft ? " draft" : ""}" data-pn="${esc(p.n || "")}"><div class="ch">${p.n ? pPill(p) : ""}<span class="pill ${isDraft ? "acc" : "dash"}">${isDraft ? "Draft" : "On tomorrow's ballot"}</span>${p.champion ? `<span class="pill core">Champion's change</span>` : ""}${unlock ? `<button type="button" class="linkbtn" data-p="unlock" data-id="${esc(p.id)}">Unlock</button>` : ""}</div>${body}${settingsHTML(p)}${p.conflict_note ? `<p class="cnote">${withPills(p.conflict_note)}</p>` : ""}<p class="needline mono">${esc(needText(p))}</p><div class="row">${lock}${open}</div>${err}</article>`;
   }
 
-  /** The bar: one row on every tab for a player of a game in play, and nothing for anyone else. @rule 103.1, 103.2, 107.1, 202.4 */
-  function barHTML() {
+  /** The Propose row of the checklist: the circles (tap: your proposals open under the panel), the label and what is left (tap: the Propose menu). @rule 103.1, 103.2, 107.1 */
+  function proposeStepHTML(ctx) {
+    const { items, draft, limit, left, fz, canOpen, open, proposed } = ctx;
+    const full = !can().allowed;
+    const off = fz || full;
+    const ended = !!day().you.ended, label = (proposed && fz) || left === 0 ? "Proposed" : ended ? "No proposal" : "Propose";
+    const count = fz || left === null ? "" : `<b>${esc(left)}</b> of ${esc(limit)} left <span class="rpill">103.2</span>`;   // a plain pill: it sits inside the Propose button, and a button may not hold a button
+    const marks = `<span class="tkmarks${limit > 4 ? " many" : ""}">${marksHTML(limit, items, draft, fz)}</span>`;
+    const mb = canOpen ? `<button type="button" class="tkmb" data-p="bar-open" aria-expanded="${open}" aria-label="Your proposals">${marks}</button>` : `<span class="tkmb static">${marks}</span>`;
+    const menu = S.bar.menu && !off;
+    const go = `<button type="button" class="tkgo" data-p="bar-menu" aria-haspopup="menu" aria-expanded="${menu}" aria-label="${esc(count ? `${label}, ${left} of ${limit} left` : label)}"${off ? " disabled" : ""}><span class="tktxt"><span class="tklab">${label}</span>${count ? `<span class="tkdet">${count}</span>` : ""}</span>${off ? "" : '<span class="go" aria-hidden="true">▾</span>'}</button>`;
+    return `<li class="tkstep pr${proposed ? " done" : ""}${fz ? " dim" : ""}${open ? " open" : ""}">${mb}${go}${menu ? menuBarHTML() : ""}</li>`;
+  }
+
+  /** The turn checklist: one panel on every tab for a player of a game in play, and nothing for anyone else. `turn` carries the pieces of the player's day the page
+   *  draws (board.html: the day and its clock, Move and Vote, End turn and its confirm); the Propose row, its circles and count are this file's. @rule 103.1, 103.2, 107.1, 202.4 */
+  function barHTML(turn) {
     if (!active()) return "";
     const pr = day().you.proposals, items = slotted(), fz = frozen(), limit = pr ? pr.limit : Math.max(items.length, 1);
     const left = pr ? Math.max(0, pr.limit - pr.made) : null;
@@ -339,14 +354,10 @@ ${S.ui.err ? `<p class="notice err" role="alert">${withPills(S.ui.err)}</p>` : "
     const shown = [...items, ...mineList().filter((p) => p.champion)];
     const form = S.ui && S.ui.kind === "action" && !fz ? flowHTML() : "";
     const open = (S.bar.open && !!(shown.length || draft)) || !!form;
-    const slots = slotsHTML(limit, items, draft);
-    const toggle = shown.length || draft ? `<button type="button" class="ptoggle" data-p="bar-open" aria-expanded="${open}">${slots}<span class="chev" aria-hidden="true">▾</span></button>` : `<span class="ptoggle static">${slots}</span>`;
-    const state = day().locked ? `<span class="pstate">Locked</span>${rpill("107.1")}` : day().you.ended ? `<span class="pstate">Turn ended</span>${rpill("202.4")}`
-      : left === null ? "" : `<span class="left"><b>${esc(left)}</b> of ${esc(limit)} left</span><span class="rp-wide">${rpill("103.2")}</span>`;
-    const full = !can().allowed;
-    const btn = fz ? "" : `<span class="pwrap"><button type="button" class="btn ghost small" data-p="bar-menu" aria-expanded="${S.bar.menu && !full}" aria-haspopup="menu"${full ? " disabled" : ""}>Propose ▾</button>${S.bar.menu && !full ? menuBarHTML() : ""}</span>`;
+    const t = turn || {};
+    const row = proposeStepHTML({ items, draft, limit, left, fz, canOpen: !!(shown.length || draft), open, proposed: !!day().you.proposed });
     const panel = open ? `<div class="ppanel">${[...shown, ...(draft ? [draft] : [])].map((p) => barCardHTML(p, p === draft)).join("")}${form ? `<div class="pcard pform">${form}</div>` : ""}</div>` : "";
-    return `<div class="pbar${fz ? " off" : ""}">${toggle}${state}<span class="sp"></span>${btn}</div>${panel}`;
+    return `<section class="tk${fz ? " off" : ""}" aria-label="Your turn">${t.head || ""}<ul class="tklist">${t.steps || ""}${row}${t.end || ""}${t.ask || ""}</ul></section>${panel}`;
   }
 
   // ---- the clicks -----------------------------------------------------------------------------------------------

@@ -11,13 +11,13 @@ How this was checked: every item below was confirmed against mockup-v32 in headl
 
 ## STEP 1: the day loop
 
-### 1A. Day strip and Summary header
+### 1A. Turn bar (was the Summary day strip; Buster 2026-11-21: one turn bar above the tabs, on every tab) and Summary header
 - [ ] S1-SUM-01 · Summary is the first tab. Tabs in order: Summary, Rulebook (with rule count), Workshop (with ticket count; the catalog's groups sit on this tab, under the tickets), History (with day count) · v4 / texted 09:58 · Play > tab row under the board
 - [ ] S1-SUM-02 · The Day header shows "Day N", the moon as phase emoji + phase name ("Waxing gibbous · Full moon in 2 days"), then the three part-steps Move, Vote, Propose, a countdown "H h M m to midnight PT" in the game's time zone, and End turn · v32 / v16 · Play > Summary > day strip
 - [ ] S1-SUM-03 · Each part-step shows its state: unfilled when not done; a check plus value when done ("Moved 4N 4W", "Voted 4 of 4", "Proposed P12"); the Vote step reads "Vote 0 of 4" (votes cast of ballot items) · v32 · Play > Summary > day strip, state "After voting + proposing"
-- [ ] S1-SUM-04 · Tapping a part-step jumps to its place: Move -> the board's move bar, Vote -> first unvoted ballot item, Propose -> the Propose card · v4 · Play > Summary > day strip
+- [ ] S1-SUM-04 · Tapping a part-step jumps to its place: Move -> the board's move bar, Vote -> first unvoted ballot item (Propose is the slots and the Propose menu in the same bar) · v4 · Play > Summary > day strip
 - [ ] S1-SUM-05 · Desktop (>= 900 px) Summary is two columns: left = Today's ballot + Workshop block, right = Propose card + recent day slips. Phone order: ballot, Propose, slips, Catalog last · v11 · Play > Summary at 1280 and 390
-- [ ] S1-SUM-06 · Summary order top to bottom: day strip, overnight recap slip, Today's ballot, Workshop block (left) / Propose card + recent results (right), "Full history ->" link · v32 · Play > Summary
+- [ ] S1-SUM-06 · Summary order top to bottom (the turn bar sits above the tabs): overnight recap slip, Today's ballot, Workshop block (left) / Propose card + recent results (right), "Full history ->" link · v32 · Play > Summary
 - [ ] S1-SUM-07 · No sticky elements on the page; the board is a band in the page flow (see S1-BRD-01) · v4 notes · Play (scroll)
 - [ ] S1-SUM-08 · The Propose card shows "Propose a change", "N of 1 today" (the "+10 if it passes" line was removed by Buster 2026-11-20: it restated rule 401), and two tiles: Rulebook (count, "+ Change or add a rule") and Catalog (count, "+ Propose a thing"); both are disabled/replaced once today's proposal is made or the turn has ended · v12 / v28 · Play > Summary > Propose card
 - [ ] S1-SUM-09 · After proposing, the card reads "Your proposal, 1 of 1 today" with the P-pill, your player pill, "On tomorrow's ballot" and the tracked change · v28 · Play > Summary > Propose card, state "After voting + proposing". Mockup differs: it still shows a "See it in the Rulebook ->" line the log says was removed in v28; do not build that line.

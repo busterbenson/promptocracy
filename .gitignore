@@ -6,3 +6,4 @@ src/generated/
 .gremlin-live-ledger.json
 .starling-live-ledger.json
 wrangler.test.toml
+__pycache__/

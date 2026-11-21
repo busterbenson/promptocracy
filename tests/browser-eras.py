@@ -65,11 +65,11 @@ with sync_playwright() as p:
             check(f"{tag}: Ada's own Champion's change row has no vote to cast: Yes and No are disabled, with the reason", page.locator('#sb-P1 [data-vote="yes"]').is_disabled() and page.locator('#sb-P1 [data-vote="no"]').is_disabled() and "The Champion doesn't vote on their own change (rule 402.4)." in text(page, "#sb-P1"), text(page, "#sb-P1"))
             check(f"{tag}: her 'N of M voted' leaves her own change out: " + ("1 of 1" if name_it else "0 of 1"), ("1 of 1 voted" if name_it else "0 of 1 voted") in text(page, "#sballot"), text(page, "#sballot"))
             shot(page, f"summary-ada-form-{tag}", full_page=True); sideways(page, w, f"{tag} era form")
-            strip = text(page, ".dsteps")
-            check(f"{tag}: the day strip counts only what she can vote on: " + ("'Voted 1 of 1' (she voted on Bo's proposal earlier)" if name_it else "'Vote 0 of 1'"), ("Voted 1 of 1" if name_it else "Vote 0 of 1") in strip, strip)
+            strip = text(page, "#pzone .tkstep.vt")
+            check(f"{tag}: the Vote step counts only what she can vote on: " + ("'Voted 1 of 1' (she voted on Bo's proposal earlier)" if name_it else "'Vote 0 of 1'"), ("Voted 1 of 1" if name_it else "Vote 0 of 1") in strip, strip)
             if not name_it:
-                page.click('#sb-P2 [data-vote="yes"]'); page.wait_for_function("document.querySelector('.dsteps').textContent.indexOf('Voted') >= 0")
-                check(f"{tag}: after her vote on Bo's proposal the strip reads 'Voted 1 of 1' (her own change was never hers to vote on)", "Voted 1 of 1" in text(page, ".dsteps"), text(page, ".dsteps"))
+                page.click('#sb-P2 [data-vote="yes"]'); page.wait_for_function("document.querySelector('#pzone .tkstep.vt').textContent.indexOf('Voted') >= 0")
+                check(f"{tag}: after her vote on Bo's proposal the strip reads 'Voted 1 of 1' (her own change was never hers to vote on)", "Voted 1 of 1" in text(page, "#pzone .tkstep.vt"), text(page, "#pzone .tkstep.vt"))
             if name_it:
                 page.fill("#era-name", "The Long Dusk"); page.click("#sera button[type=submit]")
                 page.wait_for_function("document.querySelector('#sera h2') && document.querySelector('#sera h2').textContent.indexOf('The Long Dusk') >= 0")
