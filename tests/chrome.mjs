@@ -38,6 +38,13 @@ try {
   d1(state, `UPDATE days SET status = 'done' WHERE game_id = '${gid}' AND n = 1; UPDATE games SET day = 2 WHERE id = '${gid}'; INSERT INTO days (game_id, n, starts_at, ends_at, status) VALUES ('${gid}', 2, '2000-01-02T00:00:00.000Z', '${new Date(Date.now() + (7 * 60 + 41) * 60000).toISOString()}', 'open')`);   // 7 h 41 m left: far from the midnight lock for the length of a run
   // day 2's electorate is the three players, as the midnight roll would have written it (rule 104.2)
   d1(state, `INSERT INTO electors (game_id, day, player_id) SELECT game_id, 2, id FROM players WHERE game_id = '${gid}'; UPDATE days SET electorate = 3 WHERE game_id = '${gid}' AND n = 2`);
+  // two rulings the night after day 1 made (rule 106.5), as the `ruled` route leaves them: History shows them with the day
+  const ruling = (n, who, q, rel, text) => {
+    d1(state, `INSERT INTO chat_messages (game_id, player_id, agent, local_date, day, role, body, at) SELECT '${gid}', id, 'starling', '2026-11-10', 1, 'player', 'PRIVATE-CHAT-${n}', '2026-11-10T19:00:00.000Z' FROM players WHERE game_id = '${gid}' AND turn_order = ${who}`);
+    d1(state, `INSERT INTO escalations (game_id, agent, player_id, chat_message_id, category, reason, local_date, created_at, ruling_owed_at, answered_at, ruling_path, ruling_question, ruling_relies_on, ruling_text) SELECT '${gid}', 'starling', player_id, id, 'ruling', 'PRIVATE-REASON-${n}', '2026-11-10', '2026-11-10T19:00:00.000Z', '2026-11-10T19:00:01.000Z', '2026-11-11T08:0${n}:00.000Z', 'rulings/1-${n}.md', '${q}', '${rel}', '${text}' FROM chat_messages WHERE body = 'PRIVATE-CHAT-${n}'`);
+  };
+  ruling(1, 1, "Does Points apply to a proposal that is applied on the same night it passes?", '["401","107.2"]', "Yes. The points are given when the change takes effect (401), and a passed proposal takes effect when the moderator applies it that night (107.2).");
+  ruling(2, 2, "Can a tie on the ballot be broken by the older player?", '["104.3"]', "A tie is not a majority, so the proposal does not pass (104.3).");
   // a second game still being set up (one player, not started), seen by nobody logged in
   const open = await createGame(state, { slug: "setup", name: "Setting Up", repo: "busterbenson/chrome-game", rulesBase: stub.base });
   const dee = await join(srv.base, "setup", open.code, { email: "dee@example.com", name: "Dee", color: "marigold" });

@@ -80,6 +80,7 @@
   import { createCards } from "/js/cards.js";
   import { createBallot } from "/js/ballot.js";
   import { mini, playerPill, hexOf } from "/js/people.js";
+import { rulingsHTML } from "/js/rulings.js";
 import { createWorkshop } from "/js/workshop.js";
 import { createChat, AGENTS } from "/js/chat.js";
  import { commissionHTML, wPill } from "/js/commission.js";
@@ -335,7 +336,7 @@ import { createChat, AGENTS } from "/js/chat.js";
   function drawBook() {
     if (TAB === "summary") { $("p-summary").innerHTML = summaryHTML(); drawDay(); }
     else if (TAB === "workshop") $("p-workshop").innerHTML = WS ? WS.tabHTML() : "";
-    else if (TAB === "history") $("p-history").innerHTML = `<div class="hdays"><div class="slot" data-slot="history-days"></div><ul class="log" id="log">${((DATA && DATA.events) || []).map(e => `<li><b>${esc(whenText(e.created_at) || String(e.created_at || "").slice(0, 10))}</b> · ${esc(e.text)}</li>`).join("")}</ul></div>`;
+    else if (TAB === "history") $("p-history").innerHTML = `<div class="hdays">${rulingsHTML(DATA && DATA.rulings, { esc, rpill: n => PROP.rpill(n) })}<div class="slot" data-slot="history-days"></div><ul class="log" id="log">${((DATA && DATA.events) || []).map(e => `<li><b>${esc(whenText(e.created_at) || String(e.created_at || "").slice(0, 10))}</b> · ${esc(e.text)}</li>`).join("")}</ul></div>`;
   }
 
   // ---- the day: the strip at the top of the Summary --------------------------------------------------------------------
