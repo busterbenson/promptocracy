@@ -157,8 +157,9 @@ try {
 
   console.log("the web page reads the count from /api/day");
   const html = readFileSync(pjoin(ROOT, "public/board.html"), "utf8"), js = readFileSync(pjoin(ROOT, "public/js/propose.js"), "utf8");
-  check("the page has no hard-coded 'of 1 today' and builds the count from you.proposals; the banner and add flow no longer say 'already proposed'",
-    !/of 1 today/.test(html) && /DAY\.you\.proposals/.test(html) && /\$\{pr\.made\} of \$\{pr\.limit\} today/.test(html) && !/already proposed today/i.test(html + js) && !/One proposal a day/.test(html + js), "");
+  // The bar (public/js/propose.js, rule 103.2) builds "<left> of <limit> left" from /api/day's you.proposals; the old banner is gone on purpose.
+  check("the bar builds its count from you.proposals (limit and made), with no hard-coded 'of N left' or 'of 1 today'; no banner or add flow says 'already proposed'",
+    !/of 1 today|of \d+ (?:left|today)/.test(html + js) && /day\(\)\.you\.proposals/.test(js) && /pr\.limit - pr\.made/.test(js) && /<b>\$\{esc\(left\)\}<\/b> of \$\{esc\(limit\)\} left/.test(js) && !/already proposed today/i.test(html + js) && !/One proposal a day/.test(html + js), "");
 } catch (e) {
   fail++;
   console.log("  FAIL  harness error:", e?.stack || e, e?.cause);

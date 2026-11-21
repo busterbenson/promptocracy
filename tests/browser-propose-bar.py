@@ -193,7 +193,7 @@ with sync_playwright() as p:
                 page.click('#pzone [data-p="bar-open"]'); page.wait_for_selector("#pzone .pcard")
                 card = text(page, "#pzone .pcard")
                 check(f"{tag}: opened, the bar's card shows the action the same way (Grant points, To Bo, Points 5, Touches) with Unlock", "Grant points" in card and "Bo" in card and "Points 5" in card and "Touches" in card and count(page, '#pzone [data-p="unlock"]') == 1, card)
-                page.click('#pzone [data-p="unlock"]'); wait_text(page, "#pzone .left", "3 of 3 left")
+                page.click('#pzone [data-p="unlock"]'); wait_text(page, "#pzone .left", "3 of 3 left"); wait_text(page, "#chatLog", "UNLOCKED")   # her slip reloads after the bar repaints (refresh() fires syncChats without awaiting it)
                 check(f"{tag}: Unlock from the bar frees the slot, and her slip says UNLOCKED", count(page, "#pzone .pslot.used") == 0 and "UNLOCKED" in text(page, "#chatLog"), text(page, "#pzone"))
             check(f"{tag}: no page errors", not errors, str(errors)); c.close()
 
