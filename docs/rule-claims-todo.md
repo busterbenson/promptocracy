@@ -7,7 +7,7 @@ Every function that carries out the game should say which rule it implements, wi
 `src/` is only reported for now: these functions have no claim yet. Site plumbing such as sign-in and email goes
 under rule 101 or 102; a follow-up change claims them and moves `src/` into the strict set.
 
-158 of 469 functions outside `src/engine/` are unclaimed.
+159 of 475 functions outside `src/engine/` are unclaimed.
 
 ## src/index.ts (5)
 
@@ -15,7 +15,7 @@ under rule 101 or 102; a follow-up change claims them and moves `src/` into the 
 - line 75: `notFound`
 - line 81: `run`
 - line 86: `route`
-- line 205: `fetch`
+- line 206: `fetch`
 
 ## src/lib/art-sweep.ts (1)
 
@@ -213,10 +213,11 @@ under rule 101 or 102; a follow-up change claims them and moves `src/` into the 
 
 - line 4: `get`
 
-## src/routes/api-moderator.ts (2)
+## src/routes/api-moderator.ts (3)
 
-- line 44: `unauthorized`
-- line 209: `num`
+- line 49: `unauthorized`
+- line 172: `afterOf`
+- line 248: `num`
 
 ## src/routes/api-notifications-read.ts (1)
 

@@ -30,6 +30,7 @@ import { fence, notifyFile } from "./process-day.mjs";
 export const ANSWER_MAX = 2000;
 export const RULING_ANSWER = "Chalant will rule on this tonight.";
 export const MAX_ANSWERS_PER_PASS = 20;
+export const MAX_PAGES = 10;
 export const MODEL_TIMEOUT_MS = 60_000, MODEL_MAX_TOKENS = 700, API_TIMEOUT_MS = 20_000;
 const POST_CLIP = 700, THREAD_SHOWN = 30, RULES_CLIP = 120_000;
 
@@ -127,12 +128,21 @@ export async function runEscalations(opts) {
   const auth = { authorization: `Bearer ${token}` };
   const out = { status: "ok", listed: 0, notified: 0, answered: 0, left_open: 0 };
 
-  let items;
+  // The list pages 50 at a time (`next` is the id to pass as ?after=); at most MAX_PAGES pages a pass. `month` is the game's spend against its budget.
+  const items = [];
+  let month = null;
   try {
-    const r = await fetchImpl(`${api}/${slug}/api/moderator/escalations`, { headers: auth, signal: AbortSignal.timeout(API_TIMEOUT_MS) });
-    if (!r.ok) { log({ event: "list_failed", status: r.status }); return { ...out, status: "failed" }; }
-    items = (await r.json())?.escalations;
-    if (!Array.isArray(items)) { log({ event: "list_unreadable" }); return { ...out, status: "failed" }; }
+    let after = 0;
+    for (let page = 0; page < MAX_PAGES; page++) {
+      const r = await fetchImpl(`${api}/${slug}/api/moderator/escalations${after ? `?after=${after}` : ""}`, { headers: auth, signal: AbortSignal.timeout(API_TIMEOUT_MS) });
+      if (!r.ok) { log({ event: "list_failed", status: r.status }); return { ...out, status: "failed" }; }
+      const j = await r.json();
+      if (!Array.isArray(j?.escalations)) { log({ event: "list_unreadable" }); return { ...out, status: "failed" }; }
+      items.push(...j.escalations);
+      if (page === 0) month = j.month ?? null;
+      if (!Number.isInteger(j.next) || j.next <= after) break;
+      after = j.next;
+    }
   } catch (e) { log({ event: "list_failed", reason: e?.name || "error" }); return { ...out, status: "failed" }; }
   out.listed = items.length;
   if (!items.length) return out;
@@ -153,7 +163,8 @@ export async function runEscalations(opts) {
     log({ event: "notified", ids: fresh.map((i) => i.id) });
   }
 
-  // 2. the answers
+  // 2. the answers. Over the month's budget (rule 106.7) the pass makes no model call at all: the notification above has gone, the answers wait.
+  if (month?.over === true) { log({ event: "over_budget", left_open: items.length }); return { ...out, left_open: items.length, over_budget: true }; }
   let rulesMd = "";
   try {
     const r = await fetchImpl(`${api}/${slug}/api/rules`, { signal: AbortSignal.timeout(API_TIMEOUT_MS) });
@@ -176,7 +187,7 @@ export async function runEscalations(opts) {
     try {
       const r = await fetchImpl(`${api}/${slug}/api/moderator/escalations/${item.id}/answer`, {
         method: "POST", headers: { ...auth, "content-type": "application/json" }, signal: AbortSignal.timeout(API_TIMEOUT_MS),
-        body: JSON.stringify({ body: text, usage: m.usage }),
+        body: JSON.stringify({ body: text, usage: m.usage, ...(text === RULING_ANSWER ? { ruling: true } : {}) }),
       });
       await r.body?.cancel().catch(() => {});
       if (r.ok || r.status === 409) { out.answered += r.ok ? 1 : 0; delete fails[item.id]; log({ event: r.ok ? "answered" : "already_answered", id: item.id, ruling: text === RULING_ANSWER }); }

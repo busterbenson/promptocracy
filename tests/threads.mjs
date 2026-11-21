@@ -229,6 +229,60 @@ try {
   const race = await Promise.all([mod("POST", `escalations/${boEsc.id}/answer`, { body: "Chalant here. First answer." }), mod("POST", `escalations/${boEsc.id}/answer`, { body: "Chalant here. Second answer." })]);
   check("two answers racing for one escalation: one is accepted, the other refused, and exactly one post is made", J(race.map((x) => x.status).sort()) === J([200, 409]) && posts(15).filter((p) => p.author_kind === "chalant").length === nChalant + 1, J(race.map((x) => x.status)));
 
+  console.log("a ruling owed: answered tonight, not now (rules 106.4, 106.5)");
+  const HOLD = "Chalant will rule on this tonight.";
+  check("the migration added the two ruling columns, empty on every existing escalation", d1(state, "SELECT name FROM pragma_table_info('escalations') WHERE name IN ('ruling_owed_at', 'ruling_path')").length === 2 && d1(state, "SELECT COUNT(*) AS n FROM escalations WHERE ruling_owed_at IS NOT NULL OR ruling_path IS NOT NULL")[0].n === 0);
+  const ins = (cols) => { d1(state, `INSERT INTO escalations (game_id, agent, player_id, ${cols.k}, category, reason, local_date, created_at) VALUES ('${gid}', '${cols.agent}', '${cols.player}', ${cols.v}, 'ruling', '${cols.reason}', '2026-11-10', '2026-11-10T19:00:00.000Z')`); return d1(state, "SELECT MAX(id) AS id FROM escalations")[0].id; };
+  const tRul = ins({ k: "ticket_id", v: "'tk-16'", agent: "gremlin", player: id.Ana, reason: "RULING-T" });
+  d1(state, `INSERT INTO chat_messages (game_id, player_id, agent, local_date, day, role, body, at) VALUES ('${gid}', '${id.Ana}', 'starling', '2026-11-10', 1, 'player', 'RULING-Q private question', '2026-11-10T19:00:00.000Z')`);
+  const cRul = ins({ k: "chat_message_id", v: String(d1(state, "SELECT MAX(id) AS id FROM chat_messages")[0].id), agent: "starling", player: id.Ana, reason: "RULING-C" });
+  const nPosts16 = posts(16).length, nChalantChat = d1(state, "SELECT COUNT(*) AS n FROM chat_messages WHERE role = 'chalant'")[0].n;
+  check("ruling must be true or absent: 'yes' and false are 400, and nothing is posted", (await mod("POST", `escalations/${tRul}/answer`, { body: HOLD, ruling: "yes" })).status === 400 && (await mod("POST", `escalations/${tRul}/answer`, { body: HOLD, ruling: false })).status === 400 && posts(16).length === nPosts16);
+  const hold = await mod("POST", `escalations/${tRul}/answer`, { body: HOLD, ruling: true });
+  const rowT = () => d1(state, `SELECT * FROM escalations WHERE id = ${tRul}`)[0];
+  check("an answer with ruling: true posts the line in the thread and marks the ruling owed, leaving answered_at empty", hold.status === 200 && hold.data.ruling === "owed" && posts(16).length === nPosts16 + 1 && posts(16).at(-1).author_kind === "chalant" && posts(16).at(-1).body === HOLD && rowT().ruling_owed_at && rowT().answered_at === null, J(hold.data));
+  check("answering twice, or answering while the ruling is owed, is a 409 and posts nothing", (await mod("POST", `escalations/${tRul}/answer`, { body: "again" })).status === 409 && (await mod("POST", `escalations/${tRul}/answer`, { body: HOLD, ruling: true })).status === 409 && posts(16).length === nPosts16 + 1);
+  const lst = (await mod("GET", "escalations")).data, rl = await mod("GET", "rulings");
+  check("it leaves /escalations and shows in /rulings with the same payload", !lst.escalations.some((x) => x.id === tRul) && rl.data.rulings.some((x) => x.id === tRul && x.where === "ticket" && x.posts.at(-1).body === HOLD && x.reason === "RULING-T"));
+  check("it keeps the Escalated chip, and the player cannot escalate the ticket again while it is owed", (await Cy.get(`${T}/W16`)).data.ticket.escalated === true && d1(state, `SELECT COUNT(*) AS n FROM escalations WHERE id = ${tRul} AND answered_at IS NULL`)[0].n === 1);
+  const hc = await mod("POST", `escalations/${cRul}/answer`, { body: HOLD, ruling: true });
+  const rl2 = (await mod("GET", "rulings")).data.rulings;
+  const rc = rl2.find((x) => x.id === cRul);
+  check("a chat ruling shows in /rulings as the escalated turn only, with no thread and no other chat line", hc.status === 200 && hc.data.where === "chat" && rc.where === "chat" && rc.turn.message === "RULING-Q private question" && !J(rl2).includes("PRIVATE-EARLIER-LINE") && !("posts" in rc));
+  check("/rulings needs the token, and a bad ?after is 400", (await mod("GET", "rulings", null, "")).status === 401 && (await mod("GET", "rulings", null, "wrong-token-wrong-token-wrong")).status === 401 && (await mod("GET", "rulings?after=x")).status === 400 && (await mod("GET", "escalations?after=-1")).status === 400);
+  const pend = (await mod("GET", "pending")).data;
+  check("pending counts the rulings owed", pend.rulings_owed === 2, J(pend.rulings_owed));
+  const ruled = (id, b, t = TOKEN) => mod("POST", `escalations/${id}/ruled`, b, t);
+  check("ruled needs the token, a rulings/<day>-<n>.md path, plain text of 1 to 2000 characters and nothing else",
+    (await ruled(tRul, { body: "x", path: "rulings/1-1.md" }, "")).status === 401 && (await ruled(tRul, { body: "x", path: "rulings/../x.md" })).status === 400 && (await ruled(tRul, { body: "x", path: "rulings/1-1.txt" })).status === 400 && (await ruled(tRul, { body: "x", path: "RULES.md" })).status === 400 && (await ruled(tRul, { body: "<b>x</b>", path: "rulings/1-1.md" })).status === 400 && (await ruled(tRul, { body: "", path: "rulings/1-1.md" })).status === 400 && (await ruled(tRul, { body: "x".repeat(2001), path: "rulings/1-1.md" })).status === 400 && (await ruled(tRul, { body: "x", path: "rulings/1-1.md", extra: 1 })).status === 400 && rowT().answered_at === null && posts(16).length === nPosts16 + 1);
+  const notOwed = ins({ k: "ticket_id", v: "'tk-17'", agent: "gremlin", player: id.Ana, reason: "NOT-OWED" });
+  check("a ruling that isn't owed gets a 409, and an unknown id a 404", (await ruled(notOwed, { body: "x", path: "rulings/1-1.md" })).status === 409 && (await ruled(99999, { body: "x", path: "rulings/1-1.md" })).status === 404);
+  d1(state, `DELETE FROM escalations WHERE id = ${notOwed}`);
+  const done = await ruled(tRul, { body: "Chalant rules: a wall is not a creature (rule 701).", path: "rulings/1-1.md" });
+  check("ruled posts the ruling in the thread, closes the escalation and records the path; the chip goes", done.status === 200 && posts(16).at(-1).body.startsWith("Chalant rules:") && posts(16).length === nPosts16 + 2 && rowT().answered_at && rowT().ruling_path === "rulings/1-1.md" && (await Cy.get(`${T}/W16`)).data.ticket.escalated === false);
+  check("a second ruling on the same escalation is a 409 and posts nothing", (await ruled(tRul, { body: "again", path: "rulings/1-2.md" })).status === 409 && posts(16).length === nPosts16 + 2);
+  const doneC = await ruled(cRul, { body: "Chalant rules: private ruling.", path: "rulings/1-3.md" });
+  const aHist = (await Ana.get("/wk/api/chat/starling")).data?.messages ?? [];
+  check("a private chat's ruling lands only in that player's chat with that agent, never in a thread", doneC.status === 200 && d1(state, "SELECT COUNT(*) AS n FROM chat_messages WHERE role = 'chalant'")[0].n === nChalantChat + 2 && d1(state, "SELECT COUNT(*) AS n FROM ticket_posts WHERE body LIKE '%private ruling%'")[0].n === 0 && d1(state, "SELECT player_id, agent FROM chat_messages WHERE body LIKE '%private ruling%'")[0].player_id === id.Ana && d1(state, "SELECT agent FROM chat_messages WHERE body LIKE '%private ruling%'")[0].agent === "starling", J(aHist.length));
+  check("the answered rulings are gone from /rulings and pending's count", !(await mod("GET", "rulings")).data.rulings.some((x) => x.id === tRul || x.id === cRul) && (await mod("GET", "pending")).data.rulings_owed === 0);
+  const race2 = ins({ k: "ticket_id", v: "'tk-17'", agent: "gremlin", player: id.Bo, reason: "RACE" });
+  await mod("POST", `escalations/${race2}/answer`, { body: HOLD, ruling: true });
+  const nRace = posts(17).length;
+  const rr = await Promise.all([ruled(race2, { body: "First ruling.", path: "rulings/2-1.md" }), ruled(race2, { body: "Second ruling.", path: "rulings/2-2.md" })]);
+  check("two rulings racing: one lands, the other is refused, one post", J(rr.map((x) => x.status).sort()) === J([200, 409]) && posts(17).length === nRace + 1, J(rr.map((x) => x.status)));
+
+  console.log("paging: 120 open escalations come back as 50, 50 and 20");
+  d1(state, "DROP INDEX escalations_one_open");   // the test needs more open rows than players; the index is rebuilt below
+  d1(state, `DELETE FROM escalations WHERE reason IN ('overlap')`);
+  const nBefore = d1(state, "SELECT COUNT(*) AS n FROM escalations WHERE answered_at IS NULL AND ruling_owed_at IS NULL")[0].n;
+  d1(state, Array.from({ length: 120 }, (_, i) => `INSERT INTO escalations (game_id, agent, player_id, ticket_id, category, reason, local_date, created_at) VALUES ('${gid}', 'gremlin', '${id.Bo}', 'tk-16', 'other', 'PAGE-${i}', '2026-11-10', '2026-11-10T19:00:00.000Z')`).join("; "));
+  const pages = []; let after = 0;
+  for (let i = 0; i < 6; i++) { const r = (await mod("GET", `escalations${after ? `?after=${after}` : ""}`)).data; pages.push(r.escalations.length); if (r.next === null) break; after = r.next; }
+  check("pages of 50, 50 and the rest, then next is null; ids rise without a repeat", pages[0] === 50 && pages[1] === 50 && pages[2] === nBefore + 120 - 100 && pages.length === 3, J(pages));
+  check("the first page names where the next starts: next is the id of its last item", (await mod("GET", "escalations")).data.next !== null);
+  d1(state, "DELETE FROM escalations WHERE reason LIKE 'PAGE-%'");
+  d1(state, "CREATE UNIQUE INDEX escalations_one_open ON escalations(game_id, player_id, COALESCE(ticket_id, 'chat:' || agent)) WHERE answered_at IS NULL");
+
   console.log("an escalated chat turn is paired with ITS reply, not the next line (two tabs can interleave turns)");
   d1(state, `INSERT INTO chat_messages (game_id, player_id, agent, local_date, day, role, body, at) VALUES ('${gid}', '${id.Bo}', 'gremlin', '2026-11-10', 1, 'player', 'TURN-A question', '2026-11-10T19:00:00.000Z')`);
   const idA = d1(state, "SELECT MAX(id) AS id FROM chat_messages")[0].id;
@@ -242,11 +296,14 @@ try {
 
   console.log("over the month's budget: a post is stored, no reservation, no call");
   d1(state, `INSERT INTO agent_calls (id, game_id, player_id, agent, purpose, model, outcome, cost_micro, local_date, at) VALUES (9100, '${gid}', NULL, 'gremlin', 'chat', 'claude-sonnet-5-5', 'ok', 60000000, '2026-11-10', '2026-11-10T08:00:00.000Z')`);
+  const mo = (await mod("GET", "escalations")).data.month;
+  check("the escalations list carries the month's spend and budget: over once the spend reaches AGENT_BUDGET_USD", mo.over === true && mo.spent_micro >= 60000000 && mo.budget_micro === 60000000, J(mo));
   const sOv = sonnetCalls(), rowsOv = d1(state, "SELECT COUNT(*) AS n FROM agent_calls")[0].n;
   const ov = await post(Bo, 16, "over budget, anyone there?");
   await settled();
   check("over $60 this month: the post is stored, Gremlin is out: no model call and no reservation", ov.status === 200 && sonnetCalls() === sOv && d1(state, "SELECT COUNT(*) AS n FROM agent_calls")[0].n === rowsOv && posts(16).at(-1).body === "over budget, anyone there?");
   d1(state, "DELETE FROM agent_calls WHERE id = 9100");
+  check("with that spend gone the month is not over", (await mod("GET", "escalations")).data.month.over === false);
 
   console.log("no key: a post is stored and nothing else happens");
   await srv.stop();
