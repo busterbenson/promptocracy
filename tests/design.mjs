@@ -227,13 +227,13 @@ console.log("several proposals of one player in a day (rule 103.2)");
   P.attach({ RB: book, redraw() {}, openAdd() {}, openPick() {}, closeAdd() {} });
   await P.load();
   check("two confirmed proposals: mineList has both, in order; the bar shows both P-numbers in filled slots, one empty slot and '1 of 3 left', and Propose is on",
-    P.mineList().map((p) => p.n).join() === "P1,P3" && (P.barHTML().match(/class="pslot used"/g) || []).length === 2 && (P.barHTML().match(/class="pslot empty"/g) || []).length === 1 &&
-    />P1</.test(P.barHTML()) && />P3</.test(P.barHTML()) && /<b>1<\/b> of 3 left/.test(P.barHTML()) && /data-p="bar-menu" aria-expanded="false" aria-haspopup="menu">Propose/.test(P.barHTML()), P.barHTML());
+    P.mineList().map((p) => p.n).join() === "P1,P3" && (P.barHTML().match(/class="tkm p"/g) || []).length === 2 && (P.barHTML().match(/class="tkm e"/g) || []).length === 1 &&
+    />P1</.test(P.barHTML()) && />P3</.test(P.barHTML()) && /<b>1<\/b> of 3 left/.test(P.barHTML()) && /data-p="bar-menu" aria-haspopup="menu" aria-expanded="false"[^>]*><span class="tktxt"><span class="tklab">Propose</.test(P.barHTML()), P.barHTML());
   check("a rule two of your proposals touch shows both P-numbers on its chip (the rulebook card)", P.mineTouches({ num: "401" }) === "P1, P3" && P.mineTouches({ num: "402" }) === null);
   st.made = 3; await P.load();
   const b = P.barHTML();
   check("at 3 of 3 the bar says '0 of 3 left' and Propose is disabled with no sentence beside it (the count is the reason); the add flow says the limit",
-    /<b>0<\/b> of 3 left/.test(b) && /data-p="bar-menu"[^>]* disabled>Propose/.test(b) && !/class="pslot empty"/.test(b) && !/title=/.test(b) && /You(?:'|&#39;)ve proposed 3 today, the most a day \(103\.2\)\./.test(P.addFlowHTML(book.byNum["300"] || { num: "300", rules: [] })) && !/One proposal a day|already proposed|haven't proposed/i.test(b), b);
+    /<b>0<\/b> of 3 left/.test(b) && /data-p="bar-menu"[^>]* disabled>/.test(b) && !/class="tkm e"/.test(b) && !/title=/.test(b) && /You(?:'|&#39;)ve proposed 3 today, the most a day \(103\.2\)\./.test(P.addFlowHTML(book.byNum["300"] || { num: "300", rules: [] })) && !/One proposal a day|already proposed|haven't proposed/i.test(b), b);
   check("the add card for a block is disabled with the reason at the limit", /disabled title="You(?:'|&#39;)ve proposed 3 today, the most a day \(103\.2\)\."/.test(P.addCardHTML({ num: "400" })), P.addCardHTML({ num: "400" }));
 }
 
@@ -255,16 +255,16 @@ console.log("the propose bar (rules 103.1, 103.2, 103.3, 103.5): every state, an
   const bar = async () => { await P.load(); return P.barHTML(); };
   const n = (b, re) => (b.match(re) || []).length;
   let b = await bar();
-  check("nothing proposed: three empty slots, '3 of 3 left', 103.2, Propose on; not a toggle (nothing to open)", n(b, /class="pslot empty"/g) === 3 && /<b>3<\/b> of 3 left/.test(b) && /103\.2/.test(b) && /class="ptoggle static"/.test(b) && !/data-p="bar-menu"[^>]* disabled/.test(b), b);
+  check("nothing proposed: three empty slots, '3 of 3 left', 103.2, Propose on; not a toggle (nothing to open)", n(b, /class="tkm e"/g) === 3 && /<b>3<\/b> of 3 left/.test(b) && /103\.2/.test(b) && /class="tkmb static"/.test(b) && !/data-p="bar-menu"[^>]* disabled/.test(b), b);
   world.list = [mk(7, "amend"), mk(9, "commission", { ticket: { n: "W3" } })]; world.made = 2; world.draft = { ...mk(8, "addclause"), status: "draft", n: null, number: null, id: "dr1", mine: true };
   b = await bar();
-  check("two locked in and a draft: P7 and W3 filled, one dashed DRAFT slot that is not counted ('1 of 3 left'), the slots toggle the cards", />P7</.test(b) && />W3</.test(b) && n(b, /class="pslot draft">Draft/g) === 1 && n(b, /class="pslot empty"/g) === 0 && /<b>1<\/b> of 3 left/.test(b) && /data-p="bar-open"/.test(b), b);
+  check("two locked in and a draft: P7 and W3 filled, one dashed DRAFT slot that is not counted ('1 of 3 left'), the slots toggle the cards", />P7</.test(b) && />W3</.test(b) && n(b, /class="tkm dr"[^>]*>DR</g) === 1 && n(b, /class="tkm e"/g) === 0 && /<b>1<\/b> of 3 left/.test(b) && /data-p="bar-open"/.test(b), b);
   await P.click({ dataset: { p: "bar-open" } });
   b = P.barHTML();
   check("opened: a card for each, the draft's with Lock it in (on) and Open in Starling, a locked one's with Unlock, the commission's with Open in Workshop", n(b, /class="pcard/g) === 3 && n(b, /data-p="lock"/g) === 1 && n(b, /data-p="unlock"/g) === 2 && n(b, /Open in Starling/g) === 2 && /Open in Workshop/.test(b) && /Lock it in<\/button>/.test(b) && !/Put it on tomorrow|Withdraw/.test(b), b);
   world.made = 3; world.list.push(mk(10, "repeal")); world.draft = null;
   b = await bar();
-  check("all used: '0 of 3 left', no empty slot, Propose disabled with nothing beside it", /<b>0<\/b> of 3 left/.test(b) && n(b, /class="pslot used/g) === 3 && /data-p="bar-menu"[^>]* disabled>Propose/.test(b), b);
+  check("all used: '0 of 3 left', no empty slot, Propose disabled with nothing beside it", /<b>0<\/b> of 3 left/.test(b) && n(b, /class="tkm p/g) === 3 && /data-p="bar-menu"[^>]* disabled>/.test(b), b);
   world.list = [mk(7, "amend"), mk(8, "repeal")]; world.draft = { ...mk(9, "addclause"), status: "draft", n: null, id: "dr1" }; world.made = 3; await P.load();
   b = P.barHTML();   // (the cards are still open from before) the draft has a slot while one is free, and its Lock it in is off at the limit
   check("a draft at the limit: Lock it in is disabled with the reason beside it", /data-p="lock"[^>]* disabled>Lock it in<\/button><span class="why">You(?:'|&#39;)ve proposed 3 today, the most a day \(103\.2\)\./.test(b), b);
@@ -272,21 +272,21 @@ console.log("the propose bar (rules 103.1, 103.2, 103.3, 103.5): every state, an
     const turn = { head: "<HEAD>", steps: "<STEPS>", end: "<END>", ask: "<ASK>" };
     world.list = [mk(7, "amend")]; world.made = 1; world.draft = null; await P.load();
     const t = P.barHTML(turn), at = (x) => t.indexOf(x);
-    check("the turn bar: the page's pieces and the proposal pieces are one bar, in reading order: day, steps, slots, count and Propose, End turn, then the confirm",
-      at("<HEAD>") >= 0 && at("<HEAD>") < at("<STEPS>") && at("<STEPS>") < at("pslots") && at("pslots") < at("left") && at("left") < at("bar-menu") && at("bar-menu") < at("<END>") && at("<END>") < at("<ASK>") && /class="tbbr"/.test(t) && n(t, /class="pbar/g) === 1, t);
-    check("without the page's pieces the bar is the proposal bar alone (no break element, no stray text)", !/tbbr|<HEAD>|<END>/.test(P.barHTML()) && /bar-menu/.test(P.barHTML()));
+    check("the turn bar: the page's pieces and the proposal pieces are one panel, in reading order: day, Move and Vote, the Propose row (circles, then label and count), End turn, then the confirm",
+      at("<HEAD>") >= 0 && at("<HEAD>") < at("<STEPS>") && at("<STEPS>") < at("tkstep pr") && at("tkstep pr") < at("bar-open") && at("bar-open") < at("bar-menu") && at("bar-menu") < at("<END>") && at("<END>") < at("<ASK>") && n(t, /class="tk"/g) === 1 && n(t, /class="tkstep/g) === 1, t);
+    check("without the page's pieces the panel is the Propose row alone (no stray text)", !/<HEAD>|<END>/.test(P.barHTML()) && /bar-menu/.test(P.barHTML()));
     world.ended = true; await P.load();
-    check("turn ended: the bar still carries the page's day and steps, shows 'Turn ended' and 202.4, and offers no Propose", /<HEAD>/.test(P.barHTML({ head: "<HEAD>", steps: "<STEPS>" })) && /Turn ended/.test(P.barHTML(turn)) && !/bar-menu/.test(P.barHTML(turn)));
+    check("turn ended: the panel still carries the page's day and steps, carries the page's End turn cell, and its Propose row is off with no count", /<HEAD>/.test(P.barHTML({ head: "<HEAD>", steps: "<STEPS>" })) && /<END>/.test(P.barHTML(turn)) && /data-p="bar-menu"[^>]* disabled>/.test(P.barHTML(turn)) && !/ of 3 left/.test(P.barHTML(turn)));
     world.ended = false; world.locked = true; await P.load();
-    check("midnight lock: the bar still carries the page's day and steps, shows 'Locked' and 107.1, and offers no Propose", /<STEPS>/.test(P.barHTML(turn)) && /Locked/.test(P.barHTML(turn)) && !/bar-menu/.test(P.barHTML(turn)));
+    check("midnight lock: the panel still carries the page's day and steps, Propose is off too (107.1), with no count", /<STEPS>/.test(P.barHTML(turn)) && /data-p="bar-menu"[^>]* disabled>/.test(P.barHTML(turn)) && !/ of 3 left/.test(P.barHTML(turn)));
     world.locked = false; world.list = [mk(7, "amend"), mk(8, "repeal")]; world.made = 3; await P.load();
   }
   world.made = 1; world.draft = null; world.ended = true; world.bar = 0; await P.load();
   b = P.barHTML();
-  check("turn ended: what you made, 'Turn ended' and 202.4, no Propose", /Turn ended/.test(b) && /202\.4/.test(b) && !/data-p="bar-menu"/.test(b) && !/left</.test(b), b);
+  check("turn ended: what you made stays in the circles, Propose is off, no count", n(b, /class="tkm p/g) === world.list.length && /data-p="bar-menu"[^>]* disabled>/.test(b) && !/ of 3 left/.test(b), b);
   world.ended = false; world.locked = true; await P.load();
   b = P.barHTML();
-  check("midnight lock: 'Locked' and 107.1, no Propose", /Locked/.test(b) && /107\.1/.test(b) && !/data-p="bar-menu"/.test(b), b);
+  check("midnight lock: Propose is off too, no count", /data-p="bar-menu"[^>]* disabled>/.test(b) && !/ of 3 left/.test(b), b);
   world.locked = false;
   await P.load();
   const none = [["signed out", () => { world.me = null; }], ["not a player of this game", () => { world.me = {}; }], ["before Start", () => { world.status = "setup"; }], ["no day for you", () => { world.you = false; }]];
@@ -294,9 +294,9 @@ console.log("the propose bar (rules 103.1, 103.2, 103.3, 103.5): every state, an
   await P.load();
   await P.click({ dataset: { p: "bar-menu" } });
   b = P.barHTML();
-  check("the Propose menu: Rule change (103.1), Commission (801.1), Action (103.5); no Champion row unless you are the Champion", /class="pmenu drop"/.test(b) && n(b, /role="menuitem"/g) === 3 && /Rule change/.test(b) && /801\.1/.test(b) && /Action/.test(b) && !/Champion&#39;s change/.test(b) && !/can&#39;t be reached/.test(b), b);
+  check("the Propose menu: Rule change (103.1), Commission (801.1), Action (103.5); no Champion row unless you are the Champion", /class="pmenu tkmenu"/.test(b) && n(b, /role="menuitem"/g) === 3 && /Rule change/.test(b) && /801\.1/.test(b) && /Action/.test(b) && !/Champion&#39;s change/.test(b) && !/can&#39;t be reached/.test(b), b);
   went.length = 0; await P.click({ dataset: { p: "bar-rule" } });
-  check("Rule change opens Starling (the menu closes)", went.join() === 'starling:{}' && !/pmenu drop/.test(P.barHTML()), went.join());
+  check("Rule change opens Starling (the menu closes)", went.join() === 'starling:{}' && !/pmenu tkmenu/.test(P.barHTML()), went.join());
   went.length = 0; await P.click({ dataset: { p: "bar-menu" } }); await P.click({ dataset: { p: "bar-action" } });
   check("Action opens Starling too, saying it is an action; the form is not opened", went.join() === 'starling:{"intent":"action"}' && !/class="pcard pform"/.test(P.barHTML()), went.join());
   went.length = 0; await P.click({ dataset: { p: "bar-menu" } }); await P.click({ dataset: { p: "bar-commission" } });
@@ -320,7 +320,7 @@ console.log("the propose bar (rules 103.1, 103.2, 103.3, 103.5): every state, an
   world.star = false;
   check("...and with Starling out it is the direct form's button", /data-p="open" data-n="401"[^>]*>Propose a change/.test(P.proposeHTML(book.byNum["401"])));
   // ---- review findings: no action types, a frozen day, the Champion's change, an emptied bar
-  const openMenu = async () => { if (!/pmenu drop/.test(P.barHTML())) await P.click({ dataset: { p: "bar-menu" } }); };
+  const openMenu = async () => { if (!/pmenu tkmenu/.test(P.barHTML())) await P.click({ dataset: { p: "bar-menu" } }); };
   world.star = true; world.actions = []; world.made = 1; await P.load();
   await openMenu();
   check("a game with no action types: the Action item is off (nothing to draft), and clicking it anyway draws nothing and breaks nothing", /data-p="bar-action" disabled/.test(P.barHTML()) && (await P.click({ dataset: { p: "bar-action" } }), P.barHTML().length > 0 && !/pform/.test(P.barHTML())));
@@ -354,7 +354,7 @@ console.log("the propose bar (rules 103.1, 103.2, 103.3, 103.5): every state, an
   world.champion = false; world.star = true; world.list = [mk(7, "amend")]; world.made = 1; await P.load();
   await P.click({ dataset: { p: "bar-open" } });
   world.list = []; world.made = 0; await P.load();
-  check("the bar emptied while its panel was open (the last proposal unlocked): no empty panel is drawn", !/class="ppanel"/.test(P.barHTML()) && /class="ptoggle static"/.test(P.barHTML()), P.barHTML());
+  check("the bar emptied while its panel was open (the last proposal unlocked): no empty panel is drawn", !/class="ppanel"/.test(P.barHTML()) && /class="tkmb static"/.test(P.barHTML()), P.barHTML());
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

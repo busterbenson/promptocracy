@@ -280,11 +280,19 @@ import { createChat, AGENTS } from "/js/chat.js";
     const html = PROP.barHTML(turnHTML());
     if (el.innerHTML !== html) el.innerHTML = html;
     el.hidden = !html;
+    syncDayTag();
+  }
+  // Only someone with no panel (a visitor, a non-player) has "Day N" in the tab row; a player's Day N is in the panel.
+  function syncDayTag() {
+    const tabs = $("btabs"), tag = tabs.querySelector(".bday"), want = $("pzone").hidden && DAY && DAY.day ? `Day ${DAY.day}` : "";
+    if (!want) { if (tag) tag.remove(); return; }
+    if (tag) { if (tag.textContent !== want) tag.textContent = want; return; }
+    tabs.insertAdjacentHTML("beforeend", `<span class="bday">${esc(want)}</span>`);
   }
   function drawTabs() {
     drawBar();
-    $("btabs").innerHTML = TABS().map(([k, n, c]) => `<button type="button" class="btab" role="tab" id="tab-${k}" aria-selected="${TAB === k}" aria-controls="p-${k}" tabindex="${TAB === k ? 0 : -1}" data-tab="${k}">${n}${c ? `<span class="cnt">${esc(c)}</span>` : ""}</button>`).join("")
-      + (TAB === "summary" || !DAY || !DAY.day ? "" : `<span class="bday">Day ${esc(DAY.day)}</span>`);
+    $("btabs").innerHTML = TABS().map(([k, n, c]) => `<button type="button" class="btab" role="tab" id="tab-${k}" aria-selected="${TAB === k}" aria-controls="p-${k}" tabindex="${TAB === k ? 0 : -1}" data-tab="${k}">${n}${c ? `<span class="cnt">${esc(c)}</span>` : ""}</button>`).join("");
+    syncDayTag();
   }
   // Both chat windows hear about the tab and the day: each one draws only while its own tab is showing
   /** Has the host pressed Start (rule 203.1)? Until the game's state has loaded, no. */
@@ -347,31 +355,42 @@ import { createChat, AGENTS } from "/js/chat.js";
       return z ? z.value : DAY.timezone;
     } catch (e) { return DAY.timezone; }
   }
+  /** The time to midnight, compact: `<b>7h 40m</b> to midnight PST`. @rule 107.1 */
   function clockText() {
     const ms = Math.max(0, Date.parse(DAY.ends_at) - nowMs()), h = Math.floor(ms / 3600000), m = Math.floor(ms % 3600000 / 60000);
-    return `${h ? h + " h " : ""}${m} m to midnight ${zoneAbbr()}`;
+    return `<b>${h ? h + "h " : ""}${m}m</b> to midnight ${esc(zoneAbbr())}`;
   }
-  /** The player's day, drawn into the turn bar above the tabs (rules 202.4, 107.1): Day N and the time to midnight, Move, Vote, End turn and its confirm. Null: no day to show. */
+  /** The player's day, the checklist panel above the tabs (rules 202.4, 107.1): Day N and the clock (or Locked), Move and Vote (Propose is propose.js's), End turn and its confirm. Null: no day to show. */
   function turnHTML() {
     if (!DAY || !DAY.day || DAY.status !== "playing" || !DAY.you) return null;
-    const you = DAY.you, ended = !!you.ended, locked = !!DAY.locked;
-    const nv = votable();   // the Champion does not vote on their own change (402.4)
-    // End turn is the one filled button once your move, your votes and your proposal are all in; before that it is ghost (OPEN-06 (3): lean yes)
-    const allDone = !!(you.moved && you.proposed && votedCount() === nv);
-    const step = (done, jump, label, doneLabel, detail) => `<li><button type="button" class="dstep${done ? " done" : ended ? " skip" : ""}" data-jump="${jump}"${locked ? " disabled" : ""}><span class="ck" aria-hidden="true">${done ? "✓" : ended ? "–" : ""}</span><span class="dt"><span class="dn2">${done ? doneLabel : label}</span>${detail ? `<span class="ds">${esc(detail)}</span>` : ""}</span></button></li>`;
+    const you = DAY.you, ended = !!you.ended, locked = !!DAY.locked, frozen = ended || locked;
+    const nv = votable(), vd = Math.min(votedCount(), nv);   // the Champion does not vote on their own change (402.4)
+    // End turn is the one filled button once your move, your votes and your proposal are all in; before that it is ghost
+    const allDone = !!(you.moved && you.proposed && vd === nv);
+    const m = (cls, t = "") => `<span class="tkm ${cls}" aria-hidden="true">${t}</span>`;
+    const step = ({ cls, done, marks, label, detail, jump, off, aria, many }) => `<li class="tkstep ${cls}${done ? " done" : ""}${frozen ? " dim" : ""}"><button type="button" class="tkgo" data-jump="${jump}"${off ? " disabled" : ""} aria-label="${esc(aria)}"><span class="tkmarks${many ? " many" : ""}">${marks}</span><span class="tktxt"><span class="tklab">${label}</span>${detail ? `<span class="tkdet">${detail}</span>` : ""}</span>${frozen || off ? "" : '<span class="go" aria-hidden="true">›</span>'}</button></li>`;
     const myPos = BOARD && ME && ME.player ? BOARD.pieces.find(p => p.color.key === myKey()) : null;
-    const head = `<span class="tbhead"><h2 class="tbday">Day ${esc(DAY.day)}</h2><span class="moon" data-slot="moon"></span>${locked || ended ? "" : `<span class="clock" id="clock">${esc(clockText())}</span>`}</span>`;
-    const steps = `<ul class="dsteps">${step(you.moved, "board", ended ? "No move" : "Move", "Moved", you.moved && myPos ? noLevel(myPos.at.label) : "")}${step(nv > 0 && votedCount() === nv, "ballot", ended ? "No votes" : "Vote", "Voted", nv ? `${votedCount()} of ${nv}` : "")}</ul>`;
+    const clock = locked ? `<span class="tkclock lk"><b>Locked</b> ${PROP.rpill("107.1")}</span>` : `<span class="tkclock" id="clock">${clockText()}</span>`;
+    const head = `<div class="tkhead"><span class="tbhead"><h2 class="tkday">Day ${esc(DAY.day)}</h2><span class="moon" data-slot="moon"></span></span>${clock}</div>`;
+    const mvLabel = you.moved ? "Moved" : ended ? "No move" : "Move";
+    const mvDetail = you.moved && myPos ? esc(noLevel(myPos.at.label)) : "";
+    const vtDone = nv > 0 && vd === nv;
+    const vtLabel = vtDone || (ended && vd > 0) ? "Voted" : ended ? "No votes" : "Vote";
+    const shown = Math.min(nv, 8);
+    let vm = ""; for (let i = 0; i < shown; i++) vm += i < vd ? m("ok", "✓") : frozen ? m("no", "–") : m("e");
+    const steps = step({ cls: "mv", done: !!you.moved, marks: you.moved ? m("ok", "✓") : frozen ? m("no", "–") : m("e"), label: mvLabel, detail: mvDetail, jump: "board", off: frozen, aria: mvDetail ? `${mvLabel}, ${mvDetail}` : mvLabel })
+      + step({ cls: "vt", done: vtDone, marks: vm, label: vtLabel, detail: `<b>${vd}</b> of ${nv}`, jump: "ballot", many: shown > 4, off: frozen || nv === 0, aria: `${vtLabel}, ${vd} of ${nv}` });
     const en = you.can && you.can.end_turn || { allowed: false, reason: "" };
-    const end = locked || ended ? "" : END_ASK ? "" : `<button type="button" class="btn small tbend${allDone ? "" : " ghost"}" data-endturn="ask"${en.allowed ? "" : ` disabled title="${esc(en.reason || "")}"`}>End turn</button>`;
-    let ask = '<div id="day-msg" role="status"></div>';
+    const end = ended ? `<li class="tkend"><span class="tkended">${m("ok", "✓")}Turn ended ${PROP.rpill("202.4")}</span></li>`
+      : END_ASK && !locked ? "" : `<li class="tkend"><button type="button" class="btn tbend${allDone ? "" : " ghost"}" data-endturn="ask"${locked || !en.allowed ? ` disabled title="${esc(en.reason || "")}"` : ""}>End turn</button></li>`;
+    let ask = '<li id="day-msg" role="status"></li>';
     if (END_ASK && !ended && !locked) {
       const left = [];
       if (!you.moved) left.push("your move");
-      if (votedCount() < nv) left.push(plural(nv - votedCount(), "vote"));
+      if (vd < nv) left.push(plural(nv - vd, "vote"));
       if (!you.proposed) left.push("your proposal");
       const skips = left.join(", ").replace(/, ([^,]*)$/, " and $1");
-      ask = `<div class="dask" role="group" aria-label="End turn"><span>${left.length ? `You skip ${skips}.` : ""}</span><span class="row"><button type="button" class="btn small" data-endturn="yes">End turn</button><button type="button" class="linkbtn" data-endturn="no">Keep playing</button></span></div>${ask}`;
+      ask = `<li class="tkask" role="group" aria-label="End turn"><span>${left.length ? `You skip ${skips}.` : ""}</span><span class="row"><button type="button" class="btn small" data-endturn="yes">End turn</button><button type="button" class="linkbtn" data-endturn="no">Keep playing</button></span></li>${ask}`;
     }
     return { head, steps, end, ask };
   }
@@ -385,7 +404,7 @@ import { createChat, AGENTS } from "/js/chat.js";
     // Flip to the lock at midnight without a reload; while locked, look again every minute (it unlocks when the day is processed).
     const wait = DAY.locked ? 60000 : Math.max(1000, Date.parse(DAY.ends_at) - nowMs() + 500);
     DAY_TIMER = setTimeout(loadDay, Math.min(wait, 2147483000));
-    DAY_TICK = setInterval(() => { const c = $("clock"); if (c && DAY) c.textContent = clockText(); }, 20000);
+    DAY_TICK = setInterval(() => { const c = $("clock"); if (c && DAY) c.innerHTML = clockText(); }, 20000);
   }
   function jumpTo(what) {
     const go = el => { if (el) el.scrollIntoView({ behavior: reduced() ? "auto" : "smooth", block: what === "board" ? "center" : "start" }); };
