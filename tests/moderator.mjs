@@ -186,7 +186,7 @@ try {
   check("an ordinary proposal on the same ballot is counted as before: three no votes, it failed", res(pc4).status === "failed" && res(pc4).why === "0 of 3 voted yes; it needed 2." && !res(pc4).champion, J(res(pc4)));
 
   console.log("the night's rulings are posted inside the lock (rules 106.5, 107.1)");
-  dev("clock", plus(day(8).deadline_at, 31)); await cron();   // day 8's passed changes were never claimed: the 2 am fallback ends that night, and day 9 opens
+  dev("clock", plus(day(8).deadline_at, DEPLOY_GRACE_MINUTES + 1)); await cron();   // day 8's passed changes were never claimed: the 3 am fallback ends that night, and day 9 opens
   const SHAF = "f".repeat(40), SHAG = "9".repeat(40);
   const owedRuling = (who, n) => {
     d1(state, `INSERT INTO chat_messages (game_id, player_id, agent, local_date, day, role, body, at) VALUES ('${gid}', '${id[who]}', 'starling', '2026-11-10', 8, 'player', 'RQ${n}', '2026-11-10T19:00:00.000Z')`);
@@ -219,7 +219,7 @@ try {
   dev("clock", plus(dq.deadline_at, 10));
   await cron();
   check("before the deploy deadline the unposted ruling still holds the lock", day(dq.n).status === "deploying" && game().phase === "locked");
-  dev("clock", plus(dq.deadline_at, 32));
+  dev("clock", plus(dq.deadline_at, DEPLOY_GRACE_MINUTES + 2));
   await cron();
   check("past the deploy deadline the night unlocks anyway (the bundle is live): enacted, day N+1 open; the ruling stays owed", prop(pr2).status === "enacted" && day(dq.n).status === "done" && game().day === dq.n + 1 && esc(e2).answered_at === null, J([day(dq.n), game(), prop(pr2)]));
 } catch (e) {
