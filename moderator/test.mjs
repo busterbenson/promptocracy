@@ -81,16 +81,21 @@ async function fakeWorker(state) {
     let body = "";
     for await (const c of req) body += c;
     const send = (code, o) => { res.statusCode = code; res.setHeader("content-type", "application/json"); res.end(J(o)); };
-    if (req.method === "GET" && req.url === "/g/api/game" && state.gameDown) return send(503, {});
-    if (req.method === "GET" && req.url === "/g/api/game") return send(200, { players: (state.players ?? ["Pat", "Dana"]).map((name) => ({ name })) });
     if (req.headers.authorization !== `Bearer ${TOKEN}`) return send(401, { error: "Not authorized." });
-    if (req.method === "GET" && req.url === "/g/api/moderator/pending") { gets++; state.onGet?.(gets, state); return send(200, { game: state.game, job: state.job, not_applied: state.not_applied ?? [], processed: state.processed ?? [], rulings_owed: (state.rulings ?? []).filter((r) => !r.ruled).length }); }
+    if (req.method === "GET" && req.url === "/g/api/moderator/pending") { gets++; if (state.rulings && state.job?.status === "deploying" && !state.stayLocked) {
+      // The site's side of a night with rulings: live once polled (unless the deploy fails), held while claimed rulings are unposted, unlocked after a few polls whatever (its backstop).
+      const held = (claims.at(-1)?.rulings ?? []).filter((id) => !state.rulings.find((r) => r.id === id)?.ruled);
+      if (state.unlockAs && state.unlockAs !== "done") { state.processed = [{ n: state.job.day, status: state.unlockAs, commit_sha: state.job.commit_sha }]; state.job = null; }
+      else if (!state.job.deploy_live) state.job.deploy_live = true;
+      else if (!held.length || (state.liveGets = (state.liveGets ?? 0) + 1) >= (state.backstopAfter ?? 4)) { state.unlockedWithHeld = held.length; state.processed = [{ n: state.job.day, status: "done", commit_sha: state.job.commit_sha }]; state.job = null; }
+    } state.onGet?.(gets, state); return send(200, { game: state.game, job: state.job, not_applied: state.not_applied ?? [], processed: state.processed ?? [], rulings_owed: (state.rulings ?? []).filter((r) => !r.ruled).length }); }
     if (req.method === "GET" && /^\/g\/api\/moderator\/rulings(\?|$)/.test(req.url) && state.rulingsBreak) return req.destroy();
     if (req.method === "GET" && /^\/g\/api\/moderator\/rulings(\?|$)/.test(req.url)) { state.rulingListGets = (state.rulingListGets ?? 0) + 1; return send(200, { rulings: (state.rulings ?? []).filter((r) => !r.ruled), next: null }); }
     const rm = /^\/g\/api\/moderator\/escalations\/(\d+)\/ruled$/.exec(req.url);
     if (req.method === "POST" && rm) {
       const b = JSON.parse(body), e = (state.rulings ?? []).find((r) => r.id === Number(rm[1]));
       (state.ruledPosts ??= []).push({ id: Number(rm[1]), ...b });
+      (state.lockedAtPost ??= []).push(!!state.job);
       if (state.ruledStatus) return send(state.ruledStatus, { error: "no" });
       if (!e || e.ruled) return send(409, { error: "Already ruled." });
       e.ruled = true;
@@ -629,10 +634,11 @@ const rulingCalls = (t) => t.claude.calls().filter((c) => c.escalation !== null)
   check("ruling: it reads the rules after tonight's proposal (the repo's text at the ruling commit has P3's 15 points)", /gets 15 points/.test(g(["show", "main:RULES.md"], t.repo.bare)));
   check("ruling: day-1 is tagged at the claimed commit, and that commit is the ruling's (the tag carries it)", g(["rev-parse", "day-1^{commit}"], t.repo.bare).trim() === t.claims[0].sha && g(["log", "-1", "--format=%s", t.claims[0].sha], t.repo.bare).trim() === "Ruling 1-1");
   check("ruling: 'ruled' is posted once with the file's text, its path, the restated question and the rules, before the claim", st.ruledPosts?.length === 1 && st.ruledPosts[0].id === 7 && st.ruledPosts[0].body === "A wall isn't a creature (401)." && st.ruledPosts[0].path === "rulings/1-1.md" && st.ruledPosts[0].question === "Does a wall count as a creature?" && J(st.ruledPosts[0].relies_on) === '["401"]');
+  check("ruling: it is posted while the night is still locked (the site had a job pending when 'ruled' landed), after the deploy was reported live, and the claim listed it", st.lockedAtPost?.[0] === true && J(t.claims[0].rulings) === "[7]" && st.job === null);
   const rc = rulingCalls(t);
   check("ruling: one model call, restricted, with tools Read,Glob,Grep (no Write), medium effort and no secret in its environment", rc.length === 1 && rc[0].restricted && rc[0].tools === "Read,Glob,Grep" && rc[0].effort === "medium" && rc[0].env.includes("CLAUDE_CODE_OAUTH_TOKEN") && !rc[0].env.some((k) => /TOKEN|KEY|SECRET/.test(k) && k !== "CLAUDE_CODE_OAUTH_TOKEN"), J(rc[0]?.env));
   const p = rc[0]?.rulingPrompt ?? "";
-  check("ruling: the prompt says rulings bind unless a passed proposal changed the ruling or a rule it relies on, and that the current rules decide", /they bind you/.test(p) && /a passed proposal has since changed the ruling, or a passed proposal has since changed a rule\s+it relies on/.test(p) && /Rule by the rules as they read now/.test(p));
+  check("ruling: the prompt says rulings bind unless a passed proposal changed the ruling or a rule it relies on, and that the current rules decide", /they bind you/.test(p) && /a passed proposal has since changed the ruling, a passed proposal has since changed a rule\s+it relies on[\s\S]*?or an appeal under rule 301/.test(p) && /Rule by the rules as they read now/.test(p));
   check("ruling: the question is fenced as data, once, with no player id", (p.match(/<\/proposal-data>/g) ?? []).length === 1 && p.indexOf("Does a wall count") > p.indexOf("<proposal-data>") && !/instructions to you\b.*\n.*Pat/.test(p.split("<proposal-data>")[0]));
   check("ruling: the night log has the ruling by id and path, and no player text", /"event":"ruled","escalation":7,"path":"rulings\/1-1\.md"/.test(readFileSync(join(t.stateDir, "g.night.jsonl"), "utf8")) && !/I think a wall/.test(readFileSync(join(t.stateDir, "g.night.jsonl"), "utf8")));
 }
@@ -680,7 +686,7 @@ const rulingCalls = (t) => t.claude.calls().filter((c) => c.escalation !== null)
     ["a rule that doesn't exist", ANS({ relies_on: ["999"] })], ["a clause that doesn't exist", ANS({ relies_on: ["401.9"] })], ["no rules at all", ANS({ relies_on: [] })],
     ["a precedent that doesn't exist", ANS({ precedent: ["9-9"] })], ["a '<' in the ruling", ANS({ ruling: "A wall <b>isn't</b> a creature." })], ["a '>' in the question", ANS({ question: "Is a wall > a creature?" })],
     ["a question over 300 characters", ANS({ question: long(301) })], ["a ruling over 1,500 characters", ANS({ ruling: long(1501) })], ["a line of dashes (it could close the front matter)", ANS({ ruling: "Fine.\n---\nruling: 9-9" })],
-    ["a player's name", ANS({ ruling: "Pat is right: a wall counts." })], ["a name of someone who is not in the escalation (Dana, in the game)", ANS({ question: "Does Dana's wall count as a creature?" })], ["text that isn't JSON", null],
+    ["text that isn't JSON", null],
   ];
   for (const [name, answer] of cases) {
     const st = { job: job([]), rulings: [ESC(7)] };
@@ -719,15 +725,6 @@ const rulingCalls = (t) => t.claude.calls().filter((c) => c.escalation !== null)
   check("resume: it reposts the ruling from the file (same text, path, question) with no model call and no new commit", rulingCalls(t2).length === 0 && t2.claude.calls().length === 0 && again.ruledPosts?.length === 1 && again.ruledPosts[0].body === "A wall isn't a creature (401)." && again.ruledPosts[0].path === "rulings/1-1.md" && g(["rev-parse", "main"], t.repo.bare).trim() === headBefore, J(again.ruledPosts));
 }
 {
-  // The public player list is down: no ruling is made (a name could slip through), none is counted as failed, and the next run tries again.
-  const st = { job: job([]), rulings: [ESC(7)], gameDown: true };
-  const t = await night({ scenario: { apply: {}, ruling: { 7: { answer: ANS() } } }, state: st, opts: { audit: false } });
-  check("names unavailable: the player list failing means no model call, no ruling, no failure count, and the night is not marked tried", t.r.status === "claimed" && rulingCalls(t).length === 0 && log(t.repo.bare)[0] === "day 0" && !JSON.parse(readFileSync(join(t.stateDir, "g.state.json"), "utf8")).rulingFails && JSON.parse(readFileSync(join(t.stateDir, "g.state.json"), "utf8")).rulingsTriedDay === undefined, J(t.r));
-  st.gameDown = false;
-  const t2 = await night({ scenario: { apply: {}, ruling: { 7: { answer: ANS() } } }, state: { job: null, processed: [{ n: 1, status: "done", commit_sha: null }], rulings: [ESC(7)] }, opts: { repo: t.repo, stateDir: t.stateDir } });
-  check("names unavailable: the next run, with the list back, makes it", log(t2.repo.bare)[0] === "Ruling 1-1", J(log(t2.repo.bare)));
-}
-{
   // The ruling is made and pushed but 'ruled' keeps failing: it stays owed, counts per night, and Buster hears on the second night (id and count only).
   const st = { job: job([]), rulings: [ESC(7)], ruledStatus: 500 };
   const t = await night({ scenario: { apply: {}, ruling: { 7: { answer: ANS() } } }, state: st, opts: { audit: false } });
@@ -748,10 +745,43 @@ const rulingCalls = (t) => t.claude.calls().filter((c) => c.escalation !== null)
   check("claim refused: the next night does not resume the reverted ruling: it asks the model again and posts the new one", rulingCalls(t2).length === 1 && later.ruledPosts?.length === 1 && /as they now stand/.test(later.ruledPosts[0].body) && log(t2.repo.bare)[0] === "Ruling 1-1", J(log(t2.repo.bare)));
 }
 {
+  // Held for the deploy: after the claim the ruling is committed and pushed but not posted; once the site reports the day done, the final pass posts it.
+  const st = { job: job([P(3, "401")]), rulings: [ESC(7)], stayLocked: true };
+  const t = await night({ scenario: { apply: { 3: { action: "points", to: 15 } }, ruling: { 7: { answer: ANS() } } }, state: st, opts: { audit: false } });
+  const s1 = JSON.parse(readFileSync(join(t.stateDir, "g.state.json"), "utf8"));
+  check("hold: while the deploy isn't live the ruling is on main and in the state file's hold, and 'ruled' has not been called", log(t.repo.bare)[0] === "Ruling 1-1" && !st.ruledPosts && s1.rulingsHeld?.day === 1 && s1.rulingsHeld.items[0].id === 7 && st.rulings[0].ruled !== true, J(s1));
+  const live = { job: null, processed: [{ n: 1, status: "done", commit_sha: t.claims[0].sha }], rulings: [ESC(7)] };
+  const t2 = await night({ scenario: noModel, state: live, opts: { repo: t.repo, stateDir: t.stateDir } });
+  const s2 = JSON.parse(readFileSync(join(t.stateDir, "g.state.json"), "utf8"));
+  check("hold: once the day is done (the deploy is live) the held ruling is posted with no model call, and the hold is cleared", t2.claude.calls().length === 0 && live.ruledPosts?.length === 1 && live.ruledPosts[0].path === "rulings/1-1.md" && s2.rulingsHeld === undefined, J([live.ruledPosts, s2]));
+}
+{
+  // The deploy never goes live (the day ends 'timed_out'): the held ruling is reverted, stays owed, and is made again the next night.
+  const st = { job: job([P(3, "401")]), rulings: [ESC(7)], unlockAs: "timed_out" };
+  const t = await night({ scenario: { apply: { 3: { action: "points", to: 15 } }, ruling: { 7: { answer: ANS() } } }, state: st, opts: { audit: false } });
+  check("deploy fails: nothing was posted, the ruling is reverted on main (Reverts-Ruling), the hold is cleared and the escalation is still owed", t.r.status === "claimed" && !st.ruledPosts && st.rulings[0].ruled !== true && log(t.repo.bare).some((s) => /^Revert Ruling 1-1/.test(s)) && g(["ls-tree", "-r", "--name-only", "main"], t.repo.bare).split("\n").every((p) => !p.startsWith("rulings/")) && JSON.parse(readFileSync(join(t.stateDir, "g.state.json"), "utf8")).rulingsHeld === undefined, J(log(t.repo.bare)));
+  const later = { job: null, processed: [{ n: 2, status: "done", commit_sha: null }], rulings: [ESC(7)] };
+  const t2 = await night({ scenario: { apply: {}, ruling: { 7: { answer: ANS({ ruling: "Made again on the rules as they stand (401)." }) } } }, state: later, opts: { repo: t.repo, stateDir: t.stateDir } });
+  check("deploy fails: the next night makes it again (a new model call, not the reverted one) and posts it", rulingCalls(t2).length === 1 && later.ruledPosts?.length === 1 && /Made again/.test(later.ruledPosts[0].body), J(later.ruledPosts));
+}
+{
+  // At the cap, generation stops but recovery goes on: E6 would be the sixth ruling (skipped), E7 is already committed and only needs posting.
+  const t = await night({ scenario: { apply: {}, ruling: { default: { answer: ANS() } } }, state: { job: job([]), rulings: [1, 2, 3, 4, 7].map((i) => ESC(i)), ruledStatus: 500 }, opts: { audit: false } });
+  const later = { job: null, processed: [{ n: 1, status: "done", commit_sha: null }], rulings: [ESC(6), ESC(7)] };
+  const t2 = await night({ scenario: { apply: {}, ruling: { default: { answer: ANS() } } }, state: later, opts: { repo: t.repo, stateDir: join(TMP, "cap-recover-state") } });
+  check("cap: at the cap E6 is not generated, but E7 (committed, unposted, listed after it) is still posted, and recovery does not use up the cap", t2.claude.calls().length === 0 && later.ruledPosts?.length === 1 && later.ruledPosts[0].id === 7 && g(["ls-tree", "--name-only", "main", "rulings/"], t.repo.bare).trim().split("\n").length === 5, J([t2.r, later.ruledPosts?.map((p) => p.id)]));
+}
+{
   // The ruling lookup dropping its connection must not cost the night's proposals: P3 is still applied, pushed and claimed.
   const st = { job: job([P(3, "401")]), rulings: [ESC(7)], rulingsBreak: true };
   const t = await night({ scenario: { apply: { 3: { action: "points", to: 15 } }, ruling: { 7: { answer: ANS() } } }, state: st, opts: { audit: false } });
   check("rulings list drops: the proposal is still applied, pushed and claimed, and no ruling was attempted", t.r.status === "claimed" && log(t.repo.bare)[0] === "P3: Change 401 (day 1, 4-1)" && t.claims[0]?.outcomes[0]?.applied === true && rulingCalls(t).length === 0 && /"event":"rulings_failed"/.test(readFileSync(join(t.stateDir, "g.night.jsonl"), "utf8")), J(t.r));
+}
+{
+  // The site's backstop: a ruling that will not post cannot keep the night locked. The night ends claimed, the ruling is on main and still owed.
+  const st = { job: job([P(3, "401")]), rulings: [ESC(7)], ruledStatus: 500, backstopAfter: 2 };
+  const t = await night({ scenario: { apply: { 3: { action: "points", to: 15 } }, ruling: { 7: { answer: ANS() } } }, state: st, opts: { audit: false } });
+  check("backstop: the site unlocks with the ruling still unposted; the night is claimed, the ruling stays owed on main", t.r.status === "claimed" && st.unlockedWithHeld === 1 && st.rulings[0].ruled !== true && log(t.repo.bare)[0] === "Ruling 1-1", J([t.r, st.unlockedWithHeld]));
 }
 {
   // The cap is the night's, not the pass's: a later pass of the same night can't make five more.

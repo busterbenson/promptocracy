@@ -23,7 +23,7 @@
 //                                                once); the enactment follows it (107.2).
 import { logCall, monthSpend } from "../lib/agent";
 import { PRICES } from "../lib/chat.js";
-import { clockNow, deployDeadline, notAppliedStatements, timeZoneOf } from "../lib/day";
+import { clockNow, deployDeadline, deployedSha, notAppliedStatements, timeZoneOf } from "../lib/day";
 import { localDate } from "../lib/day-gate.js";
 import { notificationText } from "../lib/escalate.js";
 import { orderPassed } from "../engine/host";
@@ -67,7 +67,7 @@ export const pending = async (ctx: Ctx) => {
     // A night with only actions (rule 103.8) is the site's own: the moderator has nothing to apply and sees no job.
     const passed = (await orderPassed(env, game, rows, nowMs)).map((r) => ({ ...r, settings: JSON.parse(r.settings || "{}"), conflicts: JSON.parse(r.conflicts || "[]"), player: { name: r.player } }));
     const deadline = Date.parse(day.deadline_at);
-    if (!(day.status === "processing" && !passed.length)) job = { day: day.n, status: day.status, locked_at: day.locked_at, deadline_at: day.deadline_at, deploy_deadline_at: Number.isFinite(deadline) ? nowIso(deployDeadline(deadline)) : null, commit_sha: day.commit_sha, tag: day.tag, passed };
+    if (!(day.status === "processing" && !passed.length)) job = { day: day.n, status: day.status, locked_at: day.locked_at, deadline_at: day.deadline_at, deploy_deadline_at: Number.isFinite(deadline) ? nowIso(deployDeadline(deadline)) : null, commit_sha: day.commit_sha, tag: day.tag, deploy_live: day.status === "deploying" && !!day.commit_sha && (await deployedSha(env, game)) === day.commit_sha, passed };
   }
   const notApplied = (await env.DB.prepare("SELECT number, day_ballot AS day, not_applied_reason AS reason FROM proposals WHERE game_id = ? AND status = 'not_applied' ORDER BY number").bind(game.id).all()).results;
   const owed: any = await env.DB.prepare("SELECT COUNT(*) AS n FROM escalations WHERE game_id = ? AND ruling_owed_at IS NOT NULL AND answered_at IS NULL").bind(game.id).first();
@@ -154,6 +154,10 @@ export const claim = async (ctx: Ctx) => {
        SELECT ?, ?, ?, 'moderator_note', ?, ?, ? WHERE EXISTS (SELECT 1 FROM days WHERE game_id = ? AND n = ? AND status = 'deploying' AND commit_sha = ?)`,
     ).bind(`audit-${q.id}`, game.id, q.player_id, x.body.trim(), `/${game.slug}/`, now, game.id, n, body.sha));
   }
+  // The rulings committed with this night: the unlock waits for them (until the deploy deadline), so each is posted inside the lock (rules 107.1, 106.5).
+  const held = Array.isArray(body.rulings) ? body.rulings : [];
+  if (held.length > 20 || held.some((x: any) => !Number.isInteger(x) || x < 1)) return json({ error: "rulings is up to 20 escalation ids." }, 400);
+  if (held.length) stmts.push(env.DB.prepare(`UPDATE escalations SET ruling_hold_day = ? WHERE game_id = ? AND id IN (${held.map(() => "?").join(",")}) AND ruling_owed_at IS NOT NULL AND answered_at IS NULL${mine}`).bind(n, game.id, ...held, game.id, n, body.sha));
   await env.DB.batch(stmts);
   const after: any = await env.DB.prepare("SELECT status, commit_sha, deadline_at FROM days WHERE game_id = ? AND n = ?").bind(game.id, n).first();
   if (after?.status !== "deploying" || after.commit_sha !== body.sha) return json({ error: `Day ${n} was not claimed (the deadline passed or another claim landed first).` }, 409);

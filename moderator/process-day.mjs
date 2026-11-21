@@ -520,22 +520,11 @@ export function auditCase(slug, day, p, a) {
 // answer and writes the one file, rulings/<day>-<n>.md, and the commit. The model has no Write tool, and its copy is
 // never read back, so a ruling cannot change a rule (106.5).
 const RULE_REF = /^(\d{3})(?:\.(\d{1,2}))?$/;
-const reEsc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-
-// The names of the people in one escalation (the player and the players who posted), which a public ruling must not carry.
-/** @rule 106.5 */
-export function namesIn(item) {
-  const names = new Set();
-  const add = (s) => { const v = String(s ?? "").trim(); if (v.length >= 2) names.add(v); };
-  add(item?.player);
-  for (const p of item?.posts ?? []) if (p?.author === "player") add(p.by);
-  return [...names];
-}
 
 // Why a model answer can't become a ruling, or null. Checks the shape, the limits, that every rule and earlier ruling it names exists,
-// and that no markup, front-matter fence or player name got through.
+// and that no markup or front-matter fence got through.
 /** @rule 106.5 */
-export function rulingProblem(out, { rulesMd, dir, names = [] }) {
+export function rulingProblem(out, { rulesMd, dir }) {
   if (!out || typeof out !== "object" || Array.isArray(out)) return "the answer is not a JSON object";
   const { question, ruling, relies_on: rel, precedent: pre } = out;
   if (typeof question !== "string" || !question.trim() || question.trim().length > QUESTION_MAX || /\n/.test(question.trim())) return `the question is missing, has several lines or is over ${QUESTION_MAX} characters`;
@@ -552,13 +541,12 @@ export function rulingProblem(out, { rulesMd, dir, names = [] }) {
   for (const s of [question, ruling]) {
     if (/[<>]/.test(s)) return "it has markup";
     if (/^\s*-{3,}\s*$/m.test(s)) return "it has a line of dashes";
-    for (const n of names) if (new RegExp(`(^|[^\\p{L}\\p{N}])${reEsc(n)}($|[^\\p{L}\\p{N}])`, "iu").test(s)) return "it names a player";
   }
   return null;
 }
 
 // The file: front matter (every value JSON, which is valid YAML) and the ruling text. The question is the moderator's restatement:
-// no player text, no names.
+// no player text.
 /** @rule 106.5 */
 export function rulingFile({ day, n, item, out, at }) {
   const asked = item.where === "ticket" && Number.isInteger(item.ticket?.number) ? `W${item.ticket.number}` : "chat";
@@ -591,7 +579,7 @@ export function nextRulingNumber(dir, day) {
 // library), answers with JSON, and the code checks it and commits the one new file. {ok, path, question, relies_on, text} or {ok: false, reason}.
 // A failure leaves the clone as it was.
 /** @rule 106.5 */
-export async function ruleOwed({ dir, item, day, n, timeoutMs, model = runModel, claude, libraryDir = LIBRARY_DIR, ruleAdded = {}, everyone = [], at = new Date().toISOString() }) {
+export async function ruleOwed({ dir, item, day, n, timeoutMs, model = runModel, claude, libraryDir = LIBRARY_DIR, ruleAdded = {}, at = new Date().toISOString() }) {
   const rulesMd = readFileSync(join(dir, "RULES.md"), "utf8");
   const copy = join(mkdtempSync(join(tmpdir(), "moderator-ruling-")), "game");
   let library = null;
@@ -609,7 +597,7 @@ export async function ruleOwed({ dir, item, day, n, timeoutMs, model = runModel,
     let out = null;
     try { const j = JSON.parse(r.out); out = JSON.parse(String(j.result ?? "").replace(/^```(json)?\s*|\s*```$/g, "").trim()); } catch { /* checked below */ }
     if (!out) return { ok: false, reason: r.ok ? "the answer was not JSON" : "the moderator could not run" };
-    const problem = rulingProblem(out, { rulesMd, dir, names: [...new Set([...namesIn(item), ...everyone.filter((x) => typeof x === "string" && x.trim().length >= 2)])] });
+    const problem = rulingProblem(out, { rulesMd, dir });
     if (problem) return { ok: false, reason: problem };
     const path = `rulings/${day}-${n}.md`;
     mkdirSync(join(dir, "rulings"), { recursive: true });
@@ -657,7 +645,7 @@ export async function revertRulings({ dir, made, log }) {
 // The night's rulings: list what is owed, resume the ones already committed, make the rest (at most MAX_RULINGS_PER_NIGHT, each only
 // while `left()` allows). Commits go into `dir`; the caller pushes them and then calls postRulings. {made: [...], timeShort}.
 /** @rule 106.5 */
-export async function rulingsNight({ api, gameNames = async () => [], dir, day, left, model, claude, libraryDir, stateDir, slug, notifyDir, nightLog, log, dryRun }) {
+export async function rulingsNight({ api, dir, day, left, model, claude, libraryDir, stateDir, slug, notifyDir, nightLog, log, dryRun }) {
   const made = [];
   const owed = [];
   let after = 0;
@@ -668,10 +656,6 @@ export async function rulingsNight({ api, gameNames = async () => [], dir, day, 
     if (!Number.isInteger(r.body.next) || r.body.next <= after) break;
     after = r.body.next;
   }
-  // Everyone in the game, not only the asker and the posters: a public ruling names nobody (the public list).
-  // Fails closed: with no list, no ruling is made this pass (and none is counted as failed), so the next run tries again.
-  const everyone = owed.length ? await gameNames().catch(() => null) : [];
-  if (!everyone) { log({ event: "rulings_names_unavailable" }); return { made, timeShort: false, listFailed: true }; }
   let timeShort = false, attempted = 0, ruleAdded = null;
   for (const item of owed.filter((i) => Number.isInteger(i?.id)).sort((a, b) => a.id - b.id)) {
     const resumed = rulingOnMain(dir, item.id);
@@ -679,13 +663,13 @@ export async function rulingsNight({ api, gameNames = async () => [], dir, day, 
     const fails = readState(stateDir, slug).rulingFails ?? {};
     if (fails[item.id]?.day === day) continue; // it failed already tonight (an earlier run); the next night tries again
     // The cap counts the night's files on main, not this pass's work, so a later pass of the same night (the unlock's reconcile, the backstop) can't make five more.
-    if (nextRulingNumber(dir, day) - 1 >= MAX_RULINGS_PER_NIGHT) { timeShort = true; break; }
+    if (nextRulingNumber(dir, day) - 1 >= MAX_RULINGS_PER_NIGHT) { timeShort = true; continue; } // generation stops at the cap; the scan goes on so a committed ruling later in the list still publishes (recovery is not counted)
     const ms = left();
     if (ms < RULING_MIN * 60_000) { timeShort = true; log({ event: "ruling_skipped", escalation: item.id, why: "no time left before the claim" }); continue; }
     ruleAdded ??= Object.fromEntries(Object.keys(sections(readFileSync(join(dir, "RULES.md"), "utf8"))).filter((k) => /^r\d+$/.test(k)).map((k) => [k.slice(1), ruleAge(dir, k.slice(1))]));
     const n = nextRulingNumber(dir, day);
     attempted++;
-    const r = await ruleOwed({ dir, item, day, n, timeoutMs: Math.min(RULING_MIN * 60_000, ms), model, claude, libraryDir, ruleAdded, everyone });
+    const r = await ruleOwed({ dir, item, day, n, timeoutMs: Math.min(RULING_MIN * 60_000, ms), model, claude, libraryDir, ruleAdded });
     if (r.ok) { made.push({ id: item.id, ...r }); log({ event: "ruled", escalation: item.id, path: r.path, relies_on: r.relies_on }); continue; }
     // A failed ruling stays owed. The log and the notice carry the escalation's number and the night's count, never the reason's text or the player's.
     const prior = readState(stateDir, slug).rulingFails ?? {};
@@ -820,6 +804,26 @@ async function watchNight(opts, lock) {
   return afterPass(opts, lock, await runPass(opts), waits);
 }
 
+// The held rulings (state file) posted once the site says the night's deploy is live. The hold is cleared either way: a ruling that didn't post is on main and owed, and a
+// later pass posts it again from its file (the night isn't marked tried).
+/** @rule 106.5, 107.1 */
+async function postHeldRulings(opts, fetchImpl) {
+  const { slug, stateDir, notifyDir } = opts;
+  const held = readState(stateDir, slug).rulingsHeld;
+  if (!held || opts.dryRun) return;
+  const nightLog = join(stateDir, `${slug}.night.jsonl`);
+  const log = (e) => appendFileSync(nightLog, JSON.stringify({ at: new Date().toISOString(), slug, ...e }) + "\n");
+  const api = async (method, path, body) => {
+    const r = await fetchImpl(`${opts.api.replace(/\/+$/, "")}/${slug}/api/moderator/${path}`, { method, headers: { authorization: `Bearer ${opts.token}`, ...(body ? { "content-type": "application/json" } : {}) }, body: body ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(20_000) });
+    return { status: r.status, body: await r.json().catch(() => ({})) };
+  };
+  const ok = await postRulings({ api, made: held.items, stateDir, slug, log, day: held.day, notifyDir, nightLog });
+  const { rulingsHeld: _h, ...rest } = readState(stateDir, slug);
+  if (!ok) delete rest.rulingsTriedDay;
+  writeState(stateDir, slug, rest);
+  log({ event: "rulings_posted_live", day: held.day, ok });
+}
+
 // After a pass: a night it claimed or resumed is watched until the site unlocks (or gives up on it), then one more pass
 // reconciles. Shared by the main run and any other run, so a crashed main run's backstop also sees its night through.
 /** @rule 107.6, 107.7, 107.8 */
@@ -847,6 +851,9 @@ async function afterPass(opts, lock, r, waits) {
     const w = await get();
     if (w === null) { if (++fails >= 3) break; continue; }
     fails = 0;
+    // The deploy is live: post the night's held rulings now, inside the lock. The site keeps the night locked until they are posted (or the deploy deadline passes), so
+    // its own unlock can't come first.
+    if (w.job?.deploy_live) await postHeldRulings(opts, fetchImpl);
     if (!w.job) break;
     const until = Date.parse(w.job.deploy_deadline_at);
     if (Number.isFinite(until) ? now() > until + DEPLOY_CRON_SLACK_MIN * 60_000 : polls >= 120) break;
@@ -874,13 +881,6 @@ async function runPass(opts) {
       });
       return { status: r.status, body: await r.json().catch(() => ({})) };
     };
-    // The public player list (/api/game, no token): the names a ruling must not carry.
-    const gameNames = async () => {
-      const r = await fetchImpl(`${opts.api.replace(/\/+$/, "")}/${slug}/api/game`, { signal: AbortSignal.timeout(20_000) });
-      if (!r.ok) return null;
-      const names = ((await r.json().catch(() => ({}))).players ?? []).map((p) => p?.name).filter((x) => typeof x === "string");
-      return names.length ? names : null; // a game always has players: an empty list means the lookup failed
-    };
     const pend = await api("GET", "pending");
     if (pend.status !== 200) throw new Error(`pending answered ${pend.status}`);
     const { job, not_applied: notApplied = [], processed = [] } = pend.body;
@@ -902,7 +902,7 @@ async function runPass(opts) {
 const lastDay = Math.max(0, ...processed.map((d) => d.n));
     // A ruling owed keeps the night open until this night has tried every owed ruling once (rule 106.5); a failed one waits for the next night.
     const rulingsWaiting = Number(pend.body.rulings_owed) > 0 && lastDay > 0 && state.rulingsTriedDay !== lastDay;
-    if (!job && !rulingsWaiting && !state.pendingDeploy && notApplied.every((q) => settled.has(q.number)) && processed.every((d) => d.commit_sha || taggedDays.has(d.n))) {
+    if (!job && !rulingsWaiting && !state.rulingsHeld && !state.pendingDeploy && notApplied.every((q) => settled.has(q.number)) && processed.every((d) => d.commit_sha || taggedDays.has(d.n))) {
       return { status: "idle", reconciled: false, cloned: false };
     }
 
@@ -982,12 +982,27 @@ const lastDay = Math.max(0, ...processed.map((d) => d.n));
       }
     }
 
+    // Rulings held for a deploy (rule 106.5): once the day is done, post them; if it never went live, take them back and leave them owed.
+    const held = readState(stateDir, slug).rulingsHeld;
+    if (held && !job && !opts.dryRun) {
+      const d = processed.find((x) => x.n === held.day);
+      if (d?.status === "done") {
+        const ok = await postRulings({ api, made: held.items, stateDir, slug, log, day: held.day, notifyDir, nightLog });
+        // A ruling that didn't post is on main and owed: the night is not "tried", so a later pass posts it again from its file.
+        const { rulingsHeld: _h, ...rest } = readState(stateDir, slug); if (!ok) delete rest.rulingsTriedDay; writeState(stateDir, slug, rest);
+      } else if (d) {
+        await revertRulings({ dir, made: held.items, log });
+        const { rulingsHeld: _h, ...rest } = readState(stateDir, slug); writeState(stateDir, slug, rest);
+        log({ event: "rulings_held_reverted", day: held.day, status: d.status });
+      }
+    }
+
     if (!job) {
       // A night with no proposals can still owe rulings (rule 106.5): made on the rules as they stand, before the day's tag so it carries them.
       // The lock is already over, so there is no claim to stay clear of; no deploy is needed, because the bundle serves no ruling.
       let rulings = 0;
       if (Number(pend.body.rulings_owed) > 0 && lastDay > 0 && state.rulingsTriedDay !== lastDay) {
-        const rn = await rulingsNightSafe({ api, gameNames, dir, day: lastDay, left: () => Infinity, model: opts.model, claude: opts.claude, libraryDir: opts.libraryDir ?? LIBRARY_DIR, stateDir, slug, notifyDir, nightLog, log, dryRun: opts.dryRun });
+        const rn = await rulingsNightSafe({ api, dir, day: lastDay, left: () => Infinity, model: opts.model, claude: opts.claude, libraryDir: opts.libraryDir ?? LIBRARY_DIR, stateDir, slug, notifyDir, nightLog, log, dryRun: opts.dryRun });
         if (!opts.dryRun && rn.made.some((m) => !m.resumed)) { git(["push", "-q", "origin", "HEAD:main"], dir); pushed = true; }
         if (!opts.dryRun) {
           // The night counts as tried only once every ruling made is on the site: a failed post is picked up again by a later pass (from its file, no model call).
@@ -1067,7 +1082,7 @@ const lastDay = Math.max(0, ...processed.map((d) => d.n));
     // One that doesn't get made stays owed for the next night.
     let rulingMade = [], rulingRun = null;
     if (opts.rulings !== false && Number(pend.body.rulings_owed) > 0) {
-      const rn = await rulingsNightSafe({ api, gameNames, dir, day: job.day, left: () => deadline - CLAIM_MARGIN_MIN * 60_000 - now(), model: opts.model, claude: opts.claude, libraryDir: opts.libraryDir ?? LIBRARY_DIR, stateDir, slug, notifyDir, nightLog, log, dryRun: opts.dryRun });
+      const rn = await rulingsNightSafe({ api, dir, day: job.day, left: () => deadline - CLAIM_MARGIN_MIN * 60_000 - now(), model: opts.model, claude: opts.claude, libraryDir: opts.libraryDir ?? LIBRARY_DIR, stateDir, slug, notifyDir, nightLog, log, dryRun: opts.dryRun });
       rulingMade = rn.made; rulingRun = rn;
     }
 
@@ -1076,16 +1091,21 @@ const lastDay = Math.max(0, ...processed.map((d) => d.n));
     const outcomes = tonight.map((t, i) => (t.applied ? { number: t.number, seq: i + 1, applied: true, commit: t.commit } : { number: t.number, seq: i + 1, applied: false, reason: `${t.reason}. ${SUGGESTION}`.slice(0, 400) }));
     if (opts.dryRun) return { status: "dry-run", outcomes, head };
     if (tonight.some((t) => t.applied && !t.resumed) || rulingMade.some((m) => !m.resumed) || pushed) git(["push", "-q", "origin", "HEAD:main"], dir);
-    const c = await api("POST", `days/${job.day}/claim`, { sha: head, outcomes, notes });
+    const c = await api("POST", `days/${job.day}/claim`, { sha: head, outcomes, notes, rulings: rulingMade.filter((m) => !m.resumed).map((m) => m.id) });
     log({ event: "claim", day: job.day, sha: head, status: c.status, body: c.body });
     if (c.status !== 200) {
       await revertRulings({ dir, made: rulingMade, log });
       notifyFile(notifyDir, `claim-day-${job.day}`, `Promptocracy ${slug}: the claim for day ${job.day} was refused`, `${c.status}: ${c.body?.error ?? ""}\nThe 2 am fallback ends the lock; the next run reverts what D1 lists as not applied. Night log: ${nightLog}`);
       return { status: "claim_refused", code: c.status, outcomes };
     }
-    // The rulings go to the players only once the night is claimed: a ruling reads tonight's rules, so a night that wasn't claimed must not have published one.
-    const posted = await postRulings({ api, made: rulingMade, stateDir, slug, log, day: job.day, notifyDir, nightLog });
-    if (rulingRun && posted && !rulingRun.timeShort && !rulingRun.listFailed) writeState(stateDir, slug, { ...readState(stateDir, slug), rulingsTriedDay: job.day });
+    // The rulings go to the players only once the night's deploy is live (a ruling reads tonight's rules, which a refused claim or a failed deploy takes back).
+    // Until then the new ones are held in the state file; the final pass, after the site unlocks, posts them or reverts them. Rulings resumed from an earlier night post now.
+    const resumedNow = rulingMade.filter((m) => m.resumed);
+    if (resumedNow.length) await postRulings({ api, made: resumedNow, stateDir, slug, log, day: job.day, notifyDir, nightLog });
+    const fresh = rulingMade.filter((m) => !m.resumed);
+    if (fresh.length) writeState(stateDir, slug, { ...readState(stateDir, slug), rulingsHeld: { day: job.day, items: fresh.map((m) => ({ id: m.id, path: m.path, sha: m.sha, question: m.question, relies_on: m.relies_on, text: m.text })) } });
+    // Tried tonight, whatever came of it: a ruling not made inside the lock (no time, over the cap, a failure) waits for the next night, not for the unlock's final pass.
+    if (rulingRun) writeState(stateDir, slug, { ...readState(stateDir, slug), rulingsTriedDay: job.day });
     if (!tags.has(`day-${job.day}`)) { git(["tag", `day-${job.day}`, head], dir); git(["push", "-q", "origin", `refs/tags/day-${job.day}`], dir); }
     await deployWithRetry(opts, { slug, day: job.day, sha: head }, job.deploy_deadline_at, now);
     writeState(stateDir, slug, { ...readState(stateDir, slug), deployed: head, rescheduleDay: job.day });

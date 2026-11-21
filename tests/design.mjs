@@ -95,7 +95,7 @@ check("106 is 106.1-106.7 (Starling's is 106.2, Gremlin's 106.3; both are in 106
   T.byNum["402"].clauses.map((c) => c.num).join() === "402.1,402.2,402.3,402.4" && T.byNum["402"].title === "Eras" &&
   rules.includes("The draft that was voted on is the one applied.") && rules.includes("[setting: night.apply_minutes]") && rules.includes("[setting: night.apply_effort]") &&
   rules.includes("A core rule prevails over a majority rule.") && rules.includes("the moderator tags the game's files with that day's number") &&
-  rules.replace(/\s+/g, " ").includes("The moderator makes rulings at night, after applying the day's proposals, and answers where the question was asked. A ruling doesn't change any rule. Earlier rulings are precedent: they bind the moderator until a passed proposal changes the ruling or a rule it relies on."));
+  rules.replace(/\s+/g, " ").includes("The moderator makes rulings at night, after applying the day's proposals, and answers where the question was asked. A ruling doesn't change any rule. Earlier rulings are precedent: they bind the moderator until a passed proposal changes the ruling or a rule it relies on, or an appeal succeeds (301)."));
 check("505 says what the spawn code does (the chart shape of rule 504.2), not a fixed '2.5 tiles'", !/2\.5 tiles/.test(rules) && rules.includes("every tile that a move onto it would chart (rule 504.2) is already charted"));
 
 console.log("the propose flow follows the viewer's day (what you were writing is yours only on the day and turn it began)");
