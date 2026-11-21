@@ -226,14 +226,122 @@ console.log("several proposals of one player in a day (rule 103.2)");
   const book = parseRules(read("templates/RULES.md"));
   P.attach({ RB: book, redraw() {}, openAdd() {}, openPick() {}, closeAdd() {} });
   await P.load();
-  check("two confirmed proposals: mineList has both, in order; the banner names both P-numbers and '2 of 3', and still offers 'Propose a new rule'",
-    P.mineList().map((p) => p.n).join() === "P1,P3" && /P1/.test(P.bannerHTML()) && /P3/.test(P.bannerHTML()) && /\(2 of 3\)/.test(P.bannerHTML()) && /data-p="pickblock"/.test(P.bannerHTML()) && !/class="rbanner done"/.test(P.bannerHTML()), P.bannerHTML());
+  check("two confirmed proposals: mineList has both, in order; the bar shows both P-numbers in filled slots, one empty slot and '1 of 3 left', and Propose is on",
+    P.mineList().map((p) => p.n).join() === "P1,P3" && (P.barHTML().match(/class="pslot used"/g) || []).length === 2 && (P.barHTML().match(/class="pslot empty"/g) || []).length === 1 &&
+    />P1</.test(P.barHTML()) && />P3</.test(P.barHTML()) && /<b>1<\/b> of 3 left/.test(P.barHTML()) && /data-p="bar-menu" aria-expanded="false" aria-haspopup="menu">Propose/.test(P.barHTML()), P.barHTML());
   check("a rule two of your proposals touch shows both P-numbers on its chip (the rulebook card)", P.mineTouches({ num: "401" }) === "P1, P3" && P.mineTouches({ num: "402" }) === null);
   st.made = 3; await P.load();
-  const b = P.bannerHTML();
-  check("at 3 of 3 the banner says '(3 of 3)', is marked done and offers no button; the add flow says the limit",
-    /\(3 of 3\)/.test(b) && /class="rbanner done"/.test(b) && !/data-p="pickblock"/.test(b) && /You(?:'|&#39;)ve proposed 3 today, the most a day \(103\.2\)\./.test(P.addFlowHTML(book.byNum["300"] || { num: "300", rules: [] })) && !/One proposal a day|already proposed/i.test(b), b);
+  const b = P.barHTML();
+  check("at 3 of 3 the bar says '0 of 3 left' and Propose is disabled with no sentence beside it (the count is the reason); the add flow says the limit",
+    /<b>0<\/b> of 3 left/.test(b) && /data-p="bar-menu"[^>]* disabled>Propose/.test(b) && !/class="pslot empty"/.test(b) && !/title=/.test(b) && /You(?:'|&#39;)ve proposed 3 today, the most a day \(103\.2\)\./.test(P.addFlowHTML(book.byNum["300"] || { num: "300", rules: [] })) && !/One proposal a day|already proposed|haven't proposed/i.test(b), b);
   check("the add card for a block is disabled with the reason at the limit", /disabled title="You(?:'|&#39;)ve proposed 3 today, the most a day \(103\.2\)\."/.test(P.addCardHTML({ num: "400" })), P.addCardHTML({ num: "400" }));
+}
+
+console.log("the propose bar (rules 103.1, 103.2, 103.3, 103.5): every state, and where each Propose item goes");
+{
+  globalThis.document = { getElementById: () => null };
+  const mk = (n, kind, extra = {}) => ({ mine: true, status: "confirmed", n: `P${n}`, number: n, kind, target: "401", head: "Reword rule 401:", before_text: "a", after_text: "b", id: `id${n}`, conflicts: [], settings: {}, day_proposed: 2, day_ballot: 3, ...extra });
+  const world = { me: { player: {} }, list: [], draft: null, made: 0, limit: 3, locked: false, ended: false, status: "playing", you: true, champion: false, star: true, actions: [{ type: "grant", name: "Grant points", rule: 901, touches: [401, 402], params: [] }] };
+  const posts = [];
+  const api = async (path, body) => { if (body) posts.push([path, body]); return { ok: true, status: 200, data: { day: 2, proposals: world.list, draft: world.draft, actions: world.actions } }; };
+  const day = () => ({ status: world.status, day: 2, locked: world.locked, you: world.you ? { ended: world.ended, proposals: { made: world.made, limit: world.limit }, champion: world.champion ? { change: { allowed: true } } : null,
+    can: { propose: world.made >= world.limit ? { allowed: false, reason: "You've proposed 3 today, the most a day (103.2)." } : { allowed: !world.ended && !world.locked, reason: world.ended ? "Your turn has ended." : world.locked ? "The players are sleeping." : "" }, end_turn: { allowed: !world.ended && !world.locked } } } : undefined });
+  const went = [];
+  const P = createProposer({ api, me: () => world.me, day, refresh: async () => { await P.load(); }, drawBar() {}, goTab: (k) => went.push("tab:" + k),
+    starling: () => ({ ready: () => world.star, attachRule: async () => {}, open: async (o) => { went.push("starling:" + JSON.stringify(o)); } }),
+    workshop: () => ({ commission: async () => { went.push("commission"); }, open: async (n) => { went.push("workshop:" + n); } }) });
+  const book = parseRules(read("templates/RULES.md"));
+  P.attach({ RB: book, redraw() {}, openAdd() {}, openPick() { went.push("picker"); }, closeAdd() {} });
+  const bar = async () => { await P.load(); return P.barHTML(); };
+  const n = (b, re) => (b.match(re) || []).length;
+  let b = await bar();
+  check("nothing proposed: three empty slots, '3 of 3 left', 103.2, Propose on; not a toggle (nothing to open)", n(b, /class="pslot empty"/g) === 3 && /<b>3<\/b> of 3 left/.test(b) && /103\.2/.test(b) && /class="ptoggle static"/.test(b) && !/data-p="bar-menu"[^>]* disabled/.test(b), b);
+  world.list = [mk(7, "amend"), mk(9, "commission", { ticket: { n: "W3" } })]; world.made = 2; world.draft = { ...mk(8, "addclause"), status: "draft", n: null, number: null, id: "dr1", mine: true };
+  b = await bar();
+  check("two locked in and a draft: P7 and W3 filled, one dashed DRAFT slot that is not counted ('1 of 3 left'), the slots toggle the cards", />P7</.test(b) && />W3</.test(b) && n(b, /class="pslot draft">Draft/g) === 1 && n(b, /class="pslot empty"/g) === 0 && /<b>1<\/b> of 3 left/.test(b) && /data-p="bar-open"/.test(b), b);
+  await P.click({ dataset: { p: "bar-open" } });
+  b = P.barHTML();
+  check("opened: a card for each, the draft's with Lock it in (on) and Open in Starling, a locked one's with Unlock, the commission's with Open in Workshop", n(b, /class="pcard/g) === 3 && n(b, /data-p="lock"/g) === 1 && n(b, /data-p="unlock"/g) === 2 && n(b, /Open in Starling/g) === 2 && /Open in Workshop/.test(b) && /Lock it in<\/button>/.test(b) && !/Put it on tomorrow|Withdraw/.test(b), b);
+  world.made = 3; world.list.push(mk(10, "repeal")); world.draft = null;
+  b = await bar();
+  check("all used: '0 of 3 left', no empty slot, Propose disabled with nothing beside it", /<b>0<\/b> of 3 left/.test(b) && n(b, /class="pslot used/g) === 3 && /data-p="bar-menu"[^>]* disabled>Propose/.test(b), b);
+  world.list = [mk(7, "amend"), mk(8, "repeal")]; world.draft = { ...mk(9, "addclause"), status: "draft", n: null, id: "dr1" }; world.made = 3; await P.load();
+  b = P.barHTML();   // (the cards are still open from before) the draft has a slot while one is free, and its Lock it in is off at the limit
+  check("a draft at the limit: Lock it in is disabled with the reason beside it", /data-p="lock"[^>]* disabled>Lock it in<\/button><span class="why">You(?:'|&#39;)ve proposed 3 today, the most a day \(103\.2\)\./.test(b), b);
+  world.made = 1; world.draft = null; world.ended = true; world.bar = 0; await P.load();
+  b = P.barHTML();
+  check("turn ended: what you made, 'Turn ended' and 202.4, no Propose", /Turn ended/.test(b) && /202\.4/.test(b) && !/data-p="bar-menu"/.test(b) && !/left</.test(b), b);
+  world.ended = false; world.locked = true; await P.load();
+  b = P.barHTML();
+  check("midnight lock: 'Locked' and 107.1, no Propose", /Locked/.test(b) && /107\.1/.test(b) && !/data-p="bar-menu"/.test(b), b);
+  world.locked = false;
+  await P.load();
+  const none = [["signed out", () => { world.me = null; }], ["not a player of this game", () => { world.me = {}; }], ["before Start", () => { world.status = "setup"; }], ["no day for you", () => { world.you = false; }]];
+  for (const [what, f] of none) { const was = { ...world }; f(); await P.load(); check(`${what}: no bar at all`, P.barHTML() === ""); Object.assign(world, was); }
+  await P.load();
+  await P.click({ dataset: { p: "bar-menu" } });
+  b = P.barHTML();
+  check("the Propose menu: Rule change (103.1), Commission (801.1), Action (103.5); no Champion row unless you are the Champion", /class="pmenu drop"/.test(b) && n(b, /role="menuitem"/g) === 3 && /Rule change/.test(b) && /801\.1/.test(b) && /Action/.test(b) && !/Champion&#39;s change/.test(b) && !/can&#39;t be reached/.test(b), b);
+  went.length = 0; await P.click({ dataset: { p: "bar-rule" } });
+  check("Rule change opens Starling (the menu closes)", went.join() === 'starling:{}' && !/pmenu drop/.test(P.barHTML()), went.join());
+  went.length = 0; await P.click({ dataset: { p: "bar-menu" } }); await P.click({ dataset: { p: "bar-action" } });
+  check("Action opens Starling too, saying it is an action; the form is not opened", went.join() === 'starling:{"intent":"action"}' && !/class="pcard pform"/.test(P.barHTML()), went.join());
+  went.length = 0; await P.click({ dataset: { p: "bar-menu" } }); await P.click({ dataset: { p: "bar-commission" } });
+  check("Commission goes to the Workshop and opens a new ticket", went.join() === "commission", went.join());
+  world.star = false; await P.click({ dataset: { p: "bar-menu" } });
+  b = P.barHTML();
+  check("Starling can't be reached: the menu says so on Rule change and Action", n(b, /Starling can&#39;t be reached/g) === 2, b);
+  went.length = 0; await P.click({ dataset: { p: "bar-rule" } });
+  check("...and Rule change opens the direct way (the Rulebook's block picker), not Starling", went.join() === "tab:rules,picker", went.join());
+  await P.click({ dataset: { p: "bar-menu" } }); await P.click({ dataset: { p: "bar-action" } });
+  b = P.barHTML();
+  check("...and Action opens the action form under the bar", /class="ppanel"/.test(b) && /class="pcard pform"/.test(b) && /Draft it/.test(b), b);
+  await P.click({ dataset: { p: "cancel" } });
+  world.star = true; world.champion = true; await P.load(); await P.click({ dataset: { p: "bar-menu" } });
+  check("the Champion gets a fourth row, Champion's change (402.4)", /Champion&#39;s change/.test(P.barHTML()) && n(P.barHTML(), /role="menuitem"/g) === 4, P.barHTML());
+  world.made = 3; await P.load();
+  check("at 0 left the Champion's change is still there: Propose is on, the three others are off", !/data-p="bar-menu"[^>]* disabled/.test(P.barHTML()) && n(P.barHTML(), /role="menuitem" class="pmi" data-p="bar-(rule|commission|action)" disabled/g) === 3 && !/data-p="bar-champ" disabled/.test(P.barHTML()), P.barHTML());
+  world.champion = false; world.made = 1; await P.load();
+  went.length = 0;
+  check("a rule card's one Propose button opens Starling with that rule", /data-p="starling" data-n="401">Propose a change/.test(P.proposeHTML(book.byNum["401"])) && !/Draft with Starling/.test(P.proposeHTML(book.byNum["401"])));
+  world.star = false;
+  check("...and with Starling out it is the direct form's button", /data-p="open" data-n="401"[^>]*>Propose a change/.test(P.proposeHTML(book.byNum["401"])));
+  // ---- review findings: no action types, a frozen day, the Champion's change, an emptied bar
+  const openMenu = async () => { if (!/pmenu drop/.test(P.barHTML())) await P.click({ dataset: { p: "bar-menu" } }); };
+  world.star = true; world.actions = []; world.made = 1; await P.load();
+  await openMenu();
+  check("a game with no action types: the Action item is off (nothing to draft), and clicking it anyway draws nothing and breaks nothing", /data-p="bar-action" disabled/.test(P.barHTML()) && (await P.click({ dataset: { p: "bar-action" } }), P.barHTML().length > 0 && !/pform/.test(P.barHTML())));
+  world.star = false; await P.load(); await openMenu(); await P.click({ dataset: { p: "bar-action" } });
+  check("...also with Starling out: no form, no throw, the bar still draws and so does every tab's redraw", !/pform/.test(P.barHTML()) && P.barHTML().includes("Propose"));
+  world.actions = [{ type: "grant", name: "Grant points", rule: 901, touches: [401, 402], params: [] }]; world.star = true; world.ended = true; await P.load();
+  check("a rule card's Propose button on a day that is over for you is disabled with the reason (not a live button that can do nothing)", /data-p="starling" data-n="401" disabled title="Your turn has ended\."/.test(P.proposeHTML(book.byNum["401"])), P.proposeHTML(book.byNum["401"]));
+  world.ended = false; world.locked = true; await P.load();
+  check("...and during the lock the same", /data-p="starling" data-n="401" disabled/.test(P.proposeHTML(book.byNum["401"])));
+  world.locked = false; world.made = 1; world.champion = true; world.list = []; world.draft = null; await P.load();
+  check("the Champion's rule card has two buttons: Starling's, and a Champion's change that opens the direct menu ticked; nobody else has the second", /data-p="starling" data-n="401">Propose a change/.test(P.proposeHTML(book.byNum["401"])) && /data-p="open" data-n="401" data-champ="1"[^>]*>Champion's change/.test(P.proposeHTML(book.byNum["401"])));
+  await P.click({ dataset: { p: "open", n: "401", champ: "1" } });
+  check("...that menu has the Champion's toggle ticked", /class="pmchamp"><input type="checkbox" data-p="champion" checked/.test(P.proposeHTML(book.byNum["401"])), P.proposeHTML(book.byNum["401"]));
+  await P.click({ dataset: { p: "cancel" } });
+  world.champion = false; await P.load();
+  check("a player who is not the Champion has no second button", !/data-champ/.test(P.proposeHTML(book.byNum["401"])));
+  world.champion = true; await P.load();
+  await openMenu(); await P.click({ dataset: { p: "bar-champ" } });
+  check("the Champion row opens the block picker whose buttons carry the Champion's change; the picker Rule change opens (Starling out) does not", /data-p="add" data-n="100" data-champ="1"/.test(P.pickHTML()));
+  world.star = false; await P.load(); await openMenu(); await P.click({ dataset: { p: "bar-rule" } });
+  check("...and a picker opened the plain way has none, so a closed Champion picker leaves nothing behind", !/data-champ/.test(P.pickHTML()));
+  globalThis.document = { getElementById: (id) => (id === "pfWords" ? { value: "A new rule.", focus() {} } : null), querySelectorAll: () => [] };
+  posts.length = 0;
+  await P.click({ dataset: { p: "add", n: "300" } }); await P.click({ dataset: { p: "draft" } });
+  check("a block picked from the plain picker drafts as an ordinary proposal (no champion flag)", posts.length === 1 && posts[0][1].champion === undefined && posts[0][1].kind === "add", J(posts));
+  await P.click({ dataset: { p: "cancel" } }); posts.length = 0;
+  await P.click({ dataset: { p: "add", n: "300", champ: "1" } }); await P.click({ dataset: { p: "draft" } });
+  check("a block picked from the Champion's picker drafts as the Champion's change", posts.length === 1 && posts[0][1].champion === true && posts[0][1].kind === "add", J(posts));
+  await P.click({ dataset: { p: "cancel" } });
+  globalThis.document = { getElementById: () => null };
+  world.champion = false; world.star = true; world.list = [mk(7, "amend")]; world.made = 1; await P.load();
+  await P.click({ dataset: { p: "bar-open" } });
+  world.list = []; world.made = 0; await P.load();
+  check("the bar emptied while its panel was open (the last proposal unlocked): no empty panel is drawn", !/class="ppanel"/.test(P.barHTML()) && /class="ptoggle static"/.test(P.barHTML()), P.barHTML());
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

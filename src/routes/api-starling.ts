@@ -24,7 +24,7 @@ import {
 import { refusalBody, turnBlock } from "../lib/turn";
 import { Ctx, json, nowIso, readJson } from "../lib/util";
 import { ExcuseSpec, chatGate, excuse, lockedNow, out, send, stateOf, viewOf } from "./api-chat";
-import { bookFor, draft, view } from "./api-proposals";
+import { bookFor, catalogOf, draft, view } from "./api-proposals";
 
 const AGENT = "starling";
 const EXCUSES: ExcuseSpec = { agent: AGENT, canned: () => cannedExcuse(), request: excuseRequest };
@@ -134,6 +134,9 @@ export async function turn(ctx: Ctx, player: Player, body: any, nowMs: number) {
     rule = { num, title: node.title ?? node.rule?.title ?? "", text: (nodeText(book, num) as string).slice(0, 1500) };
   }
 
+  // the Propose menu's "Action" opens her with that said (nothing else is read from the body's `intent`)
+  const intent = body?.intent === "action" ? "action" : null;
+
   // the message goes in only under the cap and outside the lock, in one statement
   const at = nowIso(nowMs);
   const ins = await env.DB.prepare(PLAYER_MESSAGE_SQL).bind(game.id, player.id, AGENT, date, game.day || null, text, null, at, game.id, player.id, AGENT, date, cap, game.id, ...lockOpenBinds(nowMs)).run();
@@ -160,7 +163,7 @@ export async function turn(ctx: Ctx, player: Player, body: any, nowMs: number) {
   const noDraft = blocked ? blocked.error : null;
   const drafted = lastMeta.refused ? { refused: String(lastMeta.refused.error ?? "") } : lastRow?.proposal_id && slipRow && slipRow.id === lastRow.proposal_id ? { head: slipRow?.draft_head, after_text: slipRow?.after_text, conflicts: slipRow ? JSON.parse(slipRow.conflicts || "[]") : [] } : null;
   const { system, messages } = starlingRequest({
-    rulesMd, localDate: date, perDay: limit, history: hist, label: player.display_name, message: text, rule,
+    rulesMd, localDate: date, perDay: limit, actions: catalogOf(game), history: hist, label: player.display_name, message: text, rule, intent,
     slip: slipRow ? { n: slipRow.number ? `P${slipRow.number}` : null, status: slipRow.status === "confirmed" ? "locked in" : "a draft, not locked in", head: slipRow.draft_head, after_text: slipRow.after_text, words: slipRow.words, conflicts: JSON.parse(slipRow.conflicts || "[]") } : null,
     drafted, made: t0.made, limit, noDraft,
   });
@@ -194,7 +197,9 @@ export async function turn(ctx: Ctx, player: Player, body: any, nowMs: number) {
   if (a.draft) {
     if (noDraft) { meta.refused = { error: `Nothing was drafted: ${noDraft}` }; notes.push("draft refused: day gate"); }
     else {
-      const d = await draft(ctx, player, { kind: a.draft.kind, target: a.draft.target, words: a.draft.words, to: a.draft.to }, later, { atLimit: true });
+      // an action goes through the SAME drafter as the form's (readAction: the type, each detail, the rule it comes from); she never writes one in herself
+      const asked = a.draft.kind === "action" ? { kind: "action", type: a.draft.type, params: a.draft.params } : { kind: a.draft.kind, target: a.draft.target, words: a.draft.words, to: a.draft.to };
+      const d = await draft(ctx, player, asked, later, { atLimit: true });
       if (d.body?.ok && d.body.proposal?.id) { proposalId = d.body.proposal.id; }
       else { meta.refused = { error: String(d.body?.error ?? "The draft was refused.").slice(0, 400), ...(d.body?.reason ? { reason: String(d.body.reason).slice(0, 40) } : {}) }; notes.push(`draft refused: ${d.body?.drafting || d.status}`); }
     }

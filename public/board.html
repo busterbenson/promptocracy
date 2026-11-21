@@ -48,6 +48,7 @@
 <!-- the book: Summary, Rulebook, Workshop (the tickets, then the catalog), History -->
 <section class="rbwrap" id="book" aria-label="Summary, rulebook, workshop and history">
   <div class="book">
+    <div class="pzone" id="pzone" aria-label="Your proposals" hidden></div>
     <div class="btabs" id="btabs" role="tablist" aria-label="Book"></div>
     <!-- the tab beside the chat window (public/js/chat.js): a column on a desktop, a corner pill and a sheet on a phone -->
     <div class="bwrap" id="bwrap" data-chat="off" data-sheet="closed">
@@ -244,9 +245,15 @@ import { createChat, AGENTS } from "/js/chat.js";
       onTicket: async t => { WS.apply(t); await WS.load(); drawBook(); } });
     // Starling shares the column and the pill with Gremlin: only the window whose tab is showing draws (public/js/chat.js)
     STAR = createChat({ api, root: $("bwrap"), me: () => ME, started: () => gameStarted(), slug: SLUG, agent: AGENTS.starling, rpill: n => PROP.rpill(n), wpill: wPill,
-      onProposals: async () => { await refresh(); loadNotes(); } });
-    // her window: a rule card's "Draft with Starling" puts the card away first, since it would cover her
-    PROP = createProposer({ api, me: () => ME, day: () => DAY, pill, vote: n => BAL.box(n), starling: () => STAR && ({ ready: () => STAR.ready() && gameStarted(), attachRule: async (n, o) => { CARDS.close(); if (TAB !== "rules") setTab("rules"); await STAR.attachRule(n, o); } }), refresh: async () => { await refresh(); loadNotes(); } });
+      onProposals: async () => { await refresh(); loadNotes(); }, onSlip: async () => { await PROP.load(); drawBar(); } });
+    // her window: a rule card's "Propose a change" puts the card away first, since it would cover her
+    PROP = createProposer({ api, me: () => ME, day: () => DAY, pill, vote: n => BAL.box(n), drawBar, goTab: k => { CARDS.close(); setTab(k); },
+      starling: () => STAR && ({ ready: () => STAR.ready() && gameStarted(),
+        attachRule: async (n, o) => { CARDS.close(); if (TAB !== "rules") setTab("rules"); await STAR.attachRule(n, o); },
+        open: async (o = {}) => { CARDS.close(); if (TAB !== "rules") setTab("rules"); if (o.intent) await STAR.attachIntent(o.intent, { open: true }); else await STAR.attachRule(null, { open: true }); } }),
+      workshop: () => WS && ({ commission: async () => { CARDS.close(); if (TAB !== "workshop") setTab("workshop"); await WS.click({ dataset: { w: "open" } }); },
+        open: async n => { CARDS.close(); if (TAB !== "workshop") setTab("workshop"); await WS.open(n, false); } }),
+      refresh: async () => { await refresh(); loadNotes(); } });
     drawTabs(); drawBook();
     loadMe();
     const [g] = await Promise.all([api("/api/game"), loadDay()]);
@@ -266,7 +273,16 @@ import { createChat, AGENTS } from "/js/chat.js";
   // ---- the book: tabs, and what each shows --------------------------------------------------------------------------
   const TABS = () => [["summary", "Summary", ""], ["rules", "Rulebook", BOOK && BOOK.count() ? plural(BOOK.count(), "rule") : ""], ["workshop", "Workshop", WS && WS.count() ? plural(WS.count(), "ticket") : ""],
     ["history", "History", DAY && DAY.day ? plural(DAY.day, "day") : ""]];
+  // The propose bar sits above the tabs, on every tab, for a player of a game in play; nobody else has one. @rule 103.1, 103.2
+  function drawBar() {
+    const el = $("pzone");
+    if (!el || !PROP) return;
+    const html = PROP.barHTML();
+    if (el.innerHTML !== html) el.innerHTML = html;
+    el.hidden = !html;
+  }
   function drawTabs() {
+    drawBar();
     $("btabs").innerHTML = TABS().map(([k, n, c]) => `<button type="button" class="btab" role="tab" id="tab-${k}" aria-selected="${TAB === k}" aria-controls="p-${k}" tabindex="${TAB === k ? 0 : -1}" data-tab="${k}">${n}${c ? `<span class="cnt">${esc(c)}</span>` : ""}</button>`).join("")
       + (TAB === "summary" || !DAY || !DAY.day ? "" : `<span class="bday">Day ${esc(DAY.day)}</span>`);
   }
@@ -299,21 +315,6 @@ import { createChat, AGENTS } from "/js/chat.js";
   const votable = () => (BAL && BAL.hasYou() ? BAL.total() : ballotList().length);   // today's ballot items you can vote on
   const votedCount = () => (DAY && DAY.you ? Number(DAY.you.voted) || 0 : 0);   // how many of today's ballot items you have voted on (/api/day); the Yes / No boxes go in the ballot-vote slots
 
-  function proposeCard() {
-    if (!(ME && ME.player)) return "";   // not a signed-in player of this game: no Propose card, and nothing in its place
-    const mine = PROP ? PROP.mineList() : [], c = PROP ? PROP.canPropose() : { allowed: false, reason: "" };
-    const active = !!(ME && ME.player && DAY && DAY.you);
-    const pr = active && DAY.you.proposals, count = pr ? `${pr.made} of ${pr.limit} today` : "";   // your confirmed proposals of the day's limit (proposals.per_day, rule 103.2)
-    const ended = !!(DAY && DAY.you && DAY.you.ended), shut = ended || (DAY && DAY.locked);
-    const head = mine.length ? `<h2>${mine.length > 1 ? "Your proposals" : "Your proposal"}, ${esc(count)}</h2>` : `<h2>Propose a change</h2><span class="m">${esc(count)}</span>`;
-    if (mine.length && shut) return `<section class="sw pro" id="spropose" aria-label="Your proposals"><div class="swh">${head}</div>${mine.map(PROP.chgFor).join("")}</section>`;
-    if (shut) return `<section class="sw pro" id="spropose" aria-label="No proposal today"><div class="swh"><h2>No proposal today</h2><span class="m">${esc(count)}</span></div></section>`;
-    const why = active ? c.reason : DATA && DATA.game.status === "setup" ? "The game has not started yet." : "";
-    const off = active && c.allowed ? "" : ` disabled title="${esc(why)}"`;
-    return `<section class="sw pro" id="spropose" aria-label="Propose a change"><div class="swh">${head}</div>${mine.map(PROP.chgFor).join("")}
-      <div class="ptiles"><button type="button" class="ptile" data-tab="rules"${off}><span class="pt2">Rulebook</span><span class="pm2">${BOOK && BOOK.count() ? plural(BOOK.count(), "rule") : ""}</span><span class="pa2">+ Change or add a rule</span></button>
-      <button type="button" class="ptile" data-tab="workshop"${off}><span class="pt2">Workshop</span><span class="pm2">${WS && WS.count() ? plural(WS.count(), "ticket") : ""}</span><span class="pa2">+ Commission something</span></button></div>${active && !c.allowed ? `<p class="mnote">${esc(c.reason)}</p>` : ""}</section>`;
-  }
   // The Era (rule 402): its number and name, the Champion, and the Champion's one write besides a proposal: naming the Era (402.3).
   function eraHTML() {
     const e = DATA && DATA.era;
@@ -330,7 +331,7 @@ import { createChat, AGENTS } from "/js/chat.js";
     return `<div class="sgrid">${eraHTML()}<section class="sw day" id="sday" aria-label="Today"></section>
       <div class="slot recapw" data-slot="recap"></div>
       <div class="scol">${ballot}${cat}</div>
-      <div class="scol">${proposeCard()}<div class="slot" data-slot="recent-days"></div><button type="button" class="linkbtn" data-tab="history">Full history →</button></div></div>`;
+      <div class="scol"><div class="slot" data-slot="recent-days"></div><button type="button" class="linkbtn" data-tab="history">Full history →</button></div></div>`;
   }
   function drawBook() {
     if (TAB === "summary") { $("p-summary").innerHTML = summaryHTML(); drawDay(); }
@@ -391,8 +392,9 @@ import { createChat, AGENTS } from "/js/chat.js";
   function jumpTo(what) {
     const go = el => { if (el) el.scrollIntoView({ behavior: reduced() ? "auto" : "smooth", block: what === "board" ? "center" : "start" }); };
     if (what === "board") { if (!BOARD_OPEN) { BOARD_OPEN = true; drawMoveBar(); } go($(BOARD_OPEN ? "movebar" : "playtop")); const b = $("movebar").querySelector("button"); if (b) b.focus({ preventScroll: true }); return; }
+    if (what === "propose") { const bar = $("pzone"); if (!bar.hidden) { go(bar); bar.classList.add("ring"); setTimeout(() => bar.classList.remove("ring"), 1700); } return; }   // the bar is on every tab: no tab to switch to
     if (TAB !== "summary") setTab("summary");
-    const first = what === "ballot" ? ($("sb-" + (BAL && BAL.firstOpen())) || $("sballot").querySelector("li") || $("sballot")) : $("spropose");
+    const first = $("sb-" + (BAL && BAL.firstOpen())) || $("sballot").querySelector("li") || $("sballot");
     go(first); first.classList.add("ring"); setTimeout(() => first.classList.remove("ring"), 1700);
   }
   async function loadDay() {
@@ -585,6 +587,7 @@ import { createChat, AGENTS } from "/js/chat.js";
   // ---- clicks: tabs, jumps, End turn, pills, players, withdraw ---------------------------------------------------------
   document.addEventListener("click", async e => {
     const t = e.target;
+    if (PROP && !t.closest(".pwrap")) PROP.closeMenu();   // a click anywhere else puts the Propose menu away (first, so a vote or a tab click does too)
     const tab = t.closest("[data-tab]");
     if (tab && !tab.disabled) { setTab(tab.dataset.tab, !tab.closest(".btabs")); return; }
     const j = t.closest("[data-jump]");
@@ -616,7 +619,7 @@ import { createChat, AGENTS } from "/js/chat.js";
       if (again && !again.disabled) again.focus({ preventScroll: true });
       return;
     }
-    const pe = t.closest("#p-summary [data-p]");
+    const pe = t.closest("#p-summary [data-p], #pzone [data-p]");
     if (pe && PROP && !pe.disabled) { PROP.click(pe); return; }
     const b = t.closest("[data-endturn]");
     if (!b) return;
@@ -642,6 +645,9 @@ import { createChat, AGENTS } from "/js/chat.js";
     msg.hidden = false; msg.textContent = (r.data && r.data.error) || "Something went wrong.";
   });
   document.addEventListener("input", e => { if (WS) WS.input(e.target); });
+  $("pzone").addEventListener("input", e => PROP && PROP.input(e.target));
+  $("pzone").addEventListener("change", e => PROP && PROP.input(e.target));
+  document.addEventListener("keydown", e => { if (e.key === "Escape" && PROP) PROP.closeMenu(); });
   initBoard();
   load();
 </script>

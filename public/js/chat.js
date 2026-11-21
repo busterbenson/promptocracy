@@ -37,8 +37,8 @@ let ACTIVE = null;
 export const settingsLine = (settings) => Object.entries(settings || {}).map(([k, v]) => `${k} = ${v && typeof v === "object" ? Object.values(v).join("x") : typeof v === "boolean" ? (v ? "on" : "off") : String(v)}`).join(", ");
 const LEFT_SHOWN = 10;   // "N left" appears in the last ten messages of the day
 
-export function createChat({ api, root, me, slug, agent = AGENTS.gremlin, rpill, wpill, onTicket, onProposals, started = () => true }) {
-  const S = { msgs: [], next: null, state: null, ticket: null, rule: null, live: null, slips: {}, lockErr: {}, slip: null, busy: false, draft: "", err: "", sheet: false, open: true, loaded: false, loading: false, tab: "", note: "" };
+export function createChat({ api, root, me, slug, agent = AGENTS.gremlin, rpill, wpill, onTicket, onProposals, onSlip, started = () => true }) {
+  const S = { msgs: [], next: null, state: null, ticket: null, rule: null, intent: null, live: null, slips: {}, lockErr: {}, slip: null, busy: false, draft: "", err: "", sheet: false, open: true, loaded: false, loading: false, tab: "", note: "" };
   const col = root.querySelector("#chatcol"), fab = root.querySelector("#chatfab");
   const mine = () => ACTIVE === agent.key;
   if (!document.getElementById("chat-symbols")) { const d = document.createElement("div"); d.id = "chat-symbols"; d.innerHTML = SYMBOLS; document.body.appendChild(d); }
@@ -87,7 +87,7 @@ ${refused ? `<div class="tx">${esc(last.refusal)}</div>` : ""}
 
   // ---- Starling's slips: a draft proposal, as the drafter made it ------------------------------------------------------------------
   const STAMPS = { draft: "DRAFT", confirmed: "LOCKED", on_ballot: "ON THE BALLOT", withdrawn: "UNLOCKED", passed: "PASSED", failed: "FAILED", enacted: "IN THE RULES", not_applied: "NOT APPLIED", approved: "APPROVED" };
-  const KIND = { amend: "Reword", addclause: "Add a clause", add: "Add a rule", repeal: "Repeal", move: "Move", mark: "Mark" };
+  const KIND = { amend: "Reword", addclause: "Add a clause", add: "Add a rule", repeal: "Repeal", move: "Move", mark: "Mark", action: "Action" };
   const ppill = (n) => `<span class="ppill">${esc(n)}</span>`;
   /** Is this proposal still the one the window is for: a draft, or locked in and not yet on the ballot? */
   const alive = (sl) => !!sl && (sl.status === "draft" || sl.status === "confirmed");
@@ -103,8 +103,10 @@ ${refused ? `<div class="tx">${esc(last.refusal)}</div>` : ""}
     const sl = S.slips[id];
     if (!sl) return "";
     const stamp = id === liveId() ? "" : sl.status === "draft" ? "REPLACED" : STAMPS[sl.status] || String(sl.status).toUpperCase();
-    return `<section class="slip past" aria-label="${esc(sl.n || "Draft")}"><span class="cstamp">${esc(stamp)}</span><div class="hd">${sl.n ? ppill(sl.n) : ""}<span class="hdt">${textHTML(sl.head || "")}</span></div>${sl.words ? `<div class="yw">${esc(`“${sl.words}”`)}</div>` : ""}${sl.after_text || sl.before_text ? `<div class="tx cdiff">${diffOf(sl)}</div>` : ""}</section>`;
+    return `<section class="slip past" aria-label="${esc(sl.n || "Draft")}"><span class="cstamp">${esc(stamp)}</span><div class="hd">${sl.n ? ppill(sl.n) : ""}<span class="hdt">${textHTML(sl.head || "")}</span></div>${sl.words ? `<div class="yw">${esc(`“${sl.words}”`)}</div>` : ""}${sl.kind === "action" && sl.action ? `<div class="tx">${(sl.action.shown || []).map(([l, v]) => `${esc(l)} ${esc(v)}`).join(" · ")}</div>` : sl.after_text || sl.before_text ? `<div class="tx cdiff">${diffOf(sl)}</div>` : ""}</section>`;
   }
+  /** An action's details as rows of the slip's list: each label and value, then the rules it touches. @rule 103.5 */
+  const actionRows = (sl) => (sl.kind === "action" && sl.action ? `${(sl.action.shown || []).map(([l, v]) => `<dt>${esc(l)}</dt><dd>${esc(v)}</dd>`).join("")}<dt>Touches</dt><dd>${(sl.action.touches || []).map((n) => rpill(String(n))).join(" ")}</dd>` : "");
   /** The live draft: the change, scope, votes needed, conflicts, and Lock it in or Unlock with the reason beside a disabled one. @rule 103.1, 103.2, 103.3 */
   function proposalSlipHTML() {
     const id = liveId();
@@ -120,8 +122,8 @@ ${refused ? `<div class="tx">${esc(last.refusal)}</div>` : ""}
     return `<section class="slip${locked ? " locked" : ""}" aria-label="${esc(sl.n || "Draft")}"><span class="cstamp">${locked ? "LOCKED" : "DRAFT"}</span>
 <div class="hd">${sl.n ? ppill(sl.n) : ""}<span class="hdt">${textHTML(sl.head || "")}</span></div>
 ${sl.words ? `<div class="yw">${esc(`Your words: “${sl.words}”`)}</div>` : ""}
-${sl.after_text || sl.before_text ? `<div class="tx cdiff">${diffOf(sl)}</div>` : ""}
-<dl><dt>Change</dt><dd>${esc(KIND[sl.kind] || sl.kind)}${sl.target ? ` ${rpill(sl.target)}` : ""}</dd>${sl.settings && Object.keys(sl.settings).length ? `<dt>Sets</dt><dd>${esc(settingsLine(sl.settings))}</dd>` : ""}<dt>Needs</dt><dd>${needs}</dd><dt>Conflicts</dt><dd>${sl.conflicts && sl.conflicts.length ? sl.conflicts.map((n) => rpill(n)).join(" ") : "none"}</dd></dl>
+${sl.kind !== "action" && (sl.after_text || sl.before_text) ? `<div class="tx cdiff">${diffOf(sl)}</div>` : ""}
+<dl>${actionRows(sl)}<dt>Change</dt><dd>${esc(KIND[sl.kind] || sl.kind)}${sl.target ? ` ${rpill(sl.target)}` : ""}</dd>${sl.settings && Object.keys(sl.settings).length ? `<dt>Sets</dt><dd>${esc(settingsLine(sl.settings))}</dd>` : ""}<dt>Needs</dt><dd>${needs}</dd><dt>Conflicts</dt><dd>${sl.conflicts && sl.conflicts.length ? sl.conflicts.map((n) => rpill(n)).join(" ") : "none"}</dd></dl>
 <div class="act">${act}</div>${err}</section>`;
   }
   /** The drafter said no: the reason, no button. @rule 103.1, 110.1 */
@@ -129,7 +131,7 @@ ${sl.after_text || sl.before_text ? `<div class="tx cdiff">${diffOf(sl)}</div>` 
   /** "Today  P13 P14  2 of 3": what the player has locked in. @rule 103.2 */
   function todayHTML() {
     const t = S.state && S.state.today;
-    return t && agent.proposals ? `<div class="ch-today"><span class="k">Today</span>${(t.list || []).map(ppill).join("")}<span class="n">${esc(t.made)} of ${esc(t.limit)}</span></div>` : "";
+    return t && agent.proposals ? `<div class="ch-today"><span class="k">Today</span>${(t.list || []).map(ppill).join("")}<span class="n">${esc(Math.max(0, t.limit - t.made))} of ${esc(t.limit)} left</span></div>` : "";
   }
 
   // ---- the log ------------------------------------------------------------------------------------------------------------
@@ -163,7 +165,8 @@ ${sl.after_text || sl.before_text ? `<div class="tx cdiff">${diffOf(sl)}</div>` 
     const closed = st && st.closed;
     const left = st && st.left <= LEFT_SHOWN && !closed ? `<span class="left">${esc(st.left)} left</span>` : "";
     const chip = S.ticket ? `<span class="chip">${wpill(S.ticket)}<button type="button" class="x" data-c="detach" aria-label="Detach ${esc(S.ticket)}">×</button></span>`
-      : S.rule ? `<span class="chip">${rpill(S.rule)}<button type="button" class="x" data-c="detach-rule" aria-label="Detach rule ${esc(S.rule)}">×</button></span>` : "";
+      : S.rule ? `<span class="chip">${rpill(S.rule)}<button type="button" class="x" data-c="detach-rule" aria-label="Detach rule ${esc(S.rule)}">×</button></span>`
+      : S.intent ? `<span class="chip chip-intent">Action<button type="button" class="x" data-c="detach-intent" aria-label="Detach Action">×</button></span>` : "";
     if (closed) return `<div class="ch-in"><p class="closed" role="status">${esc(closed.text)}</p></div>`;
     return `<div class="ch-in">${chip}<div class="row"><textarea id="chatText" rows="1" maxlength="2000" placeholder="${esc(agent.placeholder)}" aria-label="${esc(agent.placeholder)}"${S.busy ? " disabled" : ""}>${esc(S.draft)}</textarea>
 <button type="button" class="send" data-c="send" aria-label="Send"${S.busy || !S.draft.trim() ? " disabled" : ""}><svg width="18" height="18" aria-hidden="true"><use href="#chat-send"/></svg></button></div>${S.err ? `<p class="err" role="alert">${esc(S.err)}</p>` : ""}${left}</div>`;
@@ -286,11 +289,12 @@ ${sl.after_text || sl.before_text ? `<div class="tx cdiff">${diffOf(sl)}</div>` 
     const optimistic = { id: -1, role: "player", body: text, date: S.state ? S.state.date : "", ticket: S.ticket };
     S.msgs.push(optimistic); S.draft = "";
     draw();
-    const rule = agent.proposals ? S.rule : null;
+    const rule = agent.proposals ? S.rule : null, intent = agent.proposals && !rule ? S.intent : null;
     optimistic.rule = rule;
-    const r = await api(`/api/chat/${agent.path}`, S.ticket ? { ticket: S.ticket, body: text } : rule ? { rule, body: text } : { body: text });
+    const r = await api(`/api/chat/${agent.path}`, S.ticket ? { ticket: S.ticket, body: text } : rule ? { rule, body: text } : intent ? { intent, body: text } : { body: text });
     S.busy = false;
     if (r.ok && rule && r.data.out === "ok") S.rule = null;   // the rule rides on the first message that was answered (not at the cap, or when she is out)
+    if (r.ok && intent && r.data.out === "ok") S.intent = null;
     S.msgs = S.msgs.filter((m) => m !== optimistic);
     if (!r.ok) {
       S.draft = text;
@@ -305,6 +309,7 @@ ${sl.after_text || sl.before_text ? `<div class="tx cdiff">${diffOf(sl)}</div>` 
     if (r.data.slips) S.slips = { ...S.slips, ...r.data.slips };
     if (r.data.ticket) { S.slip = r.data.ticket; onTicket && (await onTicket(r.data.ticket)); }
     draw();
+    if (onSlip && r.data.slips && Object.keys(r.data.slips).length) await onSlip();   // the propose bar shows her newest draft
   }
 
   // ---- the page's clicks and keys ----------------------------------------------------------------------------------------------------
@@ -318,6 +323,7 @@ ${sl.after_text || sl.before_text ? `<div class="tx cdiff">${diffOf(sl)}</div>` 
     else if (a === "send") await send();
     else if (a === "detach") { S.ticket = null; S.slip = null; draw(); }
     else if (a === "detach-rule") { S.rule = null; draw(); }
+    else if (a === "detach-intent") { S.intent = null; draw(); }
     else if (a === "lock" || a === "unlock") await lockOrUnlock(el.dataset.id, a === "lock" ? "confirm" : "withdraw");
   });
   root.addEventListener("input", (e) => {
@@ -345,7 +351,12 @@ ${sl.after_text || sl.before_text ? `<div class="tx cdiff">${diffOf(sl)}</div>` 
   }
   /** A rule card's "Propose a change": the window opens with that rule riding on the next message. @rule 103.1 */
   async function attachRule(num, o = {}) {
-    S.rule = num || null;
+    S.rule = num || null; S.intent = null;
+    if (o.open) open(); else draw();
+  }
+  /** The Propose menu's Action: the window opens, and the next message says it is about an action. Nothing else rides with it. @rule 103.5 */
+  async function attachIntent(intent, o = {}) {
+    S.intent = intent || null; if (S.intent) S.rule = null;
     if (o.open) open(); else draw();
   }
   /** A ticket is what the next messages are about (and the window opens on it). @rule 801.2 */
@@ -356,5 +367,5 @@ ${sl.after_text || sl.before_text ? `<div class="tx cdiff">${diffOf(sl)}</div>` 
   }
   /** Can he be reached? True until the server says there is no key. @rule 106.3 */
   const ready = () => !S.state || S.state.ready !== false;
-  return { sync, attach, attachRule, open, load, minimize, ready, state: () => S, draw, reduced };
+  return { sync, attach, attachRule, attachIntent, open, load, minimize, ready, state: () => S, draw, reduced };
 }

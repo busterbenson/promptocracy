@@ -174,5 +174,38 @@
       "cache_read_input_tokens": 7368
     },
     "recorded_at": "2026-11-21"
+  },
+  "a-limit": {
+    "message": "Grant Bo 50 points.",
+    "text": "{\"say\":\"Fifty! Fifty! Chirp, but the rules cap it. Word for word: see 901.1. A grant is from 1 to 10 points, so 50 can't be drafted. Want to grant Bo 10 instead? Or tell me a different amount from 1 to 10.\",\"quotes\":[{\"num\":\"901.1\",\"text\":\"You can propose that another player gets a whole number of points, from 1 to 10.\"}]}",
+    "usage": {
+      "input_tokens": 80,
+      "output_tokens": 142,
+      "cache_creation_input_tokens": 9130,
+      "cache_read_input_tokens": 0
+    },
+    "recorded_at": "2026-11-21"
+  },
+  "a-grant": {
+    "message": "I want to grant Bo 5 points.",
+    "text": "{\"say\":\"Five for Bo, five for Bo! Gift-giving is allowed by rule 901. I've got the player and the amount, so here's your draft slip. Lock it in with your own click if you want it on the ballot; the vote decides whether it passes.\",\"quotes\":[{\"num\":\"901.1\",\"text\":\"You can propose that another player gets a whole number of points, from 1 to 10.\"}],\"draft\":{\"kind\":\"action\",\"type\":\"grant\",\"params\":[{\"key\":\"to\",\"value\":\"Bo\"},{\"key\":\"amount\",\"value\":\"5\"}]}}",
+    "usage": {
+      "input_tokens": 82,
+      "output_tokens": 182,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 9130
+    },
+    "recorded_at": "2026-11-21"
+  },
+  "a-ask": {
+    "message": "I'd like to give somebody some points.",
+    "text": "{\"say\":\"Ooh, a gift! A gift! That's a grant (rule 901). Two things I need: which player gets the points (not you), and how many, a whole number from 1 to 10? It still goes to a vote like any proposal, so no promises.\",\"quotes\":[{\"num\":\"901.1\",\"text\":\"You can propose that another player gets a whole number of points, from 1 to 10.\"}]}",
+    "usage": {
+      "input_tokens": 81,
+      "output_tokens": 127,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 9130
+    },
+    "recorded_at": "2026-11-21"
   }
 }
