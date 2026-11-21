@@ -81,6 +81,7 @@ async function fakeWorker(state) {
     let body = "";
     for await (const c of req) body += c;
     const send = (code, o) => { res.statusCode = code; res.setHeader("content-type", "application/json"); res.end(J(o)); };
+    if (req.method === "GET" && req.url === "/g/api/game") return send(200, { players: (state.players ?? ["Pat", "Dana"]).map((name) => ({ name })) });
     if (req.headers.authorization !== `Bearer ${TOKEN}`) return send(401, { error: "Not authorized." });
     if (req.method === "GET" && req.url === "/g/api/moderator/pending") { gets++; state.onGet?.(gets, state); return send(200, { game: state.game, job: state.job, not_applied: state.not_applied ?? [], processed: state.processed ?? [], rulings_owed: (state.rulings ?? []).filter((r) => !r.ruled).length }); }
     if (req.method === "GET" && /^\/g\/api\/moderator\/rulings(\?|$)/.test(req.url)) { state.rulingListGets = (state.rulingListGets ?? 0) + 1; return send(200, { rulings: (state.rulings ?? []).filter((r) => !r.ruled), next: null }); }
@@ -676,7 +677,7 @@ const rulingCalls = (t) => t.claude.calls().filter((c) => c.escalation !== null)
     ["a rule that doesn't exist", ANS({ relies_on: ["999"] })], ["a clause that doesn't exist", ANS({ relies_on: ["401.9"] })], ["no rules at all", ANS({ relies_on: [] })],
     ["a precedent that doesn't exist", ANS({ precedent: ["9-9"] })], ["a '<' in the ruling", ANS({ ruling: "A wall <b>isn't</b> a creature." })], ["a '>' in the question", ANS({ question: "Is a wall > a creature?" })],
     ["a question over 300 characters", ANS({ question: long(301) })], ["a ruling over 1,500 characters", ANS({ ruling: long(1501) })], ["a line of dashes (it could close the front matter)", ANS({ ruling: "Fine.\n---\nruling: 9-9" })],
-    ["a player's name", ANS({ ruling: "Pat is right: a wall counts." })], ["text that isn't JSON", null],
+    ["a player's name", ANS({ ruling: "Pat is right: a wall counts." })], ["a name of someone who is not in the escalation (Dana, in the game)", ANS({ question: "Does Dana's wall count as a creature?" })], ["text that isn't JSON", null],
   ];
   for (const [name, answer] of cases) {
     const st = { job: job([]), rulings: [ESC(7)] };
@@ -713,6 +714,19 @@ const rulingCalls = (t) => t.claude.calls().filter((c) => c.escalation !== null)
   const again = { job: null, processed: [{ n: 1, status: "done", commit_sha: headBefore }], rulings: [ESC(7)] };
   const t2 = await night({ scenario: noModel, state: again, opts: { repo: t.repo, stateDir: join(TMP, "resume-state") } });
   check("resume: it reposts the ruling from the file (same text, path, question) with no model call and no new commit", rulingCalls(t2).length === 0 && t2.claude.calls().length === 0 && again.ruledPosts?.length === 1 && again.ruledPosts[0].body === "A wall isn't a creature (401)." && again.ruledPosts[0].path === "rulings/1-1.md" && g(["rev-parse", "main"], t.repo.bare).trim() === headBefore, J(again.ruledPosts));
+}
+{
+  // E1 is owed and E15's ruling is on main: E1 must not pick up E15's file (the trailer match is exact).
+  const t = await night({ scenario: { apply: {}, ruling: { 15: { answer: ANS({ ruling: "This is E15's ruling." }) } } }, state: { job: job([]), rulings: [ESC(15)] }, opts: { audit: false } });
+  const gw = join(t.repo.base, "work2");
+  g(["clone", "-q", t.repo.bare, gw], t.repo.base);
+  const { rulingOnMain } = await import("./process-day.mjs");
+  check("resume: a ruling's trailer is matched exactly: E15's commit is E15's, and E1, E5 and E150 find nothing", rulingOnMain(gw, 15)?.text === "This is E15's ruling." && rulingOnMain(gw, 1) === null && rulingOnMain(gw, 5) === null && rulingOnMain(gw, 150) === null);
+}
+{
+  // A ruling owed before any night has been processed: nothing to rule on yet, so the run is idle with no clone.
+  const t = await night({ scenario: noModel, state: { job: null, processed: [], rulings: [ESC(7)] }, opts: { repo: { base: join(TMP, "x"), bare: nowhere } } });
+  check("ruling owed on day 1, before any night: idle with no clone (no processed day to rule under)", t.r.status === "idle" && t.r.cloned === false, J(t.r));
 }
 {
   // The cap: at most 5 rulings a night; the rest stay owed.

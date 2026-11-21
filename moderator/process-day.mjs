@@ -591,7 +591,7 @@ export function nextRulingNumber(dir, day) {
 // library), answers with JSON, and the code checks it and commits the one new file. {ok, path, question, relies_on, text} or {ok: false, reason}.
 // A failure leaves the clone as it was.
 /** @rule 106.5 */
-export async function ruleOwed({ dir, item, day, n, timeoutMs, model = runModel, claude, libraryDir = LIBRARY_DIR, ruleAdded = {}, at = new Date().toISOString() }) {
+export async function ruleOwed({ dir, item, day, n, timeoutMs, model = runModel, claude, libraryDir = LIBRARY_DIR, ruleAdded = {}, everyone = [], at = new Date().toISOString() }) {
   const rulesMd = readFileSync(join(dir, "RULES.md"), "utf8");
   const copy = join(mkdtempSync(join(tmpdir(), "moderator-ruling-")), "game");
   let library = null;
@@ -609,7 +609,7 @@ export async function ruleOwed({ dir, item, day, n, timeoutMs, model = runModel,
     let out = null;
     try { const j = JSON.parse(r.out); out = JSON.parse(String(j.result ?? "").replace(/^```(json)?\s*|\s*```$/g, "").trim()); } catch { /* checked below */ }
     if (!out) return { ok: false, reason: r.ok ? "the answer was not JSON" : "the moderator could not run" };
-    const problem = rulingProblem(out, { rulesMd, dir, names: namesIn(item) });
+    const problem = rulingProblem(out, { rulesMd, dir, names: [...new Set([...namesIn(item), ...everyone.filter((x) => typeof x === "string" && x.trim().length >= 2)])] });
     if (problem) return { ok: false, reason: problem };
     const path = `rulings/${day}-${n}.md`;
     mkdirSync(join(dir, "rulings"), { recursive: true });
@@ -630,7 +630,7 @@ export async function ruleOwed({ dir, item, day, n, timeoutMs, model = runModel,
 // A ruling whose commit is already on main (a run died between the push and the post): its file, so it can be posted again with no model call.
 /** @rule 106.5 */
 export function rulingOnMain(dir, id) {
-  const sha = (git(["log", "-1", "--format=%H", "--fixed-strings", `--grep=Ruling-Escalation: E${id}`], dir, { allowFail: true }) ?? "").trim();
+  const sha = (git(["log", "-1", "--format=%H", "--extended-regexp", `--grep=^Ruling-Escalation: E${Number(id)}$`], dir, { allowFail: true }) ?? "").trim();
   if (!sha) return null;
   const path = (git(["show", "--name-only", "--format=", sha], dir, { allowFail: true }) ?? "").split("\n").find((p) => /^rulings\/\d{1,6}-\d{1,3}\.md$/.test(p));
   const file = path && existsSync(join(dir, path)) ? readRulingFile(readFileSync(join(dir, path), "utf8")) : null;
@@ -640,7 +640,7 @@ export function rulingOnMain(dir, id) {
 // The night's rulings: list what is owed, resume the ones already committed, make the rest (at most MAX_RULINGS_PER_NIGHT, each only
 // while `left()` allows). Commits go into `dir`; the caller pushes them and then calls postRulings. {made: [...], timeShort}.
 /** @rule 106.5 */
-export async function rulingsNight({ api, dir, day, left, model, claude, libraryDir, stateDir, slug, notifyDir, nightLog, log, dryRun }) {
+export async function rulingsNight({ api, gameNames = async () => [], dir, day, left, model, claude, libraryDir, stateDir, slug, notifyDir, nightLog, log, dryRun }) {
   const made = [];
   const owed = [];
   let after = 0;
@@ -651,6 +651,8 @@ export async function rulingsNight({ api, dir, day, left, model, claude, library
     if (!Number.isInteger(r.body.next) || r.body.next <= after) break;
     after = r.body.next;
   }
+  // Everyone in the game, not only the asker and the posters: a public ruling names nobody (the public list; none found = the asker and posters only).
+  const everyone = await gameNames().catch(() => []);
   let timeShort = false, attempted = 0, ruleAdded = null;
   for (const item of owed.filter((i) => Number.isInteger(i?.id)).sort((a, b) => a.id - b.id)) {
     const resumed = rulingOnMain(dir, item.id);
@@ -663,7 +665,7 @@ export async function rulingsNight({ api, dir, day, left, model, claude, library
     ruleAdded ??= Object.fromEntries(Object.keys(sections(readFileSync(join(dir, "RULES.md"), "utf8"))).filter((k) => /^r\d+$/.test(k)).map((k) => [k.slice(1), ruleAge(dir, k.slice(1))]));
     const n = nextRulingNumber(dir, day);
     attempted++;
-    const r = await ruleOwed({ dir, item, day, n, timeoutMs: Math.min(RULING_MIN * 60_000, ms), model, claude, libraryDir, ruleAdded });
+    const r = await ruleOwed({ dir, item, day, n, timeoutMs: Math.min(RULING_MIN * 60_000, ms), model, claude, libraryDir, ruleAdded, everyone });
     if (r.ok) { made.push({ id: item.id, ...r }); log({ event: "ruled", escalation: item.id, path: r.path, relies_on: r.relies_on }); continue; }
     // A failed ruling stays owed. The log and the notice carry the escalation's number and the night's count, never the reason's text or the player's.
     const prior = readState(stateDir, slug).rulingFails ?? {};
@@ -834,6 +836,11 @@ async function runPass(opts) {
       });
       return { status: r.status, body: await r.json().catch(() => ({})) };
     };
+    // The public player list (/api/game, no token): the names a ruling must not carry.
+    const gameNames = async () => {
+      const r = await fetchImpl(`${opts.api.replace(/\/+$/, "")}/${slug}/api/game`, { signal: AbortSignal.timeout(20_000) });
+      return r.ok ? ((await r.json().catch(() => ({}))).players ?? []).map((p) => p?.name) : [];
+    };
     const pend = await api("GET", "pending");
     if (pend.status !== 200) throw new Error(`pending answered ${pend.status}`);
     const { job, not_applied: notApplied = [], processed = [] } = pend.body;
@@ -854,7 +861,7 @@ async function runPass(opts) {
     const settled = new Set(state.settled ?? []), taggedDays = new Set(state.tagged ?? []);
 const lastDay = Math.max(0, ...processed.map((d) => d.n));
     // A ruling owed keeps the night open until this night has tried every owed ruling once (rule 106.5); a failed one waits for the next night.
-    const rulingsWaiting = Number(pend.body.rulings_owed) > 0 && state.rulingsTriedDay !== lastDay;
+    const rulingsWaiting = Number(pend.body.rulings_owed) > 0 && lastDay > 0 && state.rulingsTriedDay !== lastDay;
     if (!job && !rulingsWaiting && !state.pendingDeploy && notApplied.every((q) => settled.has(q.number)) && processed.every((d) => d.commit_sha || taggedDays.has(d.n))) {
       return { status: "idle", reconciled: false, cloned: false };
     }
@@ -940,7 +947,7 @@ const lastDay = Math.max(0, ...processed.map((d) => d.n));
       // The lock is already over, so there is no claim to stay clear of; no deploy is needed, because the bundle serves no ruling.
       let rulings = 0;
       if (Number(pend.body.rulings_owed) > 0 && lastDay > 0 && state.rulingsTriedDay !== lastDay) {
-        const rn = await rulingsNight({ api, dir, day: lastDay, left: () => Infinity, model: opts.model, claude: opts.claude, libraryDir: opts.libraryDir ?? LIBRARY_DIR, stateDir, slug, notifyDir, nightLog, log, dryRun: opts.dryRun });
+        const rn = await rulingsNight({ api, gameNames, dir, day: lastDay, left: () => Infinity, model: opts.model, claude: opts.claude, libraryDir: opts.libraryDir ?? LIBRARY_DIR, stateDir, slug, notifyDir, nightLog, log, dryRun: opts.dryRun });
         if (!opts.dryRun && rn.made.some((m) => !m.resumed)) { git(["push", "-q", "origin", "HEAD:main"], dir); pushed = true; }
         if (!opts.dryRun) {
           await postRulings({ api, made: rn.made, stateDir, slug, log });
@@ -1019,7 +1026,7 @@ const lastDay = Math.max(0, ...processed.map((d) => d.n));
     // One that doesn't get made stays owed for the next night.
     let rulingMade = [];
     if (opts.rulings !== false && Number(pend.body.rulings_owed) > 0) {
-      const rn = await rulingsNight({ api, dir, day: job.day, left: () => deadline - CLAIM_MARGIN_MIN * 60_000 - now(), model: opts.model, claude: opts.claude, libraryDir: opts.libraryDir ?? LIBRARY_DIR, stateDir, slug, notifyDir, nightLog, log, dryRun: opts.dryRun });
+      const rn = await rulingsNight({ api, gameNames, dir, day: job.day, left: () => deadline - CLAIM_MARGIN_MIN * 60_000 - now(), model: opts.model, claude: opts.claude, libraryDir: opts.libraryDir ?? LIBRARY_DIR, stateDir, slug, notifyDir, nightLog, log, dryRun: opts.dryRun });
       rulingMade = rn.made;
       if (!opts.dryRun && !rn.timeShort && !rn.listFailed) writeState(stateDir, slug, { ...readState(stateDir, slug), rulingsTriedDay: job.day });
     }
