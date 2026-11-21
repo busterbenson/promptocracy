@@ -184,6 +184,44 @@ try {
   check("one no and one player who did not vote: it passes; not voting does not count as against", res(pc2).status === "passed" && res(pc2).no === 1 && res(pc2).absent === 1 && res(pc2).why === "1 of 2 other players voted no; it fails only if all 2 do.", J(res(pc2)));
   check("a change to a rule with a unanimous mark passes the same way: its mark is not what counts", res(pc3).status === "passed" && res(pc3).no === 1 && res(pc3).absent === 1, J(res(pc3)));
   check("an ordinary proposal on the same ballot is counted as before: three no votes, it failed", res(pc4).status === "failed" && res(pc4).why === "0 of 3 voted yes; it needed 2." && !res(pc4).champion, J(res(pc4)));
+
+  console.log("the night's rulings are posted inside the lock (rules 106.5, 107.1)");
+  dev("clock", plus(day(8).deadline_at, 31)); await cron();   // day 8's passed changes were never claimed: the 2 am fallback ends that night, and day 9 opens
+  const SHAF = "f".repeat(40), SHAG = "9".repeat(40);
+  const owedRuling = (who, n) => {
+    d1(state, `INSERT INTO chat_messages (game_id, player_id, agent, local_date, day, role, body, at) VALUES ('${gid}', '${id[who]}', 'starling', '2026-11-10', 8, 'player', 'RQ${n}', '2026-11-10T19:00:00.000Z')`);
+    d1(state, `INSERT INTO escalations (game_id, agent, player_id, chat_message_id, category, reason, local_date, created_at, ruling_owed_at) SELECT '${gid}', 'starling', '${id[who]}', MAX(id), 'ruling', 'RR${n}', '2026-11-10', '2026-11-10T19:00:00.000Z', '2026-11-10T19:00:01.000Z' FROM chat_messages WHERE body = 'RQ${n}'`);
+    return d1(state, `SELECT MAX(id) AS id FROM escalations`)[0].id;
+  };
+  const esc = (eid) => d1(state, `SELECT answered_at, ruling_hold_day FROM escalations WHERE id = ${eid}`)[0];
+  const e1 = owedRuling("Ana", 1);
+  const pr1 = ballot(game().day, "Cy", "401");
+  const dr = await midnight();
+  const badList = await mod("POST", `days/${dr.n}/claim`, { sha: SHAF, outcomes: [{ number: pr1, applied: true, commit: SHAF }], rulings: ["x"] });
+  const cl = await mod("POST", `days/${dr.n}/claim`, { sha: SHAF, outcomes: [{ number: pr1, applied: true, commit: SHAF }], rulings: [e1] });
+  check("a claim may list the rulings committed with the night: each is held to the unlock (ruling_hold_day = the day); a bad list is a 400", cl.status === 200 && badList.status === 400 && esc(e1).ruling_hold_day === dr.n && esc(e1).answered_at === null);
+  check("pending says the deploy is not live while the bundle differs", (await mod("GET", "pending")).data.job.deploy_live === false);
+  dev("bundle_sha:mod", SHAF);
+  check("pending says the deploy is live once the bundle is the claimed commit", (await mod("GET", "pending")).data.job.deploy_live === true);
+  await cron();
+  check("deploy live but the ruling not posted: the night stays locked (still deploying, no points, the day not open)", day(dr.n).status === "deploying" && game().phase === "locked" && prop(pr1).status !== "enacted" && game().day === dr.n, J([day(dr.n), game()]));
+  const posted = await mod("POST", `escalations/${e1}/ruled`, { body: "A ruling.", path: `rulings/${dr.n}-1.md`, question: "Q?", relies_on: ["401"] });
+  check("the ruling is posted inside the lock (the day is still locked when it lands)", posted.status === 200 && game().phase === "locked" && day(dr.n).status === "deploying");
+  await cron();
+  check("the next tick unlocks: the night takes effect and day N+1 opens, with the ruling already visible on /api/game", prop(pr1).status === "enacted" && day(dr.n).status === "done" && game().day === dr.n + 1 && (await (await fetch(`${A}/mod/api/game`)).json()).rulings.some((x) => x.day === dr.n && x.n === 1), J([day(dr.n), game()]));
+
+  console.log("a ruling that never posts cannot keep the game locked (the deploy deadline is the backstop)");
+  const e2 = owedRuling("Bo", 2);
+  const pr2 = ballot(game().day, "Cy", "401");
+  const dq = await midnight();
+  await mod("POST", `days/${dq.n}/claim`, { sha: SHAG, outcomes: [{ number: pr2, applied: true, commit: SHAG }], rulings: [e2] });
+  dev("bundle_sha:mod", SHAG);
+  dev("clock", plus(dq.deadline_at, 10));
+  await cron();
+  check("before the deploy deadline the unposted ruling still holds the lock", day(dq.n).status === "deploying" && game().phase === "locked");
+  dev("clock", plus(dq.deadline_at, 32));
+  await cron();
+  check("past the deploy deadline the night unlocks anyway (the bundle is live): enacted, day N+1 open; the ruling stays owed", prop(pr2).status === "enacted" && day(dq.n).status === "done" && game().day === dq.n + 1 && esc(e2).answered_at === null, J([day(dq.n), game(), prop(pr2)]));
 } catch (e) {
   fail++; console.log("  FAIL  harness:", e?.stack || e);
   if (srv) console.log(srv.log().slice(-3000));

@@ -32,6 +32,7 @@ export const RULING_ANSWER = "Chalant will rule on this tonight.";
 export const MAX_ANSWERS_PER_PASS = 20;
 export const MAX_PAGES = 10;
 export const MODEL_TIMEOUT_MS = 60_000, MODEL_MAX_TOKENS = 700, API_TIMEOUT_MS = 20_000;
+export const LIST_RETRY_MS = 5_000; // the list fetch is tried once more after this long before the pass fails (a dropped connection)
 const POST_CLIP = 700, THREAD_SHOWN = 30, RULES_CLIP = 120_000;
 
 // ---- the notification: metadata only -------------------------------------------------------------------------------
@@ -134,7 +135,16 @@ export async function runEscalations(opts) {
   try {
     let after = 0;
     for (let page = 0; page < MAX_PAGES; page++) {
-      const r = await fetchImpl(`${api}/${slug}/api/moderator/escalations${after ? `?after=${after}` : ""}`, { headers: auth, signal: AbortSignal.timeout(API_TIMEOUT_MS) });
+      const url = `${api}/${slug}/api/moderator/escalations${after ? `?after=${after}` : ""}`;
+      const get = () => fetchImpl(url, { headers: auth, signal: AbortSignal.timeout(API_TIMEOUT_MS) });
+      // One retry after a pause, on a network error or a 5xx; anything else fails the pass at once.
+      let r;
+      try { r = await get(); } catch (e) { log({ event: "list_retry", reason: e?.name || "error", code: e?.cause?.code }); r = null; }
+      if (!r || r.status >= 500) {
+        if (r) { log({ event: "list_retry", status: r.status }); await r.body?.cancel().catch(() => {}); }
+        await new Promise((res) => setTimeout(res, opts.retryMs ?? LIST_RETRY_MS));
+        r = await get();
+      }
       if (!r.ok) { log({ event: "list_failed", status: r.status }); return { ...out, status: "failed" }; }
       const j = await r.json();
       if (!Array.isArray(j?.escalations)) { log({ event: "list_unreadable" }); return { ...out, status: "failed" }; }
@@ -143,7 +153,7 @@ export async function runEscalations(opts) {
       if (!Number.isInteger(j.next) || j.next <= after) break;
       after = j.next;
     }
-  } catch (e) { log({ event: "list_failed", reason: e?.name || "error" }); return { ...out, status: "failed" }; }
+  } catch (e) { log({ event: "list_failed", reason: e?.name || "error", code: e?.cause?.code }); return { ...out, status: "failed" }; }
   out.listed = items.length;
   if (!items.length) return out;
 

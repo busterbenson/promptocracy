@@ -261,6 +261,29 @@ console.log("the schedule");
   check("guard: no store here resolves under ~/chalantbot", [D.launchdDir, D.stateDir, D.agentsDir, D.trashDir, dirsOf("g").notifyDir].every((d) => !realpathSync(d).startsWith(CHALANT)));
 }
 
+console.log("the list fetch is retried once (a dropped connection is not a failed pass)");
+{
+  // The fetch throws like Node's does on a reset: TypeError("fetch failed") with the errno on `cause`.
+  const drop = () => Object.assign(new TypeError("fetch failed"), { cause: { code: "ECONNRESET" } });
+  const dropping = (times) => { let n = 0; const calls = []; return { calls, fetchImpl: (url, init) => { if (/\/escalations(\?|$)/.test(String(url)) && !init?.method) { calls.push(Date.now()); if (n++ < times) throw drop(); } return fetch(url, init); } }; };
+  reset();
+  world.escalations = [ticketEsc(1)];
+  const one = dropping(1), D1 = dirsOf("retry1");
+  const r1 = await run(D1, { fetchImpl: one.fetchImpl, retryMs: 30 });
+  check("one dropped connection on the list: the pass retries once after the pause and goes on to answer", r1.status === "ok" && one.calls.length === 2 && one.calls[1] - one.calls[0] >= 25 && r1.answered === 1, JSON.stringify([r1, one.calls.length]));
+  check("the retry is in the log, with the errno and no more", /"event":"list_retry"[^\n]*"code":"ECONNRESET"/.test(logOf(D1.stateDir)));
+  reset();
+  world.escalations = [ticketEsc(1)];
+  const two = dropping(2), D2 = dirsOf("retry2");
+  const r2 = await run(D2, { fetchImpl: two.fetchImpl, retryMs: 10 });
+  check("two drops in a row fail the pass (once, not forever), asking the model nothing", r2.status === "failed" && two.calls.length === 2 && world.modelCalls.length === 0 && world.answers.length === 0, JSON.stringify(r2));
+  check("the failure log carries the errno (cause.code), not only the error's name", /"event":"list_failed"[^\n]*"reason":"TypeError"[^\n]*"code":"ECONNRESET"/.test(logOf(D2.stateDir)), logOf(D2.stateDir));
+  reset();
+  const bad = { calls: 0, fetchImpl: async (url, init) => { if (/\/escalations(\?|$)/.test(String(url)) && !init?.method) { bad.calls++; return new Response("no", { status: 401 }); } return fetch(url, init); } };
+  const r3 = await run(dirsOf("retry3"), { fetchImpl: bad.fetchImpl, retryMs: 10 });
+  check("a 401 is not retried: it fails the pass at once", r3.status === "failed" && bad.calls === 1, JSON.stringify([r3, bad.calls]));
+}
+
 server.close();
 console.log(`${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

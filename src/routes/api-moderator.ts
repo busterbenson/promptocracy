@@ -23,7 +23,7 @@
 //                                                once); the enactment follows it (107.2).
 import { logCall, monthSpend } from "../lib/agent";
 import { PRICES } from "../lib/chat.js";
-import { clockNow, deployDeadline, notAppliedStatements, timeZoneOf } from "../lib/day";
+import { clockNow, deployDeadline, deployedSha, notAppliedStatements, timeZoneOf } from "../lib/day";
 import { localDate } from "../lib/day-gate.js";
 import { notificationText } from "../lib/escalate.js";
 import { orderPassed } from "../engine/host";
@@ -67,7 +67,7 @@ export const pending = async (ctx: Ctx) => {
     // A night with only actions (rule 103.8) is the site's own: the moderator has nothing to apply and sees no job.
     const passed = (await orderPassed(env, game, rows, nowMs)).map((r) => ({ ...r, settings: JSON.parse(r.settings || "{}"), conflicts: JSON.parse(r.conflicts || "[]"), player: { name: r.player } }));
     const deadline = Date.parse(day.deadline_at);
-    if (!(day.status === "processing" && !passed.length)) job = { day: day.n, status: day.status, locked_at: day.locked_at, deadline_at: day.deadline_at, deploy_deadline_at: Number.isFinite(deadline) ? nowIso(deployDeadline(deadline)) : null, commit_sha: day.commit_sha, tag: day.tag, passed };
+    if (!(day.status === "processing" && !passed.length)) job = { day: day.n, status: day.status, locked_at: day.locked_at, deadline_at: day.deadline_at, deploy_deadline_at: Number.isFinite(deadline) ? nowIso(deployDeadline(deadline)) : null, commit_sha: day.commit_sha, tag: day.tag, deploy_live: day.status === "deploying" && !!day.commit_sha && (await deployedSha(env, game)) === day.commit_sha, passed };
   }
   const notApplied = (await env.DB.prepare("SELECT number, day_ballot AS day, not_applied_reason AS reason FROM proposals WHERE game_id = ? AND status = 'not_applied' ORDER BY number").bind(game.id).all()).results;
   const owed: any = await env.DB.prepare("SELECT COUNT(*) AS n FROM escalations WHERE game_id = ? AND ruling_owed_at IS NOT NULL AND answered_at IS NULL").bind(game.id).first();
@@ -154,6 +154,10 @@ export const claim = async (ctx: Ctx) => {
        SELECT ?, ?, ?, 'moderator_note', ?, ?, ? WHERE EXISTS (SELECT 1 FROM days WHERE game_id = ? AND n = ? AND status = 'deploying' AND commit_sha = ?)`,
     ).bind(`audit-${q.id}`, game.id, q.player_id, x.body.trim(), `/${game.slug}/`, now, game.id, n, body.sha));
   }
+  // The rulings committed with this night: the unlock waits for them (until the deploy deadline), so each is posted inside the lock (rules 107.1, 106.5).
+  const held = Array.isArray(body.rulings) ? body.rulings : [];
+  if (held.length > 20 || held.some((x: any) => !Number.isInteger(x) || x < 1)) return json({ error: "rulings is up to 20 escalation ids." }, 400);
+  if (held.length) stmts.push(env.DB.prepare(`UPDATE escalations SET ruling_hold_day = ? WHERE game_id = ? AND id IN (${held.map(() => "?").join(",")}) AND ruling_owed_at IS NOT NULL AND answered_at IS NULL${mine}`).bind(n, game.id, ...held, game.id, n, body.sha));
   await env.DB.batch(stmts);
   const after: any = await env.DB.prepare("SELECT status, commit_sha, deadline_at FROM days WHERE game_id = ? AND n = ?").bind(game.id, n).first();
   if (after?.status !== "deploying" || after.commit_sha !== body.sha) return json({ error: `Day ${n} was not claimed (the deadline passed or another claim landed first).` }, 409);
@@ -296,8 +300,11 @@ export const answer = async (ctx: Ctx) => {
 };
 
 const RULING_PATH = /^rulings\/\d{1,6}-\d{1,3}\.md$/;
+const RULE_REF = /^\d{3}(\.\d{1,2})?$/;
+const QUESTION_MAX = 300;
 
-// POST /api/moderator/escalations/:id/ruled {body, path}: the ruling the night made, posted where the question was asked, closing the escalation.
+// POST /api/moderator/escalations/:id/ruled {body, path, question, relies_on}: the ruling the night made, posted where the question was asked, closing the escalation.
+// `question` (the moderator's restatement) and `relies_on` (rule numbers) are kept with it for History, which shows them with the ruling's text (rule 106.5).
 /** @rule 106.5 */
 export const ruled = async (ctx: Ctx) => {
   if (!(await authorized(ctx))) return unauthorized();
@@ -306,18 +313,22 @@ export const ruled = async (ctx: Ctx) => {
   const id = asId(ctx.params.id);
   if (id === null) return json({ error: "Bad escalation." }, 400);
   const body = await readJson(ctx.request);
-  if (!body || typeof body !== "object" || Array.isArray(body) || Object.keys(body).some((k) => k !== "body" && k !== "path")) return json({ error: "Send {body, path} and nothing else." }, 400);
+  if (!body || typeof body !== "object" || Array.isArray(body) || Object.keys(body).some((k) => !["body", "path", "question", "relies_on"].includes(k))) return json({ error: "Send {body, path, question, relies_on} and nothing else." }, 400);
   const text = typeof body.body === "string" ? body.body.replace(/\r\n?/g, "\n").trim() : "";
   if (!text || text.length > ANSWER_MAX) return json({ error: `A ruling is 1 to ${ANSWER_MAX} characters of plain text.` }, 400);
   if (/[<>]/.test(text)) return json({ error: "A ruling is plain text: no markup." }, 400);
   if (typeof body.path !== "string" || !RULING_PATH.test(body.path)) return json({ error: "path is rulings/<day>-<n>.md." }, 400);
+  const question = typeof body.question === "string" ? body.question.replace(/\s+/g, " ").trim() : "";
+  if (!question || question.length > QUESTION_MAX || /[<>]/.test(question)) return json({ error: `question is 1 to ${QUESTION_MAX} characters of plain text.` }, 400);
+  const relies = body.relies_on;
+  if (!Array.isArray(relies) || !relies.length || relies.length > 12 || relies.some((r) => typeof r !== "string" || !RULE_REF.test(r))) return json({ error: "relies_on is 1 to 12 rule numbers." }, 400);
   const e: any = await env.DB.prepare("SELECT * FROM escalations WHERE id = ? AND game_id = ?").bind(id, game.id).first();
   if (!e) return json({ error: "No such escalation." }, 404);
   if (!e.ruling_owed_at || e.answered_at) return json({ error: e.answered_at ? "Already ruled." : "No ruling is owed on this." }, 409);
   const nowMs = await clockNow(env);
   const now = nowIso(nowMs);
   const res = await env.DB.batch([
-    env.DB.prepare("UPDATE escalations SET answered_at = ?, ruling_path = ? WHERE id = ? AND game_id = ? AND ruling_owed_at IS NOT NULL AND answered_at IS NULL").bind(now, body.path, id, game.id),
+    env.DB.prepare("UPDATE escalations SET answered_at = ?, ruling_path = ?, ruling_question = ?, ruling_relies_on = ?, ruling_text = ? WHERE id = ? AND game_id = ? AND ruling_owed_at IS NOT NULL AND answered_at IS NULL").bind(now, body.path, question, JSON.stringify(relies), text, id, game.id),
     postStatement(env, game, e, text, now, nowMs),
   ]);
   if (!((res[0] as any)?.meta?.changes > 0)) return json({ error: "Already ruled." }, 409);

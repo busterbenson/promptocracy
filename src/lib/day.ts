@@ -209,11 +209,12 @@ export async function countBallot(env: Env, game: any, day: DayRow, nowMs: numbe
 //   processing, before the deadline              wait for the claim
 //   processing, at the deadline (no claim)       every passed proposal not applied (rule 107.6), timed_out
 //   deploying, the deployed bundle is that commit the night takes effect: points (rule 401), the Era won (rule 402), done
+//                                                 (after the night's rulings are posted: they are held to the unlock until the deploy deadline)
 //   deploying, 30 minutes past the deadline      the applied ones not applied either (they never went live), timed_out
 // Decided by what is stored (passed proposals still waiting), not by this run's copy of the day, so overlapping runs
 // agree. Every write is guarded by status, so a second run changes nothing and notifies nobody twice. finalizeDay also
 // refuses to close a day that still has a passed proposal waiting.
-/** @rule 107.6, 107.7, 107.8 */
+/** @rule 106.5, 107.1, 107.6, 107.7, 107.8 */
 export async function awaitModerator(env: Env, game: any, day: DayRow, nowMs: number): Promise<StepResult> {
   const left: any = await env.DB.prepare("SELECT COUNT(*) AS n FROM proposals WHERE game_id = ? AND day_ballot = ? AND status = 'passed' AND kind != 'action'").bind(game.id, day.n).first();
   const timedOut: any = await env.DB.prepare("SELECT COUNT(*) AS n FROM proposals WHERE game_id = ? AND day_ballot = ? AND status = 'not_applied' AND not_applied_reason IN (?, ?, ?)").bind(game.id, day.n, DEADLINE_REASON, DEPLOY_REASON, ENACT_REASON).first();
@@ -229,6 +230,12 @@ export async function awaitModerator(env: Env, game: any, day: DayRow, nowMs: nu
     // A matching bundle counts only until the deploy deadline (plus one cron interval, so a deploy live by 2:30 am is
     // always seen); later, the night is not applied whatever is live (the next run reconciles).
     if (fresh.commit_sha && nowMs < deployDeadline(deadline) + CRON_SLACK_MS && (await deployedSha(env, game)) === fresh.commit_sha) {
+      // The night's rulings were committed with it and are posted once the deploy is live: the lock holds until they are (rule 107.1, 106.5), but only until the
+      // deploy deadline, so a ruling that never posts cannot keep the game locked: the next tick after it unlocks as usual.
+      if (nowMs < deployDeadline(deadline)) {
+        const owed: any = await env.DB.prepare("SELECT COUNT(*) AS n FROM escalations WHERE game_id = ? AND ruling_hold_day = ? AND answered_at IS NULL").bind(game.id, day.n).first();
+        if (owed?.n > 0) return "wait";
+      }
       try {
         if (await devControl(env, "enact_fail")) throw new Error("test failure: enact"); // local tests only
         await dropRefusedActions(env, game, day, nowMs);
