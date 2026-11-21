@@ -85,7 +85,7 @@ with sync_playwright() as p:
                 check(f"{tag}: at 1280 the four cells sit in one row and the panel is under 140 px", box(page, "#pzone .tk")["height"] < 140 and len({round(box(page, s)["y"]) for s in ["#pzone .tkstep.mv", "#pzone .tkstep.vt", "#pzone .tkstep.pr", "#pzone .tkend"]}) == 1, str(box(page, "#pzone .tk")))
             else:
                 check(f"{tag}: on a phone the rows stack full width and the panel is 260 to 330 px tall", 260 <= box(page, "#pzone .tk")["height"] <= 330 and len({round(box(page, s)["x"]) for s in ["#pzone .tkstep.mv", "#pzone .tkstep.vt", "#pzone .tkstep.pr", "#pzone .tkend"]}) == 1, str(box(page, "#pzone .tk")))
-            check(f"{tag}: the clock reads '<number><unit>' with the time bold, and End turn is ghost until all three are done", re.fullmatch(r"6h 1\dm", text(page, "#clock b")) is not None and page.locator("#pzone .tkend .btn").evaluate("e => e.classList.contains('ghost')"))
+            check(f"{tag}: the clock reads '<number><unit>' with the time bold, and End turn is a filled button from the start (the primary action whenever it can be pressed)", re.fullmatch(r"6h 1\dm", text(page, "#clock b")) is not None and page.locator("#pzone .tkend .btn").evaluate("e => !e.classList.contains('ghost') && !e.disabled"))
             # each step works from the panel, on every tab
             for k in ["summary", "rules", "workshop", "history"]:
                 tab(page, k)
@@ -209,7 +209,7 @@ with sync_playwright() as p:
 
         # ---- Eve: turn ended
         c, page, errors = new_page(b, 1280, 900, "light", eve_c)
-        check("1280-light: turn ended: 'Turn ended 202.4' in the End turn cell (no button), what she made, Propose off, no count, and the clock is still there", re.search(r"Turn ended\s*202\.4", text(page, "#pzone .tkend")) is not None and count(page, "#pzone .tkend button.btn") == 0 and count(page, "#pzone .tkstep.pr .tkm.p") == 1 and page.locator('#pzone [data-p="bar-menu"]').is_disabled() and count(page, "#pzone .tkstep.pr .tkdet") == 0 and count(page, "#clock") == 1, text(page, "#pzone"))
+        check("1280-light: turn ended: 'Turn ended' in the End turn cell (no button, no rule pill), what she made, Propose off, no count, and the clock is still there", text(page, "#pzone .tkend").strip().endswith("Turn ended") and "202.4" not in text(page, "#pzone .tkend") and count(page, "#pzone .tkend button.btn") == 0 and count(page, "#pzone .tkstep.pr .tkm.p") == 1 and page.locator('#pzone [data-p="bar-menu"]').is_disabled() and count(page, "#pzone .tkstep.pr .tkdet") == 0 and count(page, "#clock") == 1, text(page, "#pzone"))
         check("1280-light: turn ended: the clock sits where it does on an open day", max(abs(a - b) for a, b in zip(spot(page, "#clock"), OPEN_SPOT)) <= 2, str((spot(page, "#clock"), OPEN_SPOT)))
         shot(page, "bar-turn-ended-1280-light")
         shot(page, "ended-1280-light")
@@ -219,7 +219,7 @@ with sync_playwright() as p:
         c.close()
 
         c, page, errors = new_page(b, 390, 844, "light", eve_c)
-        check("390-light: turn ended on a phone: the panel is 260 to 330 px tall, 'Turn ended 202.4' is on screen and nothing scrolls sideways", 260 <= box(page, "#pzone .tk")["height"] <= 330 and page.locator("#pzone .tkended").is_visible() and page.evaluate("document.documentElement.scrollWidth") <= 390, str(box(page, "#pzone .tk")))
+        check("390-light: turn ended on a phone: the panel is 260 to 330 px tall, 'Turn ended' is on screen and nothing scrolls sideways", 260 <= box(page, "#pzone .tk")["height"] <= 330 and page.locator("#pzone .tkended").is_visible() and page.evaluate("document.documentElement.scrollWidth") <= 390, str(box(page, "#pzone .tk")))
         shot(page, "ended-390-light"); c.close()
 
         # ---- Dee: an action drafted by Starling, locked in from her slip

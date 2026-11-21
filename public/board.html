@@ -333,7 +333,7 @@ import { createChat, AGENTS } from "/js/chat.js";
   }
   function summaryHTML() {
     const bl = ballotList();
-    const ballot = `<section class="sw" id="sballot" aria-label="Today's ballot"><div class="swh"><h2>Today's ballot</h2><span class="m" data-slot="ballot-count">${!bl.length ? "" : BAL && BAL.hasYou() ? `${BAL.voted()} of ${BAL.total()} voted` : plural(bl.length, "proposal")}</span></div>
+    const ballot = `<section class="sw" id="sballot" aria-label="Vote on today's ballot items"><div class="swh"><h2>Vote on today's ballot items</h2><span class="m" data-slot="ballot-count">${!bl.length ? "" : BAL && BAL.hasYou() ? `${BAL.voted()} of ${BAL.total()} voted` : plural(bl.length, "proposal")}</span></div>
       ${bl.length ? `<ul class="sl">${bl.map(p => `<li id="sb-${esc(p.n)}"><p class="sbs">${PROP.pPill(p)} ${pill(p.by, p.mine)} ${sentence(p)}</p>
         <div class="sdiff">${p.kind === "commission" && p.ticket ? commissionHTML(p.ticket) : p.kind === "action" && p.action ? PROP.actionBody(p) : `${p.title ? `<p class="sdh">${esc(p.title)}</p>` : ""}<p class="mono head">${esc(p.head || "")}</p><p>${diffOf(p)}</p>`}</div><div class="vrow slot" data-slot="ballot-vote" data-pn="${esc(p.n)}">${BAL ? BAL.box(p.n) : ""}</div></li>`).join("")}</ul>` : `<p class="mnote">Nothing is on today's ballot.</p>`}</section>`;
     const cat = WS ? WS.summaryHTML() : "";
@@ -382,8 +382,8 @@ import { createChat, AGENTS } from "/js/chat.js";
     const steps = step({ cls: "mv", done: !!you.moved, marks: you.moved ? m("ok", "✓") : frozen ? m("no", "–") : m("e"), label: mvLabel, detail: mvDetail, jump: "board", off: frozen, aria: mvDetail ? `${mvLabel}, ${mvDetail}` : mvLabel })
       + step({ cls: "vt", done: vtDone, marks: vm, label: vtLabel, detail: `<b>${vd}</b> of ${nv}`, jump: "ballot", many: shown > 4, off: frozen || nv === 0, aria: `${vtLabel}, ${vd} of ${nv}` });
     const en = you.can && you.can.end_turn || { allowed: false, reason: "" };
-    const end = ended ? `<li class="tkend"><span class="tkended">${m("ok", "✓")}Turn ended ${PROP.rpill("202.4")}</span></li>`
-      : END_ASK && !locked ? "" : `<li class="tkend"><button type="button" class="btn tbend${allDone ? "" : " ghost"}" data-endturn="ask"${locked || !en.allowed ? ` disabled title="${esc(en.reason || "")}"` : ""}>End turn</button></li>`;
+    const end = ended ? `<li class="tkend"><span class="tkended"><span class="tkmarks">${m("ok", "✓")}</span><span class="tktxt"><span class="tklab">Turn ended</span></span></span></li>`
+      : END_ASK && !locked ? "" : `<li class="tkend"><button type="button" class="btn tbend" data-endturn="ask"${locked || !en.allowed ? ` disabled title="${esc(en.reason || "")}"` : ""}>End turn</button></li>`;
     let ask = '<li id="day-msg" role="status"></li>';
     if (END_ASK && !ended && !locked) {
       const left = [];
