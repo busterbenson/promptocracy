@@ -335,7 +335,7 @@ ${S.ui.err ? `<p class="notice err" role="alert">${withPills(S.ui.err)}</p>` : "
     const { items, draft, limit, left, fz, canOpen, open, proposed } = ctx;
     const full = !can().allowed;
     const off = fz || full;
-    const label = fz ? (proposed ? "Proposed" : "No proposal") : left === 0 ? "Proposed" : "Propose";
+    const ended = !!day().you.ended, label = (proposed && fz) || left === 0 ? "Proposed" : ended ? "No proposal" : "Propose";
     const count = fz || left === null ? "" : `<b>${esc(left)}</b> of ${esc(limit)} left <span class="rpill">103.2</span>`;   // a plain pill: it sits inside the Propose button, and a button may not hold a button
     const marks = `<span class="tkmarks${limit > 4 ? " many" : ""}">${marksHTML(limit, items, draft, fz)}</span>`;
     const mb = canOpen ? `<button type="button" class="tkmb" data-p="bar-open" aria-expanded="${open}" aria-label="Your proposals">${marks}</button>` : `<span class="tkmb static">${marks}</span>`;

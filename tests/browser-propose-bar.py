@@ -14,6 +14,12 @@ def check(name, ok, detail=""):
     print(("ok    " if ok else "FAIL  ") + name + (f"  -> {detail}" if detail and not ok else ""))
     if not ok: failed.append(name)
 
+def tshot(page, name):
+    """A screenshot with the turn panel at the top of the screen (the panel is the subject; the board above it is not)."""
+    if out != "-":
+        page.evaluate("document.getElementById('pzone').scrollIntoView({block: 'start', behavior: 'instant'})"); page.wait_for_timeout(120)
+        page.screenshot(path=f"{out}/{name}.png")
+
 def shot(page, name, **kw):
     if out != "-": page.screenshot(path=f"{out}/{name}.png", **kw)
 
@@ -115,6 +121,8 @@ with sync_playwright() as p:
             shot(page, f"menu-{tag}")
             page.keyboard.press("Escape")
             check(f"{tag}: Esc puts the menu away", count(page, "#pzone .pmenu") == 0)
+            page.click('#pzone [data-p="bar-menu"]'); page.wait_for_selector("#pzone .pmenu"); page.click('#pzone [data-p="bar-menu"]'); page.wait_for_timeout(150)
+            check(f"{tag}: the Propose button puts its own menu away (the second click closes it, it does not reopen it)", count(page, "#pzone .pmenu") == 0 and page.locator('#pzone [data-p="bar-menu"]').get_attribute("aria-expanded") == "false")
             page.click('#pzone [data-p="bar-menu"]'); page.click("#movebar")
             check(f"{tag}: a click elsewhere puts it away", count(page, "#pzone .pmenu") == 0)
             clear = "#tab-history" if w == 1280 else "#tab-summary"   # (at 390 the menu covers the other tabs)
@@ -292,8 +300,9 @@ with sync_playwright() as p:
     if mode == "locked":
         c, page, errors = new_page(b, 1280, 900, "light", bo_c)
         check("1280-light: the midnight lock: 'Locked 107.1' sits where the clock does (flush right on the Day line), there is no clock, and she keeps what she made", re.search(r"Locked\s*107\.1", text(page, "#pzone .tkhead")) is not None and count(page, "#clock") == 0 and abs(spot(page, "#pzone .tkclock.lk")[0]) <= 2 and abs(spot(page, "#pzone .tkclock.lk")[1]) <= 6 and count(page, "#pzone .tkstep.pr .tkm.p") == 1, text(page, "#pzone"))
+        check("1280-light: locked, nothing ended: the labels still read Move, Vote and Proposed (she has one proposal); only 'No move' style words belong to an ended turn", [text(page, f"#pzone .tkstep.{k} .tklab") for k in ("mv", "vt", "pr")] == ["Move", "Vote", "Proposed"], str([text(page, f"#pzone .tkstep.{k} .tklab") for k in ("mv", "vt", "pr")]))
         shot(page, "bar-locked-1280-light")
-        shot(page, "locked-1280-light")
+        tshot(page, "locked-1280-light")
         check("1280-light: the lock greys out every step: Move, Vote and Propose are dim and disabled (Propose too), End turn is disabled, no count", count(page, "#pzone .tkstep.dim") == 3 and count(page, "#pzone .tkgo:disabled") == 3 and page.locator('#pzone [data-endturn="ask"]').is_disabled() and count(page, "#pzone .tkstep.pr .tkdet") == 0 and text(page, "#pzone .tkday") == "Day 1", text(page, "#pzone"))
         check("1280-light: the lock line says why, over the board", page.locator("#lockbar").is_visible() and len(text(page, "#lockbar")) > 10)
         page.click('#pzone [data-p="bar-open"]'); page.wait_for_selector("#pzone .pcard")
@@ -301,7 +310,7 @@ with sync_playwright() as p:
         check("1280-light: no page errors", not errors, str(errors)); c.close()
         c, page, errors = new_page(b, 390, 844, "light", bo_c)
         check("390-light: locked on a phone: the panel is 260 to 330 px tall and nothing scrolls sideways", 260 <= box(page, "#pzone .tk")["height"] <= 330 and page.evaluate("document.documentElement.scrollWidth") <= 390, str(box(page, "#pzone .tk")))
-        shot(page, "locked-390-light"); c.close()
+        tshot(page, "locked-390-light"); c.close()
         c, page, errors = new_page(b, 1280, 900, "light")
         check("visitor during the lock: still no panel, Day 1 in the tab row", page.locator("#pzone").is_hidden() and text(page, "#btabs .bday") == "Day 1")
         c.close()

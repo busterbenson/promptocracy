@@ -16,6 +16,12 @@ def check(name, ok, detail=""):
     print(("ok    " if ok else "FAIL  ") + name + (f"  -> {detail}" if detail and not ok else ""))
     if not ok: failed.append(name)
 
+def tshot(page, name):
+    """A screenshot with the turn panel at the top of the screen (the panel is the subject; the board above it is not)."""
+    if out != "-":
+        page.evaluate("document.getElementById('pzone').scrollIntoView({block: 'start', behavior: 'instant'})"); page.wait_for_timeout(120)
+        page.screenshot(path=f"{out}/{name}.png")
+
 def shot(page, name, **kw):
     if out != "-": page.screenshot(path=f"{out}/{name}.png", **kw)
 
@@ -243,11 +249,13 @@ with sync_playwright() as pw:
     day = text(page, "#pzone")
     check("S1-SUM-02: the turn checklist above the tabs holds the day: Day 2 and the countdown to midnight, Move, Vote, Propose, End turn (the moon is a slot for step 2); Summary has no strip of its own; Day 2 is said once", day.startswith("Day 2") and all(w in day for w in ["Move", "Vote", "Propose", "to midnight", "End turn"]) and page.locator('#pzone [data-slot="moon"]').count() == 1 and page.locator("#sday").count() == 0 and page.locator("#p-summary .tkstep, #p-summary [data-endturn]").count() == 0 and page.locator("#btabs .bday").count() == 0 and page.evaluate("[...document.querySelectorAll('body *')].filter(e => e.children.length === 0 && /^Day \\d+$/.test(e.textContent.trim())).length") == 1 and pos("#pzone") < pos("#btabs"), day)
     check("S1-SUM-03: Vote reads '0 of 2' with two empty circles; Move one and Propose three; none is done before it is done", "0 of 2" in text(page, "#pzone") and page.locator("#pzone .tkstep").count() == 3 and page.locator("#pzone .tkstep.done").count() == 0 and page.locator("#pzone .tkstep.vt .tkm.e").count() == 2 and page.locator("#pzone .tkstep.mv .tkm").count() == 1 and page.locator("#pzone .tkstep.pr .tkm").count() == 3)
-    shot(page, "fresh-1280-light")
+    tshot(page, "fresh-1280-light")
+    page.click('#pzone [data-p="bar-menu"]'); page.wait_for_selector("#pzone .pmenu"); tshot(page, "menu-1280-light"); page.keyboard.press("Escape")
     if out != "-": page.locator("#book").screenshot(path=f"{out}/summary-no-strip-1280-light.png")
     c2, p2, e2 = new_page(b, 390, 844, "light", True)
     check("fresh at 390: the checklist's rows stack, the panel is 260 to 330 px tall, above the tabs and not sticky", 260 <= box(p2, "#pzone .tk")["h"] <= 330 and box(p2, "#pzone .tk")["b"] <= box(p2, "#btabs")["y"] + 1 and p2.evaluate("getComputedStyle(document.getElementById('pzone')).position") == "static", str(box(p2, "#pzone .tk")))
-    shot(p2, "fresh-390-light")
+    tshot(p2, "fresh-390-light")
+    p2.click('#pzone [data-p="bar-menu"]'); p2.wait_for_selector("#pzone .pmenu"); tshot(p2, "menu-390-light"); p2.keyboard.press("Escape")
     if out != "-": p2.locator("#book").screenshot(path=f"{out}/summary-no-strip-390-light.png")
     c2.close()
     check("S1-SUM-05: at 1280 the ballot and Workshop share the left column; the Propose card is gone (the checklist above the tabs holds it)", abs(box(page, "#sballot")["x"] - box(page, ".sw.cat")["x"]) < 2 and page.locator("#spropose").count() == 0 and page.locator("#pzone .tk").count() == 1)
@@ -278,7 +286,8 @@ with sync_playwright() as pw:
     c4, p4, e4 = new_page(b, 390, 844, "light", True)
     p4.click('#pzone [data-endturn="ask"]'); p4.wait_for_selector('#pzone [data-endturn="yes"]')
     check("turn bar at 390: the confirm is under the two rows too, fits the screen, and nothing scrolls sideways", box(p4, "#pzone .tkask")["y"] >= box(p4, "#pzone .tkstep.pr")["b"] - 1 and box(p4, "#pzone .tkask")["r"] <= 390 and box(p4, "#pzone .tkask")["b"] <= box(p4, "#pzone .tk")["b"] and p4.evaluate("document.documentElement.scrollWidth") <= 390, str(box(p4, "#pzone .tkask")))
-    shot(p4, "confirm-390-light"); c4.close()
+    tshot(p4, "confirm-390-light"); c4.close()
+    tshot(page, "confirm-1280-light")
     page.click('#pzone [data-endturn="no"]'); page.wait_for_selector('#pzone [data-endturn="ask"]')
     check("turn bar: Keep playing closes the confirm and ends nothing (End turn is back, the day is still open)", page.locator("#pzone .tkask").count() == 0 and "Turn ended" not in text(page, "#pzone") and page.evaluate("fetch('/chrome/api/day').then(r => r.json()).then(d => d.you.ended)") is False)
     page.click("#tab-summary"); page.wait_for_timeout(150)
@@ -505,15 +514,15 @@ with sync_playwright() as pw:
     check("S1-VOT-06: the toast reads 'P1: you voted Yes. You can change it until midnight.'", toast("P1") == "P1: you voted Yes. You can change it until midnight.", toast("P1"))
     check("S1-VOT-05: turnout and who voted show ('1 of 3 voted: Ada (you)'), never the tally", re.fullmatch(r"1 of 3 voted: Ada \(you\)", text(page, '#sballot [data-vbox="P1"] .vturn')) is not None and "1 of 3" in text(page, '#sballot [data-vbox="P1"] .vturn'), text(page, '#sballot [data-vbox="P1"] .vturn'))
     check("S1-VOT-01 / S1-SUM-03: the ballot says '1 of 2 voted' and the Vote step 'Vote 1 of 2' once one of two is cast", text(page, '#sballot [data-slot="ballot-count"]') == "1 of 2 voted" and re.search(r"Vote\s*1 of 2", text(page, "#pzone")) and "Voted" not in text(page, "#pzone"), text(page, "#pzone"))
-    shot(page, "mid-1280-light")
+    tshot(page, "mid-1280-light")
     # mid-turn at 390 (light) and 1280 (dark): moved, 1 of 2 voted, 2 of 3 left
-    for w2, h2, sc in [(390, 844, "light"), (1280, 900, "dark")]:
+    for w2, h2, sc in [(390, 844, "light"), (390, 844, "dark"), (1280, 900, "dark")]:
         c2, p2, e2 = new_page(b, w2, h2, sc, w2 < 500)
         bt = text(p2, "#pzone")
         check(f"mid-turn {w2}-{sc}: Moved 1N 4E, Vote 1 of 2, P3 in a slot, '2 of 3 left', End turn still ghost, three steps with P3 and Propose done", re.search(r"Moved\s*1N 4E", bt) and re.search(r"Vote\s*1 of 2", bt) and "2 of 3 left" in bt and p2.locator("#pzone .tbend.ghost").count() == 1 and p2.locator("#pzone .tkstep").count() == 3 and p2.locator("#pzone .tkstep.pr.done").count() == 1 and p2.locator("#pzone .tkstep.vt .tkm.ok").count() == 1 and p2.locator("#pzone .tkstep.vt .tkm.e").count() == 1, bt)
         if w2 < 500: check("mid-turn 390: the panel is 260 to 330 px tall and is not sticky", 260 <= box(p2, "#pzone .tk")["h"] <= 330 and p2.evaluate("getComputedStyle(document.getElementById('pzone')).position") == "static", str(box(p2, "#pzone .tk")))
         sideways(p2, w2, f"mid-turn {w2}-{sc}")
-        shot(p2, f"mid-{w2}-{sc}"); c2.close()
+        tshot(p2, f"mid-{w2}-{sc}"); c2.close()
     check("ballot: the keyboard stays on the button you pressed after the boxes are drawn again", page.evaluate("document.activeElement && document.activeElement.dataset && document.activeElement.dataset.vote + document.activeElement.dataset.pn") == "yesP1")
     page.click('#pzone [data-jump="ballot"]'); page.wait_for_timeout(700)
     check("S1-SUM-04: Vote jumps to the first item you have not voted on (P2), not the first item", page.locator("#sb-P2.ring").count() == 1 and page.locator("#sb-P1.ring").count() == 0)
@@ -540,6 +549,7 @@ with sync_playwright() as pw:
     for w, h, scheme in [(1280, 900, "light"), (1280, 900, "dark"), (390, 844, "light"), (390, 844, "dark")]:
         c, page, errors = new_page(b, w, h, scheme); tag = f"{w}-{scheme}"
         sideways(page, w, f"ballot {tag}")
+        if scheme == "light": tshot(page, f"alldone-{tag}")   # moved, both votes cast, one proposal: End turn is the filled button
         hs = page.evaluate("[...document.querySelectorAll('#sballot .vbtn')].map(e => Math.round(e.getBoundingClientRect().height))")
         check(f"ballot {tag}: the four Yes / No buttons are 40 px tall" + (" and fill the row on a phone" if w < 500 else ""), hs == [40, 40, 40, 40] and (w >= 500 or all(page.locator("#sballot .vbtn").nth(i).bounding_box()["width"] > 120 for i in range(4))), str(hs))
         if out != "-": page.locator("#sballot").screenshot(path=f"{out}/ballot-after-{tag}.png")
@@ -551,10 +561,10 @@ with sync_playwright() as pw:
     c, page, errors = new_page(b, 1280, 900, "light")
     page.click('#pzone [data-endturn="ask"]'); page.click('#pzone [data-endturn="yes"]'); page.wait_for_selector("#pzone .tkended"); page.wait_for_timeout(400)
     check("S1-SUM-03 / rule 202.4: after End turn the End turn cell says 'Turn ended' with 202.4 and nothing else is offered: no End turn, every step disabled; the clock stays; Move and Vote show what you did", "Turn ended" in text(page, "#pzone") and "202.4" in text(page, "#pzone") and page.locator("#pzone [data-endturn], #pzone .tkgo:not(:disabled), #pzone .tkstep.pr .tkdet").count() == 0 and page.locator("#clock").count() == 1 and re.search(r"Moved\s*1N 4E", text(page, "#pzone")) and re.search(r"Voted\s*2 of 2", text(page, "#pzone")), text(page, "#pzone"))
-    shot(page, "ended-1280-light")
+    tshot(page, "ended-1280-light")
     c3, p3, e3 = new_page(b, 390, 844, "light", True)
     check("turn ended at 390: the panel is 260 to 330 px tall and nothing scrolls sideways", 260 <= box(p3, "#pzone .tk")["h"] <= 330 and p3.evaluate("document.documentElement.scrollWidth") <= 390, str(box(p3, "#pzone .tk")))
-    shot(p3, "ended-390-light"); c3.close()
+    tshot(p3, "ended-390-light"); c3.close()
     check("S1-VOT-06: after End turn all four buttons are disabled, your votes are still shown, and the reason is plain text", page.locator("#sballot .vbtn:not(:disabled)").count() == 0 and on(yes("P1")) and on(yes("P2")) and page.locator("#sballot .vwhy").count() == 2 and len(text(page, "#sballot .vwhy >> nth=0")) > 10, text(page, "#sballot"))
     late = c.request.post(base + f"/{SLUG}/api/votes", data={"proposal": "P1", "vote": "no"})
     check("ballot: a vote after End turn is refused by the server too (409) and the vote did not change", late.status == 409 and on(yes("P1")))
@@ -658,6 +668,12 @@ with sync_playwright() as pw:
     check("logged out: the ballot still shows turnout and who has voted, read-only", re.search(r"\d of 3 voted", text(page, "#sballot")) is not None and page.locator("#sballot .vturn").count() == 2)
     check("logged out: no Yes / No buttons at all, no 'Log in to vote.' line", page.locator("#sballot .vbtn").count() == 0 and "Log in to vote" not in text(page, "#sballot"), text(page, "#sballot"))
     shot(page, "loggedout-summary-1280-light", full_page=True)
+    check("a visitor has no panel: Day 2 is in the tab row, once", page.locator("#pzone").is_hidden() and page.locator("#btabs .bday").count() == 1 and text(page, "#btabs .bday") == "Day 2" and page.evaluate("[...document.querySelectorAll('body *')].filter(e => e.children.length === 0 && /^Day \\d+$/.test(e.textContent.trim())).length") == 1)
+    c9 = b.new_context(viewport={"width": 390, "height": 844}, has_touch=True); p9 = c9.new_page()
+    p9.goto(base + f"/{SLUG}/", wait_until="domcontentloaded"); p9.wait_for_selector("#scores li"); p9.wait_for_function("document.getElementById('rules').textContent.indexOf('Loading') < 0"); p9.wait_for_selector("#btabs .bday"); p9.wait_for_timeout(300)
+    check("a visitor at 390: Day 2 sits in the tab row, on the screen, and nothing scrolls sideways", p9.locator("#btabs .bday").is_visible() and box(p9, "#btabs .bday")["r"] <= 390 and p9.evaluate("document.documentElement.scrollWidth") <= 390, str(box(p9, "#btabs .bday")))
+    if out != "-": p9.locator("#book").screenshot(path=f"{out}/nonplayer-390-light.png")
+    c9.close()
     page.click("#tab-rules"); page.wait_for_timeout(200)
     check("logged out: the Rulebook reads, with no Add a rule and no banner", page.locator(".bcard[data-card]").count() > 10 and page.locator(".bcard.add").count() == 0 and page.locator("#rb-banner").count() == 0)
     page.locator('.bcard[data-card="401"]').click(); page.wait_for_selector("#mroot .mcard")

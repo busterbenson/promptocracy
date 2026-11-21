@@ -399,6 +399,7 @@ import { createChat, AGENTS } from "/js/chat.js";
     clearTimeout(DAY_TIMER); clearInterval(DAY_TICK);
     const bar = $("lockbar");
     bar.hidden = true; bar.textContent = "";
+    if (DAY && DAY.locked) END_ASK = false;   // the confirm does not wait out the night and come back at unlock
     if (DAY && DAY.day && DAY.status === "playing" && DAY.locked) { bar.hidden = false; bar.textContent = DAY.message || ""; }
     drawBar();
     if (!DAY || !DAY.day || DAY.status !== "playing") return;
@@ -604,7 +605,7 @@ import { createChat, AGENTS } from "/js/chat.js";
   // ---- clicks: tabs, jumps, End turn, pills, players, withdraw ---------------------------------------------------------
   document.addEventListener("click", async e => {
     const t = e.target;
-    if (PROP && !t.closest(".pwrap")) PROP.closeMenu();   // a click anywhere else puts the Propose menu away (first, so a vote or a tab click does too)
+    if (PROP && !t.closest("#pzone .tkstep.pr")) PROP.closeMenu();   // a click anywhere else puts the Propose menu away (first, so a vote or a tab click does too)
     const tab = t.closest("[data-tab]");
     if (tab && !tab.disabled) { setTab(tab.dataset.tab, !tab.closest(".btabs")); return; }
     const j = t.closest("[data-jump]");

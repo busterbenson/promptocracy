@@ -94,8 +94,8 @@ with sync_playwright() as p:
     shot(page, "ticket-proposed-1280-light")
     page.keyboard.press("Escape"); page.wait_for_timeout(300)
     check("1280-light: 'Commission something' stays enabled: Ada has used 1 of her 3 proposals today", page.locator('[data-w="open"]').is_enabled())
-    page.click("#tab-summary"); page.wait_for_selector("#pzone .pslot.used"); page.click('#pzone [data-p="bar-open"]'); page.wait_for_selector("#pzone .pcard")
-    check("1280-light: the bar's slot is the ticket's W-number and its card shows the commission's title, brief and facts, with Open in Workshop, not an empty diff", page.locator("#pzone .pslot.used.w", has_text="W3").count() == 1 and "A kite" in text(page, "#pzone") and "2 nights · 0 points" in text(page, "#pzone") and "Open in Workshop" in text(page, "#pzone"), text(page, "#pzone"))
+    page.click("#tab-summary"); page.wait_for_selector("#pzone .tkstep.pr .tkm.p"); page.click('#pzone [data-p="bar-open"]'); page.wait_for_selector("#pzone .pcard")
+    check("1280-light: the Propose step's filled circle is the ticket's W-number and its card shows the commission's title, brief and facts, with Open in Workshop, not an empty diff", page.locator("#pzone .tkstep.pr .tkm.p", has_text="W3").count() == 1 and "A kite" in text(page, "#pzone") and "2 nights · 0 points" in text(page, "#pzone") and "Open in Workshop" in text(page, "#pzone"), text(page, "#pzone"))
     shot(page, "yours-1280-light", full_page=True); sideways(page, 1280, "1280-light yours")
     check("1280-light: no console errors", not errors, str(errors)); c.close()
     # ---- a visitor: the list is public, the ticket page reads, no post box, no Commission button
