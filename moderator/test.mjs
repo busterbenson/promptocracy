@@ -732,9 +732,24 @@ const rulingCalls = (t) => t.claude.calls().filter((c) => c.escalation !== null)
   const t = await night({ scenario: { apply: {}, ruling: { 7: { answer: ANS() } } }, state: st, opts: { audit: false } });
   const s1 = JSON.parse(readFileSync(join(t.stateDir, "g.state.json"), "utf8"));
   check("post fails: the ruling is on main, the escalation is still owed, the failure is counted (1 night) and nobody is told yet", log(t.repo.bare)[0] === "Ruling 1-1" && st.rulings[0].ruled !== true && s1.rulingPostFails?.["7"]?.n === 1 && !t.notes.some((f) => /ruling-post-failed/.test(f)), J(s1));
+  check("post fails: the night is NOT marked tried, so a later pass of the same night can post it again from its file", s1.rulingsTriedDay === undefined, J(s1));
   const t2 = await night({ scenario: noModel, state: { job: null, processed: [{ n: 2, status: "done", commit_sha: "a".repeat(40) }], rulings: [ESC(7)], ruledStatus: 500 }, opts: { repo: t.repo, stateDir: t.stateDir } });
   const note = t2.notes.filter((f) => /ruling-post-failed/.test(f)).map((f) => readFileSync(join(t2.notifyDir, f), "utf8")).join("");
   check("post fails: on the second night Buster is told (id, path, status, count), with no ruling text, and no second model call was made", /E7/.test(note) && /2 nights/.test(note) && !/wall/i.test(note) && t2.claude.calls().length === 0, note);
+}
+{
+  // The cap is the night's, not the pass's: a later pass of the same night can't make five more.
+  const t = await night({ scenario: { apply: {}, ruling: { default: { answer: ANS() } } }, state: { job: job([]), rulings: [1, 2, 3, 4, 5, 6, 7].map((i) => ESC(i)) }, opts: { audit: false } });
+  const later = { job: null, processed: [{ n: 1, status: "done", commit_sha: null }], rulings: [6, 7].map((i) => ESC(i)) };
+  const t2 = await night({ scenario: { apply: {}, ruling: { default: { answer: ANS() } } }, state: later, opts: { repo: t.repo, stateDir: join(TMP, "cap-state") } });
+  check("cap across passes: seven owed, a later pass of the same night makes none of the other two (still 5 rulings on main)", t2.claude.calls().length === 0 && g(["ls-tree", "--name-only", "main", "rulings/"], t.repo.bare).trim().split("\n").length === 5 && !later.ruledPosts, J(t2.r));
+}
+{
+  // The same night, a later pass (the site is back): it posts from the file with no model call, and only then is the night tried.
+  const t = await night({ scenario: { apply: {}, ruling: { 7: { answer: ANS() } } }, state: { job: job([]), rulings: [ESC(7)], ruledStatus: 500 }, opts: { audit: false } });
+  const same = { job: null, processed: [{ n: 1, status: "done", commit_sha: null }], rulings: [ESC(7)] };
+  const t1b = await night({ scenario: noModel, state: same, opts: { repo: t.repo, stateDir: t.stateDir } });
+  check("post fails: that later pass (the site is back) posts it with no model call, and then the night is tried", t1b.claude.calls().length === 0 && same.ruledPosts?.length === 1 && JSON.parse(readFileSync(join(t.stateDir, "g.state.json"), "utf8")).rulingsTriedDay === 1 && !JSON.parse(readFileSync(join(t.stateDir, "g.state.json"), "utf8")).rulingPostFails?.["7"], J(same.ruledPosts));
 }
 {
   // E1 is owed and E15's ruling is on main: E1 must not pick up E15's file (the trailer match is exact).

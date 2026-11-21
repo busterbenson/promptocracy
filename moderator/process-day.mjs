@@ -661,7 +661,8 @@ export async function rulingsNight({ api, gameNames = async () => [], dir, day, 
     if (resumed) { made.push({ id: item.id, resumed: true, ...resumed }); log({ event: "ruling_resumed", escalation: item.id, path: resumed.path }); continue; }
     const fails = readState(stateDir, slug).rulingFails ?? {};
     if (fails[item.id]?.day === day) continue; // it failed already tonight (an earlier run); the next night tries again
-    if (made.filter((m) => !m.resumed).length >= MAX_RULINGS_PER_NIGHT) { timeShort = true; break; }
+    // The cap counts the night's files on main, not this pass's work, so a later pass of the same night (the unlock's reconcile, the backstop) can't make five more.
+    if (nextRulingNumber(dir, day) - 1 >= MAX_RULINGS_PER_NIGHT) { timeShort = true; break; }
     const ms = left();
     if (ms < RULING_MIN * 60_000) { timeShort = true; log({ event: "ruling_skipped", escalation: item.id, why: "no time left before the claim" }); continue; }
     ruleAdded ??= Object.fromEntries(Object.keys(sections(readFileSync(join(dir, "RULES.md"), "utf8"))).filter((k) => /^r\d+$/.test(k)).map((k) => [k.slice(1), ruleAge(dir, k.slice(1))]));
@@ -685,6 +686,7 @@ export async function rulingsNight({ api, gameNames = async () => [], dir, day, 
 // The rulings the night made (or resumed) posted where each question was asked. A 409 means it was already posted. A failure stays owed.
 /** @rule 106.5 */
 export async function postRulings({ api, made, stateDir, slug, log, day, notifyDir, nightLog, dryRun }) {
+  let allPosted = true;
   for (const m of made) {
     const r = await api("POST", `escalations/${m.id}/ruled`, { body: m.text, path: m.path, question: m.question, relies_on: m.relies_on }).catch((e) => ({ status: 0, body: { error: String(e?.name || "error") } }));
     log({ event: r.status === 200 ? "ruling_posted" : r.status === 409 ? "ruling_already_posted" : "ruling_post_failed", escalation: m.id, status: r.status });
@@ -693,6 +695,7 @@ export async function postRulings({ api, made, stateDir, slug, log, day, notifyD
       const { [m.id]: _a, ...fails } = st.rulingFails ?? {}, { [m.id]: _b, ...posts } = st.rulingPostFails ?? {};
       writeState(stateDir, slug, { ...st, rulingFails: fails, rulingPostFails: posts });
     } else if (!dryRun) {
+      allPosted = false;
       // The ruling is on main but didn't land: it stays owed and is posted again from its file next night. Like a failed ruling, it counts per night and
       // tells Buster (id and count only) on the second.
       const prior = st.rulingPostFails?.[m.id] ?? { n: 0, day: null };
@@ -701,6 +704,7 @@ export async function postRulings({ api, made, stateDir, slug, log, day, notifyD
       if (n >= RULING_FAILS_BEFORE_NOTICE) notifyFile(notifyDir, `ruling-post-failed-E${m.id}`, `Promptocracy ${slug}: a ruling could not be posted ${n} nights`, `Escalation E${m.id}'s ruling is on main (${m.path}) but the site refused or could not take it (status ${r.status}) on ${n} nights. It stays owed. Night log: ${nightLog}`);
     }
   }
+  return allPosted;
 }
 
 // ---- the deploy (Workers Builds) ---------------------------------------------------------------------------------
@@ -962,8 +966,9 @@ const lastDay = Math.max(0, ...processed.map((d) => d.n));
         const rn = await rulingsNight({ api, gameNames, dir, day: lastDay, left: () => Infinity, model: opts.model, claude: opts.claude, libraryDir: opts.libraryDir ?? LIBRARY_DIR, stateDir, slug, notifyDir, nightLog, log, dryRun: opts.dryRun });
         if (!opts.dryRun && rn.made.some((m) => !m.resumed)) { git(["push", "-q", "origin", "HEAD:main"], dir); pushed = true; }
         if (!opts.dryRun) {
-          await postRulings({ api, made: rn.made, stateDir, slug, log, day: lastDay, notifyDir, nightLog });
-          if (!rn.timeShort && !rn.listFailed) writeState(stateDir, slug, { ...readState(stateDir, slug), rulingsTriedDay: lastDay });
+          // The night counts as tried only once every ruling made is on the site: a failed post is picked up again by a later pass (from its file, no model call).
+          const posted = await postRulings({ api, made: rn.made, stateDir, slug, log, day: lastDay, notifyDir, nightLog });
+          if (posted && !rn.timeShort && !rn.listFailed) writeState(stateDir, slug, { ...readState(stateDir, slug), rulingsTriedDay: lastDay });
         }
         rulings = rn.made.length;
       }
@@ -1036,11 +1041,10 @@ const lastDay = Math.max(0, ...processed.map((d) => d.n));
     // The night's rulings (rule 106.5), after the proposals: only proposals lose something at 2 am (107.6, 107.7), so they go first.
     // A ruling reads the rules as they stand now (tonight's proposals applied), runs inside the lock, and rides the same push and day tag.
     // One that doesn't get made stays owed for the next night.
-    let rulingMade = [];
+    let rulingMade = [], rulingRun = null;
     if (opts.rulings !== false && Number(pend.body.rulings_owed) > 0) {
       const rn = await rulingsNight({ api, gameNames, dir, day: job.day, left: () => deadline - CLAIM_MARGIN_MIN * 60_000 - now(), model: opts.model, claude: opts.claude, libraryDir: opts.libraryDir ?? LIBRARY_DIR, stateDir, slug, notifyDir, nightLog, log, dryRun: opts.dryRun });
-      rulingMade = rn.made;
-      if (!opts.dryRun && !rn.timeShort && !rn.listFailed) writeState(stateDir, slug, { ...readState(stateDir, slug), rulingsTriedDay: job.day });
+      rulingMade = rn.made; rulingRun = rn;
     }
 
     const head = git(["rev-parse", "HEAD"], dir).trim();
@@ -1048,7 +1052,8 @@ const lastDay = Math.max(0, ...processed.map((d) => d.n));
     const outcomes = tonight.map((t, i) => (t.applied ? { number: t.number, seq: i + 1, applied: true, commit: t.commit } : { number: t.number, seq: i + 1, applied: false, reason: `${t.reason}. ${SUGGESTION}`.slice(0, 400) }));
     if (opts.dryRun) return { status: "dry-run", outcomes, head };
     if (tonight.some((t) => t.applied && !t.resumed) || rulingMade.some((m) => !m.resumed) || pushed) git(["push", "-q", "origin", "HEAD:main"], dir);
-    await postRulings({ api, made: rulingMade, stateDir, slug, log, day: job.day, notifyDir, nightLog });
+    const posted = await postRulings({ api, made: rulingMade, stateDir, slug, log, day: job.day, notifyDir, nightLog });
+    if (rulingRun && posted && !rulingRun.timeShort && !rulingRun.listFailed) writeState(stateDir, slug, { ...readState(stateDir, slug), rulingsTriedDay: job.day });
     const c = await api("POST", `days/${job.day}/claim`, { sha: head, outcomes, notes });
     log({ event: "claim", day: job.day, sha: head, status: c.status, body: c.body });
     if (c.status !== 200) {
