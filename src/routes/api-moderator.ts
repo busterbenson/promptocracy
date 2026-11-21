@@ -169,7 +169,8 @@ const ANSWER_MAX = 2000, THREAD_SHOWN = 30;
 const asId = (raw: string) => (/^\d{1,9}$/.test(raw) && Number(raw) > 0 ? Number(raw) : null);
 
 const PAGE = 50;
-const afterOf = (ctx: Ctx): number | null | "bad" => {
+/** The `?after=<id>` of a list page: 0 when absent, "bad" when not a whole id. @rule 106.4 */
+const afterOf = (ctx: Ctx): number | "bad" => {
   const raw = new URL(ctx.request.url).searchParams.get("after");
   if (raw === null) return 0;
   return /^\d{1,9}$/.test(raw) ? Number(raw) : "bad";

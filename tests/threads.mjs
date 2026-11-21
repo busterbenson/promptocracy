@@ -266,7 +266,9 @@ try {
   check("a private chat's ruling lands only in that player's chat with that agent, never in a thread", doneC.status === 200 && d1(state, "SELECT COUNT(*) AS n FROM chat_messages WHERE role = 'chalant'")[0].n === nChalantChat + 2 && d1(state, "SELECT COUNT(*) AS n FROM ticket_posts WHERE body LIKE '%private ruling%'")[0].n === 0 && d1(state, "SELECT player_id, agent FROM chat_messages WHERE body LIKE '%private ruling%'")[0].player_id === id.Ana && d1(state, "SELECT agent FROM chat_messages WHERE body LIKE '%private ruling%'")[0].agent === "starling", J(aHist.length));
   check("the answered rulings are gone from /rulings and pending's count", !(await mod("GET", "rulings")).data.rulings.some((x) => x.id === tRul || x.id === cRul) && (await mod("GET", "pending")).data.rulings_owed === 0);
   const race2 = ins({ k: "ticket_id", v: "'tk-17'", agent: "gremlin", player: id.Bo, reason: "RACE" });
-  await mod("POST", `escalations/${race2}/answer`, { body: HOLD, ruling: true });
+  const nAu = d1(state, "SELECT COUNT(*) AS n FROM agent_calls WHERE purpose = 'escalation'")[0].n;
+  const holdU = await mod("POST", `escalations/${race2}/answer`, { body: HOLD, ruling: true, usage: { model: "claude-sonnet-5-5", input_tokens: 100, output_tokens: 10, ms: 1000 } });
+  check("a ruling's holding answer still logs its model call, so the month's budget counts it", holdU.status === 200 && d1(state, "SELECT COUNT(*) AS n FROM agent_calls WHERE purpose = 'escalation'")[0].n === nAu + 1);
   const nRace = posts(17).length;
   const rr = await Promise.all([ruled(race2, { body: "First ruling.", path: "rulings/2-1.md" }), ruled(race2, { body: "Second ruling.", path: "rulings/2-2.md" })]);
   check("two rulings racing: one lands, the other is refused, one post", J(rr.map((x) => x.status).sort()) === J([200, 409]) && posts(17).length === nRace + 1, J(rr.map((x) => x.status)));
@@ -279,7 +281,10 @@ try {
   const pages = []; let after = 0;
   for (let i = 0; i < 6; i++) { const r = (await mod("GET", `escalations${after ? `?after=${after}` : ""}`)).data; pages.push(r.escalations.length); if (r.next === null) break; after = r.next; }
   check("pages of 50, 50 and the rest, then next is null; ids rise without a repeat", pages[0] === 50 && pages[1] === 50 && pages[2] === nBefore + 120 - 100 && pages.length === 3, J(pages));
-  check("the first page names where the next starts: next is the id of its last item", (await mod("GET", "escalations")).data.next !== null);
+  d1(state, "UPDATE escalations SET ruling_owed_at = '2026-11-10T19:00:00.000Z' WHERE reason LIKE 'PAGE-%'");
+  const rp = []; let ra = 0;
+  for (let i = 0; i < 6; i++) { const r = (await mod("GET", `rulings${ra ? `?after=${ra}` : ""}`)).data; rp.push(r.rulings.length); if (r.next === null) break; ra = r.next; }
+  check("the owed rulings page the same way: 50, 50, 20, and none of them is in /escalations", J(rp) === J([50, 50, 20]) && !(await mod("GET", "escalations")).data.escalations.some((x) => String(x.reason).startsWith("PAGE-")), J(rp));
   d1(state, "DELETE FROM escalations WHERE reason LIKE 'PAGE-%'");
   d1(state, "CREATE UNIQUE INDEX escalations_one_open ON escalations(game_id, player_id, COALESCE(ticket_id, 'chat:' || agent)) WHERE answered_at IS NULL");
 
