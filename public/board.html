@@ -339,7 +339,6 @@ import { createChat, AGENTS } from "/js/chat.js";
   }
 
   // ---- the day: the strip at the top of the Summary --------------------------------------------------------------------
-  const LOCKSVG = '<svg width="11" height="12" viewBox="0 0 16 18" aria-hidden="true"><rect x="2" y="8" width="12" height="9" rx="2" fill="currentColor"/><path d="M5 8V5.5a3 3 0 0 1 6 0V8" fill="none" stroke="currentColor" stroke-width="2"/></svg>';
   const nowMs = () => Date.now() + (DAY && DAY.now ? Date.parse(DAY.now) - DAY_AT : 0);
   function zoneAbbr() {
     try {
