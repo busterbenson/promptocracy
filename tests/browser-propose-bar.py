@@ -80,6 +80,10 @@ with sync_playwright() as p:
             check(f"{tag}: Esc puts the menu away", count(page, "#pzone .pmenu") == 0)
             page.click('#pzone [data-p="bar-menu"]'); page.click("#movebar")
             check(f"{tag}: a click elsewhere puts it away", count(page, "#pzone .pmenu") == 0)
+            clear = "#tab-history" if w == 1280 else "#tab-summary"   # (at 390 the menu covers the other tabs)
+            page.click('#pzone [data-p="bar-menu"]'); page.click(clear); page.wait_for_timeout(150)
+            check(f"{tag}: a tab click puts it away too (the click is not swallowed by what the tab does)", count(page, "#pzone .pmenu") == 0 and page.locator(clear).get_attribute("aria-selected") == "true")
+            tab(page, "summary")
             # Rule change from the Summary: the Rulebook tab, her window open, the composer focused
             page.click('#pzone [data-p="bar-menu"]'); page.click('#pzone [data-p="bar-rule"]'); page.wait_for_timeout(500)
             check(f"{tag}: Rule change opens Starling: the Rulebook tab is showing, her window is open and the composer has the focus", page.locator("#tab-rules").get_attribute("aria-selected") == "true" and page.locator("#chatcol .chat[data-agent=starling]").is_visible() and page.evaluate("document.activeElement && document.activeElement.id") == "chatText" and count(page, "#chatcol .chip") == 0)

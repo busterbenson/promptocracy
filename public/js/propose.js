@@ -218,6 +218,7 @@ ${S.ui.err ? `<p class="notice err" role="alert">${withPills(S.ui.err)}</p>` : "
   function actionFormHTML() {
     const u = S.ui, off = u.busy ? " disabled" : "";
     const t = S.actions.find((x) => x.type === u.type) || S.actions[0];
+    if (!t) return "";   // a game with no action types has no form (the menu's Action is off then)
     const mine = me() && me().user ? me().user.name : "";
     const names = ((day() && day().players) || []).map((p) => p.name);
     const field = (p) => {
@@ -240,16 +241,22 @@ ${S.ui.err ? `<p class="notice err" role="alert">${withPills(S.ui.err)}</p>` : "
   }
 
   /** Does the rule card's Propose button open Starling? Unless she can't be reached, or the Champion's change (which she can't draft) is what is being made. @rule 103.1, 402.4 */
-  const viaStarling = () => !!(starling && starling() && starling().ready()) && !S.champ && !(champAvail() && !base().allowed);
+  const viaStarling = () => !!(starling && starling() && starling().ready()) && !(champAvail() && !base().allowed);
 
-  // What follows a rule's text and tracked changes: the Propose button, and, when Starling can't be reached, the menu, form or slip under it.
-  /** @rule 103.1 */
+  // What follows a rule's text and tracked changes: the Propose button (Starling's; the direct form's while she can't be reached), a Champion's change button
+  // for the Champion, and the menu, form or slip a direct button opens under it.
+  /** @rule 103.1, 402.4 */
   function proposeHTML(rule) {
     if (!active()) return "";
-    if (viaStarling()) return `<div class="proposeact"><button class="btn ghost small" type="button" data-p="starling" data-n="${esc(rule.num)}">Propose a change</button></div>`;
     const c = can(), u = S.ui, here = u && u.rule === rule.num && c.allowed;
     const open = here && (u.step === "scope" || u.step === "menu");
-    return `<div class="proposeact"><button class="btn ghost small" type="button" data-p="open" data-n="${esc(rule.num)}" aria-expanded="${!!open}"${c.allowed ? "" : ` disabled title="${esc(c.reason || "")}"`}>Propose a change</button>${here ? (open ? menuHTML(rule) : flowHTML()) : ""}</div>`;
+    const direct = (label, champ) => `<button class="btn ghost small" type="button" data-p="open" data-n="${esc(rule.num)}"${champ ? ' data-champ="1"' : ""} aria-expanded="${!!open && !!u.champion === !!champ}"${c.allowed ? "" : ` disabled title="${esc(c.reason || "")}"`}>${label}</button>`;
+    const tail = here ? (open ? menuHTML(rule) : flowHTML()) : "";
+    if (viaStarling()) {
+      const fz = frozen(), why = base().reason || "";
+      return `<div class="proposeact"><button class="btn ghost small" type="button" data-p="starling" data-n="${esc(rule.num)}"${fz ? ` disabled title="${esc(why)}"` : ""}>Propose a change</button>${champAvail() ? direct("Champion's change", true) : ""}${tail}</div>`;
+    }
+    return `<div class="proposeact">${direct("Propose a change", false)}${tail}</div>`;
   }
 
   // A block's own row: a change to the block itself (its mark, rule 105.3), on the ballot or yours and waiting for tomorrow.
@@ -276,7 +283,7 @@ ${S.ui.err ? `<p class="notice err" role="alert">${withPills(S.ui.err)}</p>` : "
   // Which block a new rule goes in: the choice the banner's button opens.
   /** @rule 103.1 */
   function pickHTML() {
-    return `<div class="pmenu" role="menu">${S.RB.sections.map((s) => `<button type="button" role="menuitem" class="pmi" data-p="add" data-n="${esc(s.num)}"><span class="l"><b>${esc(s.num)} · ${esc(s.title)}</b><small>${s.rules.length} rule${s.rules.length === 1 ? "" : "s"} · ${s.change === "unanimous" ? "needs everyone to agree" : "majority"}</small></span><span aria-hidden="true" class="mnote">→</span></button>`).join("")}</div>`;
+    return `<div class="pmenu" role="menu">${S.RB.sections.map((s) => `<button type="button" role="menuitem" class="pmi" data-p="add" data-n="${esc(s.num)}"${S.champ ? ' data-champ="1"' : ""}><span class="l"><b>${esc(s.num)} · ${esc(s.title)}</b><small>${s.rules.length} rule${s.rules.length === 1 ? "" : "s"} · ${s.change === "unanimous" ? "needs everyone to agree" : "majority"}</small></span><span aria-hidden="true" class="mnote">→</span></button>`).join("")}</div>`;
   }
 
   // ---- the propose bar (above the tabs, every tab): the day's slots, what is left, and one Propose menu (rules 103.1, 103.2, 103.3) ----------
@@ -286,7 +293,9 @@ ${S.ui.err ? `<p class="notice err" role="alert">${withPills(S.ui.err)}</p>` : "
   const slotted = () => mineList().filter((p) => !p.champion);
   /** @rule 103.2 */
   const frozen = () => !!(active() && (day().locked || day().you.ended));
+  /** @rule 106.2 */
   const stReady = () => !!(starling && starling() && starling().ready());
+  /** @rule 103.1 */
   const por = (cls, name) => `<span class="por ${cls}"><svg aria-hidden="true"><use href="/portraits/${name}.svg#p"/></svg></span>`;
 
   /** @rule 103.2 */
@@ -303,9 +312,10 @@ ${S.ui.err ? `<p class="notice err" role="alert">${withPills(S.ui.err)}</p>` : "
   /** @rule 103.1, 103.5, 402.4, 801.1 */
   function menuBarHTML() {
     const ok = base().allowed, ready = stReady();
+    const none = !S.actions.length;
     const item = (act, cls, label, note, rule, off) => `<button type="button" role="menuitem" class="pmi" data-p="${act}"${off ? " disabled" : ""}><span class="lr">${cls ? por(...cls) : `<span class="por none" aria-hidden="true">→</span>`}<span class="l"><b>${esc(label)}</b>${note ? `<span class="st">${esc(note)}</span>` : ""}</span></span>${rule ? `<span class="rpill">${esc(rule)}</span>` : ""}</button>`;
     const champ = champAvail() ? item("bar-champ", ["ch", "chalant"], "Champion's change", "", "402.4", false) : "";
-    return `<div class="pmenu drop" role="menu">${item("bar-rule", ["st", "starling"], "Rule change", ready ? "" : "Starling can't be reached", "103.1", !ok)}${item("bar-commission", ["gr", "gremlin"], "Commission", "", "801.1", !ok)}${item("bar-action", null, "Action", ready ? "" : "Starling can't be reached", "103.5", !ok)}${champ}</div>`;
+    return `<div class="pmenu drop" role="menu">${item("bar-rule", ["st", "starling"], "Rule change", ready ? "" : "Starling can't be reached", "103.1", !ok)}${item("bar-commission", ["gr", "gremlin"], "Commission", "", "801.1", !ok)}${item("bar-action", null, "Action", ready ? "" : "Starling can't be reached", "103.5", !ok || none)}${champ}</div>`;
   }
 
   /** One of your proposals, open under the bar: its number, its state, the change, and what you can do with it. @rule 103.1, 103.2, 103.3 */
@@ -328,7 +338,7 @@ ${S.ui.err ? `<p class="notice err" role="alert">${withPills(S.ui.err)}</p>` : "
     const draft = !fz && S.draft && items.length < limit ? S.draft : null;
     const shown = [...items, ...mineList().filter((p) => p.champion)];
     const form = S.ui && S.ui.kind === "action" && !fz ? flowHTML() : "";
-    const open = S.bar.open || !!form;
+    const open = (S.bar.open && !!(shown.length || draft)) || !!form;
     const slots = slotsHTML(limit, items, draft);
     const toggle = shown.length || draft ? `<button type="button" class="ptoggle" data-p="bar-open" aria-expanded="${open}">${slots}<span class="chev" aria-hidden="true">▾</span></button>` : `<span class="ptoggle static">${slots}</span>`;
     const state = day().locked ? `<span class="pstate">Locked</span>${rpill("107.1")}` : day().you.ended ? `<span class="pstate">Turn ended</span>${rpill("202.4")}`
@@ -341,11 +351,11 @@ ${S.ui.err ? `<p class="notice err" role="alert">${withPills(S.ui.err)}</p>` : "
 
   // ---- the clicks -----------------------------------------------------------------------------------------------
   /** @rule 103.1 */
-  const mkUi = (o) => ({ day: day() && day().day, champion: champAvail() && (!base().allowed || S.champ), ...o });
-  function startAdd(block) {
+  const mkUi = (o) => ({ day: day() && day().day, champion: champAvail() && !base().allowed, ...o });
+  function startAdd(block, champ) {
     const u = S.ui;
     if (u && u.kind === "add" && u.rule === block && !u.busy) return;   // opened again: the words you were writing are still there
-    S.ui = mkUi({ rule: block, step: "write", kind: "add", target: block, words: "", prefilled: false, err: "" });
+    S.ui = mkUi({ rule: block, step: "write", kind: "add", target: block, words: "", prefilled: false, err: "", ...(champ && champAvail() ? { champion: true } : {}) });
   }
 
   /** @rule 103.1 */
@@ -378,7 +388,7 @@ ${S.ui.err ? `<p class="notice err" role="alert">${withPills(S.ui.err)}</p>` : "
     u.busy = true; u.err = ""; paint();
     const r = await api(`/api/proposals/${encodeURIComponent(u.draft.id)}/confirm`, {});
     u.busy = false;
-    if (r.ok) { S.ui = null; S.champ = false; await refresh(); return; }
+    if (r.ok) { S.ui = null; await refresh(); return; }
     u.err = (r.data && r.data.error) || "Something went wrong.";
     await refresh();   // the day may have moved on under the player (409, 423): show what is true now
   }
@@ -415,10 +425,11 @@ ${S.ui.err ? `<p class="notice err" role="alert">${withPills(S.ui.err)}</p>` : "
     if (a === "bar-workshop") { if (workshop && workshop()) await workshop().open(el.dataset.t); return; }
     if (a === "bar-rule" || a === "bar-action" || a === "bar-commission" || a === "bar-champ") {
       S.bar.menu = false;
+      if (a === "bar-action" && !S.actions.length) return paint();   // a game with no action types: nothing to draft
       if (a === "bar-commission") { paint(); if (workshop && workshop()) await workshop().commission(); return; }
-      if (a === "bar-champ") { S.champ = true; paint(); if (goTab) goTab("rules"); S.openPick(); return; }   // she can't draft the Champion's change: the block picker and the form do (rule 402.4)
+      if (a === "bar-champ") { S.champ = true; paint(); if (goTab) goTab("rules"); S.openPick(); return; }   // (the picker's buttons carry it: data-champ)   // she can't draft the Champion's change: the block picker and the form do (rule 402.4)
       if (stReady()) { paint(); await starling().open(a === "bar-action" ? { intent: "action" } : {}); return; }   // Rule change and Action are Starling's to draft (rules 103.1, 103.5)
-      if (a === "bar-rule") { paint(); if (goTab) goTab("rules"); S.openPick(); return; }   // she can't be reached: the direct way
+      if (a === "bar-rule") { S.champ = false; paint(); if (goTab) goTab("rules"); S.openPick(); return; }   // she can't be reached: the direct way
       S.ui = mkUi({ rule: "actions", step: "write", kind: "action", type: S.actions[0] && S.actions[0].type, params: {}, err: "", champion: false });   // an action changes no rule: never the Champion's change (rule 103.5)
       S.bar.open = true;
       return paint();
@@ -426,7 +437,7 @@ ${S.ui.err ? `<p class="notice err" role="alert">${withPills(S.ui.err)}</p>` : "
     if (a === "open") {
       const n = el.dataset.n, rule = S.RB.byNum[n];
       if (u && u.rule === n && (u.step === "scope" || u.step === "menu")) S.ui = null;
-      else S.ui = mkUi({ rule: n, step: rule.clauses.length ? "scope" : "menu", scope: "whole" });
+      else S.ui = mkUi({ rule: n, step: rule.clauses.length ? "scope" : "menu", scope: "whole", ...(el.dataset.champ === "1" && champAvail() ? { champion: true } : {}) });   // the Champion's change button: the toggle starts ticked
     } else if (a === "champion") {
       u.champion = !!el.checked;
     } else if (a === "scope") {
@@ -445,9 +456,9 @@ ${S.ui.err ? `<p class="notice err" role="alert">${withPills(S.ui.err)}</p>` : "
     } else if (a === "draft") return draft();
     else if (a === "edit") { u.step = "write"; u.err = ""; }
     else if (a === "confirm") return confirm();
-    else if (a === "cancel") { S.ui = null; S.champ = false; }
+    else if (a === "cancel") S.ui = null;
     else if (a === "unlock") return withdraw(el.dataset.id);
-    else if (a === "add") { startAdd(el.dataset.n); S.openAdd(el.dataset.n); paint(); const f = document.getElementById("pfWords"); if (f) f.focus({ preventScroll: true }); return; }
+    else if (a === "add") { startAdd(el.dataset.n, el.dataset.champ === "1"); S.openAdd(el.dataset.n); paint(); const f = document.getElementById("pfWords"); if (f) f.focus({ preventScroll: true }); return; }
     if (a === "cancel") S.closeAdd();
     paint();
   }

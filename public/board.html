@@ -273,7 +273,7 @@ import { createChat, AGENTS } from "/js/chat.js";
   // ---- the book: tabs, and what each shows --------------------------------------------------------------------------
   const TABS = () => [["summary", "Summary", ""], ["rules", "Rulebook", BOOK && BOOK.count() ? plural(BOOK.count(), "rule") : ""], ["workshop", "Workshop", WS && WS.count() ? plural(WS.count(), "ticket") : ""],
     ["history", "History", DAY && DAY.day ? plural(DAY.day, "day") : ""]];
-  // The propose bar sits above the tabs, on every tab, for a player of a game in play; nobody else has one (rules 103.1, 103.2).
+  // The propose bar sits above the tabs, on every tab, for a player of a game in play; nobody else has one. @rule 103.1, 103.2
   function drawBar() {
     const el = $("pzone");
     if (!el || !PROP) return;
@@ -587,6 +587,7 @@ import { createChat, AGENTS } from "/js/chat.js";
   // ---- clicks: tabs, jumps, End turn, pills, players, withdraw ---------------------------------------------------------
   document.addEventListener("click", async e => {
     const t = e.target;
+    if (PROP && !t.closest(".pwrap")) PROP.closeMenu();   // a click anywhere else puts the Propose menu away (first, so a vote or a tab click does too)
     const tab = t.closest("[data-tab]");
     if (tab && !tab.disabled) { setTab(tab.dataset.tab, !tab.closest(".btabs")); return; }
     const j = t.closest("[data-jump]");
@@ -620,7 +621,6 @@ import { createChat, AGENTS } from "/js/chat.js";
     }
     const pe = t.closest("#p-summary [data-p], #pzone [data-p]");
     if (pe && PROP && !pe.disabled) { PROP.click(pe); return; }
-    if (PROP && !t.closest(".pwrap")) PROP.closeMenu();   // a click anywhere else puts the Propose menu away
     const b = t.closest("[data-endturn]");
     if (!b) return;
     if (b.dataset.endturn !== "yes") { END_ASK = b.dataset.endturn === "ask"; drawDay(); if (END_ASK) { const y = document.querySelector('[data-endturn="yes"]'); if (y) y.focus(); } return; }

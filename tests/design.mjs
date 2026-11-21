@@ -242,9 +242,10 @@ console.log("the propose bar (rules 103.1, 103.2, 103.3, 103.5): every state, an
   globalThis.document = { getElementById: () => null };
   const mk = (n, kind, extra = {}) => ({ mine: true, status: "confirmed", n: `P${n}`, number: n, kind, target: "401", head: "Reword rule 401:", before_text: "a", after_text: "b", id: `id${n}`, conflicts: [], settings: {}, day_proposed: 2, day_ballot: 3, ...extra });
   const world = { me: { player: {} }, list: [], draft: null, made: 0, limit: 3, locked: false, ended: false, status: "playing", you: true, champion: false, star: true, actions: [{ type: "grant", name: "Grant points", rule: 901, touches: [401, 402], params: [] }] };
-  const api = async () => ({ ok: true, status: 200, data: { day: 2, proposals: world.list, draft: world.draft, actions: world.actions } });
+  const posts = [];
+  const api = async (path, body) => { if (body) posts.push([path, body]); return { ok: true, status: 200, data: { day: 2, proposals: world.list, draft: world.draft, actions: world.actions } }; };
   const day = () => ({ status: world.status, day: 2, locked: world.locked, you: world.you ? { ended: world.ended, proposals: { made: world.made, limit: world.limit }, champion: world.champion ? { change: { allowed: true } } : null,
-    can: { propose: world.made >= world.limit ? { allowed: false, reason: "You've proposed 3 today, the most a day (103.2)." } : { allowed: !world.ended && !world.locked, reason: "" }, end_turn: { allowed: !world.ended && !world.locked } } } : undefined });
+    can: { propose: world.made >= world.limit ? { allowed: false, reason: "You've proposed 3 today, the most a day (103.2)." } : { allowed: !world.ended && !world.locked, reason: world.ended ? "Your turn has ended." : world.locked ? "The players are sleeping." : "" }, end_turn: { allowed: !world.ended && !world.locked } } } : undefined });
   const went = [];
   const P = createProposer({ api, me: () => world.me, day, refresh: async () => { await P.load(); }, drawBar() {}, goTab: (k) => went.push("tab:" + k),
     starling: () => ({ ready: () => world.star, attachRule: async () => {}, open: async (o) => { went.push("starling:" + JSON.stringify(o)); } }),
@@ -305,6 +306,42 @@ console.log("the propose bar (rules 103.1, 103.2, 103.3, 103.5): every state, an
   check("a rule card's one Propose button opens Starling with that rule", /data-p="starling" data-n="401">Propose a change/.test(P.proposeHTML(book.byNum["401"])) && !/Draft with Starling/.test(P.proposeHTML(book.byNum["401"])));
   world.star = false;
   check("...and with Starling out it is the direct form's button", /data-p="open" data-n="401"[^>]*>Propose a change/.test(P.proposeHTML(book.byNum["401"])));
+  // ---- review findings: no action types, a frozen day, the Champion's change, an emptied bar
+  const openMenu = async () => { if (!/pmenu drop/.test(P.barHTML())) await P.click({ dataset: { p: "bar-menu" } }); };
+  world.star = true; world.actions = []; world.made = 1; await P.load();
+  await openMenu();
+  check("a game with no action types: the Action item is off (nothing to draft), and clicking it anyway draws nothing and breaks nothing", /data-p="bar-action" disabled/.test(P.barHTML()) && (await P.click({ dataset: { p: "bar-action" } }), P.barHTML().length > 0 && !/pform/.test(P.barHTML())));
+  world.star = false; await P.load(); await openMenu(); await P.click({ dataset: { p: "bar-action" } });
+  check("...also with Starling out: no form, no throw, the bar still draws and so does every tab's redraw", !/pform/.test(P.barHTML()) && P.barHTML().includes("Propose"));
+  world.actions = [{ type: "grant", name: "Grant points", rule: 901, touches: [401, 402], params: [] }]; world.star = true; world.ended = true; await P.load();
+  check("a rule card's Propose button on a day that is over for you is disabled with the reason (not a live button that can do nothing)", /data-p="starling" data-n="401" disabled title="Your turn has ended\."/.test(P.proposeHTML(book.byNum["401"])), P.proposeHTML(book.byNum["401"]));
+  world.ended = false; world.locked = true; await P.load();
+  check("...and during the lock the same", /data-p="starling" data-n="401" disabled/.test(P.proposeHTML(book.byNum["401"])));
+  world.locked = false; world.made = 1; world.champion = true; world.list = []; world.draft = null; await P.load();
+  check("the Champion's rule card has two buttons: Starling's, and a Champion's change that opens the direct menu ticked; nobody else has the second", /data-p="starling" data-n="401">Propose a change/.test(P.proposeHTML(book.byNum["401"])) && /data-p="open" data-n="401" data-champ="1"[^>]*>Champion's change/.test(P.proposeHTML(book.byNum["401"])));
+  await P.click({ dataset: { p: "open", n: "401", champ: "1" } });
+  check("...that menu has the Champion's toggle ticked", /class="pmchamp"><input type="checkbox" data-p="champion" checked/.test(P.proposeHTML(book.byNum["401"])), P.proposeHTML(book.byNum["401"]));
+  await P.click({ dataset: { p: "cancel" } });
+  world.champion = false; await P.load();
+  check("a player who is not the Champion has no second button", !/data-champ/.test(P.proposeHTML(book.byNum["401"])));
+  world.champion = true; await P.load();
+  await openMenu(); await P.click({ dataset: { p: "bar-champ" } });
+  check("the Champion row opens the block picker whose buttons carry the Champion's change; the picker Rule change opens (Starling out) does not", /data-p="add" data-n="100" data-champ="1"/.test(P.pickHTML()));
+  world.star = false; await P.load(); await openMenu(); await P.click({ dataset: { p: "bar-rule" } });
+  check("...and a picker opened the plain way has none, so a closed Champion picker leaves nothing behind", !/data-champ/.test(P.pickHTML()));
+  globalThis.document = { getElementById: (id) => (id === "pfWords" ? { value: "A new rule.", focus() {} } : null), querySelectorAll: () => [] };
+  posts.length = 0;
+  await P.click({ dataset: { p: "add", n: "300" } }); await P.click({ dataset: { p: "draft" } });
+  check("a block picked from the plain picker drafts as an ordinary proposal (no champion flag)", posts.length === 1 && posts[0][1].champion === undefined && posts[0][1].kind === "add", J(posts));
+  await P.click({ dataset: { p: "cancel" } }); posts.length = 0;
+  await P.click({ dataset: { p: "add", n: "300", champ: "1" } }); await P.click({ dataset: { p: "draft" } });
+  check("a block picked from the Champion's picker drafts as the Champion's change", posts.length === 1 && posts[0][1].champion === true && posts[0][1].kind === "add", J(posts));
+  await P.click({ dataset: { p: "cancel" } });
+  globalThis.document = { getElementById: () => null };
+  world.champion = false; world.star = true; world.list = [mk(7, "amend")]; world.made = 1; await P.load();
+  await P.click({ dataset: { p: "bar-open" } });
+  world.list = []; world.made = 0; await P.load();
+  check("the bar emptied while its panel was open (the last proposal unlocked): no empty panel is drawn", !/class="ppanel"/.test(P.barHTML()) && /class="ptoggle static"/.test(P.barHTML()), P.barHTML());
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

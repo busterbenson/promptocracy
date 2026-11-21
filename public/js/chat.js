@@ -105,7 +105,7 @@ ${refused ? `<div class="tx">${esc(last.refusal)}</div>` : ""}
     const stamp = id === liveId() ? "" : sl.status === "draft" ? "REPLACED" : STAMPS[sl.status] || String(sl.status).toUpperCase();
     return `<section class="slip past" aria-label="${esc(sl.n || "Draft")}"><span class="cstamp">${esc(stamp)}</span><div class="hd">${sl.n ? ppill(sl.n) : ""}<span class="hdt">${textHTML(sl.head || "")}</span></div>${sl.words ? `<div class="yw">${esc(`“${sl.words}”`)}</div>` : ""}${sl.kind === "action" && sl.action ? `<div class="tx">${(sl.action.shown || []).map(([l, v]) => `${esc(l)} ${esc(v)}`).join(" · ")}</div>` : sl.after_text || sl.before_text ? `<div class="tx cdiff">${diffOf(sl)}</div>` : ""}</section>`;
   }
-  /** An action's details as rows of the slip's list (rule 103.5): each label and value, then the rules it touches. */
+  /** An action's details as rows of the slip's list: each label and value, then the rules it touches. @rule 103.5 */
   const actionRows = (sl) => (sl.kind === "action" && sl.action ? `${(sl.action.shown || []).map(([l, v]) => `<dt>${esc(l)}</dt><dd>${esc(v)}</dd>`).join("")}<dt>Touches</dt><dd>${(sl.action.touches || []).map((n) => rpill(String(n))).join(" ")}</dd>` : "");
   /** The live draft: the change, scope, votes needed, conflicts, and Lock it in or Unlock with the reason beside a disabled one. @rule 103.1, 103.2, 103.3 */
   function proposalSlipHTML() {

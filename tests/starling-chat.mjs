@@ -183,7 +183,20 @@ try {
     }
     await say(Ana, "ok, what went wrong");
     check("the refusal is in her next tail, fenced, so she can ask for the missing detail", /the drafter refused it/.test(lastCall().lastText) && /To: pick a player of this game\./.test(lastCall().lastText), lastCall().lastText.slice(0, 400));
+    const rl = await Ana.post(CH, { intent: "rule", body: "SYNTH-SLOW ordinary words" }), tl2 = await Ana.post(CH, { intent: { action: 1 }, rule: "401", body: "SYNTH-SLOW more words" });
+    check("only intent 'action' is read: any other value, or an object, adds nothing to her tail (and a rule beside an intent is the rule's)", rl.status === 200 && tl2.status === 200 && !/chose Action/.test(lastCall().lastText) && /rule 401/.test(lastCall().lastText));
     check("a refused one leaves the bar's draft as it was: the last real draft", (await Ana.get(P)).data.draft.id === slipOf(obj).id);
+    const last = (await Ana.get(P)).data.draft;
+    const lk1 = await Ana.post(`${P}/${last.id}/confirm`, {});
+    check("the bar's draft is only a live draft: locked in, GET names none (it is a slot now, not a draft)", lk1.status === 200 && (await Ana.get(P)).data.draft === null);
+    const un1 = await Ana.post(`${P}/${last.id}/withdraw`, {});
+    check("...and unlocked (withdrawn) it is not named as a draft either", un1.status === 200 && (await Ana.get(P)).data.draft === null);
+    const again2 = slipOf(await say(Ana, "SYNTH-ACTION-OBJ once more"));
+    check("a new draft from her is named again", (await Ana.get(P)).data.draft?.id === again2.id);
+    d1(state, `UPDATE proposals SET day_proposed = 2 WHERE id = '${again2.id}'`);
+    check("a draft from another day is not named", (await Ana.get(P)).data.draft === null);
+    d1(state, `UPDATE proposals SET day_proposed = 1 WHERE id = '${again2.id}'`);
+    check("...and put back as today's it is named again (the check above was not an artifact)", (await Ana.get(P)).data.draft?.id === again2.id);
   }
 
   console.log("3 of 3 locks the button, never the drafting (rules 103.1, 103.2)");

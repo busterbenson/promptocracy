@@ -737,7 +737,7 @@ button.ptoggle:hover{background:var(--surface-2)}
 .pcard .why{font-family:var(--font-mono);font-size:.64rem;color:var(--ink-muted)}
 .pcard del{color:var(--ink-muted);text-decoration-thickness:1.5px}
 .pcard ins{text-decoration:none;background:color-mix(in srgb,var(--accent) 22%,transparent);border-radius:3px;padding:0 3px;font-weight:700}
-.pcard.pform{border-style:solid;grid-column:1/-1}
+.pcard.pform{border:0;padding:0;background:none;grid-column:1/-1}
 @media (max-width:640px){
   .pzone{padding:12px 16px 0}
   .pbar{flex-wrap:nowrap;gap:6px 8px;padding:6px}

@@ -155,6 +155,9 @@ console.log("action drafts: her prompt learns the game's action types, her answe
   const rule = read({ say: "x", draft: { kind: "amend", target: "401", words: "15 points" } });
   check("a rule draft is read as before (kind, target, words, to)", J(rule.draft) === J({ kind: "amend", target: "401", words: "15 points", to: "" }));
   check("paramsOf: pairs and objects both, numbers kept as numbers, nothing else accepted", J(S.paramsOf([{ key: " a ", value: " b " }])) === J({ a: "b" }) && J(S.paramsOf({ n: 3 })) === J({ n: 3 }) && S.paramsOf([{ key: "", value: "x" }]) === null && S.paramsOf([null]) === null && S.paramsOf(5) === null);
+  const nine = (n) => Array.from({ length: n }, (_, i) => ({ key: "k" + i, value: "v" }));
+  check("paramsOf's bounds: 8 details are kept, 9 refused; a key of 40 characters is kept, 41 refused; a value of 80 kept, 81 refused; NaN and Infinity refused", Object.keys(S.paramsOf(nine(8))).length === 8 && S.paramsOf(nine(9)) === null && S.paramsOf([{ key: "k".repeat(40), value: "v" }]) !== null && S.paramsOf([{ key: "k".repeat(41), value: "v" }]) === null && S.paramsOf([{ key: "a", value: "v".repeat(80) }]) !== null && S.paramsOf([{ key: "a", value: "v".repeat(81) }]) === null && S.paramsOf({ a: NaN }) === null && S.paramsOf({ a: Infinity }) === null);
+  check("a key like __proto__ can't plant anything: only text or numbers are values, and the result is an ordinary object", (() => { const o = S.paramsOf([{ key: "__proto__", value: "x" }]); return o !== null && ({}).x === undefined && Object.getPrototypeOf(o) === Object.prototype; })());
   check("she still has no field that locks, withdraws or votes: an action answer with a lock field loses it", !("lock" in (read({ say: "x", lock: true, confirm: "P1", draft: { kind: "action", type: "grant", params: [] } })).draft));
 }
 
