@@ -13,17 +13,28 @@ const data = JSON.parse(/<proposal-data>\n([\s\S]*?)\n<\/proposal-data>/.exec(pr
 const audit = /drafter audit/.test(prompt);
 const fix = /Your last attempt failed the checks/.test(prompt);
 const args = process.argv.slice(2);
-appendFileSync(join(here, "fake-claude.calls.jsonl"), JSON.stringify({ number: data.number, audit, fix, redraft_onto: data.redraft_onto ?? null, effort: args[args.indexOf("--effort") + 1], restricted: args.includes("--restricted"), addDir: args.includes("--add-dir") ? args[args.indexOf("--add-dir") + 1] : null, libraryIndex: args.includes("--add-dir") && existsSync(join(args[args.indexOf("--add-dir") + 1], "index.md")), tools: args[args.indexOf("--tools") + 1], env: Object.keys(process.env).sort() }) + "\n");
+appendFileSync(join(here, "fake-claude.calls.jsonl"), JSON.stringify({ number: data.number, escalation: data.escalation ?? null, rulingPrompt: data.escalation !== undefined ? prompt : null, audit, fix, redraft_onto: data.redraft_onto ?? null, effort: args[args.indexOf("--effort") + 1], restricted: args.includes("--restricted"), addDir: args.includes("--add-dir") ? args[args.indexOf("--add-dir") + 1] : null, libraryIndex: args.includes("--add-dir") && existsSync(join(args[args.indexOf("--add-dir") + 1], "index.md")), tools: args[args.indexOf("--tools") + 1], env: Object.keys(process.env).sort() }) + "\n");
 
 if (audit) {
   const a = scenario.audit?.[data.number] ?? { material: false, reading: "as drafted", gap: "" };
   process.stdout.write(JSON.stringify({ type: "result", result: JSON.stringify(a) }));
   process.exit(0);
 }
-const step = scenario.apply[data.number];
+const step = scenario.apply?.[data.number];
 const cwd = process.cwd();
 const edit = (f, from, to) => { const p = join(cwd, f); writeFileSync(p, readFileSync(p, "utf8").split(from).join(to)); };
 const result = (r) => writeFileSync(join(cwd, "MODERATOR-RESULT.json"), JSON.stringify(r));
+
+// A ruling (moderator/RULING.md): the data carries the escalation's id instead of a proposal's number. The scenario's `ruling[id]` (or `ruling.default`)
+// gives what the model answers; `edit` lists changes it also tries to make in its copy (it has no Write tool, and the copy is thrown away).
+if (data.escalation !== undefined) {
+  const r = scenario.ruling?.[data.escalation] ?? scenario.ruling?.default;
+  if (!r) throw new Error(`no ruling scenario for E${data.escalation}`);
+  for (const o of r.edit ?? []) { if (o.replace) edit(...o.replace); if (o.write) { mkdirSync(dirname(join(cwd, o.write[0])), { recursive: true }); writeFileSync(join(cwd, o.write[0]), o.write[1]); } }
+  if (r.sleep) await new Promise((res) => setTimeout(res, r.sleep));
+  process.stdout.write(JSON.stringify({ type: "result", result: r.raw ?? JSON.stringify(r.answer) }));
+  process.exit(0);
+}
 
 switch (step.action) {
   case "points": { // 401: N points instead of the current number (read from the text)

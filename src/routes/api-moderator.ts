@@ -296,8 +296,11 @@ export const answer = async (ctx: Ctx) => {
 };
 
 const RULING_PATH = /^rulings\/\d{1,6}-\d{1,3}\.md$/;
+const RULE_REF = /^\d{3}(\.\d{1,2})?$/;
+const QUESTION_MAX = 300;
 
-// POST /api/moderator/escalations/:id/ruled {body, path}: the ruling the night made, posted where the question was asked, closing the escalation.
+// POST /api/moderator/escalations/:id/ruled {body, path, question, relies_on}: the ruling the night made, posted where the question was asked, closing the escalation.
+// `question` (the moderator's restatement) and `relies_on` (rule numbers) are kept with it for History, which shows them with the ruling's text (rule 106.5).
 /** @rule 106.5 */
 export const ruled = async (ctx: Ctx) => {
   if (!(await authorized(ctx))) return unauthorized();
@@ -306,18 +309,22 @@ export const ruled = async (ctx: Ctx) => {
   const id = asId(ctx.params.id);
   if (id === null) return json({ error: "Bad escalation." }, 400);
   const body = await readJson(ctx.request);
-  if (!body || typeof body !== "object" || Array.isArray(body) || Object.keys(body).some((k) => k !== "body" && k !== "path")) return json({ error: "Send {body, path} and nothing else." }, 400);
+  if (!body || typeof body !== "object" || Array.isArray(body) || Object.keys(body).some((k) => !["body", "path", "question", "relies_on"].includes(k))) return json({ error: "Send {body, path, question, relies_on} and nothing else." }, 400);
   const text = typeof body.body === "string" ? body.body.replace(/\r\n?/g, "\n").trim() : "";
   if (!text || text.length > ANSWER_MAX) return json({ error: `A ruling is 1 to ${ANSWER_MAX} characters of plain text.` }, 400);
   if (/[<>]/.test(text)) return json({ error: "A ruling is plain text: no markup." }, 400);
   if (typeof body.path !== "string" || !RULING_PATH.test(body.path)) return json({ error: "path is rulings/<day>-<n>.md." }, 400);
+  const question = typeof body.question === "string" ? body.question.replace(/\s+/g, " ").trim() : "";
+  if (!question || question.length > QUESTION_MAX || /[<>]/.test(question)) return json({ error: `question is 1 to ${QUESTION_MAX} characters of plain text.` }, 400);
+  const relies = body.relies_on;
+  if (!Array.isArray(relies) || !relies.length || relies.length > 12 || relies.some((r) => typeof r !== "string" || !RULE_REF.test(r))) return json({ error: "relies_on is 1 to 12 rule numbers." }, 400);
   const e: any = await env.DB.prepare("SELECT * FROM escalations WHERE id = ? AND game_id = ?").bind(id, game.id).first();
   if (!e) return json({ error: "No such escalation." }, 404);
   if (!e.ruling_owed_at || e.answered_at) return json({ error: e.answered_at ? "Already ruled." : "No ruling is owed on this." }, 409);
   const nowMs = await clockNow(env);
   const now = nowIso(nowMs);
   const res = await env.DB.batch([
-    env.DB.prepare("UPDATE escalations SET answered_at = ?, ruling_path = ? WHERE id = ? AND game_id = ? AND ruling_owed_at IS NOT NULL AND answered_at IS NULL").bind(now, body.path, id, game.id),
+    env.DB.prepare("UPDATE escalations SET answered_at = ?, ruling_path = ?, ruling_question = ?, ruling_relies_on = ?, ruling_text = ? WHERE id = ? AND game_id = ? AND ruling_owed_at IS NOT NULL AND answered_at IS NULL").bind(now, body.path, question, JSON.stringify(relies), text, id, game.id),
     postStatement(env, game, e, text, now, nowMs),
   ]);
   if (!((res[0] as any)?.meta?.changes > 0)) return json({ error: "Already ruled." }, 409);
