@@ -22,11 +22,11 @@ const hourOf = (e) => Number(e.slice(0, 2));
 console.log("the window");
 {
   const w = nightWindow(PT, "2026-11-21");
-  check("an ordinary Pacific night: opens at midnight, closes at 2:35 am (2:00 deadline + 30 minutes deploy grace + the Worker's 5-minute cron tick)", w.opens === Date.parse("2026-11-21T08:00:00Z") && w.closes === Date.parse("2026-11-21T10:35:00Z"), JSON.stringify(w));
+  check("an ordinary Pacific night: opens at midnight, closes at 4:05 am (3:00 deadline + 60 minutes deploy grace + the Worker's 5-minute cron tick)", w.opens === Date.parse("2026-11-21T08:00:00Z") && w.closes === Date.parse("2026-11-21T12:05:00Z"), JSON.stringify(w));
   const fall = nightWindow(PT, "2026-11-01");
-  check("the fall-back night (1 am comes twice): the 2 am deadline is 3 hours after midnight, so it closes at 2:35 am PST", fall.closes - fall.opens === (3 * 60 + 35) * 60_000, String((fall.closes - fall.opens) / 3600_000));
+  check("the fall-back night (1 am comes twice): the 3 am deadline is 4 hours after midnight, so it closes at 4:05 am PST", fall.closes - fall.opens === (5 * 60 + 5) * 60_000, String((fall.closes - fall.opens) / 3600_000));
   const spring = nightWindow(PT, "2026-03-08");
-  check("the spring-forward night (2 am never happens): the deadline is the jump, 3:00 am PDT, so it closes 3:35 am PDT, 2h35 after midnight", spring.closes - spring.opens === 155 * 60_000 && spring.closes === Date.parse("2026-03-08T10:35:00Z"), String((spring.closes - spring.opens) / 3600_000));
+  check("the spring-forward night (2:00-2:59 never happens): the deadline, 3:00 am PDT, is 2 hours after midnight, so it closes 4:05 am PDT, 3h05 after midnight", spring.closes - spring.opens === 185 * 60_000 && spring.closes === Date.parse("2026-03-08T11:05:00Z"), String((spring.closes - spring.opens) / 3600_000));
 }
 
 console.log("the register");
@@ -34,16 +34,16 @@ console.log("the register");
   const one = (tz, extra = {}, hostTz = PT, now = NOW) => buildRegister({ games: [{ slug: "g", repo: "o/g", tag: "day-3", sha: "a".repeat(40), settings: { "game.timezone": tz } }], hostTz, now, ...extra });
   const reg = buildRegister({ games: [{ slug: "rickshaw-1", repo: "busterbenson/promptocracy-rickshaw", tag: "day-3", sha: "a".repeat(40), settings: { "game.timezone": PT } }], hostTz: PT, now: NOW });
   const g = reg.games["rickshaw-1"];
-  check("Pacific game on a Pacific mini: the night opens 00:00, the main run is 00:02, the backstop 01:00 (deadline 2:00 minus 1 hour)", g.time_zone === PT && g.window.opens === "00:00" && g.window.runs.main === "00:02" && g.window.runs.backstop === "01:00" && g.window.deadline === "02:00" && g.window.closes === "02:35", JSON.stringify(g.window));
-  check("Pacific: exactly two entries, 00:02 and 01:00, whatever the date: the spring-forward night (deadline 3:00 am PDT) and the fall-back night (1 am twice) still start the main run at 00:02 and the backstop one real hour before the deadline, 01:00 PST and 01:00 PST", JSON.stringify(reg.entries) === JSON.stringify(["00:02", "01:00"]), clock(reg.entries));
-  check("the register says where each input came from (the tag, the constants, the rule, the design)", /settings\.json "game\.timezone" in busterbenson\/promptocracy-rickshaw at day-3/.test(g.from.time_zone) && /DEADLINE_HOUR 2:00/.test(g.from.closes) && /DEPLOY_GRACE_MINUTES 30/.test(g.from.closes) && /rule 203\.1/.test(g.from.opens) && /main run 2 minutes after/.test(g.from.runs) && g.sha === "a".repeat(40) && reg.host_time_zone === PT);
+  check("Pacific game on a Pacific mini: the night opens 00:00, the main run is 00:02, the backstop 02:00 (deadline 3:00 minus 1 hour)", g.time_zone === PT && g.window.opens === "00:00" && g.window.runs.main === "00:02" && g.window.runs.backstop === "02:00" && g.window.deadline === "03:00" && g.window.closes === "04:05", JSON.stringify(g.window));
+  check("Pacific: three entries: the main run at 00:02 every night, and the backstop one real hour before the deadline: 02:00 on an ordinary night and on the fall-back night (3:00 am PST), 01:00 PST on the spring-forward night (3:00 am PDT is 10:00Z)", JSON.stringify(reg.entries) === JSON.stringify(["00:02", "01:00", "02:00"]), clock(reg.entries));
+  check("the register says where each input came from (the tag, the constants, the rule, the design)", /settings\.json "game\.timezone" in busterbenson\/promptocracy-rickshaw at day-3/.test(g.from.time_zone) && /DEADLINE_HOUR 3:00/.test(g.from.closes) && /DEPLOY_GRACE_MINUTES 60/.test(g.from.closes) && /rule 203\.1/.test(g.from.opens) && /main run 2 minutes after/.test(g.from.runs) && g.sha === "a".repeat(40) && reg.host_time_zone === PT);
 
   const ny = one("America/New_York");
-  check("New York game on a Pacific mini: midnight Eastern is 21:00 Pacific, so main 21:02 and backstop 22:00; the fall-back night (East changed, West not) adds 23:00; nothing at Pacific midnight", has(ny.entries, 21, 2) && has(ny.entries, 22, 0) && has(ny.entries, 23, 0) && !has(ny.entries, 0, 2) && ny.entries.length === 3, clock(ny.entries));
+  check("New York game on a Pacific mini: midnight Eastern is 21:00 Pacific, so main 21:02 and backstop 23:00 (2 am Eastern); the spring-forward night (3:00 am EDT is 22:00 PST) adds 22:00 and the fall-back night (East changed, West not) adds 00:00; no main run at Pacific midnight", has(ny.entries, 21, 2) && has(ny.entries, 22, 0) && has(ny.entries, 23, 0) && has(ny.entries, 0, 0) && !has(ny.entries, 0, 2) && ny.entries.length === 4, clock(ny.entries));
   const lon = one("Europe/London");
-  check("London game on a Pacific mini: main 16:02 and backstop 17:00 when London midnight is 16:00 Pacific; the weeks the two zones' clocks change on different dates (London midnight at 17:00) add 17:02 and 18:00", has(lon.entries, 16, 2) && has(lon.entries, 17, 0) && has(lon.entries, 17, 2) && has(lon.entries, 18, 0) && lon.entries.length === 4 && !has(lon.entries, 12, 0), clock(lon.entries));
+  check("London game on a Pacific mini: main 16:02 and backstop 18:00 when London midnight is 16:00 Pacific; the weeks the two zones' clocks change on different dates (London midnight at 17:00) add 17:02 and 19:00", has(lon.entries, 16, 2) && has(lon.entries, 18, 0) && has(lon.entries, 17, 2) && has(lon.entries, 19, 0) && !has(lon.entries, 17, 0) && lon.entries.length === 4 && !has(lon.entries, 12, 0), clock(lon.entries));
   const ind = one("Asia/Kolkata");
-  check("a half-hour zone (Kolkata, UTC+5:30): midnight is 10:30 PST, so main 10:32 and backstop 11:30 (the 2 am deadline is 12:30 PST)", has(ind.entries, 10, 32) && has(ind.entries, 11, 30) && !has(ind.entries, 10, 30), clock(ind.entries));
+  check("a half-hour zone (Kolkata, UTC+5:30): midnight is 10:30 PST, so main 10:32 and backstop 12:30 (the 3 am deadline is 13:30 PST)", has(ind.entries, 10, 32) && has(ind.entries, 12, 30) && !has(ind.entries, 11, 30) && !has(ind.entries, 10, 30), clock(ind.entries));
   const both = buildRegister({ games: [{ slug: "a", repo: "o/a", tag: "day-1", sha: "a".repeat(40), settings: { "game.timezone": PT } }, { slug: "ny", repo: "o/ny", tag: "day-1", sha: "b".repeat(40), settings: { "game.timezone": "America/New_York" } }], hostTz: PT, now: NOW });
   check("two games: the entries are the union, each time once, in clock order", has(both.entries, 0, 2) && has(both.entries, 21, 2) && both.entries.length === new Set([...reg.entries, ...ny.entries]).size && both.entries.every((e, i, a) => i === 0 || a[i - 1] < e));
 
@@ -78,10 +78,10 @@ console.log("one launchd job per game");
   check("each game gets its own plist (its own label), written to the launchd dir given", existsSync(pa) && existsSync(pb) && /<key>Label<\/key>\s*<string>com\.chalant\.promptocracy-moderator\.rickshaw-1<\/string>/.test(A) && /<string>com\.chalant\.promptocracy-moderator\.ny-1<\/string>/.test(B), "");
   check("each runs run.sh with ITS slug, and has its own log files", /run\.sh<\/string>\s*<string>rickshaw-1<\/string>/.test(A) && /run\.sh<\/string>\s*<string>ny-1<\/string>/.test(B) && /launchd\.rickshaw-1\.out\.log/.test(A) && !/ny-1/.test(A) && /launchd\.ny-1\.err\.log/.test(B));
   const hours = (t) => [...t.matchAll(/<key>Hour<\/key><integer>(\d+)<\/integer><key>Minute<\/key><integer>(\d+)<\/integer>/g)].map((m) => `${m[1].padStart(2, "0")}:${m[2].padStart(2, "0")}`);
-  check("two games in different zones schedule independently: Pacific 00:02 and 01:00, New York 21:02, 22:00 (and the fall-back night's 23:00)", JSON.stringify(hours(A)) === JSON.stringify(["00:02", "01:00"]) && JSON.stringify(hours(B)) === JSON.stringify(["21:02", "22:00", "23:00"]), JSON.stringify([hours(A), hours(B)]));
+  check("two games in different zones schedule independently: Pacific 00:02, 01:00 and 02:00, New York 00:00, 21:02, 22:00 and 23:00", JSON.stringify(hours(A)) === JSON.stringify(["00:02", "01:00", "02:00"]) && JSON.stringify(hours(B)) === JSON.stringify(["00:00", "21:02", "22:00", "23:00"]), JSON.stringify([hours(A), hours(B)]));
   check("a new game's plist is written but not loaded (install-launchd.sh does that): reported as needing install, nothing reloaded", r1.installNeeded.length === 2 && reloads.length === 0, JSON.stringify(r1.installNeeded));
   const regKeys = JSON.parse(readFileSync(join(D.stateDir, "register.json"), "utf8"));
-  check("the register keeps each game's own entries", JSON.stringify(regKeys.games["rickshaw-1"].entries) === '["00:02","01:00"]' && regKeys.games["ny-1"].entries.length === 3);
+  check("the register keeps each game's own entries", JSON.stringify(regKeys.games["rickshaw-1"].entries) === '["00:02","01:00","02:00"]' && regKeys.games["ny-1"].entries.length === 4);
   const m = statSync(pa).mtimeMs;
   const r2 = await refreshSchedule({ ...common, slugs: ["rickshaw-1", "ny-1"] });
   check("a second run with the same inputs rewrites and reloads nothing", r2.changed.length === 0 && reloads.length === 0 && statSync(pa).mtimeMs === m);

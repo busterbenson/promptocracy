@@ -46,12 +46,12 @@ export function startOfDate(tz, ymd) {
 /** @rule 203.1 */
 export const nextMidnight = (tz, ms) => startOfDate(tz, addDays(localDate(tz, ms), 1));
 
-// The night's deadline (rule 107.6): 2:00 am in the game's time zone on the morning after a day ends, by the wall clock,
-// so a night with a daylight-saving change is longer or shorter (2026-11-01 in Los Angeles: 1 am comes twice, so 2 am is
-// three hours after midnight; 2026-03-08: 2 am never happens, and the deadline is the moment the clocks jump, 3 am
-// PDT). The first minute from the date's start whose local time is 2:00 or later. `endsAtMs` is the day's end (its
+// The night's deadline (rule 107.6): 3:00 am in the game's time zone on the morning after a day ends, by the wall clock,
+// so a night with a daylight-saving change is longer or shorter (2026-11-01 in Los Angeles: 1 am comes twice, so 3 am is
+// four hours after midnight; 2026-03-08: 2:00-2:59 never happens, and 3 am PDT comes two hours after midnight). The
+// first minute from the date's start whose local time is 3:00 or later. (Buster, 2026-11-21: 2:00 -> 3:00.) `endsAtMs` is the day's end (its
 // midnight); the deadline is on the date that midnight begins.
-export const DEADLINE_HOUR = 2;
+export const DEADLINE_HOUR = 3;
 const hourFmts = new Map();
 /** @rule 107.6 */
 function hourFmt(tz) {

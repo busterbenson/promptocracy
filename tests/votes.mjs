@@ -1,4 +1,4 @@
-// Votes and the midnight count (rules 104.1-104.5, 105.4) and the 2 am deadline (rules 107.6, 107.7): the count at its
+// Votes and the midnight count (rules 104.1-104.5, 105.4) and the 3 am deadline (rules 107.6, 107.7): the count at its
 // exact thresholds, the deadline on daylight-saving nights, migration 0007 on a database with data, and end to end: one
 // vote per player per item under concurrency, changing a vote, End turn freezing it, the lock refusing it (web, MCP and
 // the write's own SQL), the electorate fixed at the start of the day when someone joins mid-day, that nothing about a
@@ -41,15 +41,15 @@ console.log("the count (rules 104.1, 104.5)");
   check("4 of 4 players: majority needs 3 (more than half), so 2 yes fails", tally({ mark: "majority", electorate: 4, electors: ["a", "b", "c", "d"], votes: v([["a", "yes"], ["b", "yes"]]) }).passed === false && neededOf("majority", 4) === 3);
 }
 
-console.log("the 2 am deadline (rule 107.6), by the wall clock");
+console.log("the 3 am deadline (rule 107.6), by the wall clock");
 {
   const at = (iso) => new Date(deadlineAfter(LA, Date.parse(iso))).toISOString();
-  check("an ordinary night: midnight PST (08:00Z) -> 2:00 am PST (10:00Z), two hours", at("2026-11-20T08:00:00.000Z") === "2026-11-20T10:00:00.000Z");
-  check("the fall-back night (2026-11-01: 1 am comes twice): midnight PDT (07:00Z) -> 2:00 am PST (10:00Z), three hours", at("2026-11-01T07:00:00.000Z") === "2026-11-01T10:00:00.000Z");
-  check("the spring-forward night (2026-03-08: 2 am never happens): midnight PST (08:00Z) -> 3:00 am PDT, the moment of the jump (10:00Z)", at("2026-03-08T08:00:00.000Z") === "2026-03-08T10:00:00.000Z");
-  check("a summer night: midnight PDT (07:00Z) -> 2:00 am PDT (09:00Z)", at("2026-07-01T07:00:00.000Z") === "2026-07-01T09:00:00.000Z");
+  check("an ordinary night: midnight PST (08:00Z) -> 3:00 am PST (11:00Z), three hours", at("2026-11-20T08:00:00.000Z") === "2026-11-20T11:00:00.000Z");
+  check("the fall-back night (2026-11-01: 1 am comes twice): midnight PDT (07:00Z) -> 3:00 am PST (11:00Z), four hours", at("2026-11-01T07:00:00.000Z") === "2026-11-01T11:00:00.000Z");
+  check("the spring-forward night (2026-03-08: 2:00-2:59 never happens): midnight PST (08:00Z) -> 3:00 am PDT, the moment of the jump (10:00Z), two hours", at("2026-03-08T08:00:00.000Z") === "2026-03-08T10:00:00.000Z");
+  check("a summer night: midnight PDT (07:00Z) -> 3:00 am PDT (10:00Z)", at("2026-07-01T07:00:00.000Z") === "2026-07-01T10:00:00.000Z");
   check("what the proposer is told names the reason, says it gave no points and suggests splitting or simplifying it",
-    returnedBody(7, DEADLINE_REASON) === "P7 passed but was not applied: Chalant did not finish processing by 2:00 am. It gave no points. Try splitting it into smaller proposals or simplifying it, and propose it again.");
+    returnedBody(7, DEADLINE_REASON) === "P7 passed but was not applied: Chalant did not finish processing by 3:00 am. It gave no points. Try splitting it into smaller proposals or simplifying it, and propose it again.");
 }
 
 // ---------------------------------------------------------------- migration 0007 on a database with data
@@ -256,9 +256,9 @@ try {
   check("P2 fails: 2 yes, 2 no, 1 didn't vote (counted as no), needed 3; it is final, with no budget",
     c2.status === "failed" && c2.yes === 2 && c2.no === 2 && c2.absent === 1 && c2.why === "2 of 5 voted yes; it needed 3." && c2.budget_minutes === null, J(c2));
   check("P3 (unanimous) fails on one No: 4 yes of 5 (Dee's frozen Yes counted), needed 5", c3.status === "failed" && c3.yes === 4 && c3.no === 1 && c3.absent === 0 && c3.needed === 5, J(c3));
-  check("one passed, so day 2 waits for the moderator: processing, deadline 2:00 am PST (10:00Z); the game stays locked and says so; P4 is not on a ballot yet",
-    dayRow(2).status === "processing" && dayRow(2).deadline_at === "2026-11-02T10:00:00.000Z" && gameRow().phase === "locked" && gameRow().day === 2 && prop(4).status === "confirmed" &&
-    (await ana.get("/vote/api/day")).data.deadline_at === "2026-11-02T10:00:00.000Z" && (await vote(ana, "P2", "no")).status === 423, J([dayRow(2), gameRow()]));
+  check("one passed, so day 2 waits for the moderator: processing, deadline 3:00 am PST (11:00Z); the game stays locked and says so; P4 is not on a ballot yet",
+    dayRow(2).status === "processing" && dayRow(2).deadline_at === "2026-11-02T11:00:00.000Z" && gameRow().phase === "locked" && gameRow().day === 2 && prop(4).status === "confirmed" &&
+    (await ana.get("/vote/api/day")).data.deadline_at === "2026-11-02T11:00:00.000Z" && (await vote(ana, "P2", "no")).status === 423, J([dayRow(2), gameRow()]));
   const rev = (await cy.get(`${BAL}?day=2`)).data;
   check("after the count every vote is shown (rule 104.4): each item's result and its roll call, 'didn't vote' as null",
     J(rev.items[0].roll_call.map((r) => [r.name, r.vote])) === J([["Ana", "yes"], ["Bo", "yes"], ["Cy", "yes"], ["Dee", null], ["Eve", null]]) &&
@@ -266,7 +266,7 @@ try {
     rev.items[0].result.passed === true && rev.items.every((i) => i.can_vote.allowed === false), J(rev.items[0]));
   const snap = () => J([d1(state, `SELECT number, status, yes, no, absent, needed, why, not_applied_reason, decided_at FROM proposals WHERE game_id = '${gid}' ORDER BY number`), dayRow(2), dayRow(3) ?? null, d1(state, `SELECT id, kind FROM notifications WHERE game_id = '${gid}' AND kind = 'not_applied'`), gameRow()]);
   const s1 = snap();
-  setClock("2026-11-02T09:00:00.000Z"); // 1:00 am PST
+  setClock("2026-11-02T10:00:00.000Z"); // 2:00 am PST: past the old 2 am deadline, before the 3 am one
   await cron(); await cron();
   check("the cron run twice more before the deadline counts nothing twice and changes nothing (still waiting for the moderator)", snap() === s1, snap());
   // Two overlapping midnight runs (Codex P1 on #15): the second loaded the day as 'locked' before the first counted it.
@@ -278,12 +278,12 @@ try {
     stale.status !== "done" && !dayRow(3) && prop(1).status === "passed" && gameRow().phase === "locked", J([stale, prop(1), gameRow()]));
   d1(state, `UPDATE days SET status = 'processing' WHERE game_id = '${gid}' AND n = 2`);
 
-  console.log("the 2 am deadline (rules 107.6, 107.7)");
+  console.log("the 3 am deadline (rules 107.6, 107.7)");
   const scoreBefore = d1(state, `SELECT score FROM players WHERE id = '${idOf("Ana")}'`)[0].score;
-  setClock("2026-11-02T10:00:00.000Z"); // 2:00 am PST
+  setClock("2026-11-02T11:00:00.000Z"); // 3:00 am PST
   await cron();
   const na = prop(1);
-  check("at 2:00 am P1 (passed, never applied) is not applied, with the reason recorded on it", na.status === "not_applied" && na.not_applied_reason === DEADLINE_REASON && na.yes === 3, J(na));
+  check("at 3:00 am P1 (passed, never applied) is not applied, with the reason recorded on it", na.status === "not_applied" && na.not_applied_reason === DEADLINE_REASON && na.yes === 3, J(na));
   const notes = (await ana.get("/vote/api/notifications")).data;
   const note = (notes.notifications ?? notes).find?.((n) => n.kind === "not_applied");
   check("it goes back to Ana, its proposer: an in-app notification with the reason and the suggestion to split or simplify it; nobody else gets one",
