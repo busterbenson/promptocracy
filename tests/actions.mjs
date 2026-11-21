@@ -6,7 +6,7 @@
 import { readFileSync } from "node:fs";
 import { join as pjoin } from "node:path";
 import { createHash } from "node:crypto";
-import { DEPLOY_REASON } from "../src/lib/votes.js";
+import { DEPLOY_GRACE_MINUTES, DEPLOY_REASON } from "../src/lib/votes.js";
 import { ROOT, client, createGame, d1, join, migrate, newState, freePort, startRulesStub, startServer } from "./lib.mjs";
 import { draftOf, markFor, neededOf, parseBook, partsOf, readAction, readRequest } from "../src/lib/proposals.js";
 import { GONE_REASON } from "../src/lib/votes.js";
@@ -162,7 +162,7 @@ try {
   const sc2 = score("Cy");
   const d4 = await midnight();
   await mod("POST", `days/${d4.n}/claim`, { sha: SHA2, outcomes: [{ number: pR2, applied: true, commit: SHA2, seq: 1 }] });
-  dev("clock", plus(d4.deadline_at, 31));
+  dev("clock", plus(d4.deadline_at, DEPLOY_GRACE_MINUTES + 1));
   await cron();
   check("the rule change is not applied (the deploy reason) and the action is, on the same tick: the day closes (timed_out) and the game moves on, nobody waits a tick", prop(pR2).status === "not_applied" && prop(pR2).not_applied_reason === DEPLOY_REASON && prop(pA2).status === "enacted" && score("Cy") === sc2 + 2 && day(d4.n).status === "timed_out" && game().day === d4.n + 1, J([prop(pR2), prop(pA2), day(d4.n), game()]));
 

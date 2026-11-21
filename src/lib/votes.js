@@ -2,7 +2,7 @@
 // 104.1, 104.5), the result sentence, the reason a passed proposal goes back to its proposer (rule 107.7), and the
 // SQL of the vote's own guarded write. src/lib/day.ts runs the count at midnight; src/routes/api-votes.ts and
 // api-ballot.ts are the routes.
-import { dayOpenSql } from "./day-gate.js";
+import { DEADLINE_HOUR, dayOpenSql } from "./day-gate.js";
 import { neededOf } from "./proposals.js";
 
 export const VOTES = ["yes", "no"];
@@ -42,26 +42,36 @@ export const resultSentence = (t) => (t.champion
 /** The sentence a Champion's own vote on it is refused with. @rule 402.4 */
 export const CHAMPION_NO_VOTE = "The Champion doesn't vote on their own change (rule 402.4).";
 
+// How long after the deadline a claimed night may take to go live (the build and deploy), in minutes (rule 107.6).
+// Buster, 2026-11-21: 30 -> 60, so the deploy deadline is 4:00 am.
+/** @rule 107.6 */
+export const DEPLOY_GRACE_MINUTES = 60;
+// A time of night, from minutes after midnight: 180 -> "3:00 am". The reasons below are built from the constants, so the
+// times players are told can't drift from the times the code keeps.
+const nightClock = (min) => `${Math.floor(min / 60)}:${String(min % 60).padStart(2, "0")} am`;
+/** @rule 107.6 */
+export const DEADLINE_CLOCK = nightClock(DEADLINE_HOUR * 60);
+/** @rule 107.6 */
+export const DEPLOY_CLOCK = nightClock(DEADLINE_HOUR * 60 + DEPLOY_GRACE_MINUTES);
+
 // Rule 107.6: what a passed proposal still unapplied at the deadline is told, and the suggestion that goes with it
 // (rule 107.7).
 /** @rule 107.6, 107.7 */
-export const DEADLINE_REASON = "Chalant did not finish processing by 2:00 am";
+export const DEADLINE_REASON = `Chalant did not finish processing by ${DEADLINE_CLOCK}`;
 /** @rule 107.7 */
 export const SUGGESTION = "Try splitting it into smaller proposals or simplifying it, and propose it again.";
 /** @rule 107.7 */
 export const returnedBody = (number, reason) => `P${number} passed but was not applied: ${reason}. It gave no points. ${SUGGESTION}`;
 
-// Rule 107.7: an applied proposal whose change was not live by the deploy deadline (the 2 am deadline + 30 minutes).
+// Rule 107.7: an applied proposal whose change was not live by the deploy deadline (the deadline + DEPLOY_GRACE_MINUTES).
 /** @rule 107.6, 107.7 */
-export const DEPLOY_REASON = "the change was applied but did not go live by 2:30 am";
+export const DEPLOY_REASON = `the change was applied but did not go live by ${DEPLOY_CLOCK}`;
 // Rule 107.7: the change went live, but a rule's night code (its points, the win) failed at the unlock until past the
 // deploy deadline, so the lock ended without it.
 /** @rule 107.6, 107.7 */
-export const ENACT_REASON = "its rules went live, but their points could not be given by 2:30 am";
+export const ENACT_REASON = `its rules went live, but their points could not be given by ${DEPLOY_CLOCK}`;
 // A passed action whose type the rules no longer have (rule 103.8): a rule changed tonight may have removed it.
 export const GONE_REASON = "the rules no longer have that action type";
-// How long after the deadline a claimed night may take to go live (the build and deploy), in minutes.
-export const DEPLOY_GRACE_MINUTES = 30;
 
 /** @rule 104.3 */
 export const voteToast = (n, vote) => `P${n}: you voted ${vote === "yes" ? "Yes" : "No"}. You can change it until midnight.`;

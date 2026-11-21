@@ -5,7 +5,7 @@
 // Run: npm test. Real `wrangler dev`, LOCAL D1 only; the clock and the deployed sha are dev_controls rows.
 import { createHash } from "node:crypto";
 import { client, createGame, d1, join, migrate, newState, freePort, startRulesStub, startServer } from "./lib.mjs";
-import { DEADLINE_REASON, DEPLOY_REASON } from "../src/lib/votes.js";
+import { DEADLINE_REASON, DEPLOY_GRACE_MINUTES, DEPLOY_REASON } from "../src/lib/votes.js";
 
 let pass = 0, fail = 0;
 const check = (name, ok, detail = "") => {
@@ -104,12 +104,12 @@ try {
   const p4 = ballot(3, "Cy", "401");
   const d3 = await midnight();
   const c3 = await mod("POST", "days/3/claim", { sha: SHA2, outcomes: [{ number: p4, applied: true, commit: SHA2 }] });
-  dev("clock", plus(d3.deadline_at, 10));
+  dev("clock", plus(d3.deadline_at, DEPLOY_GRACE_MINUTES - 5));
   await cron();
-  check("past 2 am but within the 30 minutes the deploy gets: still waiting, locked", c3.status === 200 && day(3).status === "deploying" && game().phase === "locked");
-  dev("clock", plus(d3.deadline_at, 31));
+  check("past 3 am but within the hour the deploy gets (55 minutes in): still waiting, locked", c3.status === 200 && day(3).status === "deploying" && game().phase === "locked");
+  dev("clock", plus(d3.deadline_at, DEPLOY_GRACE_MINUTES + 1));
   await cron();
-  check("30 minutes past the deadline and never live: not applied (the reason says so), no points, the lock ends (timed_out)", prop(p4).status === "not_applied" && prop(p4).not_applied_reason === DEPLOY_REASON && score("Cy") === 0 && day(3).status === "timed_out" && game().phase === "open" && game().day === 4 && game().rules_day === 2, J([prop(p4), day(3), game()]));
+  check("an hour past the deadline and never live: not applied (the reason says so), no points, the lock ends (timed_out)", prop(p4).status === "not_applied" && prop(p4).not_applied_reason === DEPLOY_REASON && score("Cy") === 0 && day(3).status === "timed_out" && game().phase === "open" && game().day === 4 && game().rules_day === 2, J([prop(p4), day(3), game()]));
   check("Cy is told, with the reason", notes("Cy").some((x) => x.body.includes(DEPLOY_REASON)));
   const recon = await mod("GET", "pending");
   check("pending lists the not-applied proposals for the moderator to reconcile", J(recon.data.not_applied.map((x) => x.number)) === J([p2, p4]) && recon.data.job === null);
@@ -121,7 +121,7 @@ try {
   const late = await mod("POST", "days/4/claim", { sha: SHA3, outcomes: [{ number: p5, applied: true, commit: SHA3 }] });
   check("is refused (409, rule 107.6) and writes nothing", late.status === 409 && /deadline/.test(late.data.error) && day(4).status === "processing" && !day(4).commit_sha, J(late));
   await cron();
-  check("then the 2 am fallback ends the lock: not applied with the deadline reason", prop(p5).status === "not_applied" && prop(p5).not_applied_reason === DEADLINE_REASON && day(4).status === "timed_out" && game().day === 5);
+  check("then the 3 am fallback ends the lock: not applied with the deadline reason", prop(p5).status === "not_applied" && prop(p5).not_applied_reason === DEADLINE_REASON && day(4).status === "timed_out" && game().day === 5);
 
   console.log("the unlock fails (a rule's night code throws)");
   const p8 = ballot(5, "Cy", "401");
@@ -131,7 +131,7 @@ try {
   dev("enact_fail", "1");
   await cron();
   check("before the deploy deadline: the lock stays, the failure is recorded, no points", day(5).status === "deploying" && !!day(5).last_error && game().phase === "locked" && score("Cy") === 0, J(day(5)));
-  dev("clock", plus(d5.deadline_at, 31));
+  dev("clock", plus(d5.deadline_at, DEPLOY_GRACE_MINUTES + 1));
   await cron();
   check("past the deploy deadline the lock still ends (107.6): not applied with the reason, no points", prop(p8).status === "not_applied" && /could not be given/.test(prop(p8).not_applied_reason) && day(5).status === "timed_out" && game().phase === "open" && score("Cy") === 0, J([prop(p8), day(5)]));
   d1(state, "DELETE FROM dev_controls WHERE key = 'enact_fail'");
@@ -140,10 +140,10 @@ try {
   const p9 = ballot(6, "Cy", "401");
   const d6 = await midnight();
   await mod("POST", "days/6/claim", { sha: SHA4, outcomes: [{ number: p9, applied: true, commit: SHA4 }] });
-  dev("clock", plus(d6.deadline_at, 40));
+  dev("clock", plus(d6.deadline_at, DEPLOY_GRACE_MINUTES + 10));
   dev("bundle_sha:mod", SHA4);
   await cron();
-  check("the claimed commit live only at 2:40 am (past 2:30 and the next tick): not applied, no points, the lock ends", prop(p9).status === "not_applied" && prop(p9).not_applied_reason === DEPLOY_REASON && score("Cy") === 0 && day(6).status === "timed_out" && game().phase === "open", J([prop(p9), day(6)]));
+  check("the claimed commit live only at 4:10 am (past 4:00 and the next tick): not applied, no points, the lock ends", prop(p9).status === "not_applied" && prop(p9).not_applied_reason === DEPLOY_REASON && score("Cy") === 0 && day(6).status === "timed_out" && game().phase === "open", J([prop(p9), day(6)]));
 
   console.log("winning (rule 402)");
   d1(state, `UPDATE players SET score = 95 WHERE id = '${id.Ana}'; UPDATE players SET score = 98 WHERE id = '${id.Bo}'`);
