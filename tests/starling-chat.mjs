@@ -197,6 +197,14 @@ try {
     check("a draft from another day is not named", (await Ana.get(P)).data.draft === null);
     d1(state, `UPDATE proposals SET day_proposed = 1 WHERE id = '${again2.id}'`);
     check("...and put back as today's it is named again (the check above was not an artifact)", (await Ana.get(P)).data.draft?.id === again2.id);
+    // the RECORDED answers (tests/starling-live.mjs, 2026-11-21): what the real model said to these three messages, replayed through the same drafter
+    const nA = acts().length, nAll = props("Ana").length;
+    const ra = await say(Ana, REC["a-grant"].message), rs = slipOf(ra);
+    check("a recorded answer (the live model, 'I want to grant Bo 5 points.'): an action draft the drafter accepts: Grant points, To Bo, Points 5, a draft of Ana's", rs && rs.kind === "action" && J(rs.action.shown) === J([["To", "Bo"], ["Points", "5"]]) && rs.status === "draft" && acts().length === nA + 1, J(ra.data.messages[1]));
+    const rk = await say(Ana, REC["a-ask"].message);
+    check("a recorded answer to 'I'd like to give somebody some points.': she asks, and drafts nothing", rk.status === 200 && !rk.data.messages[1].proposal && !rk.data.messages[1].refused && /\?/.test(rk.data.messages[1].body) && props("Ana").length === nAll + 1, J(rk.data.messages[1]));
+    const rl2 = await say(Ana, REC["a-limit"].message);
+    check("a recorded answer to 'Grant Bo 50 points.': she says the rules stop at 10 and drafts no action", rl2.status === 200 && !rl2.data.messages[1].proposal && props("Ana").length === nAll + 1 && /10/.test(rl2.data.messages[1].body), J(rl2.data.messages[1]));
   }
 
   console.log("3 of 3 locks the button, never the drafting (rules 103.1, 103.2)");

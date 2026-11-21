@@ -235,6 +235,15 @@ with sync_playwright() as p:
                 page.click('#pzone [data-p="unlock"]'); wait_text(page, "#pzone .left", "3 of 3 left")
             check(f"{tag}: no page errors", not errors, str(errors)); c.close()
 
+    # ============================================================ many: a daily limit of ten
+    if mode == "many":
+        for w, h in [(390, 844), (375, 740), (1280, 900)]:
+            c, page, errors = new_page(b, w, h, "light", ada_c)
+            btn = box(page, '#pzone [data-p="bar-menu"]')
+            check(f"{w}-light: with ten a day the bar shows ten slots and '10 of 10 left'; Propose is on the screen and nothing scrolls sideways", count(page, "#pzone .pslot") == 10 and left(page) == "10 of 10 left" and btn["x"] >= 0 and btn["x"] + btn["width"] <= w and page.evaluate("document.documentElement.scrollWidth") <= w, str((count(page, "#pzone .pslot"), left(page), btn, page.evaluate("document.documentElement.scrollWidth"))))
+            if w == 390: shot(page, "bar-ten-390-light")
+            c.close()
+
     # ============================================================ locked: the midnight lock
     if mode == "locked":
         c, page, errors = new_page(b, 1280, 900, "light", bo_c)

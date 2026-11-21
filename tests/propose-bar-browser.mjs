@@ -52,6 +52,10 @@ try {
   await srv.stop();
   srv = await startServer(state, SRV_PORT, noKey);
   await go("nokey", srv.base);
+  // A game with a high daily limit (proposals.per_day is at most 10): ten slots on a phone wrap inside the bar, they never push Propose off the screen
+  d1(state, `UPDATE games SET settings = json_set(settings, '$."proposals.per_day"', 10) WHERE slug = 'shop'`);
+  await go("many", srv.base);
+  d1(state, `UPDATE games SET settings = json_set(settings, '$."proposals.per_day"', 3) WHERE slug = 'shop'`);
   // The midnight lock (rule 107.1), by the flag the cron sets
   d1(state, "UPDATE games SET phase = 'locked' WHERE slug = 'shop'");
   await go("locked", srv.base);

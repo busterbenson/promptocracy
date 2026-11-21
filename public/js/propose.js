@@ -480,7 +480,7 @@ ${S.ui.err ? `<p class="notice err" role="alert">${withPills(S.ui.err)}</p>` : "
     ghostsOf: (sec) => ghosts(sec),
     ghostCount: () => (S.RB ? S.RB.sections.reduce((n, s) => n + ghosts(s).length, 0) : 0),
     attach({ RB, redraw, openAdd, openPick, closeAdd }) { S.RB = RB; S.redraw = redraw; S.openAdd = openAdd || S.openAdd; S.openPick = openPick || S.openPick; S.closeAdd = closeAdd || S.closeAdd; },
-    closeMenu: () => { if (S.bar.menu) { S.bar.menu = false; paint(); } },
+    closeMenu: () => { if (S.bar.menu) { S.bar.menu = false; queueMicrotask(paint); } },   // drawn after the click that put it away has been handled: that click may be on a button of the bar
     redraw: () => paint(),
   };
 }

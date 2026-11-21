@@ -587,7 +587,6 @@ import { createChat, AGENTS } from "/js/chat.js";
   // ---- clicks: tabs, jumps, End turn, pills, players, withdraw ---------------------------------------------------------
   document.addEventListener("click", async e => {
     const t = e.target;
-    const pe = t.closest("#p-summary [data-p], #pzone [data-p]");   // found before the menu is put away: that redraws the bar and detaches what was clicked
     if (PROP && !t.closest(".pwrap")) PROP.closeMenu();   // a click anywhere else puts the Propose menu away (first, so a vote or a tab click does too)
     const tab = t.closest("[data-tab]");
     if (tab && !tab.disabled) { setTab(tab.dataset.tab, !tab.closest(".btabs")); return; }
@@ -620,6 +619,7 @@ import { createChat, AGENTS } from "/js/chat.js";
       if (again && !again.disabled) again.focus({ preventScroll: true });
       return;
     }
+    const pe = t.closest("#p-summary [data-p], #pzone [data-p]");
     if (pe && PROP && !pe.disabled) { PROP.click(pe); return; }
     const b = t.closest("[data-endturn]");
     if (!b) return;
