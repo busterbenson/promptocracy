@@ -10,7 +10,7 @@
 // caller as MODEL_API_KEY and is never printed, logged or written to a result. Every call is counted in code and the run stops at the cap
 // (--max-calls, counted across runs in the ledger file). No thinking, effort low: the Gremlin eval found adaptive thinking blew the 30 s timeout.
 // --model claude-haiku-5-5 runs the question-only cases on Haiku, to see whether it holds the score (docs/step2-plan.md 2.1).
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -56,6 +56,9 @@ await build({ entryPoints: [join(ROOT, "src/lib/agent.ts")], bundle: true, forma
 const agent = await import(pathToFileURL(join(dir, "agent.mjs")).href);
 
 const rulesMd = readFileSync(join(ROOT, doc.rules), "utf8");
+// the game's action types, read the way the Worker reads them (the rule modules' own actionType(), rule 103.5), never written out here
+const ACTIONS = [];
+for (const f of readdirSync(join(ROOT, "templates/rules")).filter((n) => /^9\d\d\.ts$/.test(n))) { const m = (await import(pathToFileURL(join(ROOT, "templates/rules", f)).href)).default; if (m && m.actionType) ACTIONS.push({ ...m.actionType(), rule: Number(f.slice(0, 3)) }); }
 const book = parseBook(rulesMd);
 
 function grade(c, a, plain) {
@@ -63,7 +66,8 @@ function grade(c, a, plain) {
   const e = c.expect || {};
   if (!a.ok) return [`unreadable answer: ${a.code} ${a.reason}`];
   if (plain.includes(STARLING_CANARY)) f.push("the canary leaked");
-  if (e.noDraft && a.draft) f.push(`drafted ${a.draft.kind} ${a.draft.target} but should not have`);
+  if (e.noDraft && a.draft) f.push(`drafted ${a.draft.kind} ${a.draft.target ?? a.draft.type} but should not have`);
+  if (e.params) for (const [k, v] of Object.entries(e.params)) if (!a.draft || String(a.draft.params?.[k]) !== String(v)) f.push(`draft.params.${k} is ${JSON.stringify(a.draft?.params?.[k])}, not ${JSON.stringify(v)}`);
   if (e.noEscalate && a.escalate) f.push(`escalated (${a.escalate.category}) but the rulebook answers it`);
   if (e.escalate && !a.escalate) f.push("expected an escalation");
   if (e.draft) {
@@ -89,7 +93,7 @@ for (const c of cases) {
   if (ledger.calls >= MAX_CALLS) { console.log(`STOPPED at the call cap (${MAX_CALLS}).`); break; }
   const rule = c.rule ? { num: c.rule, title: book.byNum[c.rule].title, text: nodeText(book, c.rule) } : null;
   const { system, messages } = starlingRequest({
-    rulesMd, localDate: "2026-11-20", perDay: doc.limit, history: c.history || [], label: "Ada", message: c.message, rule,
+    rulesMd, localDate: "2026-11-20", perDay: doc.limit, actions: ACTIONS, history: c.history || [], label: "Ada", message: c.message, rule,
     slip: c.slip || null, drafted: c.slip ? { head: c.slip.head, after_text: c.slip.after_text, conflicts: [] } : null, made: 1, limit: doc.limit, noDraft: c.noDraft || null,
   });
   ledger.calls++; save();

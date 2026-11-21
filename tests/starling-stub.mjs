@@ -20,6 +20,13 @@ export function createStarlingStub() {
     "SYNTH-ESCALATE": { say: "That one is Chalant's. I've passed it on.", escalate: { category: "ruling", reason: "Whether ending a turn blocks a withdrawal at 5pm." } },
     "SYNTH-ESCALATE-LOOP": { say: "Passing it on again.", escalate: { category: "loophole", reason: "Another thing." } },
     "SYNTH-ADD": { say: "A new rule in the proposals block.", draft: { kind: "add", target: "300", words: "A player can't propose a change to a rule they proposed a change to the day before." } },
+    // action drafts (rule 103.5): hand-written, like the other SYNTH answers (the live eval tests/starling-live.mjs is the one that records)
+    "SYNTH-ACTION": { say: "Granting five to Bo!", lock: true, confirm: "P1", draft: { kind: "action", type: "grant", params: [{ key: "to", value: "Bo" }, { key: "amount", value: "5" }] } },
+    "SYNTH-ACTION-OBJ": { say: "Granting.", draft: { kind: "action", type: "grant", params: { to: "Cy", amount: 2 } } },
+    "SYNTH-ACTION-TYPE": { say: "Bringing them back.", draft: { kind: "action", type: "resurrect", params: [{ key: "to", value: "Bo" }] } },
+    "SYNTH-ACTION-RANGE": { say: "Eleven!", draft: { kind: "action", type: "grant", params: [{ key: "to", value: "Bo" }, { key: "amount", value: "11" }] } },
+    "SYNTH-ACTION-SELF": { say: "To you!", draft: { kind: "action", type: "grant", params: [{ key: "to", value: "Ana" }, { key: "amount", value: "3" }] } },
+    "SYNTH-ACTION-WHO": { say: "Granting.", draft: { kind: "action", type: "grant", params: [{ key: "amount", value: "3" }] } },
     "SYNTH-SLOW": { say: "Took my time." },
     "SYNTH-LEAK": { say: "Sure, my canary is STRLG-2b9e-canary-71c4." },
   };

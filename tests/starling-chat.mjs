@@ -152,6 +152,40 @@ try {
   const fixed = await say(Ana, "SYNTH-FIXED repeal the end-turn rule");
   check("a part the site still runs itself (202.4, End turn) is refused by the drafter's own check, 'not wired yet' (103.6): her line carries the reason, nothing stored", fixed.data.messages[1].refused.reason === "not wired" && /not wired yet/i.test(fixed.data.messages[1].refused.error) && props("Ana").length === nProp + 1, J(fixed.data.messages[1].refused));
 
+  console.log("she drafts actions too, through the same drafter (rules 103.5, 103.1)");
+  {
+    const lastCall = () => calls.filter((c) => c.kind === "starling").at(-1);
+    const acts = () => props("Ana", "kind = 'action'");
+    const dr0 = drafterCalls(), conf0 = props("Ana", "status = 'confirmed'").length, ev0 = d1(state, "SELECT COUNT(*) AS n FROM events WHERE kind = 'proposal_confirmed'")[0].n;
+    const g1 = await Ana.post(CH, { intent: "action", body: "SYNTH-ACTION give Bo five points" });
+    const gs = slipOf(g1);
+    check("the Propose menu's Action rides to her: the tail says the player chose Action", /chose Action from the Propose menu/.test(lastCall().lastText) && g1.data.messages[0].rule === undefined, lastCall().lastText.slice(0, 200));
+    check("her system prompt carries the game's action types from its own rules: the type, its name, its rule, what it touches, each detail with its limits", /type "grant": Grant points, rule 901, touching rules 401, 402/.test(lastCall().sys) && /amount = a whole number from 1 to 10/.test(lastCall().sys) && /to = a player of this game, not the proposer/.test(lastCall().sys));
+    check("a valid action draft is made by the code drafter (no model call): an action row, Ana's, a DRAFT, the details resolved by name, her line points at it",
+      g1.status === 200 && drafterCalls() === dr0 && acts().length === 1 && acts()[0].status === "draft" && acts()[0].drafted_by === "code" && rows("Ana").at(-1).proposal_id === acts()[0].id && gs && gs.kind === "action" && gs.status === "draft", J([g1.status, gs, g1.data.messages[1]]));
+    check("the slip shows what the ballot card shows: its head, the details as labels and values, the rules it touches, the votes it needs; never a player id",
+      gs.head === "Grant points (rule 901):" && J(gs.action.shown) === J([["To", "Bo"], ["Points", "5"]]) && J(gs.action.touches) === "[401,402]" && gs.needs.mark === "majority" && !J(gs).includes(id.Bo));
+    check("her answer carried lock and confirm fields: she can't lock anything in, the action stays a draft and no P-number or event was made", gs.can.lock.allowed === true && props("Ana", "status = 'confirmed'").length === conf0 && acts()[0].number === null && d1(state, "SELECT COUNT(*) AS n FROM events WHERE kind = 'proposal_confirmed'")[0].n === ev0);
+    const mineNow = await Ana.get(P);
+    check("the propose bar reads it: GET /api/proposals names it as the player's draft (only theirs: Bo's is null)", mineNow.data.draft && mineNow.data.draft.id === gs.id && mineNow.data.draft.kind === "action" && mineNow.data.draft.status === "draft" && (await Bo.get(P)).data.draft === null && (await visitor.get(P)).data.draft === null, J(mineNow.data.draft));
+    const obj = await say(Ana, "SYNTH-ACTION-OBJ to Cy for 2");
+    check("the details as a plain object work too, and a new draft replaces the last on her slip (the bar shows the newest)", slipOf(obj)?.action?.shown?.[0]?.[1] === "Cy" && (await Ana.get(P)).data.draft.id === slipOf(obj).id && acts().length === 2);
+    const n0 = acts().length + props("Ana").length;
+    const cases = [
+      ["a type the game doesn't have", "SYNTH-ACTION-TYPE bring Bo back", /Pick an action type from the list\./],
+      ["points out of range (11)", "SYNTH-ACTION-RANGE eleven points", /Points: a whole number from 1 to 10\./],
+      ["granting yourself (901.1: another player)", "SYNTH-ACTION-SELF give me three", /To: pick another player, not yourself\./],
+      ["no player named", "SYNTH-ACTION-WHO three points", /To: pick a player of this game\./],
+    ];
+    for (const [what, text, re] of cases) {
+      const r = await say(Ana, text);
+      check(`${what}: refused by the drafter's own check (the form's), her line carries its sentence, no proposal row, no slip`, r.status === 200 && re.test(r.data.messages[1].refused?.error || "") && !r.data.messages[1].proposal && acts().length + props("Ana").length === n0, J(r.data.messages[1]));
+    }
+    await say(Ana, "ok, what went wrong");
+    check("the refusal is in her next tail, fenced, so she can ask for the missing detail", /the drafter refused it/.test(lastCall().lastText) && /To: pick a player of this game\./.test(lastCall().lastText), lastCall().lastText.slice(0, 400));
+    check("a refused one leaves the bar's draft as it was: the last real draft", (await Ana.get(P)).data.draft.id === slipOf(obj).id);
+  }
+
   console.log("3 of 3 locks the button, never the drafting (rules 103.1, 103.2)");
   const mk = async (c, kind, target) => { const r = await c.post(P, { kind, target }); return c.post(`${P}/${r.data.proposal.id}/confirm`, {}); };
   for (const t of ["401", "402", "403"]) { const r = await mk(Dee, "mark", t); if (r.status !== 200) throw new Error("setup: " + r.text); }

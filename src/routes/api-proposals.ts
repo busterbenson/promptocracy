@@ -7,6 +7,8 @@
 //   GET  /<slug>/api/proposals[?rule=402]     the proposals anyone may see: every one that has reached a ballot, and your
 //                                             own confirmed one ("mine"). Another player's proposal is hidden until it
 //                                             is on the ballot. Votes and totals only once it is counted (rule 104.4).
+//                                             `draft`: your newest draft from Starling, if it is still a draft made today
+//                                             (the propose bar's dashed slot; never counted, rule 103.1).
 // Every write goes through the day's gate (rule 107.1 the lock, rule 202.4 End turn), in the handler and again in the
 // SQL of the write itself. Mechanical kinds are drafted by code (src/lib/proposals.js); rewording in the player's own
 // words by a small model (src/lib/drafter.ts).
@@ -298,12 +300,19 @@ export const get = async (ctx: Ctx) => {
      ORDER BY q.number`,
   ).bind(game.id, player?.id ?? "", rule, rule, rule, rule).all()).results as any[];
   const n = await playerCount(env, game.id);
+  // The draft the propose bar shows: the one Starling's newest line points at, while it is still a draft made today (not one cancelled in the form).
+  const mineDraft: any = player && game.day ? await env.DB.prepare(
+    `SELECT q.*, p.display_name AS name, p.color FROM proposals q JOIN players p ON p.game_id = q.game_id AND p.id = q.player_id
+     WHERE q.game_id = ? AND q.player_id = ? AND q.status = 'draft' AND q.day_proposed = ?
+       AND q.id = (SELECT proposal_id FROM chat_messages WHERE game_id = ? AND player_id = ? AND agent = 'starling' AND proposal_id IS NOT NULL ORDER BY id DESC LIMIT 1)`,
+  ).bind(game.id, player.id, game.day, game.id, player.id).first() : null;
   const tickets = await commissionsFor(env, game.id, rows.filter((r) => r.kind === "commission").map((r) => r.id));
   const today = game.day;
   return json({
     day: today,
     actions: catalogOf(game).map(({ type, name, rule, touches, params }: any) => ({ type, name, rule, touches, params })),
     proposals: rows.map((r) => ({ ...view(r, player?.id, n), ticket: tickets.get(r.id) })),
+    draft: mineDraft ? view({ ...mineDraft, draft_mark: markFor((await bookFor(game)).book, mineDraft) }, player?.id, n) : null,
     ballot: rows.filter((r) => r.status === "on_ballot" && r.day_ballot === today).map((r) => `P${r.number}`),
   });
 };
