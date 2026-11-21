@@ -277,7 +277,7 @@ import { createChat, AGENTS } from "/js/chat.js";
   function drawBar() {
     const el = $("pzone");
     if (!el || !PROP) return;
-    const html = PROP.barHTML();
+    const html = PROP.barHTML(turnHTML());
     if (el.innerHTML !== html) el.innerHTML = html;
     el.hidden = !html;
   }
@@ -328,13 +328,12 @@ import { createChat, AGENTS } from "/js/chat.js";
       ${bl.length ? `<ul class="sl">${bl.map(p => `<li id="sb-${esc(p.n)}"><p class="sbs">${PROP.pPill(p)} ${pill(p.by, p.mine)} ${sentence(p)}</p>
         <div class="sdiff">${p.kind === "commission" && p.ticket ? commissionHTML(p.ticket) : p.kind === "action" && p.action ? PROP.actionBody(p) : `${p.title ? `<p class="sdh">${esc(p.title)}</p>` : ""}<p class="mono head">${esc(p.head || "")}</p><p>${diffOf(p)}</p>`}</div><div class="vrow slot" data-slot="ballot-vote" data-pn="${esc(p.n)}">${BAL ? BAL.box(p.n) : ""}</div></li>`).join("")}</ul>` : `<p class="mnote">Nothing is on today's ballot.</p>`}</section>`;
     const cat = WS ? WS.summaryHTML() : "";
-    return `<div class="sgrid">${eraHTML()}<section class="sw day" id="sday" aria-label="Today"></section>
-      <div class="slot recapw" data-slot="recap"></div>
+    return `<div class="sgrid">${eraHTML()}<div class="slot recapw" data-slot="recap"></div>
       <div class="scol">${ballot}${cat}</div>
       <div class="scol"><div class="slot" data-slot="recent-days"></div><button type="button" class="linkbtn" data-tab="history">Full history →</button></div></div>`;
   }
   function drawBook() {
-    if (TAB === "summary") { $("p-summary").innerHTML = summaryHTML(); drawDay(); }
+    if (TAB === "summary") $("p-summary").innerHTML = summaryHTML();
     else if (TAB === "workshop") $("p-workshop").innerHTML = WS ? WS.tabHTML() : "";
     else if (TAB === "history") $("p-history").innerHTML = `<div class="hdays"><div class="slot" data-slot="history-days"></div><ul class="log" id="log">${((DATA && DATA.events) || []).map(e => `<li><b>${esc(whenText(e.created_at) || String(e.created_at || "").slice(0, 10))}</b> · ${esc(e.text)}</li>`).join("")}</ul></div>`;
   }
@@ -353,37 +352,37 @@ import { createChat, AGENTS } from "/js/chat.js";
     const ms = Math.max(0, Date.parse(DAY.ends_at) - nowMs()), h = Math.floor(ms / 3600000), m = Math.floor(ms % 3600000 / 60000);
     return `${h ? h + " h " : ""}${m} m to midnight ${zoneAbbr()}`;
   }
+  /** The player's day, drawn into the turn bar above the tabs (rules 202.4, 107.1): Day N and the time to midnight, Move, Vote, End turn and its confirm. Null: no day to show. */
+  function turnHTML() {
+    if (!DAY || !DAY.day || DAY.status !== "playing" || !DAY.you) return null;
+    const you = DAY.you, ended = !!you.ended, locked = !!DAY.locked;
+    const nv = votable();   // the Champion does not vote on their own change (402.4)
+    // End turn is the one filled button once your move, your votes and your proposal are all in; before that it is ghost (OPEN-06 (3): lean yes)
+    const allDone = !!(you.moved && you.proposed && votedCount() === nv);
+    const step = (done, jump, label, doneLabel, detail) => `<li><button type="button" class="dstep${done ? " done" : ended ? " skip" : ""}" data-jump="${jump}"${locked ? " disabled" : ""}><span class="ck" aria-hidden="true">${done ? "✓" : ended ? "–" : ""}</span><span class="dt"><span class="dn2">${done ? doneLabel : label}</span>${detail ? `<span class="ds">${esc(detail)}</span>` : ""}</span></button></li>`;
+    const myPos = BOARD && ME && ME.player ? BOARD.pieces.find(p => p.color.key === myKey()) : null;
+    const head = `<span class="tbhead"><h2 class="tbday">Day ${esc(DAY.day)}</h2><span class="moon" data-slot="moon"></span>${locked || ended ? "" : `<span class="clock" id="clock">${esc(clockText())}</span>`}</span>`;
+    const steps = `<ul class="dsteps">${step(you.moved, "board", ended ? "No move" : "Move", "Moved", you.moved && myPos ? noLevel(myPos.at.label) : "")}${step(nv > 0 && votedCount() === nv, "ballot", ended ? "No votes" : "Vote", "Voted", nv ? `${votedCount()} of ${nv}` : "")}</ul>`;
+    const en = you.can && you.can.end_turn || { allowed: false, reason: "" };
+    const end = locked || ended ? "" : END_ASK ? "" : `<button type="button" class="btn small tbend${allDone ? "" : " ghost"}" data-endturn="ask"${en.allowed ? "" : ` disabled title="${esc(en.reason || "")}"`}>End turn</button>`;
+    let ask = '<div id="day-msg" role="status"></div>';
+    if (END_ASK && !ended && !locked) {
+      const left = [];
+      if (!you.moved) left.push("your move");
+      if (votedCount() < nv) left.push(plural(nv - votedCount(), "vote"));
+      if (!you.proposed) left.push("your proposal");
+      const skips = left.join(", ").replace(/, ([^,]*)$/, " and $1");
+      ask = `<div class="dask" role="group" aria-label="End turn"><span>${left.length ? `You skip ${skips}.` : ""}</span><span class="row"><button type="button" class="btn small" data-endturn="yes">End turn</button><button type="button" class="linkbtn" data-endturn="no">Keep playing</button></span></div>${ask}`;
+    }
+    return { head, steps, end, ask };
+  }
   function drawDay() {
     clearTimeout(DAY_TIMER); clearInterval(DAY_TICK);
-    const bar = $("lockbar"), box = $("sday");
+    const bar = $("lockbar");
     bar.hidden = true; bar.textContent = "";
-    if (!DAY || !DAY.day || DAY.status !== "playing") { if (box) { box.hidden = true; box.innerHTML = ""; } return; }
-    if (DAY.locked) {
-      bar.hidden = false; bar.textContent = DAY.message || "";
-      if (box) { box.hidden = true; box.innerHTML = ""; }
-    } else if (box) {
-      box.hidden = false;
-      const you = DAY.you, ended = !!(you && you.ended);
-      const bl = ballotList();
-      // End turn is the one filled button on the page once your move, your votes and your proposal are all in; before that it is ghost (OPEN-06 (3): lean yes)
-      const nv = votable();   // the Champion does not vote on their own change (402.4)
-      const allDone = !!(you && you.moved && you.proposed && votedCount() === nv);
-      const step = (done, jump, label, doneLabel, detail) => `<li><button type="button" class="dstep${done ? " done" : ended ? " skip" : ""}" data-jump="${jump}"><span class="ck" aria-hidden="true">${done ? "✓" : ended ? "–" : ""}</span><span class="dt"><span class="dn2">${done ? doneLabel : label}</span>${detail ? `<span class="ds">${esc(detail)}</span>` : ""}</span></button></li>`;
-      const myPos = BOARD && ME && ME.player ? BOARD.pieces.find(p => p.color.key === myKey()) : null;
-      let html = `<div class="dhead"><h2>Day ${esc(DAY.day)}</h2><span class="moon" data-slot="moon"></span></div>`;
-      if (you) html += `<ul class="dsteps">${step(you.moved, "board", ended ? "No move" : "Move", "Moved", you.moved && myPos ? noLevel(myPos.at.label) : "")}${step(nv > 0 && votedCount() === nv, "ballot", ended ? "No votes" : "Vote", "Voted", nv ? `${votedCount()} of ${nv}` : "")}${step(you.proposed, "propose", ended ? "No proposal" : "Propose", "Proposed", you.proposed && PROP ? PROP.mineList().map(p => p.n).join(", ") : "")}</ul>`;
-      html += `<div class="dend">${ended ? `<span class="clock done">${LOCKSVG}Turn ended</span>`
-        : `<span class="clock" id="clock">${esc(clockText())}</span>${you && !END_ASK ? `<button type="button" class="btn small${allDone ? "" : " ghost"}" data-endturn="ask"${you.can.end_turn.allowed ? "" : ` disabled title="${esc(you.can.end_turn.reason || "")}"`}>End turn</button>` : ""}`}</div>`;
-      if (you && END_ASK && !ended) {
-        const left = [];
-        if (!you.moved) left.push("your move");
-        if (votedCount() < nv) left.push(plural(nv - votedCount(), "vote"));
-        if (!you.proposed) left.push("your proposal");
-        const skips = left.join(", ").replace(/, ([^,]*)$/, " and $1");
-        html += `<div class="dask" role="group" aria-label="End turn"><span>${left.length ? `You skip ${skips}.` : ""}</span><span class="row"><button type="button" class="btn small" data-endturn="yes">End turn</button><button type="button" class="linkbtn" data-endturn="no">Keep playing</button></span></div><div id="day-msg" role="status"></div>`;
-      } else html += '<div id="day-msg" role="status"></div>';
-      box.innerHTML = html;
-    }
+    if (DAY && DAY.day && DAY.status === "playing" && DAY.locked) { bar.hidden = false; bar.textContent = DAY.message || ""; }
+    drawBar();
+    if (!DAY || !DAY.day || DAY.status !== "playing") return;
     // Flip to the lock at midnight without a reload; while locked, look again every minute (it unlocks when the day is processed).
     const wait = DAY.locked ? 60000 : Math.max(1000, Date.parse(DAY.ends_at) - nowMs() + 500);
     DAY_TIMER = setTimeout(loadDay, Math.min(wait, 2147483000));
@@ -392,7 +391,6 @@ import { createChat, AGENTS } from "/js/chat.js";
   function jumpTo(what) {
     const go = el => { if (el) el.scrollIntoView({ behavior: reduced() ? "auto" : "smooth", block: what === "board" ? "center" : "start" }); };
     if (what === "board") { if (!BOARD_OPEN) { BOARD_OPEN = true; drawMoveBar(); } go($(BOARD_OPEN ? "movebar" : "playtop")); const b = $("movebar").querySelector("button"); if (b) b.focus({ preventScroll: true }); return; }
-    if (what === "propose") { const bar = $("pzone"); if (!bar.hidden) { go(bar); bar.classList.add("ring"); setTimeout(() => bar.classList.remove("ring"), 1700); } return; }   // the bar is on every tab: no tab to switch to
     if (TAB !== "summary") setTab("summary");
     const first = $("sb-" + (BAL && BAL.firstOpen())) || $("sballot").querySelector("li") || $("sballot");
     go(first); first.classList.add("ring"); setTimeout(() => first.classList.remove("ring"), 1700);
@@ -547,7 +545,7 @@ import { createChat, AGENTS } from "/js/chat.js";
     BOARD = b;
     if (VIEW) VIEW.setData(b, myKey());
     $("tile-list").innerHTML = b.tiles.filter(t => t.z === 0).map(t => `<li><button type="button" data-x="${t.x}" data-y="${t.y}">${esc("Tile " + t.label + (piecesAt(t).length ? ", " + piecesAt(t).map(p => `${p.name} (${p.color.name})`).join(", ") : ""))}</button></li>`).join("");
-    drawMoveBar();
+    drawMoveBar(); drawBar();
     if (TAB === "summary") drawBook();
   }
   $("tile-list").addEventListener("click", e => {
@@ -563,7 +561,7 @@ import { createChat, AGENTS } from "/js/chat.js";
     if (g.ok) { DATA = g.data; }
     if (b.ok) { BOARD = b.data; if (VIEW) VIEW.setData(b.data, myKey()); }
     await Promise.all([PROP ? PROP.load() : 0, BAL ? BAL.load() : 0, WS ? WS.load() : 0]);
-    drawWho(); if (g.ok) drawGame(g.data); if (b.ok) drawBoard(b.data); drawTabs(); drawBook(); drawMoveBar(); syncChats(true);   // the day or the lock changed: the chats read their state again
+    drawWho(); if (g.ok) drawGame(g.data); if (b.ok) drawBoard(b.data); drawTabs(); drawDay(); drawBook(); drawMoveBar(); syncChats(true);   // the day or the lock changed: the chats read their state again
     if (BOOK) BOOK.redraw();
     if (CARDS && CARDS.isOpen()) CARDS.redraw();
   }
@@ -623,7 +621,7 @@ import { createChat, AGENTS } from "/js/chat.js";
     if (pe && PROP && !pe.disabled) { PROP.click(pe); return; }
     const b = t.closest("[data-endturn]");
     if (!b) return;
-    if (b.dataset.endturn !== "yes") { END_ASK = b.dataset.endturn === "ask"; drawDay(); if (END_ASK) { const y = document.querySelector('[data-endturn="yes"]'); if (y) y.focus(); } return; }
+    if (b.dataset.endturn !== "yes") { END_ASK = b.dataset.endturn === "ask"; drawBar(); if (END_ASK) { const y = document.querySelector('[data-endturn="yes"]'); if (y) y.focus(); } return; }
     b.disabled = true;
     const r = await api("/api/end-turn", {});
     if (r.ok) { END_ASK = false; await refresh(); loadNotes(); return; }

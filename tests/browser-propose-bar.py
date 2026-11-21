@@ -2,7 +2,7 @@
 # in and a Starling draft), Cy (cobalt: three locked in), Dee (jade: nothing yet; drafts an action with Starling) and Eve (orchid: one locked in, then End turn).
 # Game "setup" has not started (Gus). Modes: "main" (everything with the model's stand-in up), "nokey" (Starling can't be reached), "locked" (the midnight lock).
 # Usage: browser-propose-bar.py <base> <screenshot dir or -> <mode> <Ada's session cookie> <Bo's> <Cy's> <Dee's> <Eve's> <Gus's (game "setup")>
-import re, sys
+import datetime, re, sys
 from urllib.parse import urlparse
 from playwright.sync_api import sync_playwright
 
@@ -30,8 +30,13 @@ def new_page(b, w, h, scheme, cookie=None, slug="shop"):
     errors = []
     page.on("pageerror", lambda e: errors.append(str(e)))
     page.on("console", lambda m: errors.append("console: " + m.text) if m.type == "error" and "401" not in m.text and "409" not in m.text else None)
+    def midnight(route):   # the fixture's day has no real end: say it ends in 6 h 12 m, so the clock reads as it does in play
+        r = route.fetch(); j = r.json()
+        if j.get("ends_at"): j["ends_at"] = (datetime.datetime.fromisoformat(j["now"].replace("Z", "+00:00")) + datetime.timedelta(hours=6, minutes=12)).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+        route.fulfill(response=r, json=j)
+    page.route("**/api/day", midnight)
     page.goto(base + f"/{slug}/", wait_until="domcontentloaded")
-    page.wait_for_selector("#scores li"); page.wait_for_function("document.getElementById('rules').textContent.indexOf('Loading') < 0"); page.wait_for_selector("#sday, #movebar")
+    page.wait_for_selector("#scores li"); page.wait_for_function("document.getElementById('rules').textContent.indexOf('Loading') < 0"); page.wait_for_selector("#movebar")
     page.wait_for_timeout(300)
     return c, page, errors
 
@@ -60,9 +65,15 @@ with sync_playwright() as p:
             tab(page, "summary")
             shot(page, f"bar-zero-{tag}")
             if w == 1280:
-                check(f"{tag}: the bar says nothing more than its count, the rule pill and Propose (no sentence, no caption)", re.fullmatch(r"3 of 3 left 103\.2 Propose ▾", text(page, "#pzone")) is not None, text(page, "#pzone"))
+                check(f"{tag}: the turn bar says nothing more than Day, the clock, Move, Vote, the count with its rule pill, Propose and End turn (no sentence, no caption)", re.fullmatch(r"Day 1 6 h 1\d m to midnight \w+ Move Vote 3 of 3 left 103\.2 Propose ▾ End turn", text(page, "#pzone")) is not None, text(page, "#pzone"))
+                check(f"{tag}: at 1280 the whole turn is one row", box(page, "#pzone .pbar")["height"] < 80, str(box(page, "#pzone .pbar")))
             else:
-                check(f"{tag}: on a phone the 103.2 pill is hidden and the bar is one row", not page.locator("#pzone .rp-wide").first.is_visible() and box(page, "#pzone .pbar")["height"] < 72, str(box(page, "#pzone .pbar")))
+                check(f"{tag}: on a phone the 103.2 pill is hidden and the whole turn is two rows, never over 110 px", not page.locator("#pzone .rp-wide").first.is_visible() and 80 < box(page, "#pzone .pbar")["height"] <= 110, str(box(page, "#pzone .pbar")))
+            if w == 390:
+                tab(page, "rules"); page.evaluate("window.scrollTo(0, 0)"); page.wait_for_timeout(150)
+                check(f"{tag}: on the Rulebook tab Starling's pill is on the screen and sits clear of the bar (a fixed corner pill; the bar is in the page flow)", page.evaluate("(() => { const f = document.getElementById('chatfab'); if (!f || f.hidden) return false; const q = f.getBoundingClientRect(), r = document.querySelector('#pzone .pbar').getBoundingClientRect(); return q.width > 0 && (q.bottom <= r.top || q.top >= r.bottom || q.right <= r.left || q.left >= r.right); })()"))
+                tab(page, "summary")
+            check(f"{tag}: Summary has no day strip of its own: no #sday, no steps and no End turn inside it", count(page, "#sday") == 0 and count(page, "#p-summary .dsteps, #p-summary [data-endturn]") == 0)
             check(f"{tag}: Summary has no Propose card and no 'Propose a change' sentence; the count lives only in the bar", count(page, "#spropose") == 0 and "Propose a change" not in text(page, "#p-summary") and "of 3 today" not in text(page, "#p-summary"))
             check(f"{tag}: the bar is not sticky: position is static, and scrolled away it leaves the screen", page.evaluate("getComputedStyle(document.getElementById('pzone')).position") == "static")
             tab(page, "rules")
@@ -74,6 +85,7 @@ with sync_playwright() as p:
             page.click('#pzone [data-p="bar-menu"]'); page.wait_for_selector("#pzone .pmenu")
             items = [re.sub(r"\s+", " ", t).strip().replace("→ ", "") for t in page.locator("#pzone .pmi").all_inner_texts()]
             check(f"{tag}: the Propose menu is one menu of three: Rule change 103.1, Commission 801.1, Action 103.5", items == ["Rule change 103.1", "Commission 801.1", "Action 103.5"], str(items))
+            check(f"{tag}: Action carries Starling's portrait like Rule change (a portrait, not an arrow)", page.locator('#pzone [data-p="bar-action"] .por use').get_attribute("href") == page.locator('#pzone [data-p="bar-rule"] .por use').get_attribute("href") and "→" not in text(page, '#pzone [data-p="bar-action"]'))
             check(f"{tag}: ...none of them disabled, no explanation under any", count(page, "#pzone .pmi:disabled") == 0 and count(page, "#pzone .pmi small") == 0)
             shot(page, f"menu-{tag}")
             page.keyboard.press("Escape")
@@ -146,7 +158,7 @@ with sync_playwright() as p:
         # ---- the narrowest phone: the bar fits one row and the page does not scroll sideways
         c, page, errors = new_page(b, 375, 740, "light", bo_c)
         btn = box(page, '#pzone [data-p="bar-menu"]')
-        check("375-light: the bar is one row (the Propose button does not wrap) and nothing scrolls sideways", btn["height"] < 44 and box(page, "#pzone .pbar")["height"] < 70 and page.evaluate("document.documentElement.scrollWidth") <= 375, str((btn, box(page, "#pzone .pbar"), page.evaluate("document.documentElement.scrollWidth"))))
+        check("375-light: the turn bar is two rows (the Propose button does not wrap, the bar is never over 110 px) and nothing scrolls sideways", btn["height"] < 44 and box(page, "#pzone .pbar")["height"] <= 110 and page.evaluate("document.documentElement.scrollWidth") <= 375, str((btn, box(page, "#pzone .pbar"), page.evaluate("document.documentElement.scrollWidth"))))
         c.close()
 
         # ---- Cy: all three used
@@ -166,9 +178,15 @@ with sync_playwright() as p:
         c, page, errors = new_page(b, 1280, 900, "light", eve_c)
         check("1280-light: turn ended: 'Turn ended' and 202.4, what she made, no Propose button, no count", "Turn ended" in text(page, "#pzone") and "202.4" in text(page, "#pzone") and count(page, "#pzone .pslot.used") == 1 and count(page, '#pzone [data-p="bar-menu"]') == 0 and count(page, "#pzone .left") == 0, text(page, "#pzone"))
         shot(page, "bar-turn-ended-1280-light")
+        shot(page, "ended-1280-light")
+        check("1280-light: turn ended: Move and Vote show what she did (nothing: 'No move', 'No votes', both skipped), no clock, no End turn, Day 1 still named", count(page, "#pzone .dstep.skip") == 2 and "No move" in text(page, "#pzone") and "No votes" in text(page, "#pzone") and count(page, "#pzone .clock, #pzone [data-endturn]") == 0 and text(page, "#pzone").startswith("Day 1"), text(page, "#pzone"))
         page.click('#pzone [data-p="bar-open"]'); page.wait_for_selector("#pzone .pcard")
         check("1280-light: after End turn a locked card has no Unlock (the day's gate)", count(page, '#pzone [data-p="unlock"]') == 0 and count(page, "#pzone .pcard") == 1)
         c.close()
+
+        c, page, errors = new_page(b, 390, 844, "light", eve_c)
+        check("390-light: turn ended on a phone: the bar is at most 110 px tall, 'Turn ended 202.4' is on screen and nothing scrolls sideways", box(page, "#pzone .pbar")["height"] <= 110 and page.locator("#pzone .pstate").is_visible() and page.evaluate("document.documentElement.scrollWidth") <= 390, str(box(page, "#pzone .pbar")))
+        shot(page, "ended-390-light"); c.close()
 
         # ---- Dee: an action drafted by Starling, locked in from her slip
         for w, h in [(1280, 900), (390, 844)]:
@@ -249,9 +267,15 @@ with sync_playwright() as p:
         c, page, errors = new_page(b, 1280, 900, "light", bo_c)
         check("1280-light: the midnight lock: 'Locked' and 107.1, what she made, no Propose button, no count", "Locked" in text(page, "#pzone") and "107.1" in text(page, "#pzone") and count(page, "#pzone .pslot.used") == 1 and count(page, '#pzone [data-p="bar-menu"]') == 0 and count(page, "#pzone .left") == 0, text(page, "#pzone"))
         shot(page, "bar-locked-1280-light")
+        shot(page, "locked-1280-light")
+        check("1280-light: the midnight lock: the whole bar shows as locked: Day 1 with no clock, Move and Vote still shown but off, 'Locked 107.1' in place of the count, Propose and End turn", text(page, "#pzone").startswith("Day 1") and count(page, "#pzone .clock, #pzone [data-endturn]") == 0 and count(page, "#pzone .dstep") == 2 and count(page, "#pzone .dstep:disabled") == 2 and re.search(r"Locked\s*107\.1", text(page, "#pzone")) is not None, text(page, "#pzone"))
+        check("1280-light: the lock line says why, over the board", page.locator("#lockbar").is_visible() and len(text(page, "#lockbar")) > 10)
         page.click('#pzone [data-p="bar-open"]'); page.wait_for_selector("#pzone .pcard")
         check("1280-light: during the lock no card can be unlocked or locked in", count(page, '#pzone [data-p="unlock"], #pzone [data-p="lock"]') == 0)
         check("1280-light: no page errors", not errors, str(errors)); c.close()
+        c, page, errors = new_page(b, 390, 844, "light", bo_c)
+        check("390-light: locked on a phone: the bar is at most 110 px tall and nothing scrolls sideways", box(page, "#pzone .pbar")["height"] <= 110 and page.evaluate("document.documentElement.scrollWidth") <= 390, str(box(page, "#pzone .pbar")))
+        shot(page, "locked-390-light"); c.close()
         c, page, errors = new_page(b, 1280, 900, "light")
         check("visitor during the lock: still no bar", page.locator("#pzone").is_hidden())
         c.close()

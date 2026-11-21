@@ -268,6 +268,19 @@ console.log("the propose bar (rules 103.1, 103.2, 103.3, 103.5): every state, an
   world.list = [mk(7, "amend"), mk(8, "repeal")]; world.draft = { ...mk(9, "addclause"), status: "draft", n: null, id: "dr1" }; world.made = 3; await P.load();
   b = P.barHTML();   // (the cards are still open from before) the draft has a slot while one is free, and its Lock it in is off at the limit
   check("a draft at the limit: Lock it in is disabled with the reason beside it", /data-p="lock"[^>]* disabled>Lock it in<\/button><span class="why">You(?:'|&#39;)ve proposed 3 today, the most a day \(103\.2\)\./.test(b), b);
+  {
+    const turn = { head: "<HEAD>", steps: "<STEPS>", end: "<END>", ask: "<ASK>" };
+    world.list = [mk(7, "amend")]; world.made = 1; world.draft = null; await P.load();
+    const t = P.barHTML(turn), at = (x) => t.indexOf(x);
+    check("the turn bar: the page's pieces and the proposal pieces are one bar, in reading order: day, steps, slots, count and Propose, End turn, then the confirm",
+      at("<HEAD>") >= 0 && at("<HEAD>") < at("<STEPS>") && at("<STEPS>") < at("pslots") && at("pslots") < at("left") && at("left") < at("bar-menu") && at("bar-menu") < at("<END>") && at("<END>") < at("<ASK>") && /class="tbbr"/.test(t) && n(t, /class="pbar/g) === 1, t);
+    check("without the page's pieces the bar is the proposal bar alone (no break element, no stray text)", !/tbbr|<HEAD>|<END>/.test(P.barHTML()) && /bar-menu/.test(P.barHTML()));
+    world.ended = true; await P.load();
+    check("turn ended: the bar still carries the page's day and steps, shows 'Turn ended' and 202.4, and offers no Propose", /<HEAD>/.test(P.barHTML({ head: "<HEAD>", steps: "<STEPS>" })) && /Turn ended/.test(P.barHTML(turn)) && !/bar-menu/.test(P.barHTML(turn)));
+    world.ended = false; world.locked = true; await P.load();
+    check("midnight lock: the bar still carries the page's day and steps, shows 'Locked' and 107.1, and offers no Propose", /<STEPS>/.test(P.barHTML(turn)) && /Locked/.test(P.barHTML(turn)) && !/bar-menu/.test(P.barHTML(turn)));
+    world.locked = false; world.list = [mk(7, "amend"), mk(8, "repeal")]; world.made = 3; await P.load();
+  }
   world.made = 1; world.draft = null; world.ended = true; world.bar = 0; await P.load();
   b = P.barHTML();
   check("turn ended: what you made, 'Turn ended' and 202.4, no Propose", /Turn ended/.test(b) && /202\.4/.test(b) && !/data-p="bar-menu"/.test(b) && !/left</.test(b), b);
