@@ -88,7 +88,7 @@ check("104 Voting is 104.1-104.5 and 107 has 107.6 (the 3 am deadline, live by 4
   rules.includes("Not voting counts as no, except on the Champion's change (402.4).") && rules.includes("are the players when the day starts. A player who joins during the day votes from the next day.") &&
   rules.includes("until midnight or until they end their turn (rule 202.4), and may change their vote until then.") &&
   rules.includes("During the day everyone can see who has voted on a proposal, and how many have. After midnight every vote is shown.") &&
-  rules.includes(`The moderator has until ${DEADLINE_CLOCK} to process the day, and the changes it made must be live by ${DEPLOY_CLOCK}.`) && DEADLINE_CLOCK === "3:00 am" && DEPLOY_CLOCK === "4:00 am" && rules.includes("It goes back to its proposer with the moderator's reason and a suggestion") &&
+  rules.replace(/\s+/g, " ").includes(`The moderator has until ${DEADLINE_CLOCK} to process the day; a passed proposal not applied by then is not applied (rule 107.7). The changes it made must be live by ${DEPLOY_CLOCK}; a change not live by then is not applied either.`) && DEADLINE_CLOCK === "3:00 am" && DEPLOY_CLOCK === "4:00 am" && rules.includes("It goes back to its proposer with the moderator's reason and a suggestion") &&
   !/48 hours/.test(rules) && ["104.4", "104.5", "107.6"].every((n) => T.byNum[n] && markOf(T.byNum[n.slice(0, 3)]) === "unanimous"));
 console.log("the night's rules (step 1, PR 5)");
 check("106 is 106.1-106.7 (Starling's is 106.2, Gremlin's 106.3; both are in 106.4 and 106.7; rulings 106.5; the drafter audit is 106.6), 107 is 107.1-107.8 (order, redraft, text + code + tests, the budget, the day tag), 108 is 108.1-108.5, 402 is 402.1-402.4 (Eras)",
