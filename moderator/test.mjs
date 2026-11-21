@@ -739,6 +739,15 @@ const rulingCalls = (t) => t.claude.calls().filter((c) => c.escalation !== null)
   check("post fails: on the second night Buster is told (id, path, status, count), with no ruling text, and no second model call was made", /E7/.test(note) && /2 nights/.test(note) && !/wall/i.test(note) && t2.claude.calls().length === 0, note);
 }
 {
+  // A night that isn't claimed publishes no ruling: it is reverted on main and stays owed, and the next night makes it again on the rules then.
+  const st = { job: job([P(3, "401")]), rulings: [ESC(7)], refuseClaim: true };
+  const t = await night({ scenario: { apply: { 3: { action: "points", to: 15 } }, ruling: { 7: { answer: ANS() } } }, state: st, opts: { audit: false } });
+  check("claim refused: no ruling was posted, and the ruling is reverted on main (a Reverts-Ruling commit; its file is gone)", t.r.status === "claim_refused" && !st.ruledPosts && /^Revert Ruling 1-1/.test(log(t.repo.bare)[0]) && /^Reverts-Ruling: E7$/m.test(g(["log", "-1", "--format=%B", "main"], t.repo.bare)) && g(["ls-tree", "-r", "--name-only", "main"], t.repo.bare).split("\n").every((p) => !p.startsWith("rulings/")), J(log(t.repo.bare)));
+  const later = { job: null, processed: [{ n: 1, status: "done", commit_sha: null }], rulings: [ESC(7)] };
+  const t2 = await night({ scenario: { apply: {}, ruling: { 7: { answer: ANS({ ruling: "A wall isn't a creature, by the rules as they now stand (401)." }) } } }, state: later, opts: { repo: t.repo, stateDir: join(TMP, "refused-state") } });
+  check("claim refused: the next night does not resume the reverted ruling: it asks the model again and posts the new one", rulingCalls(t2).length === 1 && later.ruledPosts?.length === 1 && /as they now stand/.test(later.ruledPosts[0].body) && log(t2.repo.bare)[0] === "Ruling 1-1", J(log(t2.repo.bare)));
+}
+{
   // The ruling lookup dropping its connection must not cost the night's proposals: P3 is still applied, pushed and claimed.
   const st = { job: job([P(3, "401")]), rulings: [ESC(7)], rulingsBreak: true };
   const t = await night({ scenario: { apply: { 3: { action: "points", to: 15 } }, ruling: { 7: { answer: ANS() } } }, state: st, opts: { audit: false } });

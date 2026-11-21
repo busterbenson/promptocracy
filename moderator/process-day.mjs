@@ -620,7 +620,7 @@ export async function ruleOwed({ dir, item, day, n, timeoutMs, model = runModel,
     if (changed.length !== 1 || changed[0] !== path || disallowed(dir, changed).length) { discard(dir); return { ok: false, reason: "the clone changed beyond the ruling" }; }
     git(["add", "--", path], dir);
     git(["commit", "-q", "-m", `Ruling ${day}-${n}\n\nRuling-Escalation: E${item.id}`], dir);
-    return { ok: true, path, question: oneLine2(out.question), relies_on: out.relies_on, text: out.ruling.replace(/\r\n?/g, "\n").trim() };
+    return { ok: true, path, sha: git(["rev-parse", "HEAD"], dir).trim(), question: oneLine2(out.question), relies_on: out.relies_on, text: out.ruling.replace(/\r\n?/g, "\n").trim() };
   } catch (e) {
     discard(dir);
     return { ok: false, reason: "the ruling step failed" };
@@ -630,11 +630,28 @@ export async function ruleOwed({ dir, item, day, n, timeoutMs, model = runModel,
 // A ruling whose commit is already on main (a run died between the push and the post): its file, so it can be posted again with no model call.
 /** @rule 106.5 */
 export function rulingOnMain(dir, id) {
-  const sha = (git(["log", "-1", "--format=%H", "--extended-regexp", `--grep=^Ruling-Escalation: E${Number(id)}$`], dir, { allowFail: true }) ?? "").trim();
-  if (!sha) return null;
+  const n = Number(id);
+  const log = git(["log", "--format=%H%x1f%B%x1e", "--extended-regexp", `--grep=^(Ruling-Escalation|Reverts-Ruling): E${n}$`], dir, { allowFail: true }) ?? "";
+  // The newest commit that names this escalation decides: a revert means the ruling was taken back.
+  const [sha, body] = (log.split("\x1e").map((s) => s.trim()).filter(Boolean)[0] ?? "").split("\x1f");
+  if (!sha || new RegExp(`^Reverts-Ruling: E${n}$`, "m").test(body ?? "")) return null;
   const path = (git(["show", "--name-only", "--format=", sha], dir, { allowFail: true }) ?? "").split("\n").find((p) => /^rulings\/\d{1,6}-\d{1,3}\.md$/.test(p));
   const file = path && existsSync(join(dir, path)) ? readRulingFile(readFileSync(join(dir, path), "utf8")) : null;
   return file ? { path, ...file } : null;
+}
+
+// A night that was not claimed: the rulings made on tonight's rules are taken back (a revert commit per ruling, pushed), so none stands on rules that may not
+// take effect. Each stays owed, and the next night makes it again on the rules then.
+/** @rule 106.5 */
+export async function revertRulings({ dir, made, log }) {
+  const mine = made.filter((m) => !m.resumed && m.sha).reverse();
+  if (!mine.length) return;
+  for (const m of mine) {
+    if (git(["revert", "--no-edit", m.sha], dir, { allowFail: true }) === null) { git(["revert", "--abort"], dir, { allowFail: true }); log({ event: "ruling_revert_failed", escalation: m.id }); continue; }
+    git(["commit", "-q", "--amend", "-m", `Revert Ruling ${m.path.replace(/^rulings\/|\.md$/g, "")}: the night was not claimed\n\nReverts-Ruling: E${m.id}`], dir);
+    log({ event: "ruling_reverted", escalation: m.id });
+  }
+  try { git(["push", "-q", "origin", "HEAD:main"], dir); } catch (e) { log({ event: "ruling_revert_push_failed", reason: String(e.message || e).slice(0, 200) }); }
 }
 
 // The night's rulings: list what is owed, resume the ones already committed, make the rest (at most MAX_RULINGS_PER_NIGHT, each only
@@ -1059,14 +1076,16 @@ const lastDay = Math.max(0, ...processed.map((d) => d.n));
     const outcomes = tonight.map((t, i) => (t.applied ? { number: t.number, seq: i + 1, applied: true, commit: t.commit } : { number: t.number, seq: i + 1, applied: false, reason: `${t.reason}. ${SUGGESTION}`.slice(0, 400) }));
     if (opts.dryRun) return { status: "dry-run", outcomes, head };
     if (tonight.some((t) => t.applied && !t.resumed) || rulingMade.some((m) => !m.resumed) || pushed) git(["push", "-q", "origin", "HEAD:main"], dir);
-    const posted = await postRulings({ api, made: rulingMade, stateDir, slug, log, day: job.day, notifyDir, nightLog });
-    if (rulingRun && posted && !rulingRun.timeShort && !rulingRun.listFailed) writeState(stateDir, slug, { ...readState(stateDir, slug), rulingsTriedDay: job.day });
     const c = await api("POST", `days/${job.day}/claim`, { sha: head, outcomes, notes });
     log({ event: "claim", day: job.day, sha: head, status: c.status, body: c.body });
     if (c.status !== 200) {
+      await revertRulings({ dir, made: rulingMade, log });
       notifyFile(notifyDir, `claim-day-${job.day}`, `Promptocracy ${slug}: the claim for day ${job.day} was refused`, `${c.status}: ${c.body?.error ?? ""}\nThe 2 am fallback ends the lock; the next run reverts what D1 lists as not applied. Night log: ${nightLog}`);
       return { status: "claim_refused", code: c.status, outcomes };
     }
+    // The rulings go to the players only once the night is claimed: a ruling reads tonight's rules, so a night that wasn't claimed must not have published one.
+    const posted = await postRulings({ api, made: rulingMade, stateDir, slug, log, day: job.day, notifyDir, nightLog });
+    if (rulingRun && posted && !rulingRun.timeShort && !rulingRun.listFailed) writeState(stateDir, slug, { ...readState(stateDir, slug), rulingsTriedDay: job.day });
     if (!tags.has(`day-${job.day}`)) { git(["tag", `day-${job.day}`, head], dir); git(["push", "-q", "origin", `refs/tags/day-${job.day}`], dir); }
     await deployWithRetry(opts, { slug, day: job.day, sha: head }, job.deploy_deadline_at, now);
     writeState(stateDir, slug, { ...readState(stateDir, slug), deployed: head, rescheduleDay: job.day });
