@@ -683,6 +683,13 @@ export async function rulingsNight({ api, gameNames = async () => [], dir, day, 
   return { made, timeShort, attempted };
 }
 
+// The ruling step must never cost a proposal its night: any error in it (a dropped connection on the list, a git failure) is logged and the night goes on to its push and claim.
+/** @rule 106.5 */
+export async function rulingsNightSafe(args) {
+  try { return await rulingsNight(args); }
+  catch (e) { args.log({ event: "rulings_failed", reason: e?.name || "error", code: e?.cause?.code }); try { discard(args.dir); } catch { /* the clone is as it was */ } return { made: [], timeShort: false, listFailed: true }; }
+}
+
 // The rulings the night made (or resumed) posted where each question was asked. A 409 means it was already posted. A failure stays owed.
 /** @rule 106.5 */
 export async function postRulings({ api, made, stateDir, slug, log, day, notifyDir, nightLog, dryRun }) {
@@ -963,7 +970,7 @@ const lastDay = Math.max(0, ...processed.map((d) => d.n));
       // The lock is already over, so there is no claim to stay clear of; no deploy is needed, because the bundle serves no ruling.
       let rulings = 0;
       if (Number(pend.body.rulings_owed) > 0 && lastDay > 0 && state.rulingsTriedDay !== lastDay) {
-        const rn = await rulingsNight({ api, gameNames, dir, day: lastDay, left: () => Infinity, model: opts.model, claude: opts.claude, libraryDir: opts.libraryDir ?? LIBRARY_DIR, stateDir, slug, notifyDir, nightLog, log, dryRun: opts.dryRun });
+        const rn = await rulingsNightSafe({ api, gameNames, dir, day: lastDay, left: () => Infinity, model: opts.model, claude: opts.claude, libraryDir: opts.libraryDir ?? LIBRARY_DIR, stateDir, slug, notifyDir, nightLog, log, dryRun: opts.dryRun });
         if (!opts.dryRun && rn.made.some((m) => !m.resumed)) { git(["push", "-q", "origin", "HEAD:main"], dir); pushed = true; }
         if (!opts.dryRun) {
           // The night counts as tried only once every ruling made is on the site: a failed post is picked up again by a later pass (from its file, no model call).
@@ -1043,7 +1050,7 @@ const lastDay = Math.max(0, ...processed.map((d) => d.n));
     // One that doesn't get made stays owed for the next night.
     let rulingMade = [], rulingRun = null;
     if (opts.rulings !== false && Number(pend.body.rulings_owed) > 0) {
-      const rn = await rulingsNight({ api, gameNames, dir, day: job.day, left: () => deadline - CLAIM_MARGIN_MIN * 60_000 - now(), model: opts.model, claude: opts.claude, libraryDir: opts.libraryDir ?? LIBRARY_DIR, stateDir, slug, notifyDir, nightLog, log, dryRun: opts.dryRun });
+      const rn = await rulingsNightSafe({ api, gameNames, dir, day: job.day, left: () => deadline - CLAIM_MARGIN_MIN * 60_000 - now(), model: opts.model, claude: opts.claude, libraryDir: opts.libraryDir ?? LIBRARY_DIR, stateDir, slug, notifyDir, nightLog, log, dryRun: opts.dryRun });
       rulingMade = rn.made; rulingRun = rn;
     }
 

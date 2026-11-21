@@ -85,6 +85,7 @@ async function fakeWorker(state) {
     if (req.method === "GET" && req.url === "/g/api/game") return send(200, { players: (state.players ?? ["Pat", "Dana"]).map((name) => ({ name })) });
     if (req.headers.authorization !== `Bearer ${TOKEN}`) return send(401, { error: "Not authorized." });
     if (req.method === "GET" && req.url === "/g/api/moderator/pending") { gets++; state.onGet?.(gets, state); return send(200, { game: state.game, job: state.job, not_applied: state.not_applied ?? [], processed: state.processed ?? [], rulings_owed: (state.rulings ?? []).filter((r) => !r.ruled).length }); }
+    if (req.method === "GET" && /^\/g\/api\/moderator\/rulings(\?|$)/.test(req.url) && state.rulingsBreak) return req.destroy();
     if (req.method === "GET" && /^\/g\/api\/moderator\/rulings(\?|$)/.test(req.url)) { state.rulingListGets = (state.rulingListGets ?? 0) + 1; return send(200, { rulings: (state.rulings ?? []).filter((r) => !r.ruled), next: null }); }
     const rm = /^\/g\/api\/moderator\/escalations\/(\d+)\/ruled$/.exec(req.url);
     if (req.method === "POST" && rm) {
@@ -736,6 +737,12 @@ const rulingCalls = (t) => t.claude.calls().filter((c) => c.escalation !== null)
   const t2 = await night({ scenario: noModel, state: { job: null, processed: [{ n: 2, status: "done", commit_sha: "a".repeat(40) }], rulings: [ESC(7)], ruledStatus: 500 }, opts: { repo: t.repo, stateDir: t.stateDir } });
   const note = t2.notes.filter((f) => /ruling-post-failed/.test(f)).map((f) => readFileSync(join(t2.notifyDir, f), "utf8")).join("");
   check("post fails: on the second night Buster is told (id, path, status, count), with no ruling text, and no second model call was made", /E7/.test(note) && /2 nights/.test(note) && !/wall/i.test(note) && t2.claude.calls().length === 0, note);
+}
+{
+  // The ruling lookup dropping its connection must not cost the night's proposals: P3 is still applied, pushed and claimed.
+  const st = { job: job([P(3, "401")]), rulings: [ESC(7)], rulingsBreak: true };
+  const t = await night({ scenario: { apply: { 3: { action: "points", to: 15 } }, ruling: { 7: { answer: ANS() } } }, state: st, opts: { audit: false } });
+  check("rulings list drops: the proposal is still applied, pushed and claimed, and no ruling was attempted", t.r.status === "claimed" && log(t.repo.bare)[0] === "P3: Change 401 (day 1, 4-1)" && t.claims[0]?.outcomes[0]?.applied === true && rulingCalls(t).length === 0 && /"event":"rulings_failed"/.test(readFileSync(join(t.stateDir, "g.night.jsonl"), "utf8")), J(t.r));
 }
 {
   // The cap is the night's, not the pass's: a later pass of the same night can't make five more.
