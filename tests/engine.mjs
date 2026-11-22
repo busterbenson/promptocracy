@@ -9,7 +9,7 @@ import { join as pjoin } from "node:path";
 import { ROOT } from "./lib.mjs";
 import { ACTION_KINDS, HOOKS, RuleError, RuleSetError, assembleRules, deepFreeze, defineRule, effects, makeContext, makeTiles, refuse, seededRng, validateActionType, validateEffect } from "../src/engine/hooks.js";
 import { lintModule } from "../src/engine/lint.js";
-import { checkRulebook, parseRulesMd } from "../src/engine/rulesmd.js";
+import { checkRulebook, citedRules, parseRulesMd } from "../src/engine/rulesmd.js";
 import { DEFAULT_SETTINGS, validateSettings } from "../src/lib/settings.js";
 import { BundleError, bundleGames, checkTree, latestDayTag, runNode, runSandboxed } from "../scripts/bundle-games.mjs";
 import * as api from "../src/engine/api.js";
@@ -242,8 +242,32 @@ check("rule 109.1: before day 1 a rule's clauses run from 1 with no gap; once th
   const s = { ...DEFAULT_SETTINGS };
   const pre = checkRulebook({ rulesMd: gap, settings: s, moduleRules: [], beforeDayOne: true }).filter((p) => /no gap/.test(p));
   const started = checkRulebook({ rulesMd: gap, settings: s, moduleRules: [] }).filter((p) => !/settings\.json|\[setting/.test(p));
-  const out = checkRulebook({ rulesMd: "# R\n\n## 100. A [majority]\n\n### 101 One\n**101.2** B.\n\n**101.1** A.\n", settings: s, moduleRules: [] }).filter((p) => /out of order/.test(p));
-  return pre.length === 2 && /101\.1, 101\.3/.test(pre[0]) && /102\.2/.test(pre[1]) && started.length === 0 && out.length === 1;
+  const out = checkRulebook({ rulesMd: "# R\n\n## 100. A [majority]\n\n### 101 One\n**101.2** B.\n\n**101.1** A.\n", settings: s, moduleRules: [] }).filter((p) => /out of order|no gap/.test(p));
+  return pre.length === 2 && /101\.1, 101\.3/.test(pre[0]) && /102\.2/.test(pre[1]) && started.length === 0 && out.length === 0;
+})());
+check("rule 109.1: clause numbers are names, not positions: a clause added after 504.1 (504.3, before 504.2) passes, before day 1 and after; a number twice or under the wrong rule still fails", (() => {
+  const tplMd = readFileSync(pjoin(ROOT, "templates/RULES.md"), "utf8");
+  const settings = JSON.parse(readFileSync(pjoin(ROOT, "templates/settings.json"), "utf8"));
+  const i1 = tplMd.indexOf("**504.1**"), i2 = tplMd.indexOf("**504.2**");
+  const added = tplMd.slice(0, i2) + "**504.3** A new clause, added after 504.1.\n\n" + tplMd.slice(i2);
+  const run = (md, d1) => checkRulebook({ rulesMd: md, settings, moduleRules: [202, 504, 505], beforeDayOne: d1 });
+  const order = [...added.matchAll(/^\*\*(504\.\d)\*\*/gm)].map((m) => m[1]).join();
+  const twice = tplMd.slice(0, i2) + "**504.1** Again.\n\n" + tplMd.slice(i2);
+  return i1 > 0 && i2 > i1 && order === "504.1,504.3,504.2" && run(added, true).length === 0 && run(added, false).length === 0 &&
+    run(twice, true).some((p) => /twice/.test(p));
+})());
+check("rule 109.1: a parenthesized list cites every number in it: (103.1, 103.5), 'and', 'or' and 'to'; the starter book (106.2 cites both) is clean, and removing 103.5 reports the dangling citation in 106.2", (() => {
+  const tplMd = readFileSync(pjoin(ROOT, "templates/RULES.md"), "utf8");
+  const settings = JSON.parse(readFileSync(pjoin(ROOT, "templates/settings.json"), "utf8"));
+  const run = (md) => checkRulebook({ rulesMd: md, settings, moduleRules: [202, 504, 505] });
+  const m = tplMd.match(/^\*\*103\.5\*\*[\s\S]*?\n\n/m);
+  const without = run(tplMd.replace(m[0], ""));
+  const s = { ...DEFAULT_SETTINGS };
+  const md = (t) => `# R\n\n## 100. A [majority]\n\n### 101 One\n**101.1** ${t}\n\n**101.3** Third.\n`;
+  const bad = (t) => checkRulebook({ rulesMd: md(t), settings: s, moduleRules: [] }).filter((p) => /cites/.test(p));
+  return run(tplMd).length === 0 && without.some((p) => /cites 103\.5/.test(p)) && citedRules("(103.1, 103.5)").join() === "103.1,103.5" &&
+    bad("See (101.1, 101.3).").length === 0 && bad("See (101.1, 101.2).").length === 1 && bad("See (101.1 and 101.2).").length === 1 && bad("See (101.1, 101.3, and 101.4).").length === 1 &&
+    bad("See (101.1 to 101.2).").length === 1 && bad("See (101.1,\n101.2).").length === 1;
 })());
 check("rule 109.1: a citation of a clause, rule or block the book does not have fails always, in both forms and for a repealed clause's number; 'Suber's rule 213' is not a citation", (() => {
   const s = { ...DEFAULT_SETTINGS };
