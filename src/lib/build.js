@@ -5,7 +5,7 @@
 //     code) while modules that import each other as "/js/x.js" or "./x.js" still share ONE instance; the Worker serves /v/<id>/js/<f> from /js/<f>;
 //   - the entry scripts' own src (an import map does not apply to a script's src) rewritten the same way;
 //   - an inline guard (inline so it cannot itself be stale) that asks GET /api/version on load, when the tab becomes visible and on a bfcache restore,
-//     and reloads once if the id differs (not while a field the player has typed in holds text: it asks again 20 s later, so nothing typed is lost; a prefilled or read-only field never blocks it). One reload per target id (sessionStorage), so a deploy that is still rolling out can never loop.
+//     and reloads once if the id differs (not while a field the player has typed in holds text, tracked by the field's id so a redrawn form keeps its protection: it asks again 20 s later, so nothing typed is lost; a prefilled or read-only field never blocks it). One reload per target id (sessionStorage), so a deploy that is still rolling out can never loop.
 // Nothing is shown to the player: no banner, no text.
 
 /** The deploy's id: BUILD_ID (tests), else the Workers version metadata binding (wrangler.toml [version_metadata]), else "dev". */
@@ -18,8 +18,9 @@ const PLAIN = /^[A-Za-z0-9._-]{1,64}$/;
 
 /** The inline guard. Reload only when the server answers a different, plain id; never on an error; once per target id. */
 export const guardScript = () => `<script>(function(){var m=document.querySelector('meta[name=build]');if(!m)return;var id=m.content,busy=false,wait=0;
-document.addEventListener('input',function(e){var t=e.target;if(e.isTrusted&&t&&(t.tagName==='TEXTAREA'||t.tagName==='INPUT'))t._typed=1},true);
-function typing(){var f=document.querySelectorAll('textarea,input');for(var i=0;i<f.length;i++)if(f[i]._typed&&f[i].value&&!f[i].readOnly&&!f[i].disabled)return true;return false}
+var typed={};function key(t){return t.id||t.name||t.tagName+Array.prototype.indexOf.call(document.getElementsByTagName(t.tagName),t)}
+document.addEventListener('input',function(e){var t=e.target;if(e.isTrusted&&t&&(t.tagName==='TEXTAREA'||t.tagName==='INPUT')){if(t.value)typed[key(t)]=1;else delete typed[key(t)]}},true);
+function typing(){var f=document.querySelectorAll('textarea,input');for(var i=0;i<f.length;i++)if(f[i].value&&typed[key(f[i])]&&!f[i].readOnly&&!f[i].disabled)return true;return false}
 function check(){if(busy)return;busy=true;var done=function(){busy=false;clearTimeout(cut)},cut=setTimeout(function(){busy=false},15000);
 fetch('/api/version',{cache:'no-store'}).then(function(r){return r.ok?r.text():''}).then(function(t){done();t=t.trim();
 if(!/^[A-Za-z0-9._-]{1,64}$/.test(t)||t===id)return;if(typing()){clearTimeout(wait);wait=setTimeout(check,20000);return}

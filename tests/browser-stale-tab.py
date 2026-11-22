@@ -120,6 +120,17 @@ with sync_playwright() as p:
         check("prefilled / read-only / scripted fields never block the reload", len(loads) == 2, f"loads={len(loads)}")
         ctx.close()
 
+        # 6b2. a form redrawn from innerHTML (workshop/cards do this) keeps its typed text and its protection
+        answer = {"id": None}
+        ctx, page, errors, loads, asked = open_page(b, f"/{slug}/", answer)
+        page.evaluate("""() => { const w = document.createElement('div'); w.id = 'wrap'; w.innerHTML = '<textarea id="wfBrief"></textarea>'; document.body.appendChild(w); }""")
+        page.click("#wfBrief"); page.keyboard.type("my brief")
+        page.evaluate("() => { const w = document.getElementById('wrap'); const v = w.firstChild.value; w.innerHTML = '<textarea id=\"wfBrief\"></textarea>'; w.firstChild.value = v; }")
+        answer["id"] = "build-JJJ"
+        fire_visible(page); page.wait_for_timeout(1200)
+        check("redrawn form with typed text: no reload", len(loads) == 1, f"loads={len(loads)}")
+        ctx.close()
+
         # 6c. no visibility event needed after the field is emptied: the deferred check asks again by itself (20 s)
         answer = {"id": None}
         ctx, page, errors, loads, asked = open_page(b, f"/{slug}/", answer)
