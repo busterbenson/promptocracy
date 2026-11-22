@@ -1,0 +1,105 @@
+// A piece's outline and, when nobody has marked where it stands, a measured guess at that point (the middle of its
+// footprint, by the rule FEET_AT is marked by). build-pieces-data.mjs uses it to crop the art and as the fallback for a
+// piece with no FEET_AT mark (a new piece, a player's drawing); the pieces in the set are all marked by eye, since a
+// lantern held out or a hose fools the measurement.
+//   silhouette(body, w, h)      the art's opaque pixels, one per art unit: a Uint8Array of w*h, row by row
+//   stance(mask, w, h, key)     { x, y, left, right, top, bottom, feet }: the point that goes on the tile centre, the
+//                               figure's edges, and the half width of what touches the floor
+// The art is VTracer output: absolute M / C / L / Z paths, each with a translate(). Hand-placed parts (an eye in a <g>) sit
+// inside the figure, so they never change its outline and are skipped.
+
+// The board's tile is a square seen at elevation ~42 degrees, so a circle on the floor is drawn sin(42) as deep as it is wide
+// (HH / HW in public/js/pieces.js).
+export const FLOOR_RATIO = Math.sin(42 * Math.PI / 180);
+// The ground-contact band: the bottom 12% of the figure. A column whose lowest opaque pixel is in it touches the floor.
+// Wider bands start catching what hangs low but stands off the floor (the frog's haunch, the robot's side panels, the
+// astronaut's pack).
+export const CONTACT_BAND = 0.12;
+// Where the measurement is fooled, by hand (each says why):
+export const BAND_FOR = {
+  diver: 0.15, // mid-stride: the back boot is lifted ~13% of the figure above the front one, so 12% sees one boot and too shallow a depth
+};
+
+const num = /-?\d+(?:\.\d+)?/g;
+
+// Each path as a list of closed polygons (cubics flattened to 8 segments), in art units.
+function polygons(body) {
+  const out = [];
+  for (const [el, d] of body.matchAll(/<path d="([^"]*)"[^>]*\/>/g)) {
+    const tr = /transform="translate\(([-\d.]+),([-\d.]+)\)"/.exec(el), tx = tr ? Number(tr[1]) : 0, ty = tr ? Number(tr[2]) : 0, rings = [];
+    let ring = null, cx = 0, cy = 0;
+    for (const [, cmd, args] of d.matchAll(/([MLCZ])([^MLCZ]*)/gi)) {
+      const a = (args.match(num) || []).map(Number);
+      const C = cmd.toUpperCase();
+      if (C !== cmd) throw new Error(`relative path command ${cmd}: the tracer writes absolute ones`);
+      if (C === "M") { ring = []; rings.push(ring); [cx, cy] = a; ring.push([cx + tx, cy + ty]); for (let i = 2; i < a.length; i += 2) { [cx, cy] = [a[i], a[i + 1]]; ring.push([cx + tx, cy + ty]); } }
+      else if (C === "L") for (let i = 0; i < a.length; i += 2) { [cx, cy] = [a[i], a[i + 1]]; ring.push([cx + tx, cy + ty]); }
+      else if (C === "C") for (let i = 0; i < a.length; i += 6) {
+        const [x1, y1, x2, y2, x, y] = a.slice(i, i + 6);
+        for (let k = 1; k <= 8; k++) {
+          const t = k / 8, u = 1 - t;
+          ring.push([u * u * u * cx + 3 * u * u * t * x1 + 3 * u * t * t * x2 + t * t * t * x + tx, u * u * u * cy + 3 * u * u * t * y1 + 3 * u * t * t * y2 + t * t * t * y + ty]);
+        }
+        [cx, cy] = [x, y];
+      }
+    }
+    out.push(rings);
+  }
+  return out;
+}
+
+/** The union of every path, filled nonzero (SVG's default), sampled at pixel centres. */
+export function silhouette(body, w, h) {
+  const mask = new Uint8Array(w * h);
+  for (const rings of polygons(body)) {
+    for (let y = 0; y < h; y++) {
+      const sy = y + 0.5, xs = [];
+      for (const r of rings) for (let i = 0; i < r.length; i++) {
+        const [x0, y0] = r[i], [x1, y1] = r[(i + 1) % r.length];
+        if ((y0 <= sy) !== (y1 <= sy)) xs.push([x0 + (sy - y0) * (x1 - x0) / (y1 - y0), y1 > y0 ? 1 : -1]);
+      }
+      xs.sort((a, b) => a[0] - b[0]);
+      let wind = 0;
+      for (let i = 0; i < xs.length - 1; i++) {
+        wind += xs[i][1];
+        if (!wind) continue;
+        for (let x = Math.max(0, Math.ceil(xs[i][0] - 0.5)); x < Math.min(w, Math.ceil(xs[i + 1][0] - 0.5)); x++) mask[y * w + x] = 1;
+      }
+    }
+  }
+  return mask;
+}
+
+/**
+ * The point a piece stands on: the middle of its footprint on the floor, across and in depth.
+ * Across: on one base (a pawn, a hem, a belly), the middle of the base; on feet, the middle of the whole figure, its leftmost
+ * and rightmost pixels, so its two sides are the same distance from the tile's sides (the feet alone pick one foot on a figure
+ * in mid-stride).
+ * In depth (Buster, 2026-11-22: halfway between the front and the back of the footprint, the rule FEET_AT is marked by): the
+ * floor contact is the columns whose lowest pixel is in the contact band. Columns that touch in a row (gaps under GAP of the
+ * figure's width joined, so a foot's toes stay one foot) are one foot or one base. The lowest pixel of a foot is its front;
+ * its back is hidden behind it, so it is taken as round: as deep on the floor as it is wide, drawn FLOOR_RATIO as deep on
+ * screen. The footprint's front is the front-most foot's front, its back the back-most foot's back, and the point is
+ * halfway between. One base (a pawn, a hem) is one round foot: a circle on the floor as wide as the base where it meets
+ * the floor, so its centre is half its projected depth (width x HH/HW) above the bottom, across at the base's middle. Two feet in a 3/4 view, near one in front and far
+ * one behind, come out between the near toe and the far heel. `feet` is half the span of the floor contact.
+ */
+export const GAP = 0.02;
+export function stance(mask, w, h, key = "") {
+  const low = new Int32Array(w).fill(-1);
+  for (let x = 0; x < w; x++) for (let y = h - 1; y >= 0; y--) if (mask[y * w + x]) { low[x] = y; break; }
+  let top = h;
+  for (let i = 0; i < mask.length && top === h; i++) if (mask[i]) top = Math.floor(i / w);
+  const cols = [...low.keys()].filter((x) => low[x] >= 0), left = cols[0], right = cols[cols.length - 1] + 1;
+  const bottom = Math.max(...low) + 1, band = (BAND_FOR[key] || CONTACT_BAND) * (bottom - top); // a share of the figure, not of its canvas
+  const touch = cols.filter((x) => low[x] + 1 >= bottom - band), feet = (touch[touch.length - 1] + 1 - touch[0]) / 2;
+  const runs = [];
+  for (const x of touch) {
+    const r = runs[runs.length - 1];
+    if (r && x - r.right <= GAP * (right - left)) { r.right = x + 1; r.front = Math.max(r.front, low[x] + 1); }
+    else runs.push({ left: x, right: x + 1, front: low[x] + 1 });
+  }
+  const front = Math.max(...runs.map((r) => r.front)), back = Math.min(...runs.map((r) => r.front - (r.right - r.left) * FLOOR_RATIO));
+  const x = runs.length === 1 ? (runs[0].left + runs[0].right) / 2 : (left + right) / 2;
+  return { x, y: (front + back) / 2, left, right, top, bottom, feet };
+}
