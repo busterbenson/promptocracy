@@ -57,7 +57,7 @@ under rule 101 or 102; a follow-up change claims them and moves `src/` into the 
 
 - line 12: `buildId`
 - line 20: `guardScript`
-- line 31: `stampHtml`
+- line 32: `stampHtml`
 
 ## src/lib/catalog.js (1)
 
