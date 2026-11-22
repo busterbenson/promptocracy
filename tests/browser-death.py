@@ -53,7 +53,7 @@ with sync_playwright() as p:
             page.keyboard.press("Escape")
         elif phase == "cy":
             tk = text(page, "#pzone")
-            check(f"{phase} {w}: the Ghost's checklist keeps Move and End turn, with Vote and Propose off", "Move" in tk and "End turn" in tk and "A Ghost can't vote (604.1)" in tk and page.locator("#pzone .tkstep.vt button[disabled]").count() == 1, tk)
+            check(f"{phase} {w}: the Ghost's checklist keeps Move and End turn, with Vote and Propose off", "Move" in tk and "End turn" in tk and "A Ghost can't vote (202.5)" in tk and page.locator("#pzone .tkstep.vt button[disabled]").count() == 1, tk)
             shot(page, f"ghost-turn-{w}", full_page=True)
         else:
             page.locator("#tab-history").click(); page.wait_for_timeout(400)

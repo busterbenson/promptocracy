@@ -23,7 +23,7 @@ export function turnBlock(
   const gate = dayGate(game, day, turn, nowMs);
   if (gate) return gate;
   // Voting is the site's own (rule 104.3: the vote route checks the electorate); a move, a proposal and End turn are asked of the rules, which see the
-  // acting player's state (rule 603.1: the dead have no turn, 604.1: a Ghost can't propose).
+  // acting player's state (rule 603.1: the dead have no turn, 202.5: a Ghost can't propose).
   if (kind === "vote" || kind === "give_heart") return null; // give_heart: the route asks the rules itself, with its target (603.4)
   return checkAction(game, lightContext(game, { moved: !!turn?.moved_at, gave: !!turn?.gave_at }, player as any), { ref: player.id }, { kind } as any);
 }

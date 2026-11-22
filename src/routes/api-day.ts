@@ -44,7 +44,7 @@ export const get = async (ctx: Ctx) => {
     const b = player && turnBlock(game, day, turn, player, kind, nowMs);
     if (b) return { allowed: false, reason: b.error };
     if (kind === "propose" && mine?.proposed >= perDay) return { allowed: false, reason: proposalLimitMessage(mine.proposed) };
-    if (kind === "vote" && player && player.dead_day != null) return { allowed: false, reason: player.ghost_day != null ? "A Ghost can't vote (604.1)." : "You're dead (603.1)." };
+    if (kind === "vote" && player && player.dead_day != null) return { allowed: false, reason: player.ghost_day != null ? "A Ghost can't vote (202.5)." : "You're dead (603.1)." };
     if (kind === "vote" && !(ballot?.n > 0)) return { allowed: false, reason: "Today's ballot is empty." };
     if (kind === "vote" && !mine?.elector) return { allowed: false, reason: `You joined after day ${game.day} began, so you vote from tomorrow (rule 104.2).` };
     return { allowed: true };

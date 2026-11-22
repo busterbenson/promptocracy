@@ -125,7 +125,7 @@ try {
   const gh = await bo.post("/hunted/api/give-heart", { player: "jade" });
   check("a Ghost can't be given a heart", gh.status === 409 && /Ghost|already gave/.test(gh.data.error), gh.text);
   const cyDay = (await cy.get("/hunted/api/day")).data;
-  check("a Ghost has the move and End turn, but not Vote or Propose (604.1)", cyDay.you.state === "ghost" && cyDay.you.can.move.allowed === true && cyDay.you.can.end_turn.allowed === true && cyDay.you.can.propose.allowed === false && /Ghost can't propose/.test(cyDay.you.can.propose.reason) && cyDay.you.can.vote.allowed === false && /Ghost can't vote/.test(cyDay.you.can.vote.reason), J(cyDay.you.can));
+  check("a Ghost has the move and End turn, but not Vote or Propose (202.5)", cyDay.you.state === "ghost" && cyDay.you.can.move.allowed === true && cyDay.you.can.end_turn.allowed === true && cyDay.you.can.propose.allowed === false && /Ghost can't propose/.test(cyDay.you.can.propose.reason) && cyDay.you.can.vote.allowed === false && /Ghost can't vote/.test(cyDay.you.can.vote.reason), J(cyDay.you.can));
   const cm = await cy.post("/hunted/api/action", { kind: "move", x: -3, y: -1 });
   check("a Ghost's move works (and charts like anyone's)", cm.status === 200, cm.text);
 
