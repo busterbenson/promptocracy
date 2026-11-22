@@ -41,6 +41,14 @@ def new_page(b, w, h, scheme, cookie=None, slug="shop"):
         if j.get("ends_at"): j["ends_at"] = (datetime.datetime.fromisoformat(j["now"].replace("Z", "+00:00")) + datetime.timedelta(hours=6, minutes=12)).strftime("%Y-%m-%dT%H:%M:%S.000Z")
         route.fulfill(response=r, json=j)
     page.route("**/api/day", midnight)
+    # The page polls /api/day. A poll that is in flight when the context closes reaches `midnight` after the target is gone, so its route.fetch() raises
+    # TargetClosedError inside Playwright's event listener and fails the run (CI, 2026-11-21). Closing the context first lets the handlers in flight finish
+    # and drops the ones that cannot: unroute_all(ignoreErrors) is Playwright's documented way to do exactly that. Every c.close() below goes through it.
+    close = c.close
+    def close_clean():
+        page.unroute_all(behavior="ignoreErrors")
+        close()
+    c.close = close_clean
     page.goto(base + f"/{slug}/", wait_until="domcontentloaded")
     page.wait_for_selector("#scores li"); page.wait_for_function("document.getElementById('rules').textContent.indexOf('Loading') < 0"); page.wait_for_selector("#movebar")
     page.wait_for_timeout(300)

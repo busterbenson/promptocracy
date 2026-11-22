@@ -41,8 +41,13 @@ export async function sweepArt(env: Env, nowMs: number): Promise<{ tickets: numb
         deleted.pop(); kept.push(h);
       }
     }
-    await env.DB.prepare(`DELETE FROM art_refs WHERE hash = ? AND ticket_id IN (${swept})`).bind(h, cutoff).run();
-    await env.DB.prepare("DELETE FROM art_objects WHERE hash = ? AND NOT EXISTS (SELECT 1 FROM art_refs WHERE hash = art_objects.hash)").bind(h).run();
+    // One transaction (a D1 batch): the rows that name the hash go together with the object row that nothing names any more. As two statements, a
+    // request that ended between them left an art_objects row with no ref, and the next sweep never looked at that hash again (it finds hashes by
+    // the swept tickets' refs). Now an interrupted sweep has changed nothing in the database for this hash and the next one redoes it.
+    await env.DB.batch([
+      env.DB.prepare(`DELETE FROM art_refs WHERE hash = ? AND ticket_id IN (${swept})`).bind(h, cutoff),
+      env.DB.prepare("DELETE FROM art_objects WHERE hash = ? AND NOT EXISTS (SELECT 1 FROM art_refs WHERE hash = art_objects.hash)").bind(h),
+    ]);
   }
   await env.DB.prepare(`DELETE FROM art_draws WHERE ticket_id IN (${swept})`).bind(cutoff).run();
   return { tickets: count?.n ?? 0, deleted, kept };
