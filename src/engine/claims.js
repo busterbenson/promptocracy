@@ -92,7 +92,7 @@ export function checkFileClaims(file, src, known) {
   for (const f of findFunctions(src)) {
     if (!f.tags.length) problems.push(`${file}:${f.line} ${f.name} has no @rule tag`);
     for (const n of f.tags) {
-      if (!NUMBER.test(n)) problems.push(`${file}:${f.line} ${f.name}: "${n}" is not a rule number like 504 or 504.2`);
+      if (!NUMBER.test(n)) problems.push(`${file}:${f.line} ${f.name}: "${n}" is not a rule number like 504 or 504.1`);
       else if (!known.has(n)) problems.push(`${file}:${f.line} ${f.name}: @rule ${n} is not in RULES.md`);
     }
   }

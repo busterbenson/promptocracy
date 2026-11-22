@@ -66,8 +66,8 @@
     "recorded_at": "2026-11-21"
   },
   "d-repeal": {
-    "message": "Take out clause 504.3. Draft the removal.",
-    "text": "{\"say\":\"Chirp! Removing 504.3 it is. Word for word, here's what you'd be taking out. Slip coming; you decide whether to lock it in, and the vote decides the rest. Block 500 is a majority block, so more than half of all players must say yes.\",\"quotes\":[{\"num\":\"504.3\",\"text\":\"You can only move onto a charted tile that no other piece stands on.\"}],\"draft\":{\"kind\":\"repeal\",\"target\":\"504.3\"}}",
+    "message": "Take out clause 504.2. Draft the removal.",
+    "text": "{\"say\":\"Chirp! Removing 504.2 it is. Word for word, here's what you'd be taking out. Slip coming; you decide whether to lock it in, and the vote decides the rest. Block 500 is a majority block, so more than half of all players must say yes.\",\"quotes\":[{\"num\":\"504.2\",\"text\":\"You can only move onto a charted tile that no other piece stands on.\"}],\"draft\":{\"kind\":\"repeal\",\"target\":\"504.2\"}}",
     "usage": {
       "input_tokens": 86,
       "output_tokens": 152,

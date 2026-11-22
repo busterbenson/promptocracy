@@ -22,7 +22,7 @@ The key is `PROMPTOCRACY_MODEL_API_KEY`, from the environment or `~/chalantbot/.
 {
   "rules":  { "file": "fixtures/rickshaw-day-0.2/RULES.md", "repo": "busterbenson/promptocracy-rickshaw", "ref": "day-0.2", "commit": "..." },
   "limits": { "max_input_tokens": 5500, "max_output_tokens": 1500 },
-  "cases": [ { "id": "...", "group": "...", "kind": "amend", "target": "504.3", "words": "...", "expect": { } } ]
+  "cases": [ { "id": "...", "group": "...", "kind": "amend", "target": "504.2", "words": "...", "expect": { } } ]
 }
 ```
 

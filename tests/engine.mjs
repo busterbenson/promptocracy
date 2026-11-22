@@ -11,7 +11,7 @@ import { ACTION_KINDS, HOOKS, RuleError, RuleSetError, assembleRules, deepFreeze
 import { lintModule } from "../src/engine/lint.js";
 import { checkRulebook, parseRulesMd } from "../src/engine/rulesmd.js";
 import { DEFAULT_SETTINGS, validateSettings } from "../src/lib/settings.js";
-import { BundleError, bundleGames, latestDayTag, runNode, runSandboxed } from "../scripts/bundle-games.mjs";
+import { BundleError, bundleGames, checkTree, latestDayTag, runNode, runSandboxed } from "../scripts/bundle-games.mjs";
 import * as api from "../src/engine/api.js";
 import { checkFileClaims, claimMap, findFunctions, hookClaimProblems, knownNumbers, overClaimed, worksWith } from "../src/engine/claims.js";
 import { runClaimsCheck, todoDoc } from "../scripts/check-rule-claims.mjs";
@@ -229,6 +229,32 @@ check("a [setting] with no key, a key with no [setting], a module for a missing 
     dup.some((p) => /numbers rule 101 twice/.test(p)) && none.some((p) => /has no rules/.test(p));
 })());
 
+check("rule 109.1: text under a rule's title fails always (a rule has no text of its own), and so does a clause under another rule's number", (() => {
+  const book = (body) => `# R\n\n## 100. A [majority]\n\n${body}`;
+  const s = { ...DEFAULT_SETTINGS };
+  const text = checkRulebook({ rulesMd: book("### 101 One\nText of its own.\n\n**101.1** A clause.\n"), settings: s, moduleRules: [] }).filter((p) => /text under rule 101/.test(p));
+  const planted = checkRulebook({ rulesMd: book("### 101 One\n**101.1** A.\n\n### 102 Two\n**101.2** Strayed.\n"), settings: s, moduleRules: [] }).filter((p) => /clause 101\.2 sits under rule 102/.test(p));
+  const clean = checkRulebook({ rulesMd: book("### 101 One\n**101.1** A.\n\n**101.2** B.\n"), settings: s, moduleRules: [] }).filter((p) => !/settings\.json|\[setting/.test(p));
+  return text.length === 1 && planted.length === 1 && clean.length === 0;
+})());
+check("rule 109.1: before day 1 a rule's clauses run from 1 with no gap; once the game has started a repealed clause leaves its number empty", (() => {
+  const gap = `# R\n\n## 100. A [majority]\n\n### 101 One\n**101.1** A.\n\n**101.3** C, after 101.2 was repealed.\n\n### 102 Two\n**102.2** Starts at two.\n`;
+  const s = { ...DEFAULT_SETTINGS };
+  const pre = checkRulebook({ rulesMd: gap, settings: s, moduleRules: [], beforeDayOne: true }).filter((p) => /no gap/.test(p));
+  const started = checkRulebook({ rulesMd: gap, settings: s, moduleRules: [] }).filter((p) => !/settings\.json|\[setting/.test(p));
+  const out = checkRulebook({ rulesMd: "# R\n\n## 100. A [majority]\n\n### 101 One\n**101.2** B.\n\n**101.1** A.\n", settings: s, moduleRules: [] }).filter((p) => /out of order/.test(p));
+  return pre.length === 2 && /101\.1, 101\.3/.test(pre[0]) && /102\.2/.test(pre[1]) && started.length === 0 && out.length === 1;
+})());
+check("rule 109.1: a citation of a clause, rule or block the book does not have fails always, in both forms and for a repealed clause's number; 'Suber's rule 213' is not a citation", (() => {
+  const s = { ...DEFAULT_SETTINGS };
+  const md = (t) => `# R\n\n## 100. A [majority]\n\n### 101 One\n**101.1** ${t}\n\n**101.3** Third.\n`;
+  const bad = (t) => checkRulebook({ rulesMd: md(t), settings: s, moduleRules: [] }).filter((p) => /cites/.test(p));
+  return bad("See (101.3) and rule 101 and block 100.").length === 0 && bad("See (101.2).").length === 1 && /101\.2/.test(bad("See (101.2).")[0]) && bad("See rule 105.").length === 1 && bad("See rules 101.1 and 999.").length === 1 &&
+    bad("See block 900.").length === 1 && bad("(Suber's rule 213.)").length === 0 && bad("See (rule 101.1, 101.3).").length === 0;
+})());
+check("the starter RULES.md has no gap before day 1, and the three planted checks all hold on it too", checkRulebook({ rulesMd: readFileSync(pjoin(ROOT, "templates/RULES.md"), "utf8"), settings: JSON.parse(readFileSync(pjoin(ROOT, "templates/settings.json"), "utf8")), moduleRules: [202, 504, 505], beforeDayOne: true }).length === 0);
+check("a restatement is not an error: a clause that repeats another clause's number passes the check (rules voice 8 is guidance, not a rule)", checkRulebook({ rulesMd: "# R\n\n## 100. A [majority]\n\n### 101 One\n**101.1** You can confirm up to 3 proposals a day.\n\n**101.2** You can confirm up to 3 proposals a day.\n", settings: { ...DEFAULT_SETTINGS }, moduleRules: [] }).filter((p) => !/settings\.json|\[setting/.test(p)).length === 0);
+
 console.log("the starter pack's own tests");
 {
   const out = execFileSync(process.execPath, ["--test", ...["202", "504", "505", "rulebook"].map((n) => `templates/rules/${n}.test.ts`)], { cwd: ROOT, encoding: "utf8", env: { ...process.env, NO_COLOR: "1" } });
@@ -242,7 +268,7 @@ export function a() {}
 // a plain comment above is not a tag
 export function b() {}
 /**
- * Two claims. @rule 504.2, 505
+ * Two claims. @rule 504.1, 505
  */
 export const c = async (x) => {
   if (x) { return 1; }
@@ -269,9 +295,9 @@ const obj = {
 /* function inBlock() {} */
 `;
 const fns = findFunctions(SRC);
-check("findFunctions finds declarations, const arrows and methods, with their tags, and nothing else (no if/for, no callbacks, no comments, no template text)", J(fns.map((f) => [f.name, f.tags])) === J([["a", ["504"]], ["b", []], ["c", ["504.2", "505"]], ["d", []], ["hook", ["202"]], ["other", []]]), J(fns));
-const KNOWN = knownNumbers("# R\n\n## 500. B [majority]\n\n### 504 Moving\n**504.2** a clause\n\n### 505 New\n<!-- ### 999 hidden -->\n");
-check("knownNumbers reads blocks, rules and clauses, not comments", J([...KNOWN].sort()) === J(["500", "504", "504.2", "505"]));
+check("findFunctions finds declarations, const arrows and methods, with their tags, and nothing else (no if/for, no callbacks, no comments, no template text)", J(fns.map((f) => [f.name, f.tags])) === J([["a", ["504"]], ["b", []], ["c", ["504.1", "505"]], ["d", []], ["hook", ["202"]], ["other", []]]), J(fns));
+const KNOWN = knownNumbers("# R\n\n## 500. B [majority]\n\n### 504 Moving\n**504.1** a clause\n\n### 505 New\n<!-- ### 999 hidden -->\n");
+check("knownNumbers reads blocks, rules and clauses, not comments", J([...KNOWN].sort()) === J(["500", "504", "504.1", "505"]));
 check("a function with no @rule tag fails, naming file, line and function", checkFileClaims("f.ts", SRC, KNOWN).some((p) => p === "f.ts:4 b has no @rule tag") && checkFileClaims("f.ts", SRC, KNOWN).some((p) => /d has no @rule tag/.test(p)));
 check("a tag that names a rule or clause the RULES.md does not have fails (202 is not in this text), a clause that is there passes", checkFileClaims("f.ts", SRC, KNOWN).some((p) => /hook: @rule 202 is not in RULES\.md/.test(p)) && !checkFileClaims("f.ts", SRC, KNOWN).some((p) => /@rule 504\.2 is not/.test(p)));
 check("a claimed file passes, and the claim map lists rule -> file#function, sorted by number", checkFileClaims("f.ts", "/** @rule 504 */\nfunction x() {}\n/** @rule 505, 504 */\nfunction y() {}\n", KNOWN).length === 0 && J(claimMap({ "f.ts": "/** @rule 505, 504 */\nfunction y() {}\n/** @rule 504 */\nfunction x() {}\n" })) === '{"504":["f.ts#x","f.ts#y"],"505":["f.ts#y"]}');
@@ -344,16 +370,27 @@ const put = (dir, rel, text) => { mkdirSync(pjoin(dir, rel, ".."), { recursive: 
   const e = quiet(() => bundle({ BUNDLE_OUT: out, GAMES_SOURCE: "tests/fixtures/games" }));
   const gen = existsSync(pjoin(out, "games.ts")) ? readFileSync(pjoin(out, "games.ts"), "utf8") : "";
   check("the fixture game bundles: its tests run and pass, and games.ts holds its text, settings and modules plus the starter pack", e === null && /"bundled": \{ slug: "bundled"/.test(gen) && /export const STARTER/.test(gen) && /modules: \[m0, m1, m2, m3\]/.test(gen) && /fixture game/.test(gen), String(e));
-  check("games.ts carries the claim map of the game (rule -> file#function) and of the engine, for rule cards", [/"202\.2":\["rules\/202\.ts#actionAllowed","rules\/504\.ts#actionAllowed"\]/, /"504\.2":\["rules\/504\.ts#afterAction"\]/, /"504\.3":\["rules\/504\.ts#actionAllowed"\]/, /claims: \{[^}]*"505":\["rules\/505\.ts#spawnTile"\]/].every((re) => re.test(gen)) && /ENGINE_CLAIMS: Record<string, string\[\]> = \{.*"505":\["src\/engine\/hooks\.js#spawnTile","src\/engine\/host\.ts#chooseSpawn"\]/.test(gen), gen.slice(gen.indexOf("ENGINE_CLAIMS"), gen.indexOf("ENGINE_CLAIMS") + 300));
+  check("games.ts carries the claim map of the game (rule -> file#function) and of the engine, for rule cards", [/"202\.1":\["rules\/202\.ts#actionAllowed","rules\/504\.ts#actionAllowed"\]/, /"504\.1":\["rules\/504\.ts#afterAction"\]/, /"504\.2":\["rules\/504\.ts#actionAllowed"\]/, /claims: \{[^}]*"505":\["rules\/505\.ts#spawnTile"\]/].every((re) => re.test(gen)) && /ENGINE_CLAIMS: Record<string, string\[\]> = \{.*"505":\["src\/engine\/hooks\.js#spawnTile","src\/engine\/host\.ts#chooseSpawn"\]/.test(gen), gen.slice(gen.indexOf("ENGINE_CLAIMS"), gen.indexOf("ENGINE_CLAIMS") + 300));
   check("the game's modules are copied next to games.ts, where the Worker bundler follows the imports", ["games/bundled/rules/107.ts", "games/bundled/rules/202.ts", "games/bundled/rules/504.ts", "starter/rules/505.ts", "starter/rules/401.ts"].every((f) => existsSync(pjoin(out, f))));
 }
 const must = (name, env, re) => { const e = quiet(() => bundle(env)); check(name, e instanceof BundleError && re.test(e.message), String(e?.message ?? "no error").slice(0, 300)); };
+const gapTree = () => tree("gap", (d) => put(d, "RULES.md", readFileSync(pjoin(d, "RULES.md"), "utf8").replace("**107.1** Passed proposals are applied in the order they were proposed.", "**107.1** Passed proposals are applied in the order they were proposed.\n\n**107.3** A clause that skips 107.2.")));
+must("a game before day 1 whose rule skips a clause number fails the build (rule 109.1)", { GAMES_SOURCE: gapTree() }, /the clauses of rule 107 are 107\.1, 107\.3; before day 1 they run from 107\.1 with no gap/);
+{
+  const dir = pjoin(gapTree(), "gap"), dir2 = pjoin(gapTree(), "gap");   // the build stages the engine into a tree it checks, so each check gets its own
+  const strict = (() => { try { quiet(() => checkTree(dir, "gap", { skipTests: true })); return null; } catch (e) { return e; } })();
+  const started = (() => { try { quiet(() => checkTree(dir2, "gap", { skipTests: true, started: true })); return null; } catch (e) { return e; } })();
+  check("the same gap passes once the game has started (a night was processed, the tag is day-1 or later): a repealed clause leaves its number empty", strict instanceof BundleError && started === null, String(started?.message ?? strict?.message ?? "").slice(0, 300));
+}
+const textTree = () => tree("text", (d) => put(d, "RULES.md", readFileSync(pjoin(d, "RULES.md"), "utf8").replace("### 503 ", "### 503 ").replace(/(### 503 [^\n]*\n)\*\*503\.1\*\* /, "$1")));
+must("a game whose rule has text under its title fails the build, started or not (rule 109.1)", { GAMES_SOURCE: textTree() }, /text under rule 503's title/);
+check("...and also when the game has started", (() => { try { quiet(() => checkTree(pjoin(textTree(), "text"), "text", { skipTests: true, started: true })); return false; } catch (e) { return e instanceof BundleError && /text under rule 503/.test(e.message); } })());
 must("a module that calls fetch fails the build, with the file and line", { GAMES_SOURCE: tree("bad", (d) => put(d, "rules/202.ts", `import { defineRule } from "promptocracy/engine";\nexport default defineRule({ rule: 202, actionAllowed() { return fetch("https://x"); } });`)) }, /lint failed[\s\S]*bad[\s\S]*rules\/202\.ts: line \d+ of the code uses "fetch"/);
 must("a module that imports a foreign package fails the build", { GAMES_SOURCE: tree("bad", (d) => put(d, "rules/504.ts", `import fs from "node:fs";\n` + readFileSync(pjoin(FIX, "rules/504.ts"), "utf8"))) }, /imports "node:fs"/);
 must("game.json that lists a module rules/ does not hold (or holds one it does not list) fails the build", { GAMES_SOURCE: tree("bad", (d) => put(d, "game.json", `{ "engine": 1, "modules": [202, 504] }`)) }, /lists modules \[202,504\] but rules\/ holds \[107,202,504,505\]/);
 must("a game that needs another engine version fails the build", { GAMES_SOURCE: tree("bad", (d) => put(d, "game.json", `{ "engine": 2, "modules": [202, 504, 505] }`)) }, /engine 2, this platform runs engine 1/);
 must("a game with no game.json fails the build", { GAMES_SOURCE: tree("bad", (d) => execFileSync("mv", [pjoin(d, "game.json"), pjoin(work, "moved-" + seq++)])) }, /game\.json is missing/);
-must("two spawn rules (or none) fail the build", { GAMES_SOURCE: tree("bad", (d) => put(d, "rules/504.ts", readFileSync(pjoin(FIX, "rules/504.ts"), "utf8").replace("/** @rule 504.2 */\n  afterAction(", "/** @rule 504.2 */\n  spawnTile() { return null; },\n  /** @rule 504.2 */\n  afterAction("))) }, /spawnTile needs exactly one rule to implement it, found 2/);
+must("two spawn rules (or none) fail the build", { GAMES_SOURCE: tree("bad", (d) => put(d, "rules/504.ts", readFileSync(pjoin(FIX, "rules/504.ts"), "utf8").replace("/** @rule 504.1 */\n  afterAction(", "/** @rule 504.1 */\n  spawnTile() { return null; },\n  /** @rule 504.1 */\n  afterAction("))) }, /spawnTile needs exactly one rule to implement it, found 2/);
 must("text, settings and modules out of step fail the build (a [setting] the file lacks)", { GAMES_SOURCE: tree("bad", (d) => put(d, "RULES.md", readFileSync(pjoin(FIX, "RULES.md"), "utf8").replace("[setting: max_players]", "[setting: max_players] [setting: board.nope]"))) }, /names \[setting: board\.nope\]/);
 must("a module file named for another rule than it implements fails the build", { GAMES_SOURCE: tree("bad", (d) => put(d, "rules/202.ts", readFileSync(pjoin(FIX, "rules/202.ts"), "utf8").replace("rule: 202", "rule: 203"))) }, /rules\/202\.ts must default-export defineRule\(\{ rule: 202/);
 must("a game whose own tests fail does not bundle, and the failing output is in the message", { GAMES_SOURCE: tree("bad", (d) => put(d, "rules/202.test.ts", `import { test } from "node:test";\nimport assert from "node:assert/strict";\ntest("fails on purpose", () => assert.equal(1, 2));\n`)) }, /tests fail against this engine[\s\S]*fails on purpose/);

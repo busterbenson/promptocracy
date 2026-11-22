@@ -223,7 +223,7 @@ export function validateEffects(list) {
 }
 // The effect constructors modules use (re-exported by api.js).
 export const effects = Object.freeze({
-  /** @rule 504.2 */
+  /** @rule 504.1 */
   chart: (tiles) => ({ type: "chart", tiles: tiles.map((t) => ({ x: t.x, y: t.y, z: t.z ?? 0 })) }),
   /** @rule 401 */
   points: (player, delta, reason) => ({ type: "points", player, delta, reason }),
@@ -315,7 +315,7 @@ export function assembleRules(modules, { label = "rules" } = {}) {
     /** @rule 101 */
     implementers: (hook) => implementers(hook).map((m) => m.rule),
     // null, or {error, status}: the first refusal in rule order.
-    /** @rule 202.2, 504.3 */
+    /** @rule 202.2, 504.2 */
     actionAllowed(ctx, actor, action) {
       for (const m of implementers("actionAllowed")) {
         const r = call(m, "actionAllowed", [ctx, actor, action]);

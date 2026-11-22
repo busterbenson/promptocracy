@@ -19,7 +19,7 @@ is the history of the game.
 ## 100. Core rules [unanimous]
 
 ### 101 Follow the rules
-Every player, and the moderator, must follow the rules
+**101.1** Every player, and the moderator, must follow the rules
 in this file as they stand on `main`.
 
 ### 102 Players
@@ -142,7 +142,7 @@ turn (rule 202.4), hidden votes (rule 104.4), votes counted by code (rule 104.5)
 ## 200. Players and turns [majority]
 
 ### 201 Game size
-A game has at most 8 players. [setting: max_players]
+**201.1** A game has at most 8 players. [setting: max_players]
 
 ### 202 Your turn
 **202.1** The game is played one day at a time (rule 203). Each day, every player gets one turn. Everyone plays the
@@ -169,19 +169,19 @@ midnight in the old zone.
 **203.2** At midnight the day that just ended is processed (rule 107), and then the next day begins.
 
 ### 204 AI clients
-A player may connect an AI client to this game and take their own turns through it. [setting: mcp_enabled]
+**204.1** A player may connect an AI client to this game and take their own turns through it. [setting: mcp_enabled]
 
 ## 300. Proposals and rulings [majority]
 
 ### 301 Overruling the moderator
-Any player may appeal a ruling within 24 hours
+**301.1** Any player may appeal a ruling within 24 hours
 of it being written. If more than half of all players vote to overturn it, the
 ruling is reversed and the moderator records the reversal.
 
 ## 400. Points and winning [majority]
 
 ### 401 Points
-A player whose proposal passes and is applied gets 10 points when it is applied (rule 107).
+**401.1** A player whose proposal passes and is applied gets 10 points when it is applied (rule 107).
 
 ### 402 Winning
 **402.1** The first player to reach 100 points wins. (This rule is deliberately dull, after Peter Suber's original.
@@ -194,35 +194,35 @@ night, the first one to be given them wins.
 readable.
 
 ### 403 Paradox
-If the rules are changed so that further play is impossible,
+**403.1** If the rules are changed so that further play is impossible,
 the first player who is unable to complete a turn wins. This rule takes
 precedence over every other rule about winning. (Suber's rule 213.)
 
 ## 500. The board [majority]
 
 ### 501 The grid
-The grid is infinite. A tile is either charted or uncharted, and
+**501.1** The grid is infinite. A tile is either charted or uncharted, and
 charted tiles are visible to everyone.
 
 ### 502 Coordinates
-Tiles are named row first, like
+**502.1** Tiles are named row first, like
 "3N 2E": rows count north and south, columns count east and west, and there is no
 zero row or column (1N sits next to 1S, 1E next to 1W). Levels count the same way: the
 ground is 1U, the level above it 2U, the one below 1D.
 
 ### 503 The island
-The game starts with an 8x8 charted island
+**503.1** The game starts with an 8x8 charted island
 centered on the origin. [setting: board.island]
 
 ### 504 Moving and charting
-**504.2** When you move, every tile within two tiles of you is
+**504.1** When you move, every tile within two tiles of you is
 charted: a 5x5 square with its four corners cut off. [setting: board.chart_radius]
 
-**504.3** You can only move onto a charted tile that no other piece stands on.
+**504.2** You can only move onto a charted tile that no other piece stands on.
 
 ### 505 New players
-A new player's piece starts on a random unoccupied charted tile where a move would chart nothing new: every tile
-that a move onto it would chart (rule 504.2) is already charted.
+**505.1** A new player's piece starts on a random unoccupied charted tile where a move would chart nothing new: every tile
+that a move onto it would chart (rule 504.1) is already charted.
 
 ## 600. Hearts and creatures [majority]
 
@@ -236,7 +236,7 @@ that a move onto it would chart (rule 504.2) is already charted.
 
 **701.2** A new entry, or a change to one, comes in by commission (801).
 
-**701.4** An entry appears on the board only when a rule puts it there.
+**701.3** An entry appears on the board only when a rule puts it there.
 
 ### 702 Kinds
 **702.1** Every entry is one kind: an item (I), a creature (C), a tile (T), a structure (S), or a feature (F). A feature is part of the site, not the board.

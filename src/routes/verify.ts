@@ -44,7 +44,7 @@ export const get = async ({ env, request, data }: Ctx) => {
   );
 };
 
-/** @rule 102.3, 102.4, 505 */
+/** @rule 102.3, 104.2, 505 */
 export const post = async (ctx: Ctx) => {
   const { env, request } = ctx;
   const game = ctx.data.game!;

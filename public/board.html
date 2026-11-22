@@ -485,7 +485,7 @@ import { createChat, AGENTS } from "/js/chat.js";
     if (steps < 1 || steps > R.move_distance) return false;
     return R.shared_tiles || !piecesAt(t).length;
   }
-  // What a move would chart (rule 504.2): the tiles within the chart radius of the landing tile (the square of that half-width with its
+  // What a move would chart (rule 504.1): the tiles within the chart radius of the landing tile (the square of that half-width with its
   // corners cut: centres within radius + 0.5) that are not charted yet.
   function newlyCharted(t) {
     const r = Number(BOARD && BOARD.settings && BOARD.settings["board.chart_radius"]) || 2, have = new Set(BOARD.tiles.filter(q => q.z === t.z).map(q => q.x + "," + q.y));

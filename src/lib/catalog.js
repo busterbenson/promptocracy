@@ -136,18 +136,18 @@ function readScalar(raw) {
   return { error: "must be a number, yes or no, or some text" };
 }
 
-/** A value that was an attribute and is flavor now (a rule stopped defining it): a size {w, h} becomes its text, 2x1; anything else reads as a flavor value. @rule 705.2 */
+/** A value that was an attribute and is flavor now (a rule stopped defining it): a size {w, h} becomes its text, 2x1; anything else reads as a flavor value. @rule 703.1 */
 function readFlavor(raw) {
   return isObject(raw) && Number.isInteger(raw.w) && Number.isInteger(raw.h) && Object.keys(raw).length === 2 ? readScalar(`${raw.w}x${raw.h}`) : readScalar(raw);
 }
 
 /**
- * Sorts an entry's attributes and flavor into what each is (rules 703.1, 704.2, 705.1, 705.2): a key a rule defines or the kind
+ * Sorts an entry's attributes and flavor into what each is (rules 703.1, 704.2, 705.1): a key a rule defines or the kind
  * needs is read as its type; a key the ticket will build stays in attrs; anything else is flavor. A flavor key a rule now defines
- * moves to attrs (705.2). `drafting` is true for a draft (a bad value is refused with its reason) and false for catalog.json
+ * moves to attrs (703.1). `drafting` is true for a draft (a bad value is refused with its reason) and false for catalog.json
  * (a flavor value that does not fit the key a rule now defines stays flavor, so the key counts as missing instead).
  * Returns {attrs, flavor} or {error}.
- * @rule 703.1, 704.2, 705.1, 705.2
+ * @rule 703.1, 704.2, 705.1
  */
 function sortAttrs(kind, attrsIn, flavorIn, needsBuild, ctx, drafting) {
   const { registry = {}, required = {} } = ctx;
@@ -263,8 +263,8 @@ export function readEntryDraft(m, ctx = {}) {
 // ---- catalog.json ----------------------------------------------------------------------------------------------------------
 /**
  * A game's catalog.json (rule 701.1): a list of entries. Returns {entries} (cleaned, each flavor key a rule now defines moved to
- * attrs: rule 705.2 done at read time) or {errors}. A game with no file has [] (the caller passes [] then).
- * @rule 701.1, 705.2
+ * attrs: rule 703.1 done at read time) or {errors}. A game with no file has [] (the caller passes [] then).
+ * @rule 701.1, 703.1
  */
 export function readCatalog(raw, ctx = {}) {
   if (!Array.isArray(raw)) return { errors: ["catalog.json must be a list of entries"] };

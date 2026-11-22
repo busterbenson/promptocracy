@@ -21,6 +21,7 @@ export function parseRules(md) {
   let startAt = 0;   // the line the paragraph being collected began on
   const pushPara = (p) => {
     const t = target();
+    if (t && !cl && t.kind === "rule" && !/^\[(?:Repealed|Moved to \d{3})\]$/.test(p.t === "p" ? p.s : "")) warn(startAt, "Text under rule " + t.num + " comes before its first clause, so it counts as the rule's own text. A rule has no text of its own: put it in clause " + t.num + ".1 (rule 109.1).");
     if (t) t.paras.push(p);
     else if (!sec) out.intro.push(p);
     else warn(startAt, "Text under block " + sec.num + " comes before its first rule, so it is not shown.");

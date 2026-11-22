@@ -34,32 +34,32 @@ check("no settings prints nothing", settingsText({}) === "" && settingsText(null
 console.log("the moderator's code drafts (rule 103.1), after the mockup's makeDraft");
 {
   let { r, d } = drafted({ kind: "repeal", target: "403" });
-  check("repeal a rule: struck and kept ('[Repealed]'), headed 'Repeal rule 403 (Paradox):'", d.head === "Repeal rule 403 (Paradox):" && d.after_text === "[Repealed]" && d.before_text.startsWith("If the rules are changed") && !needsModel(r), J(d));
+  check("repeal a rule: struck and kept ('[Repealed]'), headed 'Repeal rule 403 (Paradox):'", d.head === "Repeal rule 403 (Paradox):" && d.after_text === "[Repealed]" && d.before_text.startsWith("403.1 If the rules are changed") && !needsModel(r), J(d));
   ({ r, d } = drafted({ kind: "repeal", target: "202.3" }));
   check("remove a clause: 'Remove clause 202.3 (Your turn):', its text struck", d.head === "Remove clause 202.3 (Your turn):" && d.after_text === "" && d.before_text === "Every part of a turn is optional, and skipping one has no penalty.", J(d));
   ({ r, d } = drafted({ kind: "addclause", target: "401", words: "Points can't be given away." }));
-  check("add a clause to a rule: the next clause number (401.1) and the player's words", d.head === "Add a clause to rule 401 (Points):" && d.after_text === "401.1 Points can't be given away." && d.new_num === "401.1", J(d));
+  check("add a clause to a rule: the next clause number (401.2) and the player's words", d.head === "Add a clause to rule 401 (Points):" && d.after_text === "401.2 Points can't be given away." && d.new_num === "401.2", J(d));
   ({ r, d } = drafted({ kind: "addclause", target: "202.2", words: "You may also wait." }));
   check("add a clause after a clause: 'Add a clause to rule 202 (Your turn), after 202.2:', numbered after the rule's last clause (202.6)", d.head === "Add a clause to rule 202 (Your turn), after 202.2:" && d.new_num === "202.6" && d.after_text === "202.6 You may also wait.", J(d));
   ({ r, d } = drafted({ kind: "add", target: "400", words: "A tie goes to the older player." }));
-  check("add a rule: the block's next free number (404), headed 'Add rule 404 to block 400:'", d.head === "Add rule 404 to block 400:" && d.new_num === "404" && d.after_text === "A tie goes to the older player." && r.scope === "block", J(d));
+  check("add a rule: the block's next free number (404), headed 'Add rule 404 to block 400:', its text the first clause 404.1 (rule 109.1)", d.head === "Add rule 404 to block 400:" && d.new_num === "404" && d.after_text === "404.1 A tie goes to the older player." && r.scope === "block", J(d));
   ({ r, d } = drafted({ kind: "move", target: "403", to: "300" }));
   check("move a rule: 'Move rule 403 (Paradox) to block 300 as rule 302:', and its old number keeps a forwarder", d.head === "Move rule 403 (Paradox) to block 300 as rule 302:" && d.new_num === "302" && d.after_text.endsWith("403 [Moved to 302]"), J(d));
   ({ r, d } = drafted({ kind: "move", target: "504", to: "300" }));
-  check("a moved rule's clauses move with it: 504 to block 300 as 302 gives 302.2 and 302.3, and only the forwarder keeps 504",
-    d.after_text.includes("302.2 When you move") && d.after_text.includes("302.3 You can only move") && !/504\.\d/.test(d.after_text) && d.after_text.endsWith("504 [Moved to 302]"), d.after_text);
+  check("a moved rule's clauses move with it: 504 to block 300 as 302 gives 302.1 and 302.2, and only the forwarder keeps 504",
+    d.after_text.includes("302.1 When you move") && d.after_text.includes("302.2 You can only move") && !/504\.\d/.test(d.after_text) && d.after_text.endsWith("504 [Moved to 302]"), d.after_text);
   ({ r, d } = drafted({ kind: "mark", target: "401" }));
   check("lock a rule: 'Mark rule 401 (Points) unanimous:' [majority] -> [unanimous]; it needs the votes of its CURRENT mark (rule 105.3)", d.head === "Mark rule 401 (Points) unanimous:" && d.before_text === "[majority]" && d.after_text === "[unanimous]" && markFor(B, { ...r, ...d }) === "majority", J(d));
   ({ r, d } = drafted({ kind: "mark", target: "400" }));
   check("lock a block: 'Mark block 400 (Points and winning) unanimous:'", d.head === "Mark block 400 (Points and winning) unanimous:" && r.scope === "block", J(d));
-  ({ r, d } = drafted({ kind: "reword", target: "401", words: "A player whose proposal passes gets 15 points.", prefilled: true }));
-  check("reword with the current text edited in place (prefilled) is exact already: drafted by code, the words are the new text", !needsModel(r) && r.kind === "amend" && d.head === "Amend rule 401 (Points) to read:" && d.after_text === "A player whose proposal passes gets 15 points." && d.before_text === "A player whose proposal passes and is applied gets 10 points when it is applied (rule 107).", J(d));
-  check("reword in plain words needs the small model; a clause reword is headed 'Edit clause 504.2 (...) to read:'", needsModel(req({ kind: "reword", target: "401", words: "15 points" })) && draftOf(B, req({ kind: "amend", target: "504.2", words: "x" }), "new").head.startsWith("Edit clause 504.2 ("));
+  ({ r, d } = drafted({ kind: "reword", target: "401.1", words: "A player whose proposal passes gets 15 points.", prefilled: true }));
+  check("reword with the current text edited in place (prefilled) is exact already: drafted by code, the words are the new text", !needsModel(r) && r.kind === "amend" && d.head === "Edit clause 401.1 (Points) to read:" && d.after_text === "A player whose proposal passes gets 15 points." && d.before_text === "A player whose proposal passes and is applied gets 10 points when it is applied (rule 107).", J(d));
+  check("reword in plain words needs the small model; a clause reword is headed 'Edit clause 504.1 (...) to read:'", needsModel(req({ kind: "reword", target: "401.1", words: "15 points" })) && draftOf(B, req({ kind: "amend", target: "504.1", words: "x" }), "new").head.startsWith("Edit clause 504.1 ("));
   check("a target that is an inherited object key (constructor, __proto__, toString, hasOwnProperty) is no rule, for every kind (no junk draft, no crash)",
     ["constructor", "__proto__", "toString", "hasOwnProperty"].every((t) => ["amend", "addclause", "add", "repeal", "move", "mark"].every((k) => /There is no rule/.test(req({ kind: k, target: t, words: "x", to: "300", prefilled: true }).error || ""))) &&
     /Say which block/.test(req({ kind: "move", target: "403", to: "constructor" }).error));
-  check("citations are read in every form the text uses: 'rule 504.2', 'Rule 504', 'rules 202.4 and 203.1', 'rules 101, 102 or 103'",
-    J(citedIn("See rule 504.2. Rule 504 too, and rules 202.4 and 203.1, and rules 101, 102 or 103.")) === J(["504.2", "504", "202.4", "203.1", "101", "102", "103"]) &&
+  check("citations are read in every form the text uses: 'rule 504.1', 'Rule 504', 'rules 202.4 and 203.1', 'rules 101, 102 or 103'",
+    J(citedIn("See rule 504.1. Rule 504 too, and rules 202.4 and 203.1, and rules 101, 102 or 103.")) === J(["504.1", "504", "202.4", "203.1", "101", "102", "103"]) &&
     J(citedIn("rule 4012 is not a rule number")) === J([]));
   check("no merge, split or 'change the setting' kind: they are refused as unknown kinds", ["merge", "split", "setting"].every((k) => "error" in req({ kind: k, target: "401" })));
   check("requests that can't be drafted say why: no such rule, a mark on a clause, moving a clause, a move to its own block, reword with no words",
@@ -72,9 +72,9 @@ console.log("the moderator's code drafts (rule 103.1), after the mockup's makeDr
 console.log("parts that are not wired yet (no untouchable rules), refused at drafting");
 {
   const refuse = (body, after = null, settings = {}) => { const r = req(body); return notWiredRefusal(B, { ...r, ...draftOf(B, r, after), settings }); };
-  const EIGHT = ["102.5", "103.2", "104.4", "104.5", "107.1", "107.6", "202.4", "203.1"], NINE = [...EIGHT, "103.6"].sort();
+  const EIGHT = ["102.4", "103.2", "104.4", "104.5", "107.1", "107.6", "202.4", "203.1"], NINE = [...EIGHT, "103.6"].sort();
   check("the parts not wired yet are the eight things rule 110 used to fix (sign-in, the proposal limit, hidden votes, votes counted by code, the lock, the deadline, End turn, the day) and rule 103.6 that says so, each present in the starter rules", J(notWiredParts(B)) === J(NINE), J(notWiredParts(B)));
-  check("rule 103.6 states the restriction and lists exactly those parts, so the text and the code agree (a part leaves both together)", J([...new Set(citedIn(clauseText(B.byNum["103.6"])))].filter((n) => n !== "103.6").sort()) === J(EIGHT) && /refused when it is drafted, with the reason "not wired yet"/.test(clauseText(B.byNum["103.6"])) && /and this rule\./.test(clauseText(B.byNum["103.6"])) && clauseText(B.byNum["103.6"]).includes("Adding a clause or a rule, or changing only a setting, is not refused."), J(citedIn(clauseText(B.byNum["103.6"]))));
+  check("rule 103.6 states the restriction and lists exactly those parts, so the text and the code agree (a part leaves both together)", J([...new Set(citedIn(clauseText(B.byNum["103.6"])))].filter((n) => n !== "103.6").sort()) === J(EIGHT) && /refused when it is drafted, with the reason "not wired yet"/.test(clauseText(B.byNum["103.6"])) && /and this clause\./.test(clauseText(B.byNum["103.6"])) && clauseText(B.byNum["103.6"]).includes("Adding a clause or a rule, or changing only a setting, is not refused."), J(citedIn(clauseText(B.byNum["103.6"]))));
   check("each of them (103.6 too: it is not wired either) is refused when a reword of it is drafted, with the reason 'Not wired yet' naming it, and it is the same refusal word for word",
     NINE.every((t) => refuse({ kind: "amend", target: t, words: "x", prefilled: true }) === `Not wired yet: rule ${t}.`), J(NINE.map((t) => refuse({ kind: "amend", target: t, words: "x", prefilled: true }))));
   check("repealing each is refused too (a repeal is a change to it)", NINE.every((t) => refuse({ kind: "repeal", target: t.split(".")[0] }) !== null));
@@ -82,12 +82,12 @@ console.log("parts that are not wired yet (no untouchable rules), refused at dra
   check("a repeal or a move that would leave a not-wired part pointing at nothing is refused too (103.6, 'or conflicts with one'): 204 is cited by 107.1; 504 is cited by no listed part",
     notWiredConflictRefusal(B, drafted({ kind: "repeal", target: "204" }).d.conflicts) === "This would conflict with rule 107.1, which is not wired yet." && notWiredConflictRefusal(B, drafted({ kind: "move", target: "204", to: "300" }).d.conflicts) !== null && notWiredConflictRefusal(B, drafted({ kind: "repeal", target: "504" }).d.conflicts) === null && notWiredConflictRefusal(B, []) === null);
   check("there is no rule 110 to propose on: it is not in the book, and a request naming it is an error, not a draft", !B.byNum["110"] && !B.byNum["110.1"] && /no rule 110/.test(req({ kind: "repeal", target: "110" }).error));
-  check("and the number 110 is never handed to a new rule: block 100's next free number is 109, and after a 109 it is 111",
-    nextRuleNum(B, "100") === "109" && nextRuleNum(parseBook(MD.replace("## 200. Players and turns [majority]", "### 109 Numbers and settings\nText.\n\n## 200. Players and turns [majority]")), "100") === "111");
+  check("and the number 110 is never handed to a new rule: block 100 ends at 109 (Numbers and settings), so its next free number is 111, not 110",
+    nextRuleNum(B, "100") === "111" && nextRuleNum(parseBook(MD.replace("### 109 Numbers and settings", "### 108 Numbers and settings")), "100") === "109");
   check("moving 203, repealing 202, and unlocking block 100 (it holds six of the eight) are refused too", refuse({ kind: "move", target: "203", to: "300" }) && refuse({ kind: "repeal", target: "202" }) && refuse({ kind: "mark", target: "100" }));
-  check("a proposal on an ordinary rule is not refused: reword 401 or 504.2, repeal 403, move 504 to 400, add a clause to 105, mark block 500, move 404 or add a rule to block 500",
-    [{ kind: "amend", target: "401", words: "x", prefilled: true }, { kind: "amend", target: "504.2", words: "x", prefilled: true }, { kind: "repeal", target: "403" }, { kind: "move", target: "504", to: "400" },
-      { kind: "addclause", target: "105", words: "Be kind." }, { kind: "mark", target: "500" }, { kind: "add", target: "500", words: "Be kind." }].every((b) => refuse(b) === null), J([ "401", "504.2", "403"].map((t) => refuse({ kind: "amend", target: t, words: "x", prefilled: true }))));
+  check("a proposal on an ordinary rule is not refused: reword 401 or 504.1, repeal 403, move 504 to 400, add a clause to 105, mark block 500, move 404 or add a rule to block 500",
+    [{ kind: "amend", target: "401.1", words: "x", prefilled: true }, { kind: "amend", target: "504.1", words: "x", prefilled: true }, { kind: "repeal", target: "403" }, { kind: "move", target: "504", to: "400" },
+      { kind: "addclause", target: "105", words: "Be kind." }, { kind: "mark", target: "500" }, { kind: "add", target: "500", words: "Be kind." }].every((b) => refuse(b) === null), J(["401.1", "504.1", "403.1"].map((t) => refuse({ kind: "amend", target: t, words: "x", prefilled: true }))));
   check("a not-wired refusal never takes a P-number: the draft is refused before anything is stored (see the route test below)", typeof refuse({ kind: "amend", target: "104.4", words: "x", prefilled: true }) === "string");
   check("adding a clause to 203 or a rule to block 100 changes nothing already there: allowed", refuse({ kind: "addclause", target: "203", words: "Weekends are long." }) === null && refuse({ kind: "add", target: "100", words: "Be kind." }) === null);
   const same = B.byNum["203.1"];
@@ -100,19 +100,19 @@ console.log("parts that are not wired yet (no untouchable rules), refused at dra
   const r103 = draftOf(B, req({ kind: "amend", target: "103", words: textOf(B.byNum["103"]), prefilled: true }), "x").before_text;
   check("text appended to a not-wired clause inside a whole-rule reword changes it: refused (103.2 + 'Except ... ten proposals on Sundays.')",
     /rule 103\.2/.test(refuse({ kind: "amend", target: "103", words: r103.replace("next day's ballot.", "next day's ballot. Except that a player may confirm ten proposals on Sundays."), prefilled: true }) || ""), r103);
-  check("a reword elsewhere (401) is not refused", refuse({ kind: "amend", target: "401", words: "15", prefilled: true }) === null);
+  check("a reword elsewhere (401) is not refused", refuse({ kind: "amend", target: "401.1", words: "15", prefilled: true }) === null);
 }
 
 console.log("the conflicts the moderator names (rule 108.3)");
 {
-  check("repealing 504 names the rules that refer to it (505 cites rule 504.2), and not 504's own clauses", referencesTo(B, "504").includes("505") && !referencesTo(B, "504").some((n) => n.startsWith("504")), J(referencesTo(B, "504")));
+  check("repealing 504 names the rules that refer to it (505.1 cites rule 504.1), and not 504's own clauses", referencesTo(B, "504").includes("505.1") && !referencesTo(B, "504").some((n) => n.startsWith("504")), J(referencesTo(B, "504")));
   check("repealing 202 names 103.3 (it cites rule 202.4) and 107.1-style references to it, never 202 itself", referencesTo(B, "202").includes("103.3") && !referencesTo(B, "202").includes("202"), J(referencesTo(B, "202")));
   check("a draft of a repeal carries those conflicts", J(drafted({ kind: "repeal", target: "504" }).d.conflicts) === J(referencesTo(B, "504")));
 }
 
 console.log("the small model's answer, checked");
 {
-  const r = req({ kind: "amend", target: "401", words: "make it 15" });
+  const r = req({ kind: "amend", target: "401.1", words: "make it 15" });
   const ok = readModelAnswer(B, r, '{"after_text": "A player whose proposal passes gets 15 points.", "conflicts": ["402", "999", "401", "x"], "settings": {}}');
   check("a good answer: the new text, and only conflicts that name another rule the book has (999, the target itself and junk dropped)", ok.after_text === "A player whose proposal passes gets 15 points." && J(ok.conflicts) === J(["402"]), J(ok));
   check("an answer wrapped in prose still parses when it holds one JSON object", readModelAnswer(B, r, 'Here: {"after_text": "x y", "conflicts": []}').after_text === "x y");
@@ -411,33 +411,33 @@ try {
   check("a code draft: status draft, no number, the head and the tracked change, drafted by code, the need for 3 players (majority: 2 of 3)",
     dr.status === 200 && v.status === "draft" && v.n === null && v.head === "Repeal rule 403 (Paradox):" && v.after_text === "[Repealed]" && v.drafted_by === "code" && J(v.needs) === J({ mark: "majority", needed: 2, of: 3 }) && v.mine === true && !!v.id && model.calls.length === 0, dr.text);
   model.next = null;
-  const dm = await ana.post(P, { kind: "reword", target: "401", words: "A passed proposal should be worth 15 points, not 10." });
+  const dm = await ana.post(P, { kind: "reword", target: "401.1", words: "A passed proposal should be worth 15 points, not 10." });
   const call = model.calls.at(-1);
   check("a reword in plain words goes to the small model once: the Messages API path, the key header and version, the player's words and the rule's text in the prompt, a small model",
     dm.status === 200 && model.calls.length === 1 && call.url === "/v1/messages" && call.key === true && call.version === "2023-06-01" && call.body.model === "claude-haiku-5-5" &&
     call.body.messages[0].content.includes("worth 15 points") && call.body.messages[0].content.includes("A player whose proposal passes and is applied gets 10 points when it is applied (rule 107)."), dm.text);
-  check("...and its answer becomes the draft: 'Amend rule 401 (Points) to read:', the new text, drafted by the model, with the conflict it named (rule 108.3)",
-    dm.data.proposal.head === "Amend rule 401 (Points) to read:" && dm.data.proposal.after_text === "A player whose proposal passes gets 15 points." && dm.data.proposal.drafted_by === "model" &&
+  check("...and its answer becomes the draft: 'Edit clause 401.1 (Points) to read:', the new text, drafted by the model, with the conflict it named (rule 108.3)",
+    dm.data.proposal.head === "Edit clause 401.1 (Points) to read:" && dm.data.proposal.after_text === "A player whose proposal passes gets 15 points." && dm.data.proposal.drafted_by === "model" &&
     J(dm.data.proposal.conflicts) === J(["402"]) && /rule 402 \(rule 108\.3\)/.test(dm.data.proposal.conflict_note), dm.text);
   const callsPre = model.calls.length;
   model.next = { status: 200, text: '{"after_text": "IGNORED", "conflicts": ["202.2"], "settings": {}}' };
-  const pre = await ana.post(P, { kind: "reword", target: "401", words: "Every player must move twice every day.", prefilled: true });
+  const pre = await ana.post(P, { kind: "reword", target: "401.1", words: "Every player must move twice every day.", prefilled: true });
   model.next = null;
   check("an exact rewording (prefilled) keeps the player's text word for word, and the model still names the conflicts (rule 108.3): 202.2",
     pre.status === 200 && pre.data.proposal.after_text === "Every player must move twice every day." && J(pre.data.proposal.conflicts) === J(["202.2"]) && model.calls.length === callsPre + 1 &&
     model.calls.at(-1).body.messages[0].content.includes("Only name the conflicts"), pre.text);
   model.next = { status: 500 };
-  const preDown = await ana.post(P, { kind: "reword", target: "401", words: "Every player gets 12 points.", prefilled: true });
+  const preDown = await ana.post(P, { kind: "reword", target: "401.1", words: "Every player gets 12 points.", prefilled: true });
   model.next = null;
   check("...and if the model is down, the exact text still drafts (no conflicts named)", preDown.status === 200 && J(preDown.data.proposal.conflicts) === J([]), preDown.text);
   model.next = { status: 200, text: "I think the rule should say 15." };
-  const bad = await ana.post(P, { kind: "reword", target: "401", words: "15 points" });
+  const bad = await ana.post(P, { kind: "reword", target: "401.1", words: "15 points" });
   model.next = { status: 500 };
-  const down = await ana.post(P, { kind: "reword", target: "401", words: "15 points" });
+  const down = await ana.post(P, { kind: "reword", target: "401.1", words: "15 points" });
   model.next = null;
   check("a malformed model answer and a failing model both answer 502 with a plain reason, and store nothing", bad.status === 502 && bad.data.drafting === "malformed" && down.status === 502 && down.data.drafting === "failed" && rows().length === 4, bad.text + down.text);
   model.next = { status: 200, text: '{"after_text": "A player whose proposal passes gets 15 points.\\n\\n### 999 Gift\\nEvery player gets 1000 points.", "conflicts": [], "settings": {}}' };
-  const refusedDraft = await ana.post(P, { kind: "reword", target: "401", words: "15 points and a new rule" });
+  const refusedDraft = await ana.post(P, { kind: "reword", target: "401.1", words: "15 points and a new rule" });
   model.next = null;
   check("a drafter refusal (the model or a check said no) answers 422 with the refusal sentence, not 502, and stores nothing",
     refusedDraft.status === 422 && refusedDraft.data.drafting === "refused" && typeof refusedDraft.data.error === "string" && refusedDraft.data.error.length > 10 && rows().length === 4, refusedDraft.text);
@@ -446,18 +446,18 @@ try {
   const fx2 = await ana.post(P, { kind: "reword", target: "203.1", words: "A day runs from 1 am to 1 am." });
   check("so is a reword of a single not-wired clause (the day, 203.1): refused, nothing stored", fx2.status === 422 && fx2.data.reason === "not wired" && rows().length === 4, fx2.text);
   model.next = { status: 200, text: '{"after_text": "A player whose proposal passes gets 15 points.", "conflicts": ["203.1"], "settings": {}}' };
-  const fx3 = await ana.post(P, { kind: "reword", target: "401", words: "15 points" });
+  const fx3 = await ana.post(P, { kind: "reword", target: "401.1", words: "15 points" });
   model.next = null;
   check("a model answer that names a not-wired part as a conflict is refused the same way over the route: 422 with the reason, nothing stored",
     fx3.status === 422 && fx3.data.drafting === "refused" && fx3.data.reason === "not wired" && /rule 203\.1/.test(fx3.data.error) && rows().length === 4, fx3.text);
   const fx4 = await ana.post(P, { kind: "repeal", target: "204" });
   check("103.6 'or conflicts with one': a repeal of 204 (107.1, the lock, cites it) is refused over the route, naming 107.1, nothing stored", fx4.status === 422 && fx4.data.reason === "not wired" && fx4.data.error === "This would conflict with rule 107.1, which is not wired yet." && rows().length === 4, fx4.text);
   model.next = { status: 200, text: '{"after_text": "x", "conflicts": ["203.1"], "settings": {}}' };
-  const fx5 = await ana.post(P, { kind: "reword", target: "401", words: "A player whose proposal passes gets 12 points.", prefilled: true });
+  const fx5 = await ana.post(P, { kind: "reword", target: "401.1", words: "A player whose proposal passes gets 12 points.", prefilled: true });
   model.next = null;
   check("and so is an edit in place (the player's exact text) whose model-named conflicts include a not-wired part", fx5.status === 422 && fx5.data.reason === "not wired" && /rule 203\.1/.test(fx5.data.error) && rows().length === 4, fx5.text);
   const cf = await ana.post(P, { kind: "repeal", target: "504" });
-  check("a repeal names the rules it would leave pointing at nothing (505 cites 504.2)", cf.status === 200 && cf.data.proposal.conflicts.includes("505") && /rule 505/.test(cf.data.proposal.conflict_note), cf.text);
+  check("a repeal names the rules it would leave pointing at nothing (505 cites 504.1)", cf.status === 200 && cf.data.proposal.conflicts.includes("505.1") && /rule 505/.test(cf.data.proposal.conflict_note), cf.text);
 
   console.log("confirm: at a limit of 1 a day, numbered in confirm order (rule 103.2)");
   const [ca, cb] = await Promise.all([ana.post(`${P}/${v.id}/confirm`, {}), ana.post(`${P}/${dm.data.proposal.id}/confirm`, {})]);
@@ -541,21 +541,21 @@ try {
   const cyRows = () => d1(state, `SELECT COUNT(*) AS n FROM proposals WHERE player_id = '${cyId}' AND day_proposed = 2`)[0].n;
   const beforeSlow = cyRows();
   model.before = () => setClock(new Date(Date.parse(end2) + 1000).toISOString());
-  const slowTurn = await cy.post("/prop/api/turn", { kind: "reword", target: "401", words: "16 points" });
+  const slowTurn = await cy.post("/prop/api/turn", { kind: "reword", target: "401.1", words: "16 points" });
   setClock(clockNow2);
   check("a draft whose model answer arrives after midnight meets the lock: /api/turn answers 423 and writes nothing (no draft, no proposal)",
     slowTurn.status === 423 && /processing day 2/.test(slowTurn.data.error) && cyRows() === beforeSlow, slowTurn.text);
   d1(state, `UPDATE draft_attempts SET n = 29 WHERE game_id = '${gid}' AND player_id = '${cyId}' AND day = 2`);
   model.next = { status: 200, text: "garbled" };
-  const g29 = await cy.post(P, { kind: "reword", target: "401", words: "15" });
+  const g29 = await cy.post(P, { kind: "reword", target: "401.1", words: "15" });
   model.next = null;
   const before30 = model.calls.length;
-  const g30 = await cy.post(P, { kind: "reword", target: "401", words: "15" });
+  const g30 = await cy.post(P, { kind: "reword", target: "401.1", words: "15" });
   check("every draft attempt counts toward the 30 a day, a garbled one too, and the cap is checked before the model is called (429, no model call)",
     g29.status === 502 && g30.status === 429 && model.calls.length === before30 && d1(state, `SELECT n FROM draft_attempts WHERE game_id = '${gid}' AND player_id = '${cyId}' AND day = 2`)[0].n === 30, g29.text + g30.text);
   d1(state, `UPDATE draft_attempts SET n = 29 WHERE game_id = '${gid}' AND player_id = '${cyId}' AND day = 2`);
   const callsPar = model.calls.length;
-  const par = await Promise.all([cy.post(P, { kind: "reword", target: "401", words: "16" }), cy.post(P, { kind: "reword", target: "401", words: "17" })]);
+  const par = await Promise.all([cy.post(P, { kind: "reword", target: "401.1", words: "16" }), cy.post(P, { kind: "reword", target: "401.1", words: "17" })]);
   check("the cap holds under parallel drafts: at 29, two at once give exactly one draft (one model call) and one 429",
     J(par.map((r) => r.status).sort()) === J([200, 429]) && model.calls.length === callsPar + 1, par.map((r) => r.text).join(" | "));
   check("?rule= is matched exactly, not as a pattern: ?rule=%, _ and . match nothing", (await client(A).get(`${P}?rule=%25`)).data.proposals.length === 0 && (await client(A).get(`${P}?rule=_`)).data.proposals.length === 0 && (await client(A).get(`${P}?rule=.`)).data.proposals.length === 0);
@@ -583,7 +583,7 @@ try {
   const dee = await join(srv2.base, "nokey", g2.code, { email: "dee@example.com", name: "Dee", color: "teal" });
   startPlaying(state2, "nokey");
   const calls = model.calls.length;
-  const nr = await dee.post("/nokey/api/proposals", { kind: "reword", target: "401", words: "15 points" });
+  const nr = await dee.post("/nokey/api/proposals", { kind: "reword", target: "401.1", words: "15 points" });
   const nm = await dee.post("/nokey/api/proposals", { kind: "repeal", target: "403" });
   check("without MODEL_API_KEY a reword in plain words answers 503 'drafting is unavailable' (no model call); a repeal still drafts",
     nr.status === 503 && nr.data.drafting === "unavailable" && /unavailable/.test(nr.data.error) && model.calls.length === calls && nm.status === 200 && nm.data.proposal.drafted_by === "code", nr.text + nm.text);

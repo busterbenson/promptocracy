@@ -426,6 +426,8 @@ export async function applyOne({ dir, job, p, tonight, budgetMs, model = runMode
       rmSync(rp, { force: true });
       // The library pages the model relied on, for the night log.
       if (Array.isArray(result?.library) && result.library.length) log?.({ event: "library", number: p.number, attempt, pages: result.library.filter((x) => typeof x === "string").slice(0, 10).map((x) => x.slice(0, 200)) });
+      // The clauses the draft repeats from another clause (rules voice 8, guidance): enacted as voted, named in the night log for the operator.
+      if (Array.isArray(result?.restates) && result.restates.length) log?.({ event: "restates", number: p.number, attempt, clauses: result.restates.filter((x) => typeof x === "string").slice(0, 10).map((x) => x.slice(0, 40)) });
       if (!r.ok && !result) { discard(dir); return { applied: false, error: true, reason: "the moderator could not run", detail: r.out.slice(-500) }; }
       if (result?.outcome === "not_applied") { discard(dir); return { applied: false, reason: clean(result.reason) || "it no longer makes sense (rule 107.3)" }; }
       const strays = syncBack(copy, dir);

@@ -66,7 +66,7 @@ export async function boardContext(env: Env, game: any, today?: Today) {
 
 // Runs the game's actionAllowed hooks (a veto hook: any rule may refuse, the first in rule order wins). null, or the
 // refusal the route sends. A rule that throws is answered as a 500 refusal, so every caller handles it the same way.
-/** @rule 202.2, 504.3 */
+/** @rule 202.2, 504.2 */
 export function checkAction(game: any, ctx: any, actor: { ref: string }, action: any): Refusal | null {
   try {
     const r = rulesFor(game).actionAllowed(ctx, actor, action);

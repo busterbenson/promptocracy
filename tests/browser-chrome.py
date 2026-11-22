@@ -455,7 +455,7 @@ with sync_playwright() as pw:
     mbar = text(page, "#movebar")
     tiles_after = page.evaluate("fetch('/chrome/api/board').then(r => r.json()).then(b => b.tiles.length)")
     check("S1-MOV-03: the move is final at once: the bar says 'Moved to 1N 4E today · +N tiles', no Undo, no second move", re.search(r"Moved to 1N 4E today · \+\d+ tiles", mbar) and "Undo" not in mbar and "Make this move" not in mbar, mbar)
-    check("S1-MOV-04: the count the bar promised is the number of tiles the move charted (rule 504.2: tiles within the chart radius, corners cut)", int(re.search(r"\+(\d+) tiles", mbar).group(1)) == pending_n, f"{mbar} promised {pending_n}")
+    check("S1-MOV-04: the count the bar promised is the number of tiles the move charted (rule 504.1: tiles within the chart radius, corners cut)", int(re.search(r"\+(\d+) tiles", mbar).group(1)) == pending_n, f"{mbar} promised {pending_n}")
     check("S1-MOV-04: and it equals what the board gained (64 -> %d)" % tiles_after, tiles_after - tiles_before == int(re.search(r"\+(\d+) tiles", mbar).group(1)), f"{tiles_before} {tiles_after} {mbar}")
     check("S1-MOV-03: the turn bar then shows 'Moved 1N 4E' and Move is done (Vote is not)", re.search(r"Moved\s*1N 4E", text(page, "#pzone")) and page.locator("#pzone .tkstep.mv.done").count() == 1 and page.locator("#pzone .tkstep.vt.done").count() == 0, text(page, "#pzone"))
     check("S1-MOV-03: no highlighted tiles and no move offered after the move", page.locator("#board-wrap polygon.reach").count() == 0)
