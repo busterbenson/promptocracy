@@ -8,7 +8,10 @@ import { GAMES, STARTER } from "../generated/games";
 import { chartTile, loadTiles } from "../lib/board";
 import { getSettings } from "../lib/settings.js";
 import { GONE_REASON } from "../lib/votes.js";
-import { Env, nowIso } from "../lib/util";
+import { Env, nowIso, who } from "../lib/util";
+import { applyBoard } from "./board-night.js";
+import { endGameStatements } from "../lib/end";
+import { tileLabel } from "../lib/geometry.js";
 import { APPLIED_EFFECTS, RuleError, assembleRules, cryptoRng, makeContext, makeTiles } from "./hooks.js";
 
 export { RuleError };
@@ -36,30 +39,48 @@ export function rulesFor(game: { slug: string }) {
   return r;
 }
 
-type PlayerRow = { id: string; color: string; score: number; x: number; y: number; z: number };
-/** @rule 102 */
-const playersOf = (rows: PlayerRow[]) => rows.map((p) => ({ ref: p.id, color: p.color, score: p.score, x: p.x, y: p.y, z: p.z }));
+type PlayerRow = { id: string; color: string; score: number; x: number; y: number; z: number; hearts?: number; dead_day?: number | null; ghost_day?: number | null };
+/** A player's state (rule 603.1): living, dead, or a Ghost (603.3). @rule 603.1, 603.3 */
+export const stateOf = (p: { dead_day?: number | null; ghost_day?: number | null }): "living" | "dead" | "ghost" => (p.dead_day == null ? "living" : p.ghost_day != null ? "ghost" : "dead");
+/** @rule 102, 603.1 */
+const playersOf = (rows: PlayerRow[]) => rows.map((p) => ({ ref: p.id, color: p.color, score: p.score, x: p.x, y: p.y, z: p.z, hearts: p.hearts ?? 3, state: stateOf(p), deadDay: p.dead_day ?? null }));
+const PLAYER_COLS = "id, color, score, x, y, z, hearts, dead_day, ghost_day";
+
+type CreatureRow = { id: number; entry_id: string; x: number; y: number; z: number; hearts: number | null; rests_night: number | null };
+/** The creatures on the board (not gone), in the order they appeared (rule 602). @rule 602.4 */
+async function loadCreatures(env: Env, gameId: string) {
+  return (await env.DB.prepare("SELECT id, entry_id, x, y, z, hearts, rests_night FROM creatures WHERE game_id = ? AND gone_day IS NULL ORDER BY id").bind(gameId).all()).results as CreatureRow[];
+}
+/** @rule 602.4 */
+const creaturesOf = (rows: CreatureRow[], tonight: number | null) => rows.map((c) => ({ id: c.id, entry: c.entry_id, x: c.x, y: c.y, z: c.z, hearts: c.hearts, resting: tonight !== null && c.rests_night === tonight }));
+/** The game's catalog entries as the rules read them (rule 701). @rule 701.1 */
+function catalogOf(game: { slug: string }) {
+  const { bundle } = bundleFor(game);
+  return ((bundle as any).catalog ?? []).map((e: any) => ({ id: e.id, kind: e.kind, attrs: e.attrs ?? {} }));
+}
 // The acting player's turn today (rule 202.1: one turn a day each). `turn.moved` is whether they have moved in it; the
 // legacy round/turn numbers stay in ctx for the modules written against them (the engine is additive only).
-type Today = { moved?: boolean } | null | undefined;
+type Today = { moved?: boolean; gave?: boolean } | null | undefined;
 /** @rule 202.1, 202.2 */
-const turnOf = (game: any, today: Today) => ({ round: game.round, turn: game.turn, moved: !!today?.moved });
+const turnOf = (game: any, today: Today) => ({ round: game.round, turn: game.turn, moved: !!today?.moved, gave: !!today?.gave });
 
 // A context with no board in it: enough for the questions the turn guard asks (may this player move at all?).
-/** @rule 202.2 */
-export function lightContext(game: any, today?: Today) {
-  return makeContext({ day: game.day || null, now: nowIso(), settings: getSettings(game.settings), turn: turnOf(game, today) });
+/** `me` is the acting player's row, so a rule can see their state (rule 603.1). @rule 202.2, 603.1 */
+export function lightContext(game: any, today?: Today, me?: PlayerRow) {
+  return makeContext({ day: game.day || null, now: nowIso(), settings: getSettings(game.settings), turn: turnOf(game, today), players: me ? playersOf([me]) : [] });
 }
 
 // The full context for a move or a spawn: the settings, every piece and every charted tile.
 /** @rule 501 */
 export async function boardContext(env: Env, game: any, today?: Today) {
-  const [tiles, pieces] = await Promise.all([
+  const [tiles, pieces, creatures] = await Promise.all([
     loadTiles(env, game.id),
-    env.DB.prepare("SELECT id, color, score, x, y, z FROM players WHERE game_id = ?").bind(game.id).all(),
+    env.DB.prepare(`SELECT ${PLAYER_COLS} FROM players WHERE game_id = ?`).bind(game.id).all(),
+    loadCreatures(env, game.id),
   ]);
   return makeContext({
     day: game.day || null, now: nowIso(), settings: getSettings(game.settings), players: playersOf(pieces.results as PlayerRow[]),
+    creatures: creaturesOf(creatures, game.day || null), catalog: catalogOf(game),
     tiles: makeTiles(tiles), turn: turnOf(game, today), rng: cryptoRng(),
   });
 }
@@ -119,9 +140,10 @@ export async function chooseSpawn(env: Env, game: any) {
 // The players as the night's hooks see them (scores included).
 /** @rule 401, 402 */
 async function nightContext(env: Env, game: any, nowMs: number) {
-  const pieces = await env.DB.prepare("SELECT id, color, score, x, y, z FROM players WHERE game_id = ?").bind(game.id).all();
+  const pieces = await env.DB.prepare(`SELECT ${PLAYER_COLS} FROM players WHERE game_id = ?`).bind(game.id).all();
   const { bundle, bundled } = bundleFor(game);
-  return makeContext({ day: game.day || null, now: nowIso(nowMs), settings: getSettings(bundled ? bundle.settings : game.settings), players: playersOf(pieces.results as PlayerRow[]) });
+  return makeContext({ day: game.day || null, now: nowIso(nowMs), settings: getSettings(bundled ? bundle.settings : game.settings), players: playersOf(pieces.results as PlayerRow[]),
+    creatures: creaturesOf(await loadCreatures(env, game.id), game.day || null), catalog: catalogOf(game) });
 }
 
 // The order the passed proposals are applied in (rule 107.2), by the game's own rule for it (the applyOrder hook).
@@ -257,5 +279,92 @@ export async function enactStatements(env: Env, game: any, n: number, nowMs: num
        WHERE id = ? AND status = 'passed'`,
     ).bind(now, q.id));
   }
+  return stmts;
+}
+
+
+// ---- the night's board (rules 602, 603, 404) -------------------------------------------------------------------------------
+// The guard every board statement carries: the night's board has not run (days.board_at is empty) and the game is still playing.
+// Binds: game id, night, game id.
+const BOARD_OPEN = "(SELECT board_at FROM days WHERE game_id = ? AND n = ?) IS NULL AND EXISTS (SELECT 1 FROM games WHERE id = ? AND status = 'playing')";
+
+/** The hearts a new player starts with (rule 601.1). @rule 601.1 */
+export function heartsStart(game: { slug: string; settings: string }): number {
+  const { bundle, bundled } = bundleFor(game);
+  return getSettings(bundled ? bundle.settings : game.settings)["hearts.start"];
+}
+
+/**
+ * The statements for night n's board, or null when the game's rules have nothing to run (no `night` hook) or it already ran. Builds the context, asks
+ * rules.night(ctx, {applied}) (every night, a quiet one included), applies its effects in order to an in-memory copy (applyBoard), asks rules.ending
+ * when someone died, and returns ONE batch, every statement guarded by BOARD_OPEN and the last one setting days.board_at, so a retried night applies
+ * nothing twice. @rule 602.3, 603.3, 404
+ */
+export async function nightBoardStatements(env: Env, game: any, n: number, nowMs: number) {
+  const rules = rulesFor(game);
+  if (!rules.implementers("night").length) return null;
+  const done: any = await env.DB.prepare("SELECT board_at FROM days WHERE game_id = ? AND n = ?").bind(game.id, n).first();
+  if (!done || done.board_at) return null;
+  const applied = ((await env.DB.prepare("SELECT number FROM proposals WHERE game_id = ? AND day_ballot = ? AND status = 'enacted' ORDER BY number").bind(game.id, n).all()).results as any[]).map((r) => r.number as number);
+  const ctx: any = await nightContext(env, game, nowMs);
+  const maxId: any = await env.DB.prepare("SELECT COALESCE(MAX(id), 0) AS m FROM creatures WHERE game_id = ?").bind(game.id).first();
+  const nextId = (maxId?.m ?? 0) + 1;
+  const tiles = makeTiles(await loadTiles(env, game.id));
+  const full = makeContext({ day: game.day || null, now: nowIso(nowMs), settings: ctx.settings, players: ctx.players.map((p: any) => ({ ...p })), creatures: ctx.creatures, catalog: ctx.catalog, tiles, rng: cryptoRng(), nextCreatureId: nextId });
+  const effects = rules.night(full, { applied });
+  const rows = await loadCreatures(env, game.id);
+  const res = applyBoard({
+    n, effects, tiles, catalog: ctx.catalog, nextId,
+    players: ctx.players.map((p: any) => ({ ...p })),
+    creatures: rows.map((c) => ({ id: c.id, entry: c.entry_id, x: c.x, y: c.y, z: c.z, hearts: c.hearts, restsNight: c.rests_night, resting: false })),
+  });
+  const now = nowIso(nowMs);
+  const names = new Map(((await env.DB.prepare("SELECT id, display_name, color FROM players WHERE game_id = ?").bind(game.id).all()).results as any[]).map((p) => [p.id, { name: p.display_name as string, color: p.color as string }]));
+  /** @rule 603.1 */
+  const pn = (ref: string) => { const p = names.get(ref); return p ? who(p.name, p.color) : "A player"; };
+  /** @rule 602.3 */
+  const entryName = (id: string) => ((bundleFor(game).bundle as any).catalog ?? []).find((e: any) => e.id === id)?.name ?? id;
+  /** @rule 602.3 */
+  const tileOf = (x: number, y: number, z: number) => tileLabel(x, y, z);
+  const open = BOARD_OPEN, ob = [game.id, n, game.id];
+  const stmts: any[] = [];
+  /** @rule 603.1 */
+  const ev = (kind: string, text: string, template: string, args: any, player: string | null) =>
+    stmts.push(env.DB.prepare(
+      `INSERT INTO events (game_id, kind, text, created_at, day, phase, template, args, player_id, night_seq)
+       SELECT ?, ?, ?, ?, ?, 'night', ?, json(?), ?, ${NEXT_NIGHT_SEQ} WHERE ${open}`,
+    ).bind(game.id, kind, text, now, n, template, JSON.stringify(args), player, game.id, n, ...ob));
+  const byId = new Map<number, any>();
+  for (const op of res.ops) {
+    if (op.op === "appear") {
+      byId.set(op.id, op);
+      stmts.push(env.DB.prepare(`INSERT INTO creatures (id, game_id, entry_id, x, y, z, hearts, appeared_day) SELECT ?, ?, ?, ?, ?, ?, ?, ? WHERE ${open}`).bind(op.id, game.id, op.entry, op.x, op.y, op.z, op.hearts, n, ...ob));
+      ev("appeared", `${entryName(op.entry)} appeared at ${tileOf(op.x, op.y, op.z)}.`, "appeared", { creature: op.id, entry: op.entry }, null);
+    } else if (op.op === "step") {
+      stmts.push(env.DB.prepare(`UPDATE creatures SET x = ?, y = ?, z = ? WHERE game_id = ? AND id = ? AND ${open}`).bind(op.x, op.y, op.z, game.id, op.id, ...ob));
+    } else if (op.op === "rest") {
+      stmts.push(env.DB.prepare(`UPDATE creatures SET rests_night = ? WHERE game_id = ? AND id = ? AND ${open}`).bind(op.night, game.id, op.id, ...ob));
+    } else if (op.op === "bite" && op.player) {
+      stmts.push(env.DB.prepare(`UPDATE players SET hearts = ? WHERE game_id = ? AND id = ? AND ${open}`).bind(op.left, game.id, op.player, ...ob));
+      ev("bit", `${pn(op.player)} was bitten and has ${op.left} of their hearts left.`, "bit", { hearts: op.hearts, left: op.left }, op.player);
+    } else if (op.op === "bite") {
+      stmts.push(env.DB.prepare(`UPDATE creatures SET hearts = ? WHERE game_id = ? AND id = ? AND ${open}`).bind(op.left, game.id, op.creature, ...ob));
+    } else if (op.op === "die") {
+      stmts.push(env.DB.prepare(`UPDATE players SET dead_day = ? WHERE game_id = ? AND id = ? AND dead_day IS NULL AND ${open}`).bind(n, game.id, op.player, ...ob));
+      ev("died", `${pn(op.player)} died.`, "died", {}, op.player);
+    } else if (op.op === "gone") {
+      stmts.push(env.DB.prepare(`UPDATE creatures SET gone_day = ? WHERE game_id = ? AND id = ? AND ${open}`).bind(n, game.id, op.id, ...ob));
+    } else if (op.op === "rise") {
+      stmts.push(env.DB.prepare(`UPDATE players SET ghost_day = ? WHERE game_id = ? AND id = ? AND dead_day IS NOT NULL AND ghost_day IS NULL AND ${open}`).bind(n, game.id, op.player, ...ob));
+      ev("rose", `${pn(op.player)} rose as a Ghost.`, "rose", {}, op.player);
+    }
+  }
+  if (res.died.length) {
+    const after = makeContext({ day: game.day || null, now, settings: ctx.settings, tiles, rng: cryptoRng(), catalog: ctx.catalog,
+      players: res.players.map((p: any) => ({ ...p })), creatures: res.creatures.map((c: any) => ({ id: c.id, entry: c.entry, x: c.x, y: c.y, z: c.z, hearts: c.hearts, resting: false })) });
+    const end = rules.ending(after, { died: res.died });
+    if (end) stmts.push(...endGameStatements(env, game, n, { ending: end.ending, player: end.player, reason: end.reason }, end.player ? names.get(end.player)?.name ?? null : null, now, open, ob));
+  }
+  stmts.push(env.DB.prepare("UPDATE days SET board_at = ? WHERE game_id = ? AND n = ? AND board_at IS NULL").bind(now, game.id, n));
   return stmts;
 }

@@ -278,7 +278,8 @@ import { createChat, AGENTS } from "/js/chat.js";
   function drawBar() {
     const el = $("pzone");
     if (!el || !PROP) return;
-    const html = PROP.barHTML(turnHTML());
+    const t = turnHTML();
+    const html = t && DAY && DAY.status === "over" ? `<section class="tk off" aria-label="Game over">${t.head}</section>` : PROP.barHTML(t);
     if (el.innerHTML !== html) el.innerHTML = html;
     el.hidden = !html;
     syncDayTag();
@@ -363,11 +364,14 @@ import { createChat, AGENTS } from "/js/chat.js";
   }
   /** The player's day, the checklist panel above the tabs (rules 202.4, 107.1): Day N and the clock (or Locked), Move and Vote (Propose is propose.js's), End turn and its confirm. Null: no day to show. */
   function turnHTML() {
+    // After the game ends (rule 404): "Game over" and the rule, in place of the day and the clock.
+    if (DAY && DAY.day && DAY.status === "over" && DAY.ending) return { head: `<div class="tkhead"><span class="tbhead"><h2 class="tkday">Game over</h2></span><span class="tkclock">${PROP.rpill("404")}</span></div>`, steps: "", end: "", ask: "" };
     if (!DAY || !DAY.day || DAY.status !== "playing" || !DAY.you) return null;
-    const you = DAY.you, ended = !!you.ended, locked = !!DAY.locked, frozen = ended || locked;
+    // A dead player has no turn (603.1); a Ghost has the turn but neither Vote nor Propose (604.1).
+    const you = DAY.you, ended = !!you.ended, locked = !!DAY.locked, dead = you.state === "dead", ghost = you.state === "ghost", frozen = ended || locked || dead;
     const nv = votable(), vd = Math.min(votedCount(), nv);   // the Champion does not vote on their own change (402.4)
     // End turn is the one filled button once your move, your votes and your proposal are all in; before that it is ghost
-    const allDone = !!(you.moved && you.proposed && vd === nv);
+    const allDone = !!(you.moved && (ghost || (you.proposed && vd === nv)));
     const m = (cls, t = "") => `<span class="tkm ${cls}" aria-hidden="true">${t}</span>`;
     const step = ({ cls, done, marks, label, detail, jump, off, aria, many }) => `<li class="tkstep ${cls}${done ? " done" : ""}${frozen ? " dim" : ""}"><button type="button" class="tkgo" data-jump="${jump}"${off ? " disabled" : ""} aria-label="${esc(aria)}"><span class="tkmarks${many ? " many" : ""}">${marks}</span><span class="tktxt"><span class="tklab">${label}</span>${detail ? `<span class="tkdet">${detail}</span>` : ""}</span>${frozen || off ? "" : '<span class="go" aria-hidden="true">›</span>'}</button></li>`;
     const myPos = BOARD && ME && ME.player ? BOARD.pieces.find(p => p.color.key === myKey()) : null;
@@ -380,16 +384,16 @@ import { createChat, AGENTS } from "/js/chat.js";
     const shown = Math.min(nv, 8);
     let vm = ""; for (let i = 0; i < shown; i++) vm += i < vd ? m("ok", "✓") : frozen ? m("no", "–") : m("e");
     const steps = step({ cls: "mv", done: !!you.moved, marks: you.moved ? m("ok", "✓") : frozen ? m("no", "–") : m("e"), label: mvLabel, detail: mvDetail, jump: "board", off: frozen, aria: mvDetail ? `${mvLabel}, ${mvDetail}` : mvLabel })
-      + step({ cls: "vt", done: vtDone, marks: vm, label: vtLabel, detail: `<b>${vd}</b> of ${nv}`, jump: "ballot", many: shown > 4, off: frozen || nv === 0, aria: `${vtLabel}, ${vd} of ${nv}` });
+      + step({ cls: "vt", done: vtDone, marks: vm, label: vtLabel, detail: ghost ? esc((you.can.vote && you.can.vote.reason) || "") : `<b>${vd}</b> of ${nv}`, jump: "ballot", many: shown > 4, off: frozen || nv === 0 || ghost, aria: `${vtLabel}, ${vd} of ${nv}` });
     const en = you.can && you.can.end_turn || { allowed: false, reason: "" };
     const end = ended ? `<li class="tkend"><span class="tkended"><span class="tkmarks">${m("ok", "✓")}</span><span class="tktxt"><span class="tklab">Turn ended</span></span></span></li>`
       : END_ASK && !locked ? "" : `<li class="tkend"><button type="button" class="btn tbend" data-endturn="ask"${locked || !en.allowed ? ` disabled title="${esc(en.reason || "")}"` : ""}>End turn</button></li>`;
-    let ask = '<li id="day-msg" role="status"></li>';
+    let ask = `<li id="day-msg" role="status">${dead ? esc((you.can.end_turn && you.can.end_turn.reason) || "") : ""}</li>`;
     if (END_ASK && !ended && !locked) {
       const left = [];
       if (!you.moved) left.push("your move");
-      if (vd < nv) left.push(plural(nv - vd, "vote"));
-      if (!you.proposed) left.push("your proposal");
+      if (!ghost && vd < nv) left.push(plural(nv - vd, "vote"));
+      if (!ghost && !you.proposed) left.push("your proposal");
       const skips = left.join(", ").replace(/, ([^,]*)$/, " and $1");
       ask = `<li class="tkask" role="group" aria-label="End turn"><span>${left.length ? `You skip ${skips}.` : ""}</span><span class="row"><button type="button" class="btn small" data-endturn="yes">End turn</button><button type="button" class="linkbtn" data-endturn="no">Keep playing</button></span></li>${ask}`;
     }
@@ -426,6 +430,18 @@ import { createChat, AGENTS } from "/js/chat.js";
   }
 
   // ---- players: the list, and a player's card ---------------------------------------------------------------------------
+  // Hearts (rule 601) as shapes, filled or hollow, never colour alone; a player's state (rules 603.1, 603.3, 604, 404).
+  const HEART = on => `<svg class="ht${on ? "" : " off"}" viewBox="0 0 12 11" aria-hidden="true"><path d="M6 10.5 1.2 5.6C-.3 4 .6 1 3.2 1 4.5 1 5.4 1.7 6 2.6 6.6 1.7 7.5 1 8.8 1c2.6 0 3.5 3 2 4.6z"/></svg>`;
+  const maxHearts = () => Number(BOARD && BOARD.settings && BOARD.settings["hearts.start"]) || 3;
+  const heartsHTML = n => { const m = Math.max(maxHearts(), n || 0); return `<span class="hts" role="img" aria-label="${n || 0} of ${m} hearts">${Array.from({ length: m }, (_, i) => HEART(i < (n || 0))).join("")}</span>`; };
+  const king = p => !!(DATA && DATA.game && DATA.game.ending === "last_standing" && DATA.game.ending_player === p.name);
+  const ghostDays = () => Number(BOARD && BOARD.settings && BOARD.settings["death.ghost_days"]) || 3;
+  function stateText(p) {
+    if (king(p)) return "King of Ghosts";
+    if (p.state === "ghost") return "Ghost";
+    if (p.state === "dead") { const n = Math.max(1, ((DAY && DAY.day) || 0) - (p.dead_day || 0)); return `Dead · ${n} of ${plural(ghostDays(), "day")}`; }
+    return "Living";
+  }
   function drawGame(data) {
     DATA = data;
     const game = data.game, ps = data.players || [];
@@ -436,7 +452,7 @@ import { createChat, AGENTS } from "/js/chat.js";
     const ranked = ps.map((p, i) => ({ ...p, i })).sort((a, b) => (b.score - a.score) || (a.i - b.i));
     $("scores").innerHTML = ranked.map(p => {
       const me = ME && ME.player && ME.player.color.key === p.color.key;
-      return `<li class="${me ? "mine" : ""}"><button type="button" class="prow" data-pl="${esc(p.color.key)}" id="pr-${esc(p.color.key)}" aria-label="${esc(p.name)}${me ? " (you)" : ""}: open player card">${mini(p, "pz")}<span>${esc(p.name)}${me ? ' <span class="muted you">(you)</span>' : ""}<span class="st" data-slot="player-today">${endedBy.has(p.color.key) ? "turn ended" : ""}</span></span><b>${esc(p.score)}</b></button></li>`;
+      return `<li class="${me ? "mine" : ""}"><button type="button" class="prow" data-pl="${esc(p.color.key)}" id="pr-${esc(p.color.key)}" aria-label="${esc(p.name)}${me ? " (you)" : ""}: open player card">${mini(p, "pz")}<span>${esc(p.name)}${me ? ' <span class="muted you">(you)</span>' : ""}<span class="st" data-slot="player-today">${endedBy.has(p.color.key) ? "turn ended" : ""}</span>${heartsHTML(p.hearts)}${p.state && p.state !== "living" || king(p) ? `<span class="sth">${esc(stateText(p).toLowerCase())}</span>` : ""}</span><b>${esc(p.score)}</b></button></li>`;
     }).join("");
     drawAcct();
     drawMoveBar();   // what the bar says depends on the game (setting up, playing)
@@ -453,11 +469,14 @@ import { createChat, AGENTS } from "/js/chat.js";
     const row = (k, v, refs, text, slot) => `<div class="cs"><dt>${k}</dt><dd>${v}</dd><span class="rr">${refs}</span>${text ? `<p>${text}</p>` : ""}${slot ? `<div class="ca slot" data-slot="${slot}"></div>` : ""}</div>`;
     const ended = ((DAY && DAY.players) || []).find(q => q.color.key === p.color.key);
     const today = ended ? (ended.ended ? "Turn ended" : [ended.moved ? "moved" : "", ended.proposed ? "proposed" : ""].filter(Boolean).join(" · ") || "Nothing yet") : "";
-    const rows = [row("Points", esc(p.score), chip("401") + chip("402"), "", "points-text"),
+    const stRef = king(p) ? chip("404") : p.state === "ghost" ? chip("604") : p.state === "dead" ? chip("603.3") : "";
+    const giveInfo = DAY && DAY.you && DAY.you.give_heart && DAY.you.give_heart[p.color.key];
+    const give = p.state === "dead" && giveInfo ? `<div class="cs"><dt>Revive</dt><dd><button type="button" class="btn small givebtn" data-give="${esc(p.color.key)}"${giveInfo.allowed ? "" : " disabled"}>Give ${esc(p.name)} a heart</button></dd><span class="rr">${chip("603.4")}</span>${giveInfo.allowed ? "" : `<p>${esc(giveInfo.reason || "")}</p>`}</div>` : "";
+    const rows = [row("Hearts", heartsHTML(p.hearts), chip("601") + stRef, ""), row("Points", esc(p.score), chip("401") + chip("402"), "", "points-text"),
       row("Today", esc(today), chip("202"), "", "player-today"),
-      row("Piece", esc(pieceName(p.shape)), chip("504"), board ? `At ${esc(noLevel(board.at.label))}. Moves ${Number(R.move_distance) === 1 ? "one space" : (Number(R.move_distance) || 1) + " spaces"} a day${R.diagonal_moves ? ", diagonals included" : ""}, and charts the tiles within ${Number(S["board.chart_radius"]) || 2}.` : "")];
+      row("Piece", esc(p.state === "ghost" ? "Ghost" : pieceName(p.shape)), chip(p.state === "ghost" ? "604" : "504"), board ? `At ${esc(noLevel(board.at.label))}. Moves ${Number(R.move_distance) === 1 ? "one space" : (Number(R.move_distance) || 1) + " spaces"} a day${R.diagonal_moves ? ", diagonals included" : ""}, and charts the tiles within ${Number(S["board.chart_radius"]) || 2}.` : "")];
     return { cls: "crit", label: p.name, backLabel: p.name,
-      html: `<div class="mtop"><div class="cart">${mini(p, "cartico")}</div><h2>${esc(p.name)}${me ? ' <span class="you">(you)</span>' : ""}</h2><span class="mmeta">${esc(p.color.name)} · player</span><span class="mpill">Living</span></div><dl class="cstats">${rows.join("")}</dl>` };
+      html: `<div class="mtop"><div class="cart">${mini(p, "cartico")}</div><h2>${esc(p.name)}${me ? ' <span class="you">(you)</span>' : ""}</h2><span class="mmeta">${esc(p.color.name)} · player</span><span class="mpill">${esc(stateText(p))}</span></div><dl class="cstats">${rows.join("")}${give}</dl>` };
   }
   function describe(spec) { return spec.kind === "player" ? playerCard(spec) : spec.kind === "ticket" || spec.kind === "entry" ? WS.card(spec) : BOOK ? BOOK.describe(spec) : null; }
   const openPlayer = (key, push) => CARDS.open({ kind: "player", key }, { push: !!push });
@@ -568,6 +587,14 @@ import { createChat, AGENTS } from "/js/chat.js";
     drawMoveBar(); drawBar();
     if (TAB === "summary") drawBook();
   }
+  document.addEventListener("click", async e => {
+    const g = e.target.closest("[data-give]");
+    if (!g || g.disabled) return;
+    g.disabled = true;
+    const r = await api("/api/give-heart", { player: g.dataset.give });
+    await refresh(); await loadDay();
+    if (!r.ok) { const c = $("mroot").querySelector(".mcard dl"); if (c) c.insertAdjacentHTML("beforeend", `<p class="notice err" role="alert">${esc((r.data && r.data.error) || "Something went wrong.")}</p>`); }
+  });
   $("tile-list").addEventListener("click", e => {
     const b = e.target.closest("button[data-x]");
     if (b) select(Number(b.dataset.x), Number(b.dataset.y));

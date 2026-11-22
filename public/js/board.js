@@ -77,7 +77,12 @@ export function sceneSVG(board, { sel = null, me = null, id = "b", showFog = tru
   s += `<polygon class="hover" id="${id}-hov" points=""/>`;
   for (const p of pieces) {
     const c = P(p.at.x + .5, p.at.y + .5);
-    s += `<g class="piece" data-piece="${esc(p.color.key)}" transform="translate(${f1(c[0])},${f1(c[1])})">${pieceSVG({ shape: p.shape, color: p.color, mirrored: !!p.mirrored })}</g>`;
+    s += `<g class="piece" data-piece="${esc(p.color.key)}" transform="translate(${f1(c[0])},${f1(c[1])})">${pieceSVG({ shape: p.shape, color: p.color, mirrored: !!p.mirrored, state: p.state })}</g>`;
+  }
+  // Creatures (rule 602): a ring and the entry's kind letter on their tile; a resting one carries a z.
+  for (const c of (board.creatures || []).filter((c) => c.at.z === 0)) {
+    const p = P(c.at.x + .5, c.at.y + .5);
+    s += `<g class="creature" data-creature="${c.id}" transform="translate(${f1(p[0])},${f1(p[1])})"><circle cy="-13" r="11" class="cring"/><text y="-8.5" text-anchor="middle" class="cletter">${esc(String(c.entry || c.kind || "C").charAt(0))}</text>${c.resting ? '<text x="12" y="-26" class="czz">z</text>' : ""}</g>`;
   }
   return { markup: s, box: bbox(new Set([...charted, ...ring(charted, 1)])), tiles };
 }
@@ -128,6 +133,7 @@ export async function createBoard(container, { onSelect } = {}) {
     // names show only on hover (mouse) or press-and-hold (touch): the tile's tip leads with whoever stands on it
     const named = new Map();
     for (const p of board.pieces) if (p.at.z === 0 && p.name) { const k = K(p.at.x, p.at.y); named.set(k, [...(named.get(k) || []), me && p.color.key === me ? `${p.name} (you)` : p.name]); }
+    for (const c of board.creatures || []) if (c.at.z === 0) { const k = K(c.at.x, c.at.y); named.set(k, [...(named.get(k) || []), `${c.name}${c.resting ? " (resting)" : ""}`]); }
     for (const [k, names] of named) labels.set(k, labels.get(k) ? `${names.join(", ")} · ${labels.get(k)}` : names.join(", "));
     if (!fitted) { fitted = true; if (container.clientWidth < 600 && me) centerOnMe(me); else fit(); }
     else if (!touched) fit();

@@ -16,12 +16,12 @@
 //      by itself)
 //   3. finalize: day N done (or timed_out, when the deadline ended it), day N+1 open with its electorate and ballot,
 //      the game unlocked, in one batch
-import { NEXT_NIGHT_SEQ, bundleFor, enactStatements, refusedActions } from "../engine/host";
+import { NEXT_NIGHT_SEQ, bundleFor, enactStatements, nightBoardStatements, refusedActions } from "../engine/host";
 import { getSettings, validTimeZone } from "./settings.js";
 import { Env, nowIso } from "./util";
 
 export type DayRow = { game_id: string; n: number; starts_at: string; ends_at: string; status: string; electorate?: number | null; locked_at: string | null; deadline_at?: string | null; last_error: string | null };
-export type DayTurn = { moved_at: string | null; ended_at: string | null } | null;
+export type DayTurn = { moved_at: string | null; ended_at: string | null; gave_at?: string | null } | null;
 export type GateRefusal = { status: number; error: string; processing_day?: number };
 
 // ---- the clock ---------------------------------------------------------------------------------------------------
@@ -93,7 +93,7 @@ export async function loadToday(env: Env, gameIn: any, nowMs: number, playerId?:
   if (!game.day) return { game, day: null, turn: null };
   const [day, turn] = await Promise.all([
     env.DB.prepare("SELECT * FROM days WHERE game_id = ? AND n = ?").bind(game.id, game.day).first(),
-    playerId ? env.DB.prepare("SELECT moved_at, ended_at FROM day_turns WHERE game_id = ? AND day = ? AND player_id = ?").bind(game.id, game.day, playerId).first() : null,
+    playerId ? env.DB.prepare("SELECT moved_at, ended_at, gave_at FROM day_turns WHERE game_id = ? AND day = ? AND player_id = ?").bind(game.id, game.day, playerId).first() : null,
   ]);
   return { game, day: (day as DayRow) ?? null, turn: (turn as DayTurn) ?? null };
 }
@@ -106,7 +106,7 @@ export async function startDayOne(env: Env, game: any, nowMs: number) {
   await env.DB.batch([
     env.DB.prepare(
       `INSERT OR IGNORE INTO days (game_id, n, starts_at, ends_at, status, electorate)
-       SELECT g.id, 1, ?, ?, 'open', (SELECT COUNT(*) FROM players p WHERE p.game_id = g.id) FROM games g
+       SELECT g.id, 1, ?, ?, 'open', (SELECT COUNT(*) FROM players p WHERE p.game_id = g.id AND p.dead_day IS NULL) FROM games g
        WHERE g.id = ? AND g.status = 'playing' AND g.day = 0`,
     ).bind(starts, ends, game.id),
     electorsSql(env, game.id, 1),
@@ -129,7 +129,7 @@ export async function startDayOne(env: Env, game: any, nowMs: number) {
 function electorsSql(env: Env, gameId: string, n: number) {
   return env.DB.prepare(
     `INSERT OR IGNORE INTO electors (game_id, day, player_id) SELECT ?, ?, p.id FROM players p
-     WHERE p.game_id = ? AND EXISTS (SELECT 1 FROM days WHERE game_id = ? AND n = ?)
+     WHERE p.game_id = ? AND p.dead_day IS NULL AND EXISTS (SELECT 1 FROM days WHERE game_id = ? AND n = ?)
        AND NOT EXISTS (SELECT 1 FROM electors e WHERE e.game_id = ? AND e.day = ?)`,
   ).bind(gameId, n, gameId, gameId, n, gameId, n);
 }
@@ -311,9 +311,31 @@ export function notAppliedStatements(env: Env, game: any, q: { id: string; numbe
   ];
 }
 
+// The night's board (rules 602, 603, 404): creatures appear, step and bite, the dead rise, and the game may end. It runs on EVERY night, after the
+// moderator's step, so the night's proposals and actions are already applied; a quiet night reaches it too (enactStatements returns nothing then). Once per
+// night (days.board_at). A rule's night code that fails keeps the lock before the deploy deadline, like the rest of the night; past it, the night ends
+// with no board changes (rule 107.6).
+/** @rule 107.6, 404, 602.3, 603.3 */
+export async function nightBoard(env: Env, game: any, day: DayRow, nowMs: number): Promise<StepResult> {
+  const fresh: any = await env.DB.prepare("SELECT status FROM games WHERE id = ?").bind(game.id).first();
+  if (fresh?.status !== "playing") return "done";
+  try {
+    const stmts = await nightBoardStatements(env, game, day.n, nowMs);
+    if (stmts?.length) await env.DB.batch(stmts);
+    return "done";
+  } catch (e) {
+    const d: any = await env.DB.prepare("SELECT deadline_at FROM days WHERE game_id = ? AND n = ?").bind(game.id, day.n).first();
+    const deadline = Date.parse(d?.deadline_at || "") || deadlineAfter(timeZoneOf(game), Date.parse(day.ends_at));
+    if (nowMs < deployDeadline(deadline)) throw e;
+    console.error(`midnight ${game.slug} day ${day.n}: the board failed past the deadline:`, (e as any)?.message || e);
+    return "done";
+  }
+}
+
 export const NIGHT_STEPS: NightStep[] = [
   { name: "the count", run: countBallot },
   { name: "the moderator", run: awaitModerator },
+  { name: "the board", run: nightBoard },
 ];
 
 // The cron: every playing game, one at a time, each in its own try so one bad game cannot stop the others.
@@ -392,9 +414,10 @@ export async function finalizeDay(env: Env, game: any, day: DayRow, nowMs: numbe
     ).bind(end, now, game.id, day.n, game.id, day.n),
     env.DB.prepare(
       `INSERT OR IGNORE INTO days (game_id, n, starts_at, ends_at, status, electorate)
-       SELECT ?, ?, ?, ?, 'open', (SELECT COUNT(*) FROM players p WHERE p.game_id = ?)
-       WHERE EXISTS (SELECT 1 FROM days WHERE game_id = ? AND n = ? AND ${DONE})`,
-    ).bind(game.id, next, day.ends_at, ends, game.id, game.id, day.n),
+       SELECT ?, ?, ?, ?, 'open', (SELECT COUNT(*) FROM players p WHERE p.game_id = ? AND p.dead_day IS NULL)
+       WHERE EXISTS (SELECT 1 FROM days WHERE game_id = ? AND n = ? AND ${DONE})
+         AND EXISTS (SELECT 1 FROM games WHERE id = ? AND status = 'playing')`,
+    ).bind(game.id, next, day.ends_at, ends, game.id, game.id, day.n, game.id),
     electorsSql(env, game.id, next),
     // The day's confirmed proposals go on the next day's ballot (rule 103.2); withdrawing ends with the day (rule 103.3).
     // needed: the same numbers as neededOf in src/lib/proposals.js (unanimous: all; majority: more than half); for the

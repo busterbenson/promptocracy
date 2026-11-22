@@ -12,7 +12,7 @@
 //               {allowed, reason?}, the same answers the write routes give (turnBlock)
 import { getPlayer } from "../lib/auth";
 import { clockNow, electorsOf, isLocked, loadToday, lockMessage, settingsOf, timeZoneOf } from "../lib/day";
-import { checkChampionChange, lightContext } from "../engine/host";
+import { boardContext, checkAction, checkChampionChange, lightContext, stateOf } from "../engine/host";
 import { eraView } from "../lib/eras";
 import { proposalLimitMessage } from "../lib/proposals.js";
 import { turnBlock } from "../lib/turn";
@@ -27,7 +27,7 @@ export const get = async (ctx: Ctx) => {
   const locked = !!day && game.status === "playing" && isLocked(game, day, nowMs);
   if (day) await electorsOf(env, game.id, day.n); // a day opened without its electorate rows gets them (rule 104.2)
   const rows = (await env.DB.prepare(
-    `SELECT p.display_name AS name, p.color, p.turn_order, t.moved_at, t.ended_at,
+    `SELECT p.display_name AS name, p.color, p.turn_order, p.dead_day, p.ghost_day, t.moved_at, t.ended_at,
             (SELECT COUNT(*) FROM proposals u WHERE u.game_id = p.game_id AND u.player_id = p.id AND u.day_proposed = ? AND u.champion = 0 AND u.status NOT IN ('draft', 'withdrawn')) AS proposed,
             (SELECT COUNT(*) FROM votes v JOIN proposals q ON q.id = v.proposal_id
               WHERE v.game_id = p.game_id AND v.player_id = p.id AND v.day = ? AND q.day_ballot = ?) AS voted,
@@ -44,13 +44,31 @@ export const get = async (ctx: Ctx) => {
     const b = player && turnBlock(game, day, turn, player, kind, nowMs);
     if (b) return { allowed: false, reason: b.error };
     if (kind === "propose" && mine?.proposed >= perDay) return { allowed: false, reason: proposalLimitMessage(mine.proposed) };
+    if (kind === "vote" && player && player.dead_day != null) return { allowed: false, reason: player.ghost_day != null ? "A Ghost can't vote (604.1)." : "You're dead (603.1)." };
     if (kind === "vote" && !(ballot?.n > 0)) return { allowed: false, reason: "Today's ballot is empty." };
     if (kind === "vote" && !mine?.elector) return { allowed: false, reason: `You joined after day ${game.day} began, so you vote from tomorrow (rule 104.2).` };
     return { allowed: true };
   };
+  // Giving a heart (rule 603.4): for each dead player who hasn't risen, whether you may, and why not. Asked of the game's rules with the whole board.
+  let give: Record<string, { allowed: boolean; reason?: string }> | null = null;
+  if (player && player.dead_day == null && day && game.status === "playing") {
+    const dead = rows.filter((r) => r.dead_day != null && r.ghost_day == null);
+    if (dead.length) {
+      const ids = (await env.DB.prepare("SELECT id, color FROM players WHERE game_id = ?").bind(game.id).all()).results as any[];
+      const bctx = await boardContext(env, game, { moved: !!turn?.moved_at, gave: !!turn?.gave_at });
+      const gate = turnBlock(game, day, turn, player, "give_heart", nowMs);
+      give = {};
+      for (const d of dead) {
+        const t = ids.find((i) => i.color === d.color);
+        const r = gate ?? (t ? checkAction(game, bctx, { ref: player.id }, { kind: "give_heart", target: t.id }) : null);
+        give[colorOf(d.color).key] = r ? { allowed: false, reason: r.error } : { allowed: true };
+      }
+    }
+  }
   return json({
     day: game.day,
     status: game.status,
+    ending: game.ending ?? null,
     starts_at: day?.starts_at ?? null,
     ends_at: day?.ends_at ?? null,
     timezone: timeZoneOf(game),
@@ -62,8 +80,9 @@ export const get = async (ctx: Ctx) => {
     deadline_at: locked && (day!.status === "processing" || day!.status === "deploying") ? day!.deadline_at ?? null : null,
     ballot: ballot?.n ?? 0,
     era: era && { n: era.n, name: era.name, champion: era.champion },
-    players: rows.map((r) => ({ name: r.name, color: colorOf(r.color), moved: !!r.moved_at, proposed: r.proposed > 0, ended: !!r.ended_at, voted: r.voted ?? 0 })),
+    players: rows.map((r) => ({ name: r.name, color: colorOf(r.color), state: stateOf(r), moved: !!r.moved_at, proposed: r.proposed > 0, ended: !!r.ended_at, voted: r.voted ?? 0 })),
     you: player ? {
+      state: stateOf(player), hearts: player.hearts ?? 3, give_heart: give,
       moved: !!turn?.moved_at, proposed: !!mine?.proposed, proposals: { made: mine?.proposed ?? 0, limit: perDay }, ended: !!turn?.ended_at, voted: mine?.voted ?? 0,
       can: { move: can("move"), propose: can("propose"), end_turn: can("end_turn"), vote: can("vote") },
       champion: era?.you.champion ? (() => {

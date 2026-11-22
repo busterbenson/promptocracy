@@ -2,7 +2,9 @@
 // review; nothing here exists at run time except what api.js exports.
 export type Tile = { x: number; y: number; z: number };
 export type Settings = Record<string, any>;
-export type Player = { ref: string; color: string; score: number; x: number; y: number; z: number; living: boolean };
+export type Player = { ref: string; color: string; score: number; x: number; y: number; z: number; living: boolean; hearts: number; state: "living" | "dead" | "ghost"; deadDay: number | null };
+export type Creature = { id: number; entry: string; x: number; y: number; z: number; hearts: number | null; resting: boolean };
+export type CatalogEntry = { id: string; kind: string; attrs: Record<string, unknown> };
 export type Tiles = { has(x: number, y: number, z?: number): boolean; get(x: number, y: number, z?: number): Tile | undefined; list(): Tile[]; size: number };
 export type Mark = "majority" | "unanimous";
 export type Ctx = {
@@ -11,13 +13,19 @@ export type Ctx = {
   now: string;
   settings: Settings;
   players: readonly Player[];
+  /** The creatures on the board, in the order they appeared (rule 602). */
+  creatures: readonly Creature[];
+  /** The id the next creature to appear will get: step or rest it by this id later in the same night. */
+  nextCreatureId: number;
+  /** The game's catalog entries (rule 701). Read an attribute with attr(). */
+  catalog: readonly CatalogEntry[];
   tiles: Tiles;
   /** Marks by rule number. Empty until proposals arrive. */
   rulebook: { marks: Readonly<Record<number, Mark>> };
   /** Float in [0, 1). */
   rng: () => number;
   /** The turn model of the games that still run on turns. Goes when days arrive. */
-  turn: { round: number; turn: number; moved: boolean };
+  turn: { round: number; turn: number; moved: boolean; gave: boolean };
   judge?: (question: string) => unknown;
 };
 export type Actor = { ref: string };
@@ -25,14 +33,22 @@ export type Action =
   | { kind: "move"; to?: Tile }
   | { kind: "propose" }
   | { kind: "vote" }
-  | { kind: "end_turn" };
+  | { kind: "end_turn" }
+  /** Give one of your hearts to a dead player's piece next to you (rule 603.4). target: the dead player's ref. */
+  | { kind: "give_heart"; target?: string };
 /** A refusal. status is 400 (default), 403, 409 or 500. */
 export type Refusal = { error: string; status?: 400 | 403 | 409 | 500 };
 export type Effect =
   | { type: "chart"; tiles: Tile[] }
   | { type: "points"; player: string; delta: number; reason: string }
   | { type: "log"; template: string; args: Record<string, unknown> }
-  | { type: "champion"; player: string; reason: string };
+  | { type: "champion"; player: string; reason: string }
+  | { type: "appear"; entry: string; tile: Tile }
+  | { type: "step"; creature: number; to: Tile }
+  | { type: "bite"; target: { player: string } | { creature: number }; hearts: number }
+  | { type: "rest"; creature: number }
+  | { type: "rise"; player: string }
+  | { type: "game_over"; ending: "paradox" | "last_standing" | "everyone_dead"; player: string | null; reason: string };
 
 /** An action type's parameter (rule 103.5): a player of the game (other: true leaves out the proposer) or a whole number from min to max. */
 export type ActionParam = { key: string; label: string; kind: "player"; other?: boolean } | { key: string; label: string; kind: "int"; min: number; max: number };
@@ -64,6 +80,11 @@ export type Hooks = {
   /** Does the action when a passed action proposal of this module's type is applied. Only points effects. Answer refuse(...) when the
    *  details are no longer allowed (a rule changed tonight): the proposal is not applied, with that reason. */
   applyAction?(ctx: Ctx, action: ActionProposal): Effect[] | Refusal;
+  /** Every night, after the night's proposals and actions are applied (rule 602, 603). `applied` = the P-numbers applied tonight (empty on a quiet night).
+   *  appear, step, bite, rest and rise effects, applied in order. */
+  night?(ctx: Ctx, info: { applied: number[] }): Effect[];
+  /** Once after the night's board, only when someone died; ctx is the board after the bites (rule 404). A game_over effect or null. At most one module. */
+  ending?(ctx: Ctx, info: { died: string[] }): Effect | null;
 };
 export type RuleModule = { rule: number } & Hooks;
 
@@ -75,6 +96,12 @@ export const effects: {
   log(template: string, args?: Record<string, unknown>): Effect;
   /** dayEnd only: this player wins the Era (rule 402): the Era ends, points reset, they are the Champion. */
   champion(player: string, reason: string): Effect;
+  appear(entry: string, tile: { x: number; y: number; z?: number }): Effect;
+  step(creature: number, to: { x: number; y: number; z?: number }): Effect;
+  bite(target: { player: string } | { creature: number }, hearts: number): Effect;
+  rest(creature: number): Effect;
+  rise(player: string): Effect;
+  gameOver(ending: "paradox" | "last_standing" | "everyone_dead", player: string | null, reason: string): Effect;
 };
 export const HOOKS: Readonly<Record<string, { mode: "veto" | "sequence" | "decide"; wired: boolean }>>;
 export const ACTION_KINDS: readonly string[];

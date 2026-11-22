@@ -54,13 +54,22 @@ export function ensureDefs() {
 
 // One piece with its feet centred on (0, 0): a contact shadow under it (clipped to the tile top), then the art.
 // `mirrored` turns the art to face the other way around the feet. Not offered a shape that does not exist: it is a pawn.
-export function pieceSVG({ shape, color, scale = 1.1, mirrored = false, clip = true }) {
+// A Ghost (rule 604.2): the player's piece is replaced by a ghost in their colour. The player can't change it.
+function ghostArt(color) {
+  const m = (color && (color.main || color.hex)) || "#9aa", d = (color && color.deep) || "#445";
+  return `<path d="M-11 0 C-12.5 -15 -9 -35 0 -35 C9 -35 12.5 -15 11 0 L7.3 -4.2 L3.6 0 L0 -4.2 L-3.6 0 L-7.3 -4.2 Z" style="fill:${m};stroke:var(--outline);stroke-width:1.3;stroke-linejoin:round" opacity=".93"/><ellipse cx="-4" cy="-22" rx="1.9" ry="2.7" style="fill:var(--outline)"/><ellipse cx="4" cy="-22" rx="1.9" ry="2.7" style="fill:var(--outline)"/><path d="M-5 -14.5 Q0 -11 5 -14.5" style="fill:none;stroke:${d};stroke-width:1.3;stroke-linecap:round"/>`;
+}
+
+export function pieceSVG({ shape, color, scale = 1.1, mirrored = false, clip = true, state = "living" }) {
   const key = TRACED[shape] ? shape : "pawn";
   const t = TRACED[key], H = HEIGHT[key] || 36, W = H * t.w / t.h, f = FOOT[key] || [0, .33];
   const rx = f[1] * W, ry = rx * (key === "pawn" ? .36 : .52);
   const shadow = `<ellipse cx="0" cy="${(ry * .1).toFixed(2)}" rx="${(rx * 1.9).toFixed(2)}" ry="${(ry * 1.9).toFixed(2)}" fill="url(#gAO)"/><ellipse cx="${(rx * .42).toFixed(2)}" cy="${(ry * .12).toFixed(2)}" rx="${(rx * 1.45).toFixed(2)}" ry="${(ry * 1.4).toFixed(2)}" fill="url(#gContact)" opacity=".5"/><ellipse cx="0" cy="${(ry * .06).toFixed(2)}" rx="${(rx * 1.18).toFixed(2)}" ry="${(ry * 1.3).toFixed(2)}" fill="url(#gContact)"/>`;
   const art = `<svg x="${(-W / 2 - f[0] * W).toFixed(2)}" y="${(-H + ry).toFixed(2)}" width="${W.toFixed(2)}" height="${H}" viewBox="0 0 ${t.w} ${t.h}" preserveAspectRatio="xMidYMax meet" overflow="visible">${recolor(key, color)}</svg>`;
   const flip = mirrored ? ' transform="scale(-1,1)"' : "";
+  if (state === "ghost") return `<g${clip ? ' clip-path="url(#tt)"' : ""}><g transform="scale(${scale})">${shadow}</g></g><g transform="scale(${scale})">${ghostArt(color)}</g>`;
+  // The dead lie where they fell (rule 603.1): the same piece, on its side.
+  if (state === "dead") return `<g${clip ? ' clip-path="url(#tt)"' : ""}><g transform="scale(${scale})">${shadow}</g></g><g transform="scale(${scale})"><g transform="translate(0,-3) rotate(90)" opacity=".85"><g${flip}>${art}</g></g></g>`;
   return `<g${clip ? ' clip-path="url(#tt)"' : ""}><g transform="scale(${scale})">${shadow}</g></g><g transform="scale(${scale})"><g${flip}>${art}</g></g>`;
 }
 

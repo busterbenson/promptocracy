@@ -19,7 +19,7 @@ export function proposalNumber(v: unknown): number | null {
   return m ? Number(m[1]) : null;
 }
 
-/** @rule 104.2, 104.3, 107.1, 202.4, 402.4 */
+/** @rule 104.2, 104.3, 107.1, 202.4, 402.4, 603.1, 604.1 */
 export async function castVote(ctx: Ctx, player: any, body: any, nowMs: number): Promise<Out> {
   const { env } = ctx;
   const n = proposalNumber(body?.proposal);
@@ -31,8 +31,10 @@ export async function castVote(ctx: Ctx, player: any, body: any, nowMs: number):
   const q: any = await env.DB.prepare("SELECT id, number, status, day_ballot, champion, player_id FROM proposals WHERE game_id = ? AND number = ?").bind(game.id, n).first();
   if (!q || q.status !== "on_ballot" || q.day_ballot !== game.day) return { status: 404, body: { error: `P${n} is not on today's ballot.` } };
   if (q.champion && q.player_id === player.id) return { status: 403, body: { error: CHAMPION_NO_VOTE } };
+  // The dead and Ghosts don't vote (rule 603.1, 604.1): said before "you joined late", which isn't why they can't.
+  if (player.dead_day != null) return { status: 403, body: { error: player.ghost_day != null ? "A Ghost can't vote (604.1)." : "You're dead (603.1)." } };
   const electors = await electorsOf(env, game.id, game.day);
-  if (!electors.includes(player.id)) return { status: 403, body: { error: `You joined after day ${game.day} began, so you vote from tomorrow (rule 104.2).` } };
+  if (!electors.includes(player.id)) return { status: 403, body: { error: day && player.joined_at && player.joined_at < day.starts_at ? `You weren't living when day ${game.day} began, so you vote from tomorrow (rule 104.2).` : `You joined after day ${game.day} began, so you vote from tomorrow (rule 104.2).` } };
   const now = nowIso(nowMs);
   const guard = [game.id, ...dayOpenBinds(game.day, nowMs, player.id), q.id, player.id];
   const res = await env.DB.batch([
