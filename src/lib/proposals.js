@@ -51,33 +51,34 @@ const ruleOf = (node) => (node.kind === "clause" ? node.rule : node);
 const titleOf = (node) => ruleOf(node).title;
 
 // ---- marks (rule 105) ---------------------------------------------------------------------------------------------
-// The mark a number needs: a clause has its rule's; a rule its own mark, else its block's (105.2); a block its own.
+// The mark a number needs: a clause has its rule's, a rule its own. A block has no mark (rule 105.1), and anything unmarked is
+// majority (105.2).
 /** @rule 105.1, 105.2 */
 export function markOf(book, num) {
   const n = book.byNum[num];
-  if (!n) return "majority";
-  if (n.kind === "block") return n.change || "majority";
-  const r = ruleOf(n);
-  return r.mark || r.sec.change || "majority";
+  if (!n || n.kind === "block") return "majority";
+  return ruleOf(n).mark || "majority";
 }
 // The strictest mark of the parts a proposal touches (rule 103.4).
 /** @rule 103.4, 105.1 */
 export const strictestMark = (book, nums) => (nums.some((n) => markOf(book, n) === "unanimous") ? "unanimous" : "majority");
-// What a draft touches, for its mark: the rule (or block) it changes; a move touches its rule and the block it goes to;
-// a new rule, its block (105.1: "change, add or repeal any rule in the block"); a mark change, the thing marked (105.3).
+// What a draft touches, for its mark: the rule it changes; a move touches its rule (it keeps its own mark in the new block); a mark
+// change, the rule marked (105.3). A new rule touches nothing: its own mark decides (markFor, 105.2).
 // An action's parts (rule 103.7): its own rule (the target) and every rule it touches.
 /** @rule 103.5, 103.7 */
 export const actionOf = (d) => (typeof d.action === "string" ? JSON.parse(d.action) : d.action);
 /** @rule 103.4, 103.7, 105.1, 105.3 */
 export function partsOf(d) {
   if (d.kind === "action") return [d.target, ...actionOf(d).touches.map(String)];
-  if (d.kind === "add") return [d.to_block];
-  if (d.kind === "move") return [d.target, d.to_block];
+  if (d.kind === "add") return [];
+  if (d.kind === "commission") return ["801"];   // a commission is voted at the mark of rule 801, the workshop's (it names no block)
+  if (d.kind === "move") return [d.target];
   return [d.target];
 }
 // The mark a proposal needs, read from the marks in effect NOW. Confirm stores it (rule 105.4).
-/** @rule 105.4 */
-export const markFor = (book, d) => strictestMark(book, partsOf(d));
+// A new rule is majority unless the proposal marks it unanimous, which takes a unanimous vote (105.2); the draft's `mark` is that choice.
+/** @rule 105.2, 105.4 */
+export const markFor = (book, d) => (d.kind === "add" ? (d.mark === "unanimous" ? "unanimous" : "majority") : strictestMark(book, partsOf(d)));
 // How many yes votes a mark needs of `electorate` players (rule 104.1: more than half; unanimous: all).
 /** @rule 104.1, 105.1 */
 export const neededOf = (mark, electorate) => (mark === "unanimous" ? electorate : Math.floor(electorate / 2) + 1);
@@ -307,8 +308,8 @@ export function readRequest(book, body, actions = {}) {
   if (!node) return { error: target ? `There is no rule ${target.slice(0, 20)}.` : "Say which rule the change is to." };
   const scope = node.kind;
   if (kind === "add" && scope !== "block") return { error: "A new rule goes in a block: name the block, like 400." };
-  if (kind !== "add" && kind !== "mark" && scope === "block") return { error: "Pick a rule or a clause in the block." };
-  if (kind === "mark" && scope === "clause") return { error: "A mark is on a rule or a block, not a clause (rule 105.2)." };
+  if (kind !== "add" && scope === "block") return { error: "Pick a rule or a clause in the block." };
+  if (kind === "mark" && scope === "clause") return { error: "A mark is on a rule, not a clause (rule 105.1)." };
   if (kind === "move" && scope !== "rule") return { error: "Only a whole rule can move." };
   if (["amend", "addclause", "add"].includes(kind) && !words) return { error: "Write the change in a few words first." };
   if (scope === "rule" || scope === "clause") {
@@ -330,7 +331,9 @@ export function readRequest(book, body, actions = {}) {
     if (bad) return { error: bad };
   }
   const title = typeof body?.title === "string" ? body.title.trim().slice(0, 80) : "";
-  return { kind, scope, target, words, to_block, title: title || null, prefilled: body?.prefilled === true };
+  // A new rule is majority unless the proposal marks it unanimous (rule 105.2); nothing else takes a mark here.
+  const unanimous = kind === "add" && /^(unanimous|u)$/i.test(String(body?.mark ?? "").trim());
+  return { kind, scope, target, words, to_block, title: title || null, prefilled: body?.prefilled === true, mark: unanimous ? "unanimous" : null };
 }
 
 // An action proposal's request (rule 103.5): a type from the game's catalog and its parameters, checked against the type's own
@@ -382,7 +385,7 @@ export function draftOf(book, req, after = null) {
   if (k === "add") {
     const nn = nextRuleNum(book, req.target);
     if (!nn) return { error: `Block ${req.target} has no free number left.` };
-    return { head: `Add rule ${nn} to block ${req.target}:`, before_text: "", after_text: `${nn}.1 ${req.words}`, new_num: nn, conflicts: [] };
+    return { head: `Add rule ${nn}${req.mark === "unanimous" ? ", marked unanimous," : ""} to block ${req.target}:`, before_text: "", after_text: `${nn}.1 ${req.words}`, new_num: nn, conflicts: [] };
   }
   if (node.kind === "clause") {
     const r = node.rule;
@@ -392,10 +395,6 @@ export function draftOf(book, req, after = null) {
       return { head: `Add a clause to rule ${r.num} (${r.title}), after ${node.num}:`, before_text: "", after_text: `${nc} ${req.words}`, new_num: nc, conflicts: [] };
     }
     return { head: `Edit clause ${node.num} (${r.title}) to read:`, before_text: t, after_text: after ?? req.words, new_num: null, conflicts: [] };
-  }
-  if (node.kind === "block") {
-    const was = node.change || "majority", to = was === "unanimous" ? "majority" : "unanimous";
-    return { head: `Mark block ${node.num} (${node.title}) ${to}:`, before_text: `[${was}]`, after_text: `[${to}]`, new_num: null, conflicts: [] };
   }
   const r = node;
   if (k === "addclause") {
@@ -543,10 +542,11 @@ export function answerSchema() {
 // Each lands only if the game is still as the handler read it: playing on that day, the day open and not past midnight
 // (rule 107.1), and the player's turn not ended (rule 202.4). The game row is g; the trailing binds are dayOpenBinds.
 // Draft. Binds: id, player_id, kind, scope, target, new_num, to_block, words, title, draft_head, before_text, after_text,
-// conflicts, settings, drafted_by, base_sha, created_at, game_id, then dayOpenBinds.
+// conflicts, settings, drafted_by, base_sha, mark (null, or "unanimous" for a new rule the proposal marks unanimous, rule 105.2),
+// created_at, game_id, then dayOpenBinds.
 export const DRAFT_INSERT_SQL = `INSERT INTO proposals (id, game_id, player_id, day_proposed, kind, scope, target, new_num, to_block, words, title,
-    draft_head, before_text, after_text, conflicts, settings, drafted_by, base_sha, status, created_at)
-  SELECT ?, g.id, ?, g.day, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ? FROM games g WHERE g.id = ? AND ${dayOpenSql}`;
+    draft_head, before_text, after_text, conflicts, settings, drafted_by, base_sha, mark, status, created_at)
+  SELECT ?, g.id, ?, g.day, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ? FROM games g WHERE g.id = ? AND ${dayOpenSql}`;
 // Draft of an action (rule 103.5): the same row as DRAFT_INSERT_SQL with the action JSON after `settings`. Binds: id, player_id, kind,
 // scope, target, new_num, to_block, words, title, draft_head, before_text, after_text, conflicts, settings, action, drafted_by,
 // base_sha, created_at, game_id, then dayOpenBinds.

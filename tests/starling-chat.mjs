@@ -85,7 +85,7 @@ try {
   const c1 = acalls();
   check("one agent_calls row: ok, tokens, a cost from usage, purpose chat, no prompt or player text in it", c1.length === 1 && c1[0].outcome === "ok" && c1[0].purpose === "chat" && c1[0].model === "claude-sonnet-5-5" && c1[0].cost_micro > 0 && !J(c1[0]).includes("withdraw"));
   const fake = await say(Ana, "SYNTH-QUOTE-FAKE what does 103.3 say");
-  check("a quote that is not the rule's words is dropped (and logged): only the real quote of 402.1 is shown", fake.data.messages[1].quotes.length === 1 && fake.data.messages[1].quotes[0].num === "402.1" && acalls("reason LIKE '%not the rule''s words%'").length === 1);
+  check("a quote that is not the rule's words is dropped (and logged): only the real quote of 402.2 is shown", fake.data.messages[1].quotes.length === 1 && fake.data.messages[1].quotes[0].num === "402.2" && acalls("reason LIKE '%not the rule''s words%'").length === 1);
   const h = await Ana.get(CH);
   check("her history reads back with the quotes, oldest first, no player id", h.data.messages.length === 4 && h.data.messages[1].quotes.length >= 1 && !h.text.includes(id.Ana));
 

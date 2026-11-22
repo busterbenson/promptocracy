@@ -314,7 +314,7 @@ with sync_playwright() as pw:
     # ---- Rulebook: blocks, rows, legend
     page.click("#tab-rules"); page.wait_for_timeout(200)
     secs = page.locator("#rules .bsec").count()
-    check("S1-RUL-01: blocks of hundreds, each with its title, an 'All N' count and a lock when unanimous", secs == 8 and re.search(r"^100\s*Core rules", text(page, "#rules .bsec >> nth=0")) and "All " in text(page, "#rules .bsec >> nth=0") and page.locator("#rules .bsec >> nth=0 >> svg.lk").count() >= 1)
+    check("S1-RUL-01: blocks of hundreds, each with its title, an 'All N' count and a lock on each unanimous rule (a block has no mark)", secs == 8 and re.search(r"^100\s*Core rules", text(page, "#rules .bsec >> nth=0")) and "All " in text(page, "#rules .bsec >> nth=0") and page.locator("#rules .bsec >> nth=0 >> svg.lk").count() >= 1)
     card = text(page, '.bcard[data-card="201"]')
     check("S1-RUL-01: a row shows the number, title, text excerpt and an age line", card.startswith("201") and "Game size" in card and "A game has at most" in card and "unchanged since Day 0" in card, card)
     check("S1-RUL-02: the legend names changed this week, settled, everyone must agree; unanimous rules show a lock; on-ballot rules a ring and 'On the ballot'", all(w in text(page, "#rb-legend") for w in ["changed this week", "settled", "everyone must agree"]) and page.locator('.bcard[data-card="101"] svg.lk').count() == 1 and page.locator('.bcard.bal[data-card="401"]').count() == 1 and "On the ballot · P1" in text(page, '.bcard[data-card="401"]'))

@@ -1,15 +1,17 @@
 // RULES.md, read for the checks the engine cares about: which rules exist and which settings the text names.
 // (public/js/rulebook.js draws the rulebook; this only checks that text, settings and modules agree.)
-// Format: "## 100. Title [unanimous]" is a block, "### 101 Title" a rule, "[setting: board.island]" names a setting.
+// Format: "## 100. Title" is a block (it has no mark), "### 101 Title [u]" a rule with its mark ([u] unanimous or [m] majority, rule 105.1),
+// "[setting: board.island]" names a setting.
 import { validateSettings } from "../lib/settings.js";
 
 /** @rule 101 */
 const stripComments = (s) => s.replace(/<!--[\s\S]*?-->/g, "");
 
-/** @rule 101, 109.1 */
+const MARK = /\s*\[(unanimous|majority|u|m)\]\s*$/;
+/** @rule 101, 105.1, 109.1 */
 export function parseRulesMd(text) {
   const t = stripComments(String(text ?? ""));
-  const rules = [...t.matchAll(/^###\s+(\d+)\s+(.+?)\s*$/gm)].map((m) => ({ number: Number(m[1]), title: m[2] }));
+  const rules = [...t.matchAll(/^###\s+(\d+)\s+(.+?)\s*$/gm)].map((m) => { const k = m[2].match(MARK); return { number: Number(m[1]), title: m[2].replace(MARK, ""), mark: k ? (k[1][0] === "u" ? "unanimous" : "majority") : null }; });
   const tags = [...t.matchAll(/\[setting:\s*([A-Za-z0-9_.]+)\s*\]/g)].map((m) => m[1]);
   return { rules, settingTags: [...new Set(tags)] };
 }
@@ -24,18 +26,18 @@ const TOMBSTONE = /^\[(?:Repealed|Moved to \d{3})\]$/;
 export function readLevels(text) {
   // a comment keeps its line breaks, so a reported line number is the line of the file
   const lines = String(text ?? "").replace(/<!--[\s\S]*?-->/g, (c) => c.replace(/[^\n]/g, "")).split("\n");
-  const blocks = [], rules = [], clauses = [], strayText = [];
+  const blocks = [], markedBlocks = [], rules = [], clauses = [], strayText = [];
   let rule = null, inClause = false, prevStray = false;
   lines.forEach((raw, i) => {
     const line = raw.trim();
     let m;
-    if ((m = line.match(/^##\s+(\d+)\./))) { blocks.push(m[1]); rule = null; inClause = false; }
-    else if ((m = line.match(/^###\s+(\d+)\s/))) { rule = { num: m[1], clauses: [] }; rules.push(rule); inClause = false; }
+    if ((m = line.match(/^##\s+(\d+)\./))) { blocks.push(m[1]); if (MARK.test(line)) markedBlocks.push(m[1]); rule = null; inClause = false; }
+    else if ((m = line.match(/^###\s+(\d+)\s/))) { rule = { num: m[1], clauses: [], marked: MARK.test(line) || /\[Moved to \d{3}\]\s*$/.test(line) }; rules.push(rule); inClause = false; }
     else if ((m = line.match(/^\*\*(\d+\.\d+)\*\*/))) { const c = { num: m[1], rule: rule?.num ?? null, at: i + 1 }; clauses.push(c); rule?.clauses.push(c); inClause = true; }
     else if (line && rule && !inClause && !/^#/.test(line) && !TOMBSTONE.test(line)) { if (!prevStray) strayText.push({ rule: rule.num, at: i + 1 }); prevStray = true; return; }   // once a paragraph, not once a line
     prevStray = false;
   });
-  return { blocks, rules, clauses, strayText, text: lines };
+  return { blocks, markedBlocks, rules, clauses, strayText, text: lines };
 }
 
 // Every rule or clause number a text cites: "rule 504.1", "Rule 504", "rules 202.4 and 203.1", "rules 101, 102 or 103", "(202.4)",
@@ -54,6 +56,7 @@ const citedIn = (text) => [...citedRules(text), ...[...String(text).matchAll(BLO
 
 // Problems (an empty list is fine) with a game's text, settings.json and rule modules taken together:
 //   - RULES.md has at least one rule and no rule number twice
+//   - every rule carries its own mark, [u] or [m], and a block carries none (rule 105.1)
 //   - a rule has no text of its own: its text is its clauses (rule 109.1), and each clause sits in the rule that numbers it (numbers are names, not positions: 504.3 may sit before 504.2)
 //   - every citation, "(202.4)" or "rule 107", names a block, rule or clause the book has (a repealed clause's number cites nothing)
 //   - with `beforeDayOne` (a game that has not started, rule 203.1; the starter template): a rule's clauses are numbered 1, 2, 3
@@ -68,6 +71,8 @@ export function checkRulebook({ rulesMd, settings, moduleRules, beforeDayOne = f
   const seen = new Set();
   for (const r of rules) { if (seen.has(r.number)) out.push(`RULES.md numbers rule ${r.number} twice`); seen.add(r.number); }
   const lv = readLevels(rulesMd);
+  for (const b of lv.markedBlocks) out.push(`RULES.md: block ${b} carries a mark; a mark is on each rule, not on a block (rule 105.1)`);
+  for (const r of lv.rules) if (!r.marked) out.push(`RULES.md: rule ${r.num} has no mark; every rule says [u] or [m] after its title (rule 105.1)`);
   for (const t of lv.strayText) out.push(`RULES.md line ${t.at}: text under rule ${t.rule}'s title; a rule has no text of its own, put it in clause ${t.rule}.1 (rule 109.1)`);
   const known = new Set([...lv.blocks, ...lv.rules.map((r) => r.num), ...lv.clauses.map((c) => c.num)]);
   for (const c of lv.clauses) {

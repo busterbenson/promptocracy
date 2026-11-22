@@ -6,7 +6,7 @@ import { dayOpenSql } from "./day-gate.js";
 
 export const STATES = ["Draft", "Proposed", "Ready", "Approved", "Building", "Done", "Refused", "Failed", "Shelved"];
 export const LIMITS = { title: 80, brief: 2000, makeName: 60, makes: 12, tasks: 20, task: 200, running_cost: 200, estimate: 99, post: 2000 };
-// The block a commission is voted at the mark of (rule 105.4), and the one rule a game needs for a workshop at all.
+// The block a commission is filed under, the one rule a game needs for a workshop at all, and the rule whose mark it is voted at (rule 105.4).
 export const WORKSHOP_BLOCK = "800";
 export const WORKSHOP_RULE = "801";
 // The price of a commission until Gremlin sets it (a later step), and why.

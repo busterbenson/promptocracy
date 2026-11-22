@@ -136,8 +136,8 @@ try {
   console.log("day 1: proposals for tomorrow, nothing to vote on yet");
   const t1 = await ana.post("/vote/api/turn", { kind: "repeal", target: "403", words: "Nobody understands it." });
   const t2 = await bo.post("/vote/api/turn", { kind: "addclause", target: "401", words: "Points can't be given away." });
-  const t3 = await cy.post("/vote/api/turn", { kind: "add", target: "100", words: "Be kind to each other." });
-  check("Ana, Bo and Cy each confirm a proposal: P1 (majority), P2 (majority), P3 (a new core rule: unanimous)",
+  const t3 = await cy.post("/vote/api/turn", { kind: "add", target: "100", words: "Be kind to each other.", mark: "unanimous" });
+  check("Ana, Bo and Cy each confirm a proposal: P1 (majority), P2 (majority), P3 (a new rule the proposal marks unanimous)",
     [t1, t2, t3].every((r) => r.status === 200) && prop(1).mark === "majority" && prop(2).mark === "majority" && prop(3).mark === "unanimous", [t1, t2, t3].map((r) => r.text).join(" | "));
   const v0 = await vote(ana, "P1", "yes");
   const b0 = (await ana.get(BAL)).data;

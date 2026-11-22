@@ -9,7 +9,7 @@
 //   GET  /<slug>/api/tickets/<W3>            the ticket page: every field, its tasks, its log and its discussion
 //   POST /<slug>/api/tickets/<W3>/edit       {title?, brief?, makes?, estimate?, running_cost?, tasks?}: your draft, by hand
 //   POST /<slug>/api/tickets/<W3>/confirm    your draft becomes your proposal for the day (rule 801.1, the same limit and the same
-//                                            confirm as any proposal: P-numbered, on tomorrow's ballot, voted at block 800's mark)
+//                                            confirm as any proposal: P-numbered, on tomorrow's ballot, voted at rule 801's mark)
 //   POST /<slug>/api/tickets/<W3>/reopen     a refused or failed ticket of yours becomes a draft again, same number (rule 801.5)
 //   POST /<slug>/api/tickets/<W3>/post       {body}: a post in the discussion (rule 804.1)
 // Every write the Workshop adds goes through the day's gate, in the handler and in the SQL: the lock (rule 107.1) stops all of them,

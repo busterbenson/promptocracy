@@ -45,18 +45,18 @@ switch (step.action) {
     result({ outcome: "applied" });
     break;
   }
-  case "win": { // 402.1: win at N
+  case "win": { // 402.2: win at N (the setting eras.points_to_win)
     edit("RULES.md", "The first player to reach 100 points wins the Era", `The first player to reach ${step.to} points wins the Era`);
-    edit("rules/402.ts", ">= 100", `>= ${step.to}`);
+    edit("settings.json", '"eras.points_to_win": 100', `"eras.points_to_win": ${step.to}`);
     writeFileSync(join(cwd, "rules/402.test.ts"), `import { test } from "node:test";
 import assert from "node:assert/strict";
 import { makeCtx } from "promptocracy/engine/testing";
 import rule from "./402.ts";
-test("402.1: reaching ${step.to} wins", () => {
-  assert.equal(rule.dayEnd!(makeCtx(), { before: { a: ${step.to - 10} }, given: [{ player: "a", delta: 10 }] } as any).length, 1);
+test("402.2: reaching ${step.to} wins", () => {
+  assert.equal(rule.dayEnd!(makeCtx({ settings: { "eras.points_to_win": ${step.to} } }), { before: { a: ${step.to - 10} }, given: [{ player: "a", delta: 10 }] } as any).length, 1);
 });
 `);
-    if (step.flip) edit("RULES.md", "## 100. Core rules [unanimous]", "## 100. Core rules [majority]");
+    if (step.flip) edit("RULES.md", "### 107 The night [u]", "### 107 The night [m]");
     if (step.conflict) result({ outcome: "applied", conflict: step.conflict });
     else result({ outcome: "applied" });
     break;
@@ -75,7 +75,7 @@ test("402.1: reaching ${step.to} wins", () => {
     edit("rules/401.ts", "proposal.player, 10,", "proposal.player, 15,");
     edit("rules/401.test.ts", "delta: 10,", "delta: 15,");
     if (step.weaken) writeFileSync(join(cwd, "rules/505.test.ts"), `import { test } from "node:test";\ntest("505", () => {});\n`);
-    else { edit("RULES.md", "The first player to reach 100 points wins the Era", "The first player to reach 20 points wins the Era"); edit("rules/402.ts", ">= 100", ">= 20"); }
+    else { edit("RULES.md", "The first player to reach 100 points wins the Era", "The first player to reach 20 points wins the Era"); edit("rules/402.ts", 'const toWin = ctx.settings["eras.points_to_win"];', "const toWin = 20;"); }
     result({ outcome: "applied" });
     break;
   }

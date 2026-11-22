@@ -29,15 +29,16 @@ test("the text still has the rules the modules belong to", () => {
 test("402 is Eras: reaching the number of points wins an Era, ties by night order, points reset, the Champion names the next Era and has one change (the site enforces it)", () => {
   const flat = rulesMd.replace(/\s+/g, " ");
   assert.ok(flat.includes("### 402 Eras"));
-  // the number is a proposal's to change (402.1), so the text is pinned without it
-  assert.match(flat, /\*\*402\.1\*\* The game is played in Eras\. The first Era starts on day 1\. The first player to reach \d+ points wins the Era, and the Era ends that night\./);
-  assert.match(flat, /If several players pass \d+ on the same night, the first one to be given them wins\./);
-  assert.ok(flat.includes("When an Era ends, everyone's points go back to 0, and the next Era starts the next day."));
+  // the number is the setting eras.points_to_win, a proposal's to change, so the text is pinned without it
+  assert.match(flat, /\*\*402\.1\*\* The game is played in Eras\. The first Era starts on day 1\./);
+  assert.match(flat, /\*\*402\.2\*\* The first player to reach \d+ points wins the Era\. \[setting: eras\.points_to_win\] If several players reach it on the same night, the first one given the points wins \(401\.1, 107\.2\)\./);
+  assert.match(flat, /\*\*402\.3\*\* When a player wins the Era \(402\.2\), the Era ends that night\. Everyone's points go back to 0, and the next Era starts the next day\./);
+  assert.equal(typeof settings["eras.points_to_win"], "number");   // its value is a proposal's to change
   assert.ok(flat.includes("The Champion names the next Era."));
   assert.ok(flat.includes("It takes effect unless every other player votes against it. Not voting doesn't count as against."));
-  assert.ok(flat.includes("**402.4** Once in each Era, the Champion can make one change of their own, on top of their proposals for the day (103.2)."));
+  assert.ok(flat.includes("**402.4** Once in each Era, the Champion can make one change of their own."));
   assert.ok(flat.includes("It can change any rule a proposal can change, one with a unanimous mark included."));
-  assert.ok(flat.includes("It goes on the next day's ballot, and the player who makes it doesn't vote on it."));
+  assert.ok(flat.includes("It goes on the ballot like any proposal (104.3), except as 103.2 and 104.3 say."));
   assert.ok(flat.includes("If there are no other players, it takes effect. A change that is withdrawn or not applied (107.7) doesn't count."));
   assert.ok(!/the game is over|deliberately dull/i.test(flat));
 });

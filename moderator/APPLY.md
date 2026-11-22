@@ -29,7 +29,9 @@ script runs them after you and tells you what failed.
    reads now (rule 107.3): keep its meaning, fit it to the new text. If it no longer makes sense on the new text, apply
    nothing and write the result file with outcome `not_applied` and the reason. When you redraft, cite instead of
    restating: don't add a fact another clause already states.
-3. A new rule's text goes in clause N.1 (N.2 and on for more), never under the title (rule 109.1). Repealing a clause
+3. A new rule's text goes in clause N.1 (N.2 and on for more), never under the title (rule 109.1). Its heading carries its
+   mark, `### N Title [m]` or `[u]`: `[u]` only when the proposal's `mark` is `unanimous` (rule 105.2). A moved rule keeps
+   its own mark. Repealing a clause
    leaves its number empty once the game has started: renumber nothing. A repealed clause's number cites nothing: if
    the draft leaves a citation of it standing, the check fails and the proposal goes back (the proposer should have
    changed the clauses that cite it too, rule 108.3).

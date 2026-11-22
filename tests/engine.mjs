@@ -215,14 +215,14 @@ check("a word that merely contains a banned one (environment, fetched, selfie, p
 check("a lint problem names the line of the printed code", /line \d+/.test(L(`export const a = 1;\nexport const b = fetch;`)[0]));
 
 console.log("RULES.md, settings and modules agree");
-const R = "# Rules\n\n## 100. A [majority]\n\n### 101 One\nText [setting: max_players]\n\n### 102 Two\nMore.\n<!-- ### 999 Hidden [setting: nope] -->\n";
-check("parseRulesMd reads rules and setting tags, ignoring HTML comments", J(parseRulesMd(R)) === J({ rules: [{ number: 101, title: "One" }, { number: 102, title: "Two" }], settingTags: ["max_players"] }), J(parseRulesMd(R)));
+const R = "# Rules\n\n## 100. A\n\n### 101 One [m]\nText [setting: max_players]\n\n### 102 Two [m]\nMore.\n<!-- ### 999 Hidden [setting: nope] -->\n";
+check("parseRulesMd reads rules and setting tags, ignoring HTML comments", J(parseRulesMd(R)) === J({ rules: [{ number: 101, title: "One", mark: "majority" }, { number: 102, title: "Two", mark: "majority" }], settingTags: ["max_players"] }), J(parseRulesMd(R)));
 check("the starter RULES.md, settings.json and modules agree", checkRulebook({ rulesMd: readFileSync(pjoin(ROOT, "templates/RULES.md"), "utf8"), settings: JSON.parse(readFileSync(pjoin(ROOT, "templates/settings.json"), "utf8")), moduleRules: [202, 504, 505] }).length === 0);
 check("templates/settings.json is exactly the default settings, and valid", J(JSON.parse(readFileSync(pjoin(ROOT, "templates/settings.json"), "utf8"))) === J(DEFAULT_SETTINGS) && validateSettings(DEFAULT_SETTINGS).length === 0);
 check("a [setting] with no key, a key with no [setting], a module for a missing rule, a repeated rule number and an empty rulebook are all reported", (() => {
   const s = { ...DEFAULT_SETTINGS };
   const out = checkRulebook({ rulesMd: R, settings: s, moduleRules: [101, 777] });
-  const dup = checkRulebook({ rulesMd: R + "\n### 101 Again\nx\n", settings: s, moduleRules: [] });
+  const dup = checkRulebook({ rulesMd: R + "\n### 101 Again [m]\nx\n", settings: s, moduleRules: [] });
   const none = checkRulebook({ rulesMd: "nothing", settings: s, moduleRules: [] });
   return out.some((p) => /rules\/777\.ts is a module for rule 777/.test(p)) && out.some((p) => /settings\.json has board\.island but no rule/.test(p)) &&
     checkRulebook({ rulesMd: R.replace("max_players", "board.nope"), settings: s, moduleRules: [] }).some((p) => /names \[setting: board\.nope\] but settings\.json has no/.test(p)) &&
@@ -230,19 +230,19 @@ check("a [setting] with no key, a key with no [setting], a module for a missing 
 })());
 
 check("rule 109.1: text under a rule's title fails always (a rule has no text of its own), and so does a clause under another rule's number", (() => {
-  const book = (body) => `# R\n\n## 100. A [majority]\n\n${body}`;
+  const book = (body) => `# R\n\n## 100. A\n\n${body}`;
   const s = { ...DEFAULT_SETTINGS };
-  const text = checkRulebook({ rulesMd: book("### 101 One\nText of its own.\n\n**101.1** A clause.\n"), settings: s, moduleRules: [] }).filter((p) => /text under rule 101/.test(p));
-  const planted = checkRulebook({ rulesMd: book("### 101 One\n**101.1** A.\n\n### 102 Two\n**101.2** Strayed.\n"), settings: s, moduleRules: [] }).filter((p) => /clause 101\.2 sits under rule 102/.test(p));
-  const clean = checkRulebook({ rulesMd: book("### 101 One\n**101.1** A.\n\n**101.2** B.\n"), settings: s, moduleRules: [] }).filter((p) => !/settings\.json|\[setting/.test(p));
+  const text = checkRulebook({ rulesMd: book("### 101 One [m]\nText of its own.\n\n**101.1** A clause.\n"), settings: s, moduleRules: [] }).filter((p) => /text under rule 101/.test(p));
+  const planted = checkRulebook({ rulesMd: book("### 101 One [m]\n**101.1** A.\n\n### 102 Two [m]\n**101.2** Strayed.\n"), settings: s, moduleRules: [] }).filter((p) => /clause 101\.2 sits under rule 102/.test(p));
+  const clean = checkRulebook({ rulesMd: book("### 101 One [m]\n**101.1** A.\n\n**101.2** B.\n"), settings: s, moduleRules: [] }).filter((p) => !/settings\.json|\[setting/.test(p));
   return text.length === 1 && planted.length === 1 && clean.length === 0;
 })());
 check("rule 109.1: before day 1 a rule's clauses run from 1 with no gap; once the game has started a repealed clause leaves its number empty", (() => {
-  const gap = `# R\n\n## 100. A [majority]\n\n### 101 One\n**101.1** A.\n\n**101.3** C, after 101.2 was repealed.\n\n### 102 Two\n**102.2** Starts at two.\n`;
+  const gap = `# R\n\n## 100. A\n\n### 101 One [m]\n**101.1** A.\n\n**101.3** C, after 101.2 was repealed.\n\n### 102 Two [m]\n**102.2** Starts at two.\n`;
   const s = { ...DEFAULT_SETTINGS };
   const pre = checkRulebook({ rulesMd: gap, settings: s, moduleRules: [], beforeDayOne: true }).filter((p) => /no gap/.test(p));
   const started = checkRulebook({ rulesMd: gap, settings: s, moduleRules: [] }).filter((p) => !/settings\.json|\[setting/.test(p));
-  const out = checkRulebook({ rulesMd: "# R\n\n## 100. A [majority]\n\n### 101 One\n**101.2** B.\n\n**101.1** A.\n", settings: s, moduleRules: [] }).filter((p) => /out of order|no gap/.test(p));
+  const out = checkRulebook({ rulesMd: "# R\n\n## 100. A\n\n### 101 One [m]\n**101.2** B.\n\n**101.1** A.\n", settings: s, moduleRules: [] }).filter((p) => /out of order|no gap/.test(p));
   return pre.length === 2 && /101\.1, 101\.3/.test(pre[0]) && /102\.2/.test(pre[1]) && started.length === 0 && out.length === 0;
 })());
 check("rule 109.1: clause numbers are names, not positions: a clause added after 504.1 (504.3, before 504.2) passes, before day 1 and after; a number twice or under the wrong rule still fails", (() => {
@@ -263,7 +263,7 @@ check("rule 109.1: a parenthesized list cites every number in it: (103.1, 103.5)
   const m = tplMd.match(/^\*\*103\.5\*\*[\s\S]*?\n\n/m);
   const without = run(tplMd.replace(m[0], ""));
   const s = { ...DEFAULT_SETTINGS };
-  const md = (t) => `# R\n\n## 100. A [majority]\n\n### 101 One\n**101.1** ${t}\n\n**101.3** Third.\n`;
+  const md = (t) => `# R\n\n## 100. A\n\n### 101 One [m]\n**101.1** ${t}\n\n**101.3** Third.\n`;
   const bad = (t) => checkRulebook({ rulesMd: md(t), settings: s, moduleRules: [] }).filter((p) => /cites/.test(p));
   return run(tplMd).length === 0 && without.some((p) => /cites 103\.5/.test(p)) && citedRules("(103.1, 103.5)").join() === "103.1,103.5" &&
     bad("See (101.1, 101.3).").length === 0 && bad("See (101.1, 101.2).").length === 1 && bad("See (101.1 and 101.2).").length === 1 && bad("See (101.1, 101.3, and 101.4).").length === 1 &&
@@ -271,18 +271,24 @@ check("rule 109.1: a parenthesized list cites every number in it: (103.1, 103.5)
 })());
 check("rule 109.1: a citation of a clause, rule or block the book does not have fails always, in both forms and for a repealed clause's number; 'Suber's rule 213' is not a citation", (() => {
   const s = { ...DEFAULT_SETTINGS };
-  const md = (t) => `# R\n\n## 100. A [majority]\n\n### 101 One\n**101.1** ${t}\n\n**101.3** Third.\n`;
+  const md = (t) => `# R\n\n## 100. A\n\n### 101 One [m]\n**101.1** ${t}\n\n**101.3** Third.\n`;
   const bad = (t) => checkRulebook({ rulesMd: md(t), settings: s, moduleRules: [] }).filter((p) => /cites/.test(p));
   return bad("See (101.3) and rule 101 and block 100.").length === 0 && bad("See (101.2).").length === 1 && /101\.2/.test(bad("See (101.2).")[0]) && bad("See rule 105.").length === 1 && bad("See rules 101.1 and 999.").length === 1 &&
     bad("See block 900.").length === 1 && bad("(Suber's rule 213.)").length === 0 && bad("See (rule 101.1, 101.3).").length === 0;
 })());
 check("the starter RULES.md has no gap before day 1, and the three planted checks all hold on it too", checkRulebook({ rulesMd: readFileSync(pjoin(ROOT, "templates/RULES.md"), "utf8"), settings: JSON.parse(readFileSync(pjoin(ROOT, "templates/settings.json"), "utf8")), moduleRules: [202, 504, 505], beforeDayOne: true }).length === 0);
 check("rule 109.1: a reported line is the line of the file even under a multi-line header comment, and a paragraph under a title is reported once; a [Repealed] or [Moved to N] marker under a title is not text", (() => {
-  const md = "<!--\nheader\ncomment\n-->\n# R\n\n## 100. A [majority]\n\n### 101 One\nStray line one\nstray line two\n\n### 102 Two\n[Repealed]\n\n### 103 [Moved to 302]\n";
+  const md = "<!--\nheader\ncomment\n-->\n# R\n\n## 100. A\n\n### 101 One [m]\nStray line one\nstray line two\n\n### 102 Two [m]\n[Repealed]\n\n### 103 [Moved to 302]\n";
   const out = checkRulebook({ rulesMd: md, settings: { ...DEFAULT_SETTINGS }, moduleRules: [] }).filter((p) => /text under/.test(p));
   return out.length === 1 && /line 10:/.test(out[0]);
 })());
-check("a restatement is not an error: a clause that repeats another clause's number passes the check (rules voice 8 is guidance, not a rule)", checkRulebook({ rulesMd: "# R\n\n## 100. A [majority]\n\n### 101 One\n**101.1** You can confirm up to 3 proposals a day.\n\n**101.2** You can confirm up to 3 proposals a day.\n", settings: { ...DEFAULT_SETTINGS }, moduleRules: [] }).filter((p) => !/settings\.json|\[setting/.test(p)).length === 0);
+check("rule 105.1: every rule carries a mark and a block carries none; a [Moved to N] forwarder needs none", (() => {
+  const s = { max_players: 8 };
+  const ok = checkRulebook({ rulesMd: "# R\n\n## 100. A\n\n### 101 One [u]\n**101.1** T [setting: max_players]\n\n### 102 Two [m]\n**102.1** U.\n\n### 103 [Moved to 302]\n", settings: s, moduleRules: [] }).filter((p) => /mark/.test(p));
+  const old = checkRulebook({ rulesMd: "# R\n\n## 100. A [unanimous]\n\n### 101 One\n**101.1** T [setting: max_players]\n", settings: s, moduleRules: [] }).filter((p) => /mark/.test(p));
+  return ok.length === 0 && old.length === 2 && /block 100 carries a mark/.test(old[0]) && /rule 101 has no mark/.test(old[1]);
+})());
+check("a restatement is not an error: a clause that repeats another clause's number passes the check (rules voice 8 is guidance, not a rule)", checkRulebook({ rulesMd: "# R\n\n## 100. A\n\n### 101 One [m]\n**101.1** You can confirm up to 3 proposals a day.\n\n**101.2** You can confirm up to 3 proposals a day.\n", settings: { ...DEFAULT_SETTINGS }, moduleRules: [] }).filter((p) => !/settings\.json|\[setting/.test(p)).length === 0);
 
 console.log("the starter pack's own tests");
 {

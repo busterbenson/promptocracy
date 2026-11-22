@@ -12,7 +12,7 @@ export function createStarlingStub() {
   const REC = JSON.parse(readFileSync(pjoin(ROOT, "tests/fixtures/starling-answers.json"), "utf8"));
   const J = JSON.stringify;
   const SYNTH = {
-    "SYNTH-QUOTE-FAKE": { say: "Word for word!", quotes: [{ num: "103.3", text: "The proposer may withdraw a confirmed proposal at any time, even after the ballot." }, { num: "402.1", text: "The first player to reach 100 points wins." }] },
+    "SYNTH-QUOTE-FAKE": { say: "Word for word!", quotes: [{ num: "103.3", text: "The proposer may withdraw a confirmed proposal at any time, even after the ballot." }, { num: "402.2", text: "The first player to reach 100 points wins." }] },
     "SYNTH-LOCK": { say: "Locked! P1, on tomorrow's ballot.", lock: true, confirm: "P1", state: "confirmed", draft: { kind: "amend", target: "401", words: "Make it 15 points instead of 10.", confirm: true, lock: true } },
     "SYNTH-BADDRAFT": { say: "Drafting it.", draft: { kind: "amend", target: "999", words: "something" } },
     "SYNTH-FIXED": { say: "Drafting the repeal.", draft: { kind: "repeal", target: "202.4" } },
