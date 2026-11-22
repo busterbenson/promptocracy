@@ -1,27 +1,37 @@
 // The traced pieces, recolored per player and grounded on a tile. Shared by the board and the join page.
 //   pieceSVG({ shape, color, scale, mirrored, clip })  markup for one piece whose FEET are at (0, 0)
+//   creatureSVG(creature)                             the piece for a creature on the board, or null when it has none
 // A shape is drawn once, in its own source colors (pieces-data.js). recolor() swaps every fill that belongs to the
-// shape's main / shade / tint / deep family for the player color's matching step; a fill slightly off its family
-// keeps that offset, so the shading survives. Ink fills follow the page's --outline.
-import { TRACED, ROLES, FOOT, HEIGHT } from "/js/pieces-data.js";
+// shape's main / shade / tint / deep / glass family for the player color's matching step; a fill slightly off its family
+// keeps that offset, so the shading survives. A shape's FIXED fills (an eye's highlight) never change. Ink fills follow
+// the page's --outline.
+import { TRACED, ROLES, FIXED, FOOT, HEIGHT } from "./pieces-data.js";
 
 export const HW = 28, HH = HW * Math.sin(42 * Math.PI / 180), DEPTH = 9;   // a tile: half width, half height, slab depth
 
 const h2r = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
 const r2h = (r) => "#" + r.map((v) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, "0")).join("").toUpperCase();
-const mix = (a, b) => { const x = h2r(a), y = h2r(b); return r2h(x.map((v, i) => (v + y[i]) / 2)); };
-const ROLE_TOL = 40, INK = h2r("#18202B"), INK_EXACT = 14;
+// b weighted w: each channel a*(1-w) + b*w. Glass (a visor) is the player's tint, most of the way to white.
+const mixw = (a, b, w) => { const x = h2r(a), y = h2r(b); return r2h(x.map((v, i) => v * (1 - w) + y[i] * w)); };
+const ROLE_TOL = 40, INK = h2r("#18202B"), INK_EXACT = 14, GLASS_TO_WHITE = 0.68;
 const cache = new Map();
 
+/** The steps a player color gives each role. */
+export const targets = (color) => {
+  const main = color.main || color.hex;
+  return { main, shade: color.shade, tint: color.tint, deep: color.deep, glass: mixw(color.tint, "#FFFFFF", GLASS_TO_WHITE) };
+};
+
+// No color: the shape's own colors (a creature's), with only the ink following the page.
 export function recolor(shape, color) {
   const t = TRACED[shape] || TRACED.pawn;
-  if (!color) return t.body;
-  const main = color.main || color.hex;
-  const ck = shape + "|" + main + "|" + color.shade;
+  const ck = shape + "|" + (color ? [color.main || color.hex, color.shade, color.tint, color.deep].join("|") : "");
   if (cache.has(ck)) return cache.get(ck);
-  const roles = ROLES[shape] || ROLES.pawn;
-  const tgt = { main, shade: color.shade, tint: color.tint, deep: color.deep, mid: mix(main, color.shade) };
+  const roles = color ? ROLES[shape] || ROLES.pawn : {};
+  const fixed = new Set(FIXED[shape] || []);
+  const tgt = color ? targets(color) : {};
   const body = t.body.replace(/fill="(#[0-9A-Fa-f]{6})"/g, (m, hex) => {
+    if (fixed.has(hex.toUpperCase())) return m;
     const f = h2r(hex);
     let best = null, bd = 1e9;
     for (const [role, src] of Object.entries(roles)) {
@@ -57,11 +67,19 @@ export function ensureDefs() {
 export function pieceSVG({ shape, color, scale = 1.1, mirrored = false, clip = true }) {
   const key = TRACED[shape] ? shape : "pawn";
   const t = TRACED[key], H = HEIGHT[key] || 36, W = H * t.w / t.h, f = FOOT[key] || [0, .33];
-  const rx = f[1] * W, ry = rx * (key === "pawn" ? .36 : .52);
+  const rx = f[1] * W, ry = rx * .52;
   const shadow = `<ellipse cx="0" cy="${(ry * .1).toFixed(2)}" rx="${(rx * 1.9).toFixed(2)}" ry="${(ry * 1.9).toFixed(2)}" fill="url(#gAO)"/><ellipse cx="${(rx * .42).toFixed(2)}" cy="${(ry * .12).toFixed(2)}" rx="${(rx * 1.45).toFixed(2)}" ry="${(ry * 1.4).toFixed(2)}" fill="url(#gContact)" opacity=".5"/><ellipse cx="0" cy="${(ry * .06).toFixed(2)}" rx="${(rx * 1.18).toFixed(2)}" ry="${(ry * 1.3).toFixed(2)}" fill="url(#gContact)"/>`;
   const art = `<svg x="${(-W / 2 - f[0] * W).toFixed(2)}" y="${(-H + ry).toFixed(2)}" width="${W.toFixed(2)}" height="${H}" viewBox="0 0 ${t.w} ${t.h}" preserveAspectRatio="xMidYMax meet" overflow="visible">${recolor(key, color)}</svg>`;
   const flip = mirrored ? ' transform="scale(-1,1)"' : "";
   return `<g${clip ? ' clip-path="url(#tt)"' : ""}><g transform="scale(${scale})">${shadow}</g></g><g transform="scale(${scale})"><g${flip}>${art}</g></g>`;
+}
+
+// A creature on the board: the piece its catalog entry is named for (the Blob), in its own colors, standing like a player's
+// piece. A creature with no piece of its own gets null, and the board draws it the way it already does.
+export const CREATURE_PIECES = Object.freeze(Object.keys(TRACED).filter((k) => !ROLES[k]));
+export function creatureSVG(c, { scale = 1.1 } = {}) {
+  const key = String((c && c.name) || "").trim().toLowerCase();
+  return CREATURE_PIECES.includes(key) ? pieceSVG({ shape: key, color: null, scale }) : null;
 }
 
 // A flat tile (for the join picker and the landing page): a charted tile at the page's colors.
