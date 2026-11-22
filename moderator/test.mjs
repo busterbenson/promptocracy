@@ -262,6 +262,15 @@ console.log("moderator runner");
   const draft502 = `302 Coordinates\n\n${moved502.replace(/\*\*/g, "")}\n\n502 [Moved to 302]`;
   const tm = await night({ scenario: { apply: { 4: { action: "ops", ops: [{ replace: ["RULES.md", r502, "### 502 [Moved to 302]\n\n"] }, { replace: ["RULES.md", "## 400.", `### 302 Coordinates [m]\n${moved502}\n\n## 400.`] }] } } }, state: { job: job([P(4, "502", { kind: "move", new_num: "302", to_block: "300", after_text: draft502 })]) }, opts: { audit: false } });
   check("kinds: a move of a rule with clauses applies (the voted plain-text draft matches the file's markdown)", tm.claims[0]?.outcomes[0]?.applied === true, J(tm.claims[0]?.outcomes));
+  // A unanimous rule moves with its mark (105.1): the forwarder "[Moved to 302]" carries none, the new heading keeps [u].
+  const r109 = md.slice(md.indexOf("### 109 "), md.indexOf("## 200."));
+  const body109 = r109.split("\n").slice(1).join("\n").trim(), moved109 = body109.replace(/\*\*109\.(\d+)\*\*/g, "**302.$1**");
+  const draft109 = `302 Numbers and settings\n\n${moved109.replace(/\*\*/g, "")}\n\n109 [Moved to 302]`;
+  const mv109 = (mark) => night({ scenario: { apply: { 4: { action: "ops", ops: [{ replace: ["RULES.md", r109, "### 109 [Moved to 302]\n\n"] }, { replace: ["RULES.md", "## 400.", `### 302 Numbers and settings [${mark}]\n${moved109}\n\n## 400.`] }] } } }, state: { job: job([P(4, "109", { kind: "move", new_num: "302", to_block: "300", after_text: draft109 })]) }, opts: { audit: false } });
+  const tu1 = await mv109("u");
+  check("kinds: a move of a unanimous rule keeps its mark and applies (the forwarder carries none)", tu1.claims[0]?.outcomes[0]?.applied === true, J(tu1.claims[0]?.outcomes));
+  const tu2 = await mv109("m");
+  check("kinds: a move that drops the rule's unanimous mark is refused", tu2.claims[0]?.outcomes[0]?.applied === false && /moved and its mark changed/.test(tu2.claims[0].outcomes[0].reason), J(tu2.claims[0]?.outcomes));
   // From Codex: a clause proposal leaves the other clauses; an add's own number is its identity in a 108.4 note; a
   // module that gains a hook may update the rulebook test's lines for that rule.
   const win50 = [{ replace: ["RULES.md", "The first player to reach 100 points wins the Era", "The first player to reach 50 points wins the Era"] }, { replace: ["settings.json", '"eras.points_to_win": 100', '"eras.points_to_win": 50'] }, { write: ["rules/402.test.ts", TEST402_AT_50] }];

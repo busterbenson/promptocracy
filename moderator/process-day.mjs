@@ -86,12 +86,12 @@ export function disallowed(dir, paths) {
 }
 
 // A rule's mark (rule 105.1): its own, [u] or [m] after its title; a rule without one is majority (105.2); null when the rule isn't
-// in the book. "unanimous" rules are the core rules (rule 105.5). A block has no mark.
+// in the book or is a "[Moved to N]" forwarder. "unanimous" rules are the core rules (rule 105.5). A block has no mark.
 /** @rule 108.1 */
 export function markOf(rulesMd, number) {
   for (const line of String(rulesMd).split("\n")) {
     const r = /^###\s+(\d+)\s+(.*?)(?:\s+\[(unanimous|majority|u|m)\])?\s*$/.exec(line);
-    if (r && Number(r[1]) === Number(number)) return r[3] === "u" || r[3] === "unanimous" ? "unanimous" : "majority";
+    if (r && Number(r[1]) === Number(number)) return /^\[Moved to \d+\]$/.test(r[2]) ? null : r[3] === "u" || r[3] === "unanimous" ? "unanimous" : "majority";   // a "[Moved to N]" forwarder has no mark
   }
   return null;
 }
@@ -239,10 +239,10 @@ export function scopeProblems({ beforeMd, afterMd, beforeSettings, afterSettings
     }
     if (f.startsWith("rules/") || f.startsWith("rulings/") || f === "catalog.json") out.push(`${f} is not part of the rule this proposal changes`);
   }
-  if (!markChange) for (const n of rules) if (a[`r${n}`] && b[`r${n}`] && markOf(beforeMd, n) !== markOf(afterMd, n)) out.push(`rule ${n}'s mark changed`);
+  if (!markChange) for (const n of rules) if (a[`r${n}`] && b[`r${n}`] && markOf(beforeMd, n) !== null && markOf(afterMd, n) !== null && markOf(beforeMd, n) !== markOf(afterMd, n)) out.push(`rule ${n}'s mark changed`);
   // A new rule is added with the mark the proposal carries (rule 105.2: majority unless it was marked unanimous); a moved rule keeps its own.
   if (p.kind === "add") { const n = ownRule(p), want = p.mark === "unanimous" ? "unanimous" : "majority"; if (n !== null && b[`r${n}`] !== undefined && markOf(afterMd, n) !== want) out.push(`rule ${n} is added ${markOf(afterMd, n)}, but the proposal's mark is ${want} (rule 105.2)`); }
-  if (p.kind === "move") { const n = ownRule(p), was = markOf(beforeMd, ruleOf(p.target)); if (n !== null && b[`r${n}`] !== undefined && markOf(afterMd, n) !== was) out.push(`rule ${n} was moved and its mark changed: a move keeps the rule's own mark`); }
+  if (p.kind === "move") { const n = ruleOf(p.new_num), was = markOf(beforeMd, ruleOf(p.target)); if (n !== null && b[`r${n}`] !== undefined && markOf(afterMd, n) !== was) out.push(`rule ${n} was moved and its mark changed: a move keeps the rule's own mark`); }
   if (markChange) {
     // A mark proposal changes the mark and nothing else: the heading's [unanimous]/[majority], to the voted one.
     const strip = (t) => norm(String(t ?? "").replace(/\s*\[(unanimous|majority|u|m)\]/g, ""));

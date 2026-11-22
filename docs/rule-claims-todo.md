@@ -131,14 +131,14 @@ under rule 101 or 102; a follow-up change claims them and moves `src/` into the 
 
 ## src/lib/proposals.js (8)
 
-- line 168: `own`
-- line 169: `cites`
-- line 200: `own`
-- line 204: `add`
-- line 290: `obj`
-- line 438: `refuse`
-- line 440: `own`
-- line 522: `typeOf`
+- line 169: `own`
+- line 170: `cites`
+- line 201: `own`
+- line 205: `add`
+- line 291: `obj`
+- line 439: `refuse`
+- line 441: `own`
+- line 523: `typeOf`
 
 ## src/lib/settings.js (12)
 

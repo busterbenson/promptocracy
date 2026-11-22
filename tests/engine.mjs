@@ -282,6 +282,12 @@ check("rule 109.1: a reported line is the line of the file even under a multi-li
   const out = checkRulebook({ rulesMd: md, settings: { ...DEFAULT_SETTINGS }, moduleRules: [] }).filter((p) => /text under/.test(p));
   return out.length === 1 && /line 10:/.test(out[0]);
 })());
+check("rule 105.1: every rule carries a mark and a block carries none; a [Moved to N] forwarder needs none", (() => {
+  const s = { max_players: 8 };
+  const ok = checkRulebook({ rulesMd: "# R\n\n## 100. A\n\n### 101 One [u]\n**101.1** T [setting: max_players]\n\n### 102 Two [m]\n**102.1** U.\n\n### 103 [Moved to 302]\n", settings: s, moduleRules: [] }).filter((p) => /mark/.test(p));
+  const old = checkRulebook({ rulesMd: "# R\n\n## 100. A [unanimous]\n\n### 101 One\n**101.1** T [setting: max_players]\n", settings: s, moduleRules: [] }).filter((p) => /mark/.test(p));
+  return ok.length === 0 && old.length === 2 && /block 100 carries a mark/.test(old[0]) && /rule 101 has no mark/.test(old[1]);
+})());
 check("a restatement is not an error: a clause that repeats another clause's number passes the check (rules voice 8 is guidance, not a rule)", checkRulebook({ rulesMd: "# R\n\n## 100. A\n\n### 101 One [m]\n**101.1** You can confirm up to 3 proposals a day.\n\n**101.2** You can confirm up to 3 proposals a day.\n", settings: { ...DEFAULT_SETTINGS }, moduleRules: [] }).filter((p) => !/settings\.json|\[setting/.test(p)).length === 0);
 
 console.log("the starter pack's own tests");

@@ -71,6 +71,7 @@ export const actionOf = (d) => (typeof d.action === "string" ? JSON.parse(d.acti
 export function partsOf(d) {
   if (d.kind === "action") return [d.target, ...actionOf(d).touches.map(String)];
   if (d.kind === "add") return [];
+  if (d.kind === "commission") return ["801"];   // a commission is voted at the mark of rule 801, the workshop's (it names no block)
   if (d.kind === "move") return [d.target];
   return [d.target];
 }
