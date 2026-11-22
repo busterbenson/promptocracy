@@ -157,7 +157,7 @@ export function siteUrl(env: Env, request: Request): string {
 // Every game lives under /<slug>/. These words would collide with the site's
 // own routes and files, so no game may use them.
 export const RESERVED_SLUGS = new Set([
-  "api", "auth", "join", "assets", "static", "site.css", "theme.css", "index.html", "admin", "www", "mail", "help", "about", "rules", "board", "js", "vendor", "art", "v", "version",
+  "api", "auth", "join", "assets", "static", "site.css", "theme.css", "index.html", "admin", "www", "mail", "help", "about", "rules", "board", "js", "vendor", "art",
 ]);
 export const validSlug = (s: unknown): s is string =>
   typeof s === "string" && /^[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])$/.test(s) && !RESERVED_SLUGS.has(s);

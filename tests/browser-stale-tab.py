@@ -43,6 +43,8 @@ with sync_playwright() as p:
         check("board: modules load", len(mods) >= 5, str(mods))
         check("board: every module URL is under /v/<id>/js/", all(f"/v/{build}/js/" in m for m in mods), str(mods))
         check("board: the page knows its id", page.evaluate("document.querySelector('meta[name=build]').content") == build)
+        ids = page.evaluate("""async () => { const a = await import("/js/pieces.js"), c = await import("/js/pieces.js?x=1"); const d = await import("/v/" + document.querySelector("meta[name=build]").content + "/js/pieces.js"); return [a === d, a === c]; }""")
+        check("one module instance whatever the specifier (the import map, not a copy)", ids[0] is True and ids[1] is False, str(ids))
         check("board: renders (the rulebook mounted)", page.evaluate("document.getElementById('rules').children.length") > 0 and not errors, str(errors))
         check("board: asked /api/version on load, same id, no reload", len(asked) >= 1 and len([l for l in loads if l.endswith(f"/{slug}/")]) == 2, f"asked={len(asked)} loads={loads}")  # first goto + our own reload
         ctx.close()
@@ -95,6 +97,18 @@ with sync_playwright() as p:
         page.unroute("**/api/version"); page.route("**/api/version", lambda r: r.abort())
         fire_visible(page); page.wait_for_timeout(1000)
         check("a failing /api/version never reloads", len(loads) == 1, f"loads={len(loads)}")
+        ctx.close()
+
+        # 6b. a half-typed field is never thrown away: no reload while a textarea holds text, one as soon as it is empty
+        answer = {"id": None}
+        ctx, page, errors, loads, asked = open_page(b, f"/{slug}/", answer)
+        page.evaluate("() => { const t = document.createElement('textarea'); t.id = 'typed'; t.value = 'half a proposal'; document.body.appendChild(t); }")
+        answer["id"] = "build-GGG"
+        fire_visible(page); page.wait_for_timeout(1200)
+        check("text in a field: no reload", len(loads) == 1, f"loads={len(loads)}")
+        page.evaluate("document.getElementById('typed').value = ''")
+        fire_visible(page); page.wait_for_timeout(1500)
+        check("field empty again: exactly one reload", len(loads) == 2, f"loads={len(loads)}")
         ctx.close()
 
         # 7. the landing page is guarded too

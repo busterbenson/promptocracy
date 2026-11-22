@@ -77,7 +77,8 @@ const secure = (res: Response) => {
 const stamp = async (res: Response, env: Env) => {
   if (res.status !== 200 || !/^text\/html/i.test(res.headers.get("content-type") || "")) return res;
   const html = await res.clone().text();
-  const out = stampHtml(html, buildId(env));
+  let out: string | null = null;
+  try { out = stampHtml(html, buildId(env)); } catch { return res; }   // an id that is not plain: serve the page unstamped, never a 500
   if (out === null) return res;
   const headers = new Headers(res.headers);
   headers.delete("content-length"); headers.delete("etag");

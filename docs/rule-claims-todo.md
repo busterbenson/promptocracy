@@ -13,10 +13,10 @@ under rule 101 or 102; a follow-up change claims them and moves `src/` into the 
 
 - line 66: `secure`
 - line 77: `stamp`
-- line 87: `notFound`
-- line 93: `run`
-- line 98: `route`
-- line 225: `fetch`
+- line 88: `notFound`
+- line 94: `run`
+- line 99: `route`
+- line 226: `fetch`
 
 ## src/lib/art-sweep.ts (1)
 
@@ -57,7 +57,7 @@ under rule 101 or 102; a follow-up change claims them and moves `src/` into the 
 
 - line 12: `buildId`
 - line 20: `guardScript`
-- line 27: `stampHtml`
+- line 28: `stampHtml`
 
 ## src/lib/catalog.js (1)
 

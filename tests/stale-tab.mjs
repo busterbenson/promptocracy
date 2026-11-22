@@ -39,6 +39,7 @@ try {
 
   const v = await get("/api/version");
   check("GET /api/version: the id, no-store", v.status === 200 && (await v.text()).trim() === "build-AAA" && /no-store/.test(v.headers.get("cache-control") || ""), `${v.status} ${v.headers.get("cache-control")}`);
+  check("HEAD /api/version answers", (await get("/api/version", { method: "HEAD" })).status === 200);
   check("/api/version is not a game route", (await get("/api/version", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" })).status === 404);
 
   for (const [name, path] of [["landing page", "/"], ["board page", "/shop/"], ["join page", `/shop/join/${g.code}`]]) {
