@@ -7,7 +7,7 @@ import { DEADLINE_CLOCK, DEPLOY_CLOCK } from "../src/lib/votes.js";
 import { parseRules, markOf, renderMarkdown, hl, linkCites } from "../public/js/rulebook.js";
 import { createBallot } from "../public/js/ballot.js";
 import { TRACED, ROLES, FIXED, FOOT, HEIGHT } from "../public/js/pieces-data.js";
-import { recolor, targets, creatureSVG, CREATURE_PIECES } from "../public/js/pieces.js";
+import { recolor, targets, creatureSVG, CREATURE_PIECES, pieceSVG } from "../public/js/pieces.js";
 import { createProposer } from "../public/js/propose.js";
 
 let pass = 0, fail = 0;
@@ -200,6 +200,13 @@ check("the art is recolorable: every recolored shape has fills that belong to it
 {
   const blob = creatureSVG({ name: "Blob" });
   check("a creature named for a piece (the Blob) is drawn as that piece in its own colors with the page's outline; a creature with no piece gets null", blob && blob.includes('fill="#256262"') && blob.includes("var(--outline)") && !blob.includes('fill="#18202B"') && creatureSVG({ name: " blob " }) === blob && creatureSVG({ name: "Crow" }) === null && creatureSVG({ name: "Snail-knight" }) === null && creatureSVG({}) === null);
+}
+{
+  const jade = PIECES.colors.find((c) => c.key === "jade");
+  const ghost = pieceSVG({ shape: "frog", color: jade, state: "ghost" }), frog = recolor("frog", jade);
+  const dead = pieceSVG({ shape: "frog", color: jade, state: "dead" });
+  check("a Ghost (604.2) is the Ghost piece in the player's colour, not their own piece; the dead (603.1) are their own piece on its side",
+    ghost.includes(recolor("ghost", jade)) && !ghost.includes(frog) && dead.includes(frog) && dead.includes("rotate(90)") && !dead.includes(recolor("ghost", jade)));
 }
 
 console.log("the theme");

@@ -10,7 +10,7 @@
 //   b.setReach(tiles)         dashed highlight on the tiles you may move to ([{x, y}]); none clears
 //   b.screenPos(x, y)         page coordinates of a tile's centre (tests use this to click it)
 //   b.recenter(meKey)         back to the whole island, or onto the viewer's piece
-import { HW, HH, DEPTH, ensureDefs, pieceSVG } from "/js/pieces.js";
+import { HW, HH, DEPTH, ensureDefs, pieceSVG, creatureSVG } from "/js/pieces.js";
 
 export const LONG_PRESS_MS = 500;
 const f1 = (n) => n.toFixed(1);
@@ -75,14 +75,20 @@ export function sceneSVG(board, { sel = null, me = null, id = "b", showFog = tru
   for (const t of reach) s += `<polygon class="reach" points="${inset(t.x, t.y, .86)}"/>`;
   if (sel) s += `<polygon class="selected" points="${inset(sel.x, sel.y, .94)}"/>`;
   s += `<polygon class="hover" id="${id}-hov" points=""/>`;
-  for (const p of pieces) {
-    const c = P(p.at.x + .5, p.at.y + .5);
-    s += `<g class="piece" data-piece="${esc(p.color.key)}" transform="translate(${f1(c[0])},${f1(c[1])})">${pieceSVG({ shape: p.shape, color: p.color, mirrored: !!p.mirrored, state: p.state })}</g>`;
-  }
-  // Creatures (rule 602): a ring and the entry's kind letter on their tile; a resting one carries a z.
-  for (const c of (board.creatures || []).filter((c) => c.at.z === 0)) {
-    const p = P(c.at.x + .5, c.at.y + .5);
-    s += `<g class="creature" data-creature="${c.id}" transform="translate(${f1(p[0])},${f1(p[1])})"><circle cy="-13" r="11" class="cring"/><text y="-8.5" text-anchor="middle" class="cletter">${esc(String(c.entry || c.kind || "C").charAt(0))}</text>${c.resting ? '<text x="12" y="-26" class="czz">z</text>' : ""}</g>`;
+  // Pieces and creatures (rule 602) together, back to front, so the nearer one draws on top. A creature is its own piece
+  // (the Blob), or else a ring and the entry's kind letter; a resting one carries a z.
+  const creatures = (board.creatures || []).filter((c) => c.at.z === 0);
+  const standing = [...pieces.map((p) => ({ p })), ...creatures.map((c) => ({ c }))]
+    .sort((a, b) => ((b.p || b.c).at.x + (b.p || b.c).at.y) - ((a.p || a.c).at.x + (a.p || a.c).at.y));
+  for (const { p, c } of standing) {
+    if (p) {
+      const at = P(p.at.x + .5, p.at.y + .5);
+      s += `<g class="piece" data-piece="${esc(p.color.key)}" transform="translate(${f1(at[0])},${f1(at[1])})">${pieceSVG({ shape: p.shape, color: p.color, mirrored: !!p.mirrored, state: p.state })}</g>`;
+    } else {
+      const at = P(c.at.x + .5, c.at.y + .5);
+      const art = creatureSVG(c) || `<circle cy="-13" r="11" class="cring"/><text y="-8.5" text-anchor="middle" class="cletter">${esc(String(c.entry || c.kind || "C").charAt(0))}</text>`;
+      s += `<g class="creature" data-creature="${c.id}" transform="translate(${f1(at[0])},${f1(at[1])})">${art}${c.resting ? '<text x="12" y="-26" class="czz">z</text>' : ""}</g>`;
+    }
   }
   return { markup: s, box: bbox(new Set([...charted, ...ring(charted, 1)])), tiles };
 }

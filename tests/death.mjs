@@ -1,5 +1,5 @@
 // Death, Ghosts and how the game ends (rules 601-604, 404; migration 0019): the engine pieces in plain node, then a real `wrangler dev` on a LOCAL D1
-// with the fixture game `hunted` (the starter rules + a hostile Snail-knight in its catalog): the night's board on a quiet night, a bite and a death,
+// with the fixture game `hunted` (the starter rules + a hostile Blob in its catalog): the night's board on a quiet night, a bite and a death,
 // the dead lose their vote and turn, giving a heart revives, a Ghost can't be given one, and the last two dying the same night ends the game.
 // Run: node tests/death.mjs. Nothing here touches Cloudflare.
 import { rmSync } from "node:fs";
@@ -86,8 +86,8 @@ try {
   console.log("a quiet night: a hostile creature appears (602.3)");
   setClock("2026-03-09T07:00:05.000Z");
   await cron();
-  check("the board ran on a night with nothing applied: one Snail-knight appeared, the night's board is marked done, and History says so",
-    creatures().length === 1 && creatures()[0].entry_id === "C1" && creatures()[0].hearts === 3 && creatures()[0].appeared_day === 1 && day(1).board_at !== null && /Snail-knight appeared at/.test(events("appeared")[0] ?? ""), J(creatures()) + J(events("appeared")));
+  check("the board ran on a night with nothing applied: one Blob appeared, the night's board is marked done, and History says so",
+    creatures().length === 1 && creatures()[0].entry_id === "C1" && creatures()[0].hearts === 3 && creatures()[0].appeared_day === 1 && day(1).board_at !== null && /Blob appeared at/.test(events("appeared")[0] ?? ""), J(creatures()) + J(events("appeared")));
   await cron();
   check("a second cron changes nothing: still one creature, one line", creatures().length === 1 && events("appeared").length === 1 && day(2)?.status === "open");
 

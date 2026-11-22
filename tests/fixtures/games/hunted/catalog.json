@@ -1,3 +1,3 @@
 [
-  { "id": "C1", "name": "Snail-knight", "kind": "creature", "attrs": { "temper": "hostile", "hearts": 3 }, "flavor": {} }
+  { "id": "C1", "name": "Blob", "kind": "creature", "attrs": { "temper": "hostile", "hearts": 3 }, "flavor": {} }
 ]
