@@ -36,7 +36,8 @@ jobs:
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     # ubuntu-latest is 26.04 now, which Playwright 1.58 cannot install Chromium on; pinned to a supported image
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    # Shard 1 takes ~23 min on a normal runner; a slow one ran every suite ~1.5x slower (#77, 2026-11-21) and hit a 30-min cap mid-test.
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
