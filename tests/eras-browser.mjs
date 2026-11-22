@@ -37,7 +37,7 @@ try {
   ].join("; "));
   // Day 3: Ada's Champion's change (402.4, on rule 401) and Bo's ordinary proposal; then the midnight roll to day 4's ballot.
   const P = "/era/api/proposals";
-  const text401 = "A player whose proposal passes and is applied gets 15 points when it is applied (rule 107).";
+  const text401 = "401.1 A player whose proposal passes and is applied gets 15 points when it is applied (rule 107).";
   const a = ok(await ada.post(P, { kind: "amend", target: "401", words: text401, prefilled: true, champion: true }), "ada draft");
   ok(await ada.post(`${P}/${a.data.proposal.id}/confirm`, {}), "ada confirm");
   const b = ok(await bo.post(P, { kind: "addclause", target: "503", words: "A tile with a tower in it can be seen from two tiles away." }), "bo draft");

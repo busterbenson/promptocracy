@@ -391,7 +391,7 @@ with sync_playwright() as pw:
     page.keyboard.press("Escape")
     # a card keeps what you were writing when it closes (Esc, backdrop); focus stays inside the card after a menu click
     page.locator('.bcard[data-card="401"]').click(); page.wait_for_selector("#mroot .mcard")
-    page.click('#mroot [data-p="open"]'); page.click('#mroot [data-p="kind"][data-k="addclause"]'); page.wait_for_selector("#pfWords")
+    page.click('#mroot [data-p="open"]'); page.click('#mroot [data-p="scope"][data-s="whole"]'); page.click('#mroot [data-p="kind"][data-k="addclause"]'); page.wait_for_selector("#pfWords")
     check("after a menu click the focus is still inside the card (not dropped to the page)", page.evaluate("document.querySelector('.mcard').contains(document.activeElement)"))
     page.fill("#pfWords", "Ties go to the older player.")
     page.keyboard.press("Escape"); page.wait_for_timeout(100)
@@ -403,7 +403,7 @@ with sync_playwright() as pw:
     check("the History toggle keeps focus on its own button", page.evaluate("document.activeElement && document.activeElement.hasAttribute('data-mhist')"))
     page.keyboard.press("Escape")
     page.locator('.bcard[data-card="403"]').click(); page.wait_for_selector("#mroot .mcard")
-    page.click('#mroot [data-p="open"]'); page.click('#mroot [data-p="kind"][data-k="repeal"]')
+    page.click('#mroot [data-p="open"]'); page.click('#mroot [data-p="scope"][data-s="whole"]'); page.click('#mroot [data-p="kind"][data-k="repeal"]')
     page.wait_for_selector("#mroot .ruling"); page.wait_for_timeout(200)
     check("proposing from a card: the moderator's slip shows in the card (PR 3's flow, moved into the card)", "Repeal rule 403" in text(page, "#mroot .ruling") and page.locator('#mroot [data-p="confirm"]').count() == 1)
     page.click('#mroot [data-p="cancel"]'); page.wait_for_timeout(100)
