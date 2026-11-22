@@ -79,7 +79,7 @@ export async function mintTokens(env: Env, t: { clientId: string; gameId: string
 // refresh token, and a token whose player no longer has a seat all give null.
 export async function playerForToken(env: Env, game: { id: string }, token: string): Promise<Player | null> {
   return await env.DB.prepare(
-    `SELECT p.id, p.email, p.display_name, p.color, p.score, p.turn_order, p.is_host
+    `SELECT p.id, p.email, p.display_name, p.color, p.score, p.turn_order, p.is_host, p.hearts, p.dead_day, p.ghost_day, p.joined_at
      FROM oauth_tokens t JOIN players p ON p.id = t.player_id AND p.game_id = t.game_id
      WHERE t.token_hash = ? AND t.kind = 'access' AND t.game_id = ? AND t.expires_at > ?`,
   ).bind(await sha256Hex(token), game.id, nowIso()).first();

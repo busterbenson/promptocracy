@@ -307,7 +307,7 @@ export async function nightBoardStatements(env: Env, game: any, n: number, nowMs
   if (!done || done.board_at) return null;
   const applied = ((await env.DB.prepare("SELECT number FROM proposals WHERE game_id = ? AND day_ballot = ? AND status = 'enacted' ORDER BY number").bind(game.id, n).all()).results as any[]).map((r) => r.number as number);
   const ctx: any = await nightContext(env, game, nowMs);
-  const maxId: any = await env.DB.prepare("SELECT COALESCE(MAX(id), 0) AS m FROM creatures WHERE game_id = ?").bind(game.id).first();
+  const maxId: any = await env.DB.prepare("SELECT COALESCE(MAX(id), 0) AS m FROM creatures").first(); // creatures.id is one key across every game in the database
   const nextId = (maxId?.m ?? 0) + 1;
   const tiles = makeTiles(await loadTiles(env, game.id));
   const full = makeContext({ day: game.day || null, now: nowIso(nowMs), settings: ctx.settings, players: ctx.players.map((p: any) => ({ ...p })), creatures: ctx.creatures, catalog: ctx.catalog, tiles, rng: cryptoRng(), nextCreatureId: nextId });
