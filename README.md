@@ -113,7 +113,7 @@ two games is two unrelated players.
   the server checks that game too: a session for one game is ignored on another's
   routes even if the cookie is sent there.
 - Seats can be taken while the game's status is `setup` or `playing` and it has room (rule 102.3: any player can
-  invite, no proposal). Someone who joins after a day began votes from the next day (rule 102.4).
+  invite, no proposal). Someone who joins after a day began votes from the next day (rule 104.2).
 - `/<slug>/api/game` is public and never contains emails, player ids or the join code.
 
 The host (the first player to join) starts a game with the Start button, `POST /<slug>/api/start` or the MCP tool

@@ -9,7 +9,7 @@ Run: `node tests/starling-live.mjs [--only id,id] [--max-calls 40] [--record tes
 | group | cases | what is graded |
 |---|---|---|
 | question | take back a proposal after End turn; points to win; two players trading points (the rules are silent); "what does 108.1 say, word for word" | no draft; a verified quote of the right clause; "the rules don't say" said plainly; no escalation of what the rulebook answers |
-| draft | reword 401 (opened from its card); add a rule to block 300; repeal 504.3; move 403 to 300; mark 403 unanimous | the right `{kind, target, to}`; the words carry the player's number or text |
+| draft | reword 401 (opened from its card); add a rule to block 300; repeal 504.2; move 403 to 300; mark 403 unanimous | the right `{kind, target, to}`; the words carry the player's number or text |
 | clarify | "I want to change how points work" | no draft, a question back |
 | history | the slip on screen says 15; "actually make it 20" | a new amend of 401 whose words say 20 |
 | escalate | an official ruling on whether paid points count toward 100, "send it to Chalant" | an escalation, no draft |

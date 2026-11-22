@@ -136,7 +136,7 @@ console.log("his answer: what the platform keeps");
     !G.readGremlinAnswer(ans({ say: "ok", ticket: { price: { points: 4, reason: "r" } } }), { ...ctx, makes: [{ kind: "rule", num: null, draft: "x" }] }).unbuiltPrice &&
     G.readGremlinAnswer(ans({ say: "ok", ticket: { price: { points: 4, reason: "r" } } }), { ...ctx, makes: [] }).unbuiltPrice);
   check("a field left out (or null) leaves the ticket alone", J(read({ say: "ok", ticket: { title: null, brief: null } }).patch) === "{}" && J(read({ say: "just talking" }).patch) === "{}");
-  const refuse = read({ say: "No.", refusal: "That would share players' private information (802.2).", ticket: { title: "Mail", makes: [{ kind: "entry", name: "Box", catalogKind: "item" }] } });
+  const refuse = read({ say: "No.", refusal: "That would share players' private information (802.1).", ticket: { title: "Mail", makes: [{ kind: "entry", name: "Box", catalogKind: "item" }] } });
   check("a refusal writes nothing even if the answer carries fields", refuse.refusal && J(refuse.patch) === "{}");
   check("an answer that isn't JSON, isn't an object, or has no say is malformed (nothing is saved, the message still counts)", read("sorry I cannot").code === "malformed" && read("[1]").code === "malformed" && read({ ticket: {} }).code === "malformed" && read({ say: "  " }).code === "malformed");
   check("JSON in a code fence is still read", read("```json\n" + ans({ say: "hi" }) + "\n```").ok);

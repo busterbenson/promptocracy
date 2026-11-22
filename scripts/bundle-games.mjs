@@ -167,7 +167,8 @@ export function assertNoLinks(dir, label, tally = { files: 0, bytes: 0 }) {
 // ---- checking one game tree ---------------------------------------------------------------------
 const readJson = (p, what) => { try { return JSON.parse(readFileSync(p, "utf8")); } catch (e) { fail(`${what} is missing or is not valid JSON (${e.message})`); } };
 
-export function checkTree(dirIn, label, { starter = false, skipTests = false } = {}) {
+// `started`: a night has been processed (the tag is day-1 or later), so a repealed clause may leave a gap in its rule (rule 109.1).
+export function checkTree(dirIn, label, { starter = false, skipTests = false, started = false } = {}) {
   const dir = realpathSync(dirIn); // the permission model compares real paths (macOS /var is /private/var)
   assertNoLinks(dir, label);
   if (!starter) {
@@ -214,7 +215,7 @@ export function checkTree(dirIn, label, { starter = false, skipTests = false } =
 
   // Game code runs only from here on, and only in a child with a scrubbed environment.
   const staged = starter ? null : stageEngine(dir);
-  const chk = runSandboxed([staged ? join(staged, "scripts", "check-game.mjs") : join(ROOT, "scripts", "check-game.mjs"), dir], dir, "check", { platformReads: starter });
+  const chk = runSandboxed([staged ? join(staged, "scripts", "check-game.mjs") : join(ROOT, "scripts", "check-game.mjs"), dir, ...(started ? [] : ["--before-day-1"])], dir, "check", { platformReads: starter });
   let verdict;
   try { verdict = JSON.parse(chk.stdout.trim().split("\n").pop()); } catch { fail(`${label}: the module check did not run:\n${chk.out.slice(-1500)}`); }
   if (verdict.problems.length) fail(`${label}: ${verdict.problems.join("\n  ")}`);
@@ -327,7 +328,7 @@ export function bundleGames(env = process.env) {
         if (!SLUG.test(slug)) fail(`manifest slug ${JSON.stringify(slug)} is not valid`);
         if (!REPO.test(g?.repo ?? "") || g.repo.includes("..")) fail(`manifest repo for ${slug} must look like owner/name`);
         const f = fetchGame(slug, g.repo, base, work);
-        const c = checkTree(f.dir, `${slug} (${g.repo} ${f.tag})`, { skipTests });
+        const c = checkTree(f.dir, `${slug} (${g.repo} ${f.tag})`, { skipTests, started: f.day >= 1 });
         entries.push({ slug, repo: g.repo, tag: f.tag, day: f.day, sha: f.sha, dir: f.dir, ...c });
         log(`${slug}: ${g.repo} ${f.tag} @ ${f.sha.slice(0, 7)}, rules ${c.files.join(" ")} (${c.tests})`);
       }

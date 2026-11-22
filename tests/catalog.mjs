@@ -1,5 +1,5 @@
 // The catalog (rules 701-705), no server and no network: values and how each type is read and shown, the four cases an attribute can be
-// in, the guards a draft entry passes, catalog.json and its read-time rule (705.2), the registry the modules export, the three claim checks,
+// in, the guards a draft entry passes, catalog.json and its read-time rule (703.1), the registry the modules export, the three claim checks,
 // attr(), and the bundler on fixture games. Run: node tests/catalog.mjs
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -84,7 +84,7 @@ check("a needs-build key shows its value as not built yet", row(view({ name: "Dr
 check("flavor: the first 3 apart from the rest, values only; booleans read Yes and No", (() => { const v = view({ name: "x", catalogKind: "item", flavor: { a: "1", b: "2", c: true, d: "4", e: "5" } }); return v.flavor.length === 5 && v.flavorTop.length === 3 && v.flavorMore === 2 && v.flavorTop[2].shown === "Yes"; })());
 check("an item with no kind shows \"kind not set\": no kind label, its attrs as flavor rows", (() => { const v = view({ name: "Thing", attrs: { hearts: 3 } }); return v.kind === null && v.kindLabel === null && v.rows.length === 0 && v.flavor[0].label === "Hearts"; })());
 
-console.log("catalog.json (rule 701.1) and the read-time rule (705.2)");
+console.log("catalog.json (rule 701.1) and the read-time rule (703.1)");
 const entry = (o) => ({ id: "C1", name: "Blob", kind: "creature", attrs: { hearts: 3 }, ...o });
 check("no file is no entries; an empty list is no entries", readCatalog([], ctx).entries.length === 0);
 check("an entry is cleaned and keeps its art slot (no saved drawings, no default), who made it and when", (() => { const e = readCatalog([entry({ madeBy: "W4", day: 2, flavor: { colour: "green" } })], ctx).entries[0]; return e.id === "C1" && e.art.saved.length === 0 && e.art.default === null && e.madeBy === "W4" && e.day === 2 && e.flavor.colour === "green" && e.attrs.hearts === 3; })());
@@ -93,9 +93,9 @@ check("refused: a list that is not a list; an unknown kind; an id with the wrong
   readCatalog({}, ctx).errors, readCatalog([entry({ kind: "dragon" })], ctx).errors, readCatalog([entry({ id: "I1" })], ctx).errors,
   readCatalog([entry(), entry({ name: "Other" })], ctx).errors, readCatalog([entry(), entry({ id: "C2" })], ctx).errors, readCatalog([entry({ attrs: { hearts: "lots" } })], ctx).errors,
 ].every((e) => e && e.length === 1), J([readCatalog({}, ctx), readCatalog([entry({ kind: "dragon" })], ctx)]));
-check("705.2 read at the bundle: a flavor key a rule now defines for the kind starts to count (it moves to attrs, as its type)", (() => { const e = readCatalog([entry({ flavor: { speed: "2", colour: "green" } })], ctx).entries[0]; return e.attrs.speed === 2 && !("speed" in e.flavor) && e.flavor.colour === "green"; })());
-check("705.2: a flavor value that does not fit the type a rule now gives it stays flavor, so the attribute reads as missing (and the build does not fail)", (() => { const r = readCatalog([entry({ flavor: { speed: "fast" } })], ctx); const e = r.entries[0]; return !r.errors && e.flavor.speed === "fast" && !("speed" in e.attrs) && row(view(e), "speed").state === "missing"; })());
-check("705.2 only for the kinds the rule is for: speed in a tile's flavor stays flavor", readCatalog([{ id: "T1", name: "Bog", kind: "tile", flavor: { speed: "2" } }], ctx).entries[0].flavor.speed === "2");
+check("703.1 read at the bundle: a flavor key a rule now defines for the kind starts to count (it moves to attrs, as its type)", (() => { const e = readCatalog([entry({ flavor: { speed: "2", colour: "green" } })], ctx).entries[0]; return e.attrs.speed === 2 && !("speed" in e.flavor) && e.flavor.colour === "green"; })());
+check("703.1: a flavor value that does not fit the type a rule now gives it stays flavor, so the attribute reads as missing (and the build does not fail)", (() => { const r = readCatalog([entry({ flavor: { speed: "fast" } })], ctx); const e = r.entries[0]; return !r.errors && e.flavor.speed === "fast" && !("speed" in e.attrs) && row(view(e), "speed").state === "missing"; })());
+check("703.1 only for the kinds the rule is for: speed in a tile's flavor stays flavor", readCatalog([{ id: "T1", name: "Bog", kind: "tile", flavor: { speed: "2" } }], ctx).entries[0].flavor.speed === "2");
 check("the catalog is capped (500 entries)", readCatalog(Array.from({ length: 501 }, (_, i) => entry({ id: "C" + (i + 1), name: "n" + i })), ctx).errors?.[0]?.includes("at most 500"));
 
 console.log("the registry the modules export (rules 703.1, 703.3, 704.1)");
@@ -150,7 +150,7 @@ const attrsModule = (rule, key) => `import { defineRule } from "promptocracy/eng
     put(d, "catalog.json", J([{ id: "C1", name: "Blob", kind: "creature", attrs: { hearts: 3 }, flavor: { speed: "2", colour: "green" } }]));
   }) });
   const gen = existsSync(pjoin(out, "games.ts")) ? readFileSync(pjoin(out, "games.ts"), "utf8") : "";
-  check("a game's registry, required lists and catalog.json are written into the bundle: speed is rule 602's, hearts a creature needs, the Blob has its flavor speed read as an attribute (705.2)", e === null && /registry: \{"speed":\{"key":"speed","type":"number","kinds":\["creature"\],"meaning":"How far it moves\.","rule":602\}\}/.test(gen) && /required: \{"creature":\[\{"key":"hearts","type":"number"\}\],"item"/.test(gen) && /catalog: \[\{"id":"C1","name":"Blob","kind":"creature","attrs":\{"hearts":3,"speed":2\},"flavor":\{"colour":"green"\}/.test(gen), String(e?.message ?? "").slice(0, 400) || gen.slice(0, 400));
+  check("a game's registry, required lists and catalog.json are written into the bundle: speed is rule 602's, hearts a creature needs, the Blob has its flavor speed read as an attribute (703.1)", e === null && /registry: \{"speed":\{"key":"speed","type":"number","kinds":\["creature"\],"meaning":"How far it moves\.","rule":602\}\}/.test(gen) && /required: \{"creature":\[\{"key":"hearts","type":"number"\}\],"item"/.test(gen) && /catalog: \[\{"id":"C1","name":"Blob","kind":"creature","attrs":\{"hearts":3,"speed":2\},"flavor":\{"colour":"green"\}/.test(gen), String(e?.message ?? "").slice(0, 400) || gen.slice(0, 400));
   check("a game with no catalog.json bundles with no entries; the starter pack's required lists are in the bundle too", /catalog: \[\]/.test(gen) && /STARTER: any = \{[^]*required: \{"creature"/.test(gen));
 }
 fixed("two rules defining the same attribute fail the build, naming the rule that has it", (d) => {

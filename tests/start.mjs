@@ -1,4 +1,4 @@
-// The host, Start and invites (step 1, PR 6a; rules 102.2, 102.3, 102.4, 203.1): the first player to join is the host; only the
+// The host, Start and invites (step 1, PR 6a; rules 102.2, 102.3, 104.2, 203.1): the first player to join is the host; only the
 // host can start a game, only one in setup; Start puts the game in play and begins day 1 through the day code; any player
 // can invite while there is room, in setup and in play, each with their own link; someone who joins after a day began
 // votes from the next day. A real `wrangler dev` on a throwaway LOCAL D1. Run: node tests/start.mjs
@@ -90,7 +90,7 @@ try {
   let cyMv = { status: 0, text: "" };
   for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, -1], [1, -1], [-1, 1]]) { cyMv = await cy.post("/start/api/action", { kind: "move", x: cyMove.x + dx, y: cyMove.y + dy, z: 0 }); if (cyMv.status === 200) break; }
   check("a mid-day joiner has a turn like everyone: Cy can move today", cyMv.status === 200, cyMv.text);
-  check("a player who joins after day 1 began is not in its electorate (rule 102.4): the 2 who were there at the start", J(electors("start", 1)) === J(["Ana", "Bo"]) && days("start")[0].electorate === 2, J(electors("start", 1)));
+  check("a player who joins after day 1 began is not in its electorate (rule 104.2): the 2 who were there at the start", J(electors("start", 1)) === J(["Ana", "Bo"]) && days("start")[0].electorate === 2, J(electors("start", 1)));
   const ball = (await cy.get("/start/api/ballot")).data;
   check("the ballot knows it: Cy is not an elector of day 1", ball.you && ball.you.elector === false, J(ball.you));
   const full = await inv(ana);
@@ -142,7 +142,7 @@ try {
   check("the lock is the clock's, not the flag's: the game row still says open until the cron runs", gameRow("lockg").phase === "open");
   check("the midnight run opens day 2", (await cron()) === 200 && gameRow("lockg").day === 2);
   const lateVerify = await finish(client(A), open1.data.dev_link);
-  check("once the night is processed the same link joins (it was not spent), and Zoe, who joined after day 2 began, is not in its electorate (rule 102.4)", lateVerify.status === 303 && /notice=joined/.test(lateVerify.headers.get("location")) && playersOf() === 2 && J(electors("lockg", 2)) === J(["Hal"]), lateVerify.headers.get("location") + J(electors("lockg", 2)));
+  check("once the night is processed the same link joins (it was not spent), and Zoe, who joined after day 2 began, is not in its electorate (rule 104.2)", lateVerify.status === 303 && /notice=joined/.test(lateVerify.headers.get("location")) && playersOf() === 2 && J(electors("lockg", 2)) === J(["Hal"]), lateVerify.headers.get("location") + J(electors("lockg", 2)));
 } catch (e) {
   fail++;
   console.log("  FAIL  harness error:", e?.stack || e, e?.cause);

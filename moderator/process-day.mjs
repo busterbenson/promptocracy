@@ -325,7 +325,7 @@ export function checkGame(dir, label) {
   const copy = mkdtempSync(join(tmpdir(), "moderator-check-"));
   try {
     for (const name of readdirSync(dir)) if (name !== ".git" && name !== "node_modules") cpSync(join(dir, name), join(copy, name), { recursive: true });
-    const r = checkTree(copy, label);
+    const r = checkTree(copy, label, { started: true });   // a night is processed from day 1 on: a repealed clause leaves its number empty (rule 109.1)
     return { ok: true, out: `tests: ${r.tests}` };
   } catch (e) {
     return { ok: false, out: String(e.message || e).slice(-4000) };
@@ -426,6 +426,8 @@ export async function applyOne({ dir, job, p, tonight, budgetMs, model = runMode
       rmSync(rp, { force: true });
       // The library pages the model relied on, for the night log.
       if (Array.isArray(result?.library) && result.library.length) log?.({ event: "library", number: p.number, attempt, pages: result.library.filter((x) => typeof x === "string").slice(0, 10).map((x) => x.slice(0, 200)) });
+      // The clauses the draft repeats from another clause (rules voice 8, guidance): enacted as voted, named in the night log for the operator.
+      if (Array.isArray(result?.restates) && result.restates.length) log?.({ event: "restates", number: p.number, attempt, clauses: result.restates.filter((x) => typeof x === "string").slice(0, 10).map((x) => x.slice(0, 40)) });
       if (!r.ok && !result) { discard(dir); return { applied: false, error: true, reason: "the moderator could not run", detail: r.out.slice(-500) }; }
       if (result?.outcome === "not_applied") { discard(dir); return { applied: false, reason: clean(result.reason) || "it no longer makes sense (rule 107.3)" }; }
       const strays = syncBack(copy, dir);

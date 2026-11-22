@@ -16,7 +16,7 @@ const state = newState();
 const { stubModel, stubState, REC } = createStarlingStub();
 let srv = null, stub = null, failed = false;
 const MODEL_PORT = await freePort();
-const POINTS = "A player whose proposal passes and is applied gets 15 points when it is applied (rule 107).";
+const POINTS = "401.1 A player whose proposal passes and is applied gets 15 points when it is applied (rule 107).";
 stubState.drafter = () => JSON.stringify({ after_text: POINTS, conflicts: ["402"], settings: {} });
 try {
   await new Promise((r) => stubModel.listen(MODEL_PORT, "127.0.0.1", r));

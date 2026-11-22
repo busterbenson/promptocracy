@@ -9,7 +9,7 @@
     { "id": "q-exact", "group": "question", "message": "What does 108.1 say, word for word?", "expect": { "noDraft": true, "quotes": ["108.1"] } },
     { "id": "d-amend", "group": "draft", "rule": "401", "message": "Make it 15 points instead of 10.", "expect": { "draft": { "kind": "amend", "target": "401" }, "wordsIncludes": ["15"] } },
     { "id": "d-addrule", "group": "draft", "message": "New rule, in the proposals block 300: a player can't propose a change to a rule they proposed a change to the day before. Please draft it.", "expect": { "draft": { "kind": "add", "target": "300" }, "wordsIncludes": ["day before"] } },
-    { "id": "d-repeal", "group": "draft", "message": "Take out clause 504.3. Draft the removal.", "expect": { "draft": { "kind": "repeal", "target": "504.3" } } },
+    { "id": "d-repeal", "group": "draft", "message": "Take out clause 504.2. Draft the removal.", "expect": { "draft": { "kind": "repeal", "target": "504.2" } } },
     { "id": "d-move", "group": "draft", "message": "Move rule 403 into block 300, please draft it.", "expect": { "draft": { "kind": "move", "target": "403", "to": "300" } } },
     { "id": "d-mark", "group": "draft", "message": "I want rule 403 to need everybody's yes. Mark it unanimous, draft it.", "expect": { "draft": { "kind": "mark", "target": "403" } } },
     { "id": "c-vague", "group": "clarify", "message": "I want to change how points work.", "expect": { "noDraft": true, "asks": true } },

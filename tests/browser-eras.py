@@ -82,7 +82,7 @@ with sync_playwright() as p:
             page.click("#tab-rules"); page.wait_for_selector('.bcard[data-card="401"]')
             page.wait_for_selector("#chatcol .cnm small", state="attached")   # Starling's state has loaded (no key here: she can't be reached), so the card's Propose is the direct form's
             page.locator('.bcard[data-card="401"]').click(); page.wait_for_selector("#mroot .mcard")
-            page.click('#mroot [data-p="open"]'); page.wait_for_selector("#mroot .pmenu")
+            page.click('#mroot [data-p="open"]'); page.click('#mroot [data-p="scope"][data-s="whole"]'); page.wait_for_selector("#mroot .pmenu")
             check(f"{tag}: the Champion's propose menu has the 'Champion's change' toggle, unchecked, enabled (she is under her day's limit)", page.locator("#mroot .pmchamp input").count() == 1 and not page.locator("#mroot .pmchamp input").is_checked() and page.locator("#mroot .pmchamp input").is_enabled())
             page.check("#mroot .pmchamp input")
             check(f"{tag}: ticking it keeps it ticked", page.locator("#mroot .pmchamp input").is_checked())

@@ -21,7 +21,7 @@ const { calls, stubState, stubModel, sonnetCalls, drafterCalls, excuseCalls, REC
 const Q_WITHDRAW = REC["q-withdraw"].message, AMEND = REC["d-amend"].message, ADD = REC["d-addrule"].message;
 const MODEL_PORT = await freePort(), SRV_PORT = await freePort();
 await new Promise((r) => stubModel.listen(MODEL_PORT, "127.0.0.1", r));
-const POINTS = "A player whose proposal passes and is applied gets 15 points when it is applied (rule 107).";
+const POINTS = "401.1 A player whose proposal passes and is applied gets 15 points when it is applied (rule 107).";   // a whole-rule reword keeps its clause number (rule 109.1)
 stubState.drafter = () => J({ after_text: POINTS, conflicts: ["402"], settings: {} });   // the drafter's Haiku: 401 reworded to 15 points
 
 const SITE = `http://localhost:${SRV_PORT}`;

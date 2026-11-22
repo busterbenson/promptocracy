@@ -12,7 +12,7 @@ A JSDoc tag directly above the function:
 actionAllowed(ctx, actor, action) { ... }
 ```
 
-- `@rule <number>` names a rule (`504`), a clause (`504.2`) or a block (`500`) that exists in the game's `RULES.md`.
+- `@rule <number>` names a rule (`504`), a clause (`504.1`) or a block (`500`) that exists in the game's `RULES.md`.
   One tag may list several, separated by commas or spaces; there may be several tags.
 - It goes on every function: declarations, `const f = (...) =>`, methods (hooks), route handlers. A callback passed
   inline (`.map((x) => ...)`) belongs to the function around it.
@@ -21,7 +21,7 @@ actionAllowed(ctx, actor, action) { ... }
   tags move to those numbers when that text lands, in the step PRs. A function claimed by more than 3 rules is reported
   as a warning: it probably does several jobs.
 - Rule numbers follow `docs/rules-reorg.md`: the modules claim `202.2` (the turn's parts, once a day for the move),
-  `504.2` (charting) and `504.3` (where you may move), which is why the starter `RULES.md` and Rickshaw's now carry those
+  `504.1` (charting) and `504.2` (where you may move), which is why the starter `RULES.md` and Rickshaw's now carry those
   clause markers. Nothing else in the text was reworded.
 
 ## What is checked, and where

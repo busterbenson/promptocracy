@@ -20,7 +20,7 @@ import { clockNow, dayOpenBinds, dayOpenSql, loadToday } from "../lib/day";
 import { refusalBody, turnBlock } from "../lib/turn";
 import { Ctx, json, nowIso, readJson, who } from "../lib/util";
 
-/** @rule 202.2, 504.3 */
+/** @rule 202.2, 504.2 */
 export const post = async (ctx: Ctx) => {
   const { env, request } = ctx;
   const player = await getPlayer(env, request, ctx.data.game!);

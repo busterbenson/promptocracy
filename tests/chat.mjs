@@ -134,7 +134,7 @@ try {
   const leak = await say(Ana, "SYNTH-LEAK", "W1");
   check("an answer that repeats the canary is dropped: a canned line, nothing written, logged invalid", leak.data.out === "malformed" && leak.data.messages[1].canned === "malformed" && !J(leak.data).includes("GRMLN") && acalls("outcome = 'invalid'").length === 1);
 
-  console.log("a refusal (801.3, 802.2) writes nothing and is a refused call in the night's read");
+  console.log("a refusal (801.3, 802.1) writes nothing and is a refused call in the night's read");
   const snapRef = J(tk(1));
   const refd = await say(Ana, REC["possible-privacy"].message, "W1");
   check("his recorded refusal of a mailbox that shows everyone's email: 200, the ticket untouched, the reason on his line's meta, and the call logged as refused with a fixed reason (no player text)",
