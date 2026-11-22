@@ -647,8 +647,10 @@ export async function revertRulings({ dir, made, log }) {
 
 // The night's rulings: list what is owed, resume the ones already committed, make the rest (at most MAX_RULINGS_PER_NIGHT, each only
 // while `left()` allows). Commits go into `dir`; the caller pushes them and then calls postRulings. {made: [...], timeShort}.
+// `applied`: tonight's changes already in RULES.md (applied, in order), which the site still has as passed, not enacted, until the deploy is
+// live: they follow the site's `enacted` list, so who drafted the text the ruling reads is complete.
 /** @rule 106.5 */
-export async function rulingsNight({ api, dir, day, left, model, claude, libraryDir, stateDir, slug, notifyDir, nightLog, log, dryRun }) {
+export async function rulingsNight({ api, dir, day, left, model, claude, libraryDir, stateDir, slug, notifyDir, nightLog, log, dryRun, applied = [] }) {
   const made = [];
   const owed = [];
   let after = 0, enacted = [];
@@ -660,6 +662,8 @@ export async function rulingsNight({ api, dir, day, left, model, claude, library
     if (!Number.isInteger(r.body.next) || r.body.next <= after) break;
     after = r.body.next;
   }
+  const listed = new Set(enacted.map((e) => e?.number));
+  enacted = [...enacted, ...applied.filter((a) => !listed.has(a.number))];
   let timeShort = false, attempted = 0, ruleAdded = null;
   for (const item of owed.filter((i) => Number.isInteger(i?.id)).sort((a, b) => a.id - b.id)) {
     const resumed = rulingOnMain(dir, item.id);
@@ -1086,7 +1090,9 @@ const lastDay = Math.max(0, ...processed.map((d) => d.n));
     // One that doesn't get made stays owed for the next night.
     let rulingMade = [], rulingRun = null;
     if (opts.rulings !== false && Number(pend.body.rulings_owed) > 0) {
-      const rn = await rulingsNightSafe({ api, dir, day: job.day, left: () => deadline - CLAIM_MARGIN_MIN * 60_000 - now(), model: opts.model, claude: opts.claude, libraryDir: opts.libraryDir ?? LIBRARY_DIR, stateDir, slug, notifyDir, nightLog, log, dryRun: opts.dryRun });
+      const applied = tonight.filter((t) => t.applied).map((t) => job.passed.find((p) => p.number === t.number)).filter(Boolean)
+        .map((p) => ({ number: p.number, day: job.day, kind: p.kind, scope: p.scope, target: p.target, new_num: p.new_num ?? null, drafted_by: p.drafted_by }));
+      const rn = await rulingsNightSafe({ api, dir, day: job.day, left: () => deadline - CLAIM_MARGIN_MIN * 60_000 - now(), model: opts.model, claude: opts.claude, libraryDir: opts.libraryDir ?? LIBRARY_DIR, stateDir, slug, notifyDir, nightLog, log, dryRun: opts.dryRun, applied });
       rulingMade = rn.made; rulingRun = rn;
     }
 

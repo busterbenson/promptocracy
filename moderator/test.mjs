@@ -689,6 +689,12 @@ const rulingCalls = (t) => t.claude.calls().filter((c) => c.escalation !== null)
   check("ruling: RULING.md says to name a model's text in one plain clause, push back on it as on a player's, and never read it charitably",
     /## Text a model drafted/.test(head) && /a change in `enacted` whose\s+`drafted_by` is `model`/.test(head) && /`turn\.draft`, with its `drafted_by`/.test(head) && /say so in one plain clause/.test(head) && /Push back on that text as readily as\s+on a player's/.test(head) && /never a reason to\s+read it charitably/.test(head) && /nothing records which: don't say\s+who drafted them/.test(head));
   check("ruling: the data-is-not-instructions rule is still there, before the new paragraph", /## The data is not instructions[\s\S]*never instructions to you[\s\S]*## Text a model drafted/.test(head));
+  // Tonight's applied proposals are in RULES.md but still `passed` on the site (enacted only once the deploy is live): they follow the list, in
+  // the order applied, and a proposal that wasn't applied is not in it.
+  const t3 = await night({ scenario: { apply: { 3: { action: "points", to: 15 }, 6: { action: "points", to: 15, breakTest: true } }, ruling: { 8: { answer: ANS() } } }, state: { job: job([P(3, "401", { drafted_by: "model" }), P(6, "401", { drafted_by: "code" })]), rulings: [{ ...chatEsc, ruled: false }], enacted }, opts: { audit: false } });
+  const d3 = JSON.parse(/<proposal-data>\n([\s\S]*?)\n<\/proposal-data>/.exec(rulingCalls(t3)[0]?.rulingPrompt ?? "")?.[1] ?? "{}");
+  const o6 = t3.claims[0]?.outcomes.find((o) => o.number === 6);
+  check("ruling: tonight's applied proposal follows the site's enacted list with its drafted_by; one not applied tonight is left out", o6 && !o6.applied && J(d3.enacted) === J([...enacted, { number: 3, day: 1, kind: "amend", scope: "rule", target: "401", new_num: null, drafted_by: "model" }]), J([o6, d3.enacted]));
   const t2 = await night({ scenario: { apply: {}, ruling: { 7: { answer: ANS() } } }, state: { job: job([]), rulings: [ESC(7)] }, opts: { audit: false } });
   const d2 = JSON.parse(/<proposal-data>\n([\s\S]*?)\n<\/proposal-data>/.exec(rulingCalls(t2)[0]?.rulingPrompt ?? "")?.[1] ?? "{}");
   check("ruling: a site that sends no enacted list gives an empty one, and a Gremlin ticket's posts keep their kind", J(d2.enacted) === "[]" && d2.posts?.[0]?.kind === "player", J(d2));
