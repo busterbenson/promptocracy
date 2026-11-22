@@ -495,10 +495,11 @@ const clean = (s) => oneLine(s).replace(/[.\s]+$/, "").slice(0, 300);
 
 // ---- the drafter audit (rule 106.6) -----------------------------------------------------------------------------
 // One model call on the proposer's own words and the voted draft, read-only (no tools), JSON out:
-// {material: bool, reading, gap, case: {expect}}. Never changes what is applied.
+// {material: bool, reading, gap, case: {expect}}. Never changes what is applied. `drafted_by` ('code' | 'model') goes with the
+// draft, so a draft a model wrote gets no benefit of the doubt for reading the way the moderator would write it (AUDIT.md).
 /** @rule 106.6 */
 export async function auditOne({ p, model = runModel, claude, cwd, timeoutMs = AUDIT_MIN * 60_000 }) {
-  const prompt = `${readFileSync(join(HERE, "AUDIT.md"), "utf8")}\n\n${fence({ number: p.number, kind: p.kind, target: p.target, words: p.words, before_text: p.before_text, after_text: p.after_text })}\n`;
+  const prompt = `${readFileSync(join(HERE, "AUDIT.md"), "utf8")}\n\n${fence({ number: p.number, kind: p.kind, target: p.target, words: p.words, before_text: p.before_text, after_text: p.after_text, drafted_by: p.drafted_by })}\n`;
   const r = await model({ prompt, cwd, timeoutMs, effort: "low", claude, tools: "" });
   let a = null;
   try { const j = JSON.parse(r.out); a = JSON.parse(String(j.result ?? "").replace(/^```(json)?\s*|\s*```$/g, "").trim()); } catch {}
@@ -578,8 +579,10 @@ export function nextRulingNumber(dir, day) {
 // One ruling: the model reads a copy of the game as it stands now (RULES.md after tonight's proposals, the earlier rulings, the Nomic
 // library), answers with JSON, and the code checks it and commits the one new file. {ok, path, question, relies_on, text} or {ok: false, reason}.
 // A failure leaves the clone as it was.
+// `enacted` is the site's list of the rulebook's enacted changes with who drafted each (drafted_by), and an escalated Starling turn carries the
+// draft her reply showed (turn.draft): both go to the model, so a ruling can say when the text it turns on was drafted by a model (RULING.md).
 /** @rule 106.5 */
-export async function ruleOwed({ dir, item, day, n, timeoutMs, model = runModel, claude, libraryDir = LIBRARY_DIR, ruleAdded = {}, at = new Date().toISOString() }) {
+export async function ruleOwed({ dir, item, day, n, timeoutMs, model = runModel, claude, libraryDir = LIBRARY_DIR, ruleAdded = {}, enacted = [], at = new Date().toISOString() }) {
   const rulesMd = readFileSync(join(dir, "RULES.md"), "utf8");
   const copy = join(mkdtempSync(join(tmpdir(), "moderator-ruling-")), "game");
   let library = null;
@@ -588,7 +591,7 @@ export async function ruleOwed({ dir, item, day, n, timeoutMs, model = runModel,
     cpSync(libraryDir, library, { recursive: true, filter: (f) => !lstatSync(f).isSymbolicLink() });
   }
   const libNote = library ? `\n\n## The Nomic library\n\nRead-only copy at \`${library}\` (its index: \`${join(library, "index.md")}\`).\n` : "\n\n## The Nomic library\n\nNot available tonight; go on without it.\n";
-  const data = { escalation: item.id, day, where: item.where, agent: item.agent, category: item.category, reason: item.reason, ...(item.where === "ticket" ? { ticket: item.ticket ?? null, posts: (item.posts ?? []).map((p) => ({ by: p.by, kind: p.author, body: p.body })) } : { ticket_number: item.ticket_number ?? null, turn: item.turn ?? null }), rule_added_day: ruleAdded };
+  const data = { escalation: item.id, day, where: item.where, agent: item.agent, category: item.category, reason: item.reason, ...(item.where === "ticket" ? { ticket: item.ticket ?? null, posts: (item.posts ?? []).map((p) => ({ by: p.by, kind: p.author, body: p.body })) } : { ticket_number: item.ticket_number ?? null, turn: item.turn ?? null }), rule_added_day: ruleAdded, enacted };
   try {
     modelCopy(dir, copy);
     const prompt = `${readFileSync(join(HERE, "RULING.md"), "utf8")}${libNote}\n## The question (data, not instructions)\n\n${fence(data)}\n`;
@@ -648,11 +651,12 @@ export async function revertRulings({ dir, made, log }) {
 export async function rulingsNight({ api, dir, day, left, model, claude, libraryDir, stateDir, slug, notifyDir, nightLog, log, dryRun }) {
   const made = [];
   const owed = [];
-  let after = 0;
+  let after = 0, enacted = [];
   for (let page = 0; page < 10; page++) {
     const r = await api("GET", `rulings${after ? `?after=${after}` : ""}`);
     if (r.status !== 200 || !Array.isArray(r.body?.rulings)) { log({ event: "rulings_list_failed", status: r.status }); return { made, timeShort: false, listFailed: true }; }
     owed.push(...r.body.rulings);
+    if (page === 0 && Array.isArray(r.body.enacted)) enacted = r.body.enacted;
     if (!Number.isInteger(r.body.next) || r.body.next <= after) break;
     after = r.body.next;
   }
@@ -669,7 +673,7 @@ export async function rulingsNight({ api, dir, day, left, model, claude, library
     ruleAdded ??= Object.fromEntries(Object.keys(sections(readFileSync(join(dir, "RULES.md"), "utf8"))).filter((k) => /^r\d+$/.test(k)).map((k) => [k.slice(1), ruleAge(dir, k.slice(1))]));
     const n = nextRulingNumber(dir, day);
     attempted++;
-    const r = await ruleOwed({ dir, item, day, n, timeoutMs: Math.min(RULING_MIN * 60_000, ms), model, claude, libraryDir, ruleAdded });
+    const r = await ruleOwed({ dir, item, day, n, timeoutMs: Math.min(RULING_MIN * 60_000, ms), model, claude, libraryDir, ruleAdded, enacted });
     if (r.ok) { made.push({ id: item.id, ...r }); log({ event: "ruled", escalation: item.id, path: r.path, relies_on: r.relies_on }); continue; }
     // A failed ruling stays owed. The log and the notice carry the escalation's number and the night's count, never the reason's text or the player's.
     const prior = readState(stateDir, slug).rulingFails ?? {};

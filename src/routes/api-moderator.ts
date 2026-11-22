@@ -10,7 +10,10 @@
 //                                                metadata-only text for the always-on session (category, ticket number, link: no player text)
 //                                                ?after=<id> pages (50 a page, `next` is the id to pass on, null at the end); `month` is the game's model spend
 //                                                against its budget (106.7), so the job can skip every call when it is over
-//   GET  /<slug>/api/moderator/rulings          escalations whose ruling is owed (answered with the holding line, not yet ruled on): same items, same paging
+//   GET  /<slug>/api/moderator/rulings          escalations whose ruling is owed (answered with the holding line, not yet ruled on): same items, same paging;
+//                                                an escalated Starling turn also carries the draft her reply showed (`turn.draft`, with drafted_by), and
+//                                                `enacted` lists every enacted proposal (number, day, kind, target, drafted_by), so a ruling can tell
+//                                                which of the rulebook's text a model drafted (106.5)
 //   POST /<slug>/api/moderator/escalations/:id/ruled        {body, path}: the night's ruling, posted where the question was asked; closes the escalation
 //   POST /<slug>/api/moderator/escalations/:id/delivered    marks it as notified (so the next tick lists only new ones in `notification`)
 //   POST /<slug>/api/moderator/escalations/:id/answer       {body, usage?, ruling?: true}: Chalant's answer, plain text up to 2000 characters, posted in the
@@ -59,7 +62,7 @@ export const pending = async (ctx: Ctx) => {
   if (day) {
     const rows = (await env.DB.prepare(
       `SELECT q.number, q.title, q.kind, q.scope, q.target, q.new_num, q.to_block, q.words, q.draft_head, q.before_text, q.after_text,
-              q.settings, q.conflicts, q.mark, q.yes, q.no, q.needed, q.budget_minutes, q.budget_effort, q.base_sha, q.commit_sha,
+              q.settings, q.conflicts, q.drafted_by, q.mark, q.yes, q.no, q.needed, q.budget_minutes, q.budget_effort, q.base_sha, q.commit_sha,
               q.day_proposed, p.display_name AS player
        FROM proposals q JOIN players p ON p.id = q.player_id AND p.game_id = q.game_id
        WHERE q.game_id = ? AND q.day_ballot = ? AND q.status = 'passed' AND q.kind NOT IN ('commission', 'action') ORDER BY q.number`,
@@ -180,8 +183,9 @@ const afterOf = (ctx: Ctx): number | "bad" => {
   return /^\d{1,9}$/.test(raw) ? Number(raw) : "bad";
 };
 
-/** The items for a page of escalation rows: each with its ticket's thread or the one escalated chat turn. @rule 106.4 */
-async function escalationItems(env: Ctx["env"], game: any, open: any[]) {
+/** The items for a page of escalation rows: each with its ticket's thread or the one escalated chat turn. `drafts`: a chat turn also carries
+ * the draft its reply showed (rulings only, 106.5). @rule 106.4, 106.5 */
+async function escalationItems(env: Ctx["env"], game: any, open: any[], drafts = false) {
   const items: any[] = [];
   for (const e of open) {
     const base = { id: e.id, agent: e.agent, category: e.category, reason: e.reason, player: e.player, created_at: e.created_at, delivered_at: e.delivered_at };
@@ -195,15 +199,18 @@ async function escalationItems(env: Ctx["env"], game: any, open: any[]) {
       // a private chat: ONLY the escalated turn (the player's message and Gremlin's answer to it), never the rest of the history
       const m: any = await env.DB.prepare("SELECT c.id, c.body, c.player_id, t.number AS ticket_number FROM chat_messages c LEFT JOIN tickets t ON t.id = c.ticket_id WHERE c.id = ? AND c.game_id = ?").bind(e.chat_message_id, game.id).first();
       // his answer to THAT message, by the `turn` he stored on it (the first agent line after it can belong to another turn when two tabs overlap); none found = no reply shown
-      const reply: any = m ? await env.DB.prepare("SELECT body FROM chat_messages WHERE game_id = ? AND player_id = ? AND agent = ? AND role = 'agent' AND json_extract(meta, '$.turn') = ? ORDER BY id LIMIT 1").bind(game.id, m.player_id, e.agent, m.id).first() : null;
-      items.push({ ...base, where: "chat", ticket_number: m?.ticket_number ?? null, turn: m ? { message: m.body, reply: reply?.body ?? null } : null });
+      const reply: any = m ? await env.DB.prepare("SELECT body, proposal_id FROM chat_messages WHERE game_id = ? AND player_id = ? AND agent = ? AND role = 'agent' AND json_extract(meta, '$.turn') = ? ORDER BY id LIMIT 1").bind(game.id, m.player_id, e.agent, m.id).first() : null;
+      // the draft Starling's reply showed (the slip under it), with who drafted its text: never the player's words, which are the turn's message
+      const d: any = drafts && reply?.proposal_id ? await env.DB.prepare("SELECT number, status, kind, target, draft_head, before_text, after_text, drafted_by FROM proposals WHERE id = ? AND game_id = ?").bind(reply.proposal_id, game.id).first() : null;
+      const draft = d ? { number: d.number ?? null, status: d.status, kind: d.kind, target: d.target, head: d.draft_head, before_text: d.before_text, after_text: d.after_text, drafted_by: d.drafted_by } : undefined;
+      items.push({ ...base, where: "chat", ticket_number: m?.ticket_number ?? null, turn: m ? { message: m.body, reply: reply?.body ?? null, ...(draft ? { draft } : {}) } : null });
     }
   }
   return items;
 }
 
 /** One page of escalations (rows with the filter `where`, which is fixed text, never input), 50 at a time after id `after`. @rule 106.4 */
-async function escalationPage(ctx: Ctx, where: string) {
+async function escalationPage(ctx: Ctx, where: string, drafts = false) {
   const { env } = ctx;
   const game = ctx.data.game!;
   const after = afterOf(ctx);
@@ -214,7 +221,7 @@ async function escalationPage(ctx: Ctx, where: string) {
   ).bind(game.id, after).all()).results as any[];
   const more = rows.length > PAGE;
   const open = more ? rows.slice(0, PAGE) : rows;
-  return { items: await escalationItems(env, game, open), next: more ? open[open.length - 1].id : null, game };
+  return { items: await escalationItems(env, game, open, drafts), next: more ? open[open.length - 1].id : null, game };
 }
 
 /** @rule 106.4, 106.7 */
@@ -232,9 +239,12 @@ export const escalations = async (ctx: Ctx) => {
 /** The escalations whose ruling is owed: answered with the holding line, waiting for the night. @rule 106.5 */
 export const rulings = async (ctx: Ctx) => {
   if (!(await authorized(ctx))) return unauthorized();
-  const page = await escalationPage(ctx, "e.ruling_owed_at IS NOT NULL AND e.answered_at IS NULL");
+  const page = await escalationPage(ctx, "e.ruling_owed_at IS NOT NULL AND e.answered_at IS NULL", true);
   if (page instanceof Response) return page;
-  return json({ rulings: page.items, next: page.next });
+  // Who drafted the rulebook's text: every enacted change to it, in the order applied (the last one on a clause is the text it has now).
+  const enacted = ((await ctx.env.DB.prepare("SELECT number, day_ballot AS day, kind, scope, target, new_num, drafted_by FROM proposals WHERE game_id = ? AND status = 'enacted' AND kind NOT IN ('commission', 'action') ORDER BY day_ballot, apply_seq, number").bind(ctx.data.game!.id).all()).results as any[])
+    .map((r) => ({ number: r.number, day: r.day, kind: r.kind, scope: r.scope, target: r.target, new_num: r.new_num ?? null, drafted_by: r.drafted_by }));
+  return json({ rulings: page.items, next: page.next, enacted });
 };
 
 /** @rule 106.4 */
