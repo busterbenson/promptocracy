@@ -66,6 +66,16 @@ check("the closed gaps and the repeals: 102.4 is sign-in, 504 is 504.1 and 504.2
 check("the renumbering is a map, not a rewrite: old 101-105 stay, 209 to 201, 208 to 202, 205 to 203, 210 to 204, 201 to 301, 204 to 302 (since retired into 107.4), 202 to 401, 203 to 402, 206 to 403, 207 to 501-505",
   T.byNum["201.1"].paras[0].s.startsWith("A game has at most") && T.byNum["202.2"].paras[0].s.startsWith("On your turn") && T.byNum["204.1"].paras[0].s.startsWith("A player may connect an AI client") && T.byNum["301.1"].paras[0].s.startsWith("Any player may appeal") && !T.byNum["302"] && T.byNum["107.4"].paras[0].s.startsWith("Every rule has code and tests") && T.byNum["401.1"].paras[0].s.startsWith("A player whose proposal passes") && T.byNum["402.1"].paras[0].s.startsWith("The game is played in Eras.") && T.byNum["403.1"].paras[0].s.startsWith("If the rules are changed so that further play"));
 
+// "Say each thing once" is guidance, not a rule (rules voice 8): nothing in a game's own tests may reject a restatement, or a voted change that
+// repeats a fact would fail the game's tests and not be applied. So the audit's table of known facts lives here, over the starter text only.
+{
+  const clauses = {};
+  for (const m of read("templates/RULES.md").replace(/<!--[\s\S]*?-->/g, "").matchAll(/\*\*(\d{3}\.\d+)\*\*([\s\S]*?)(?=\n\*\*\d{3}\.\d+\*\*|\n#|$)/g)) clauses[m[1]] = m[2].replace(/\s+/g, " ");
+  const owners = [[/\b\d+ points wins\b/, "402.2"], [/next day's ballot|ballot holds/, "104.3"], [/more than half/, "104.1"], [/up to \d+ proposals/, "103.2"], [/does something only when/, "703.1"], [/joins the (workshop's )?queue/, "803.1"], [/rules on what the rules mean/, "106.5"], [/names any (other )?rule/, "108.3"], [/propose one|one proposal a day/, null], [/drafts your|sets their price|names any rule they'd/, null]];
+  const where = (re) => Object.keys(clauses).filter((n) => re.test(clauses[n]));
+  check("each known fact is stated in one clause of the starter rules: the audit's table (regression test; 106.2 and 106.3 only point at the rules that own their jobs)", owners.every(([re, o]) => J(where(re)) === J(o ? [o] : [])), owners.map(([re, o]) => `${re}: ${where(re)}`).join(" | "));
+}
+
 console.log("the day rules (step 1, PR 2)");
 check("the day model replaces the turn model: 103 is proposals (no join order), 203 Time (the 24-hour skip) is gone, and 203 Days, 202.1-202.4 and 107.1 are in, worded as approved",
   T.byNum["103"].title === "Proposals" && !/order they joined/.test(rules) && !/skipped for that round/.test(rules) && T.byNum["203"].title === "Days" &&
