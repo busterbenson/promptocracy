@@ -75,6 +75,9 @@ export type Hooks = {
   /** Whether the Champion may use a power (rule 402): "change" drafts their one change (402.4), "name" names the Era (402.3).
    *  null, or a refusal. A game with no module for this hook gives the Champion neither. */
   championChange?(ctx: Ctx, champion: Actor, power: "change" | "name"): Refusal | null;
+  /** Whether `giver` may give the dead player `target` (a ref) one of their hearts (rule 603.4). null, or a refusal. A game with no module
+   *  for this hook has no giving of hearts. Every module's actionAllowed is asked first, with { kind: "give_heart", target }. */
+  giveHeart?(ctx: Ctx, giver: Actor, target: string): Refusal | null;
   /** An action type (rule 103.5). A module has both or neither; its type id is unique in the game. */
   actionType?(): ActionType;
   /** Does the action when a passed action proposal of this module's type is applied. Only points effects. Answer refuse(...) when the

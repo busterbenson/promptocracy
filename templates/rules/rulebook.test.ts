@@ -18,7 +18,8 @@ test("the modules assemble: exactly one spawn rule and one order rule", () => {
   assert.deepEqual(rules.implementers("onEnacted"), [401]);
   assert.deepEqual(rules.implementers("dayEnd"), [402]);
   assert.deepEqual(rules.implementers("championChange"), [402]);
-  assert.deepEqual(rules.implementers("actionAllowed"), [202, 504, 603, 604]);
+  assert.deepEqual(rules.implementers("actionAllowed"), [202, 504, 604]);
+  assert.deepEqual(rules.implementers("giveHeart"), [603]);
   assert.deepEqual(rules.implementers("night"), [602, 603]);
   assert.deepEqual(rules.implementers("ending"), [404]);
   assert.deepEqual(rules.implementers("actionType"), [901]);

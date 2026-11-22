@@ -114,6 +114,26 @@ export function checkChampionChange(game: any, ctx: any, champion: { ref: string
   }
 }
 
+// Does the game have giving of hearts at all (a module for the giveHeart hook, rule 603.4)? The day's answer offers it only then.
+/** @rule 603.4 */
+export const hasGiveHeart = (game: any): boolean => rulesFor(game).implementers("giveHeart").length > 0;
+
+// May `giver` give the dead player `target` a heart (rule 603.4)? Every rule's actionAllowed may veto it, as any turn action; then the giveHeart
+// hook, which is opt-in: a game whose rules have no module for it has no giving of hearts. null, or the refusal the route sends.
+/** @rule 603.4 */
+export function checkGiveHeart(game: any, ctx: any, giver: { ref: string }, target: string): Refusal | null {
+  const vetoed = checkAction(game, ctx, giver, { kind: "give_heart", target });
+  if (vetoed) return vetoed;
+  try {
+    const r = rulesFor(game).giveHeart(ctx, giver, target);
+    return r && { error: r.error, status: r.status, rule: r.rule };
+  } catch (e) {
+    if (!(e instanceof RuleError)) throw e;
+    console.error(e.message);
+    return { error: "A rule could not be checked. Try again later.", status: 500, rule: e.rule };
+  }
+}
+
 // Runs the game's afterAction hooks and turns the effects into D1 statements for the action's own batch.
 /** @rule 504 */
 export function afterActionStatements(env: Env, game: any, ctx: any, actor: { ref: string }, action: any, now = nowIso()) {

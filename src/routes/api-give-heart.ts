@@ -1,10 +1,10 @@
 // POST /<slug>/api/give-heart {player: <color key>}: give one of your hearts to a dead player's piece next to yours, before they rise as a Ghost (rule 603.4).
-// The game's rules decide whether you may (the actionAllowed hook, asked with the whole board: next to them, you keep 1 heart, once a day); this route does
+// The game's rules decide whether you may (the giveHeart hook, opt-in, asked with the whole board: next to them, you keep 1 heart, once a day); this route does
 // the giving in ONE D1 batch whose first statement is the guard: it only logs if the day is still open, your turn not ended, you have not given today,
 // both pieces stand where the rules saw them, you still have the hearts and they are still dead (not a Ghost), otherwise NOT NULL fails and nothing is
 // written (a 409). Giving doesn't use your move. The revived player has their turn again today; they vote from tomorrow (the day's electorate is fixed, 104.2).
 import { getPlayer } from "../lib/auth";
-import { RuleError, boardContext, checkAction } from "../engine/host";
+import { RuleError, boardContext, checkGiveHeart } from "../engine/host";
 import { clockNow, dayOpenBinds, dayOpenSql, loadToday } from "../lib/day";
 import { refusalBody, turnBlock } from "../lib/turn";
 import { Ctx, json, nowIso, readJson, who } from "../lib/util";
@@ -26,7 +26,7 @@ export const post = async (ctx: Ctx) => {
   if (!me) return json({ error: "Could not find your piece." }, 500);
   try {
     const bctx = await boardContext(env, game, { moved: !!turn?.moved_at, gave: !!turn?.gave_at });
-    const refused = checkAction(game, bctx, { ref: player.id }, { kind: "give_heart", target: target.id });
+    const refused = checkGiveHeart(game, bctx, { ref: player.id }, target.id);
     if (refused) return json({ error: refused.error }, refused.status);
   } catch (e) {
     if (e instanceof RuleError) { console.error(e.message); return json({ error: "A rule could not be checked. Try again later." }, 500); }

@@ -12,7 +12,7 @@
 //               {allowed, reason?}, the same answers the write routes give (turnBlock)
 import { getPlayer } from "../lib/auth";
 import { clockNow, electorsOf, isLocked, loadToday, lockMessage, settingsOf, timeZoneOf } from "../lib/day";
-import { boardContext, checkAction, checkChampionChange, lightContext, stateOf } from "../engine/host";
+import { boardContext, checkChampionChange, checkGiveHeart, hasGiveHeart, lightContext, stateOf } from "../engine/host";
 import { eraView } from "../lib/eras";
 import { proposalLimitMessage } from "../lib/proposals.js";
 import { turnBlock } from "../lib/turn";
@@ -51,7 +51,7 @@ export const get = async (ctx: Ctx) => {
   };
   // Giving a heart (rule 603.4): for each dead player who hasn't risen, whether you may, and why not. Asked of the game's rules with the whole board.
   let give: Record<string, { allowed: boolean; reason?: string }> | null = null;
-  if (player && player.dead_day == null && day && game.status === "playing") {
+  if (player && player.dead_day == null && day && game.status === "playing" && hasGiveHeart(game)) {
     const dead = rows.filter((r) => r.dead_day != null && r.ghost_day == null);
     if (dead.length) {
       const ids = (await env.DB.prepare("SELECT id, color FROM players WHERE game_id = ?").bind(game.id).all()).results as any[];
@@ -60,7 +60,7 @@ export const get = async (ctx: Ctx) => {
       give = {};
       for (const d of dead) {
         const t = ids.find((i) => i.color === d.color);
-        const r = gate ?? (t ? checkAction(game, bctx, { ref: player.id }, { kind: "give_heart", target: t.id }) : null);
+        const r = gate ?? (t ? checkGiveHeart(game, bctx, { ref: player.id }, t.id) : null);
         give[colorOf(d.color).key] = r ? { allowed: false, reason: r.error } : { allowed: true };
       }
     }

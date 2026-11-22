@@ -54,7 +54,7 @@ under rule 101 or 102; a follow-up change claims them and moves `src/` into the 
 
 ## src/lib/catalog.js (1)
 
-- line 275: `bad`
+- line 279: `bad`
 
 ## src/lib/drafter.ts (1)
 

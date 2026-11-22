@@ -41,6 +41,9 @@ export const HOOKS = Object.freeze({
   // power (the site refuses both), so repealing the rule that carries them removes them, wherever that rule is numbered. A module
   // answers null (allowed) or refuses with a reason.
   championChange: { mode: "veto", wired: true },
+  // Giving a dead player a heart (rule 603.4): `giveHeart(ctx, giver, target)`, target = the dead player's ref. A veto hook that, like championChange,
+  // is opt-in: a game whose rules have no module for it has no giving of hearts (the site refuses), so repealing the rule removes the action.
+  giveHeart: { mode: "veto", wired: true },
   // An action type (rule 103.5): actionType() names it (its type, its parameters, the rules it touches) and applyAction(ctx, action)
   // does it when a passed action proposal is applied. A module implements both or neither; the engine calls applyAction of the one
   // module whose actionType names the action's type, so these two are not run in sequence over every module.
@@ -388,6 +391,22 @@ export function assembleRules(modules, { label = "rules" } = {}) {
         if (r === null || r === undefined) continue;
         if (typeof r?.error !== "string" || !r.error || (r.status !== undefined && !REFUSAL_STATUSES.includes(r.status))) {
           throw new RuleError(m.rule, "championChange", new Error("must return null or {error, status?}"));
+        }
+        return { error: r.error, status: r.status ?? 400, rule: m.rule };
+      }
+      return null;
+    },
+    // null, or {error, status, rule}: whether `giver` may give the dead player `target` a heart (rule 603.4). With no module for the hook the
+    // game has no giving of hearts and the answer is a refusal; otherwise the first refusal in rule order wins.
+    /** @rule 603.4 */
+    giveHeart(ctx, giver, target) {
+      const mods = implementers("giveHeart");
+      if (!mods.length) return { error: "The game's rules have no giving of hearts.", status: 409, rule: 0 };
+      for (const m of mods) {
+        const r = call(m, "giveHeart", [ctx, giver, target]);
+        if (r === null || r === undefined) continue;
+        if (typeof r?.error !== "string" || !r.error || (r.status !== undefined && !REFUSAL_STATUSES.includes(r.status))) {
+          throw new RuleError(m.rule, "giveHeart", new Error("must return null or {error, status?}"));
         }
         return { error: r.error, status: r.status ?? 400, rule: m.rule };
       }
