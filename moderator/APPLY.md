@@ -30,7 +30,9 @@ script runs them after you and tells you what failed.
    nothing and write the result file with outcome `not_applied` and the reason. When you redraft, cite instead of
    restating: don't add a fact another clause already states.
 3. A new rule's text goes in clause N.1 (N.2 and on for more), never under the title (rule 109.1). Repealing a clause
-   leaves its number empty once the game has started: renumber nothing.
+   leaves its number empty once the game has started: renumber nothing. A repealed clause's number cites nothing: if
+   the draft leaves a citation of it standing, the check fails and the proposal goes back (the proposer should have
+   changed the clauses that cite it too, rule 108.3).
    Make the code match the text. A rule that does something has a module `rules/<n>.ts` exporting
    `defineRule({ rule: <n>, <hook>(...) {...} })` from `promptocracy/engine`. Hooks: `actionAllowed` (refuse an action),
    `afterAction` (chart effects), `spawnTile`, `applyOrder` (rule 107.2), `onEnacted` (points), `dayEnd` (champion: the player who wins the Era). Every

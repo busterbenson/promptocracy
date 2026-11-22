@@ -105,6 +105,8 @@ console.log("parts that are not wired yet (no untouchable rules), refused at dra
 
 console.log("the conflicts the moderator names (rule 108.3)");
 {
+  check("citing a rule cites all its clauses (rule 109.1): repealing clause 107.1 names the parts that cite 'rule 107' or '(107)', and a clause that cites another clause of 107 is not named for it",
+    referencesTo(B, "107.1").includes("106.1") && referencesTo(B, "107.1").includes("203.2") && !referencesTo(B, "107.1").includes("107.5") && !referencesTo(B, "107.1").includes("107.1"), J(referencesTo(B, "107.1")));
   check("repealing 504 names the rules that refer to it (505.1 cites rule 504.1), and not 504's own clauses", referencesTo(B, "504").includes("505.1") && !referencesTo(B, "504").some((n) => n.startsWith("504")), J(referencesTo(B, "504")));
   check("repealing 202 names 103.3 (it cites rule 202.4) and 107.1-style references to it, never 202 itself", referencesTo(B, "202").includes("103.3") && !referencesTo(B, "202").includes("202"), J(referencesTo(B, "202")));
   check("a draft of a repeal carries those conflicts", J(drafted({ kind: "repeal", target: "504" }).d.conflicts) === J(referencesTo(B, "504")));

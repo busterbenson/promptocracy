@@ -253,6 +253,11 @@ check("rule 109.1: a citation of a clause, rule or block the book does not have 
     bad("See block 900.").length === 1 && bad("(Suber's rule 213.)").length === 0 && bad("See (rule 101.1, 101.3).").length === 0;
 })());
 check("the starter RULES.md has no gap before day 1, and the three planted checks all hold on it too", checkRulebook({ rulesMd: readFileSync(pjoin(ROOT, "templates/RULES.md"), "utf8"), settings: JSON.parse(readFileSync(pjoin(ROOT, "templates/settings.json"), "utf8")), moduleRules: [202, 504, 505], beforeDayOne: true }).length === 0);
+check("rule 109.1: a reported line is the line of the file even under a multi-line header comment, and a paragraph under a title is reported once; a [Repealed] or [Moved to N] marker under a title is not text", (() => {
+  const md = "<!--\nheader\ncomment\n-->\n# R\n\n## 100. A [majority]\n\n### 101 One\nStray line one\nstray line two\n\n### 102 Two\n[Repealed]\n\n### 103 [Moved to 302]\n";
+  const out = checkRulebook({ rulesMd: md, settings: { ...DEFAULT_SETTINGS }, moduleRules: [] }).filter((p) => /text under/.test(p));
+  return out.length === 1 && /line 10:/.test(out[0]);
+})());
 check("a restatement is not an error: a clause that repeats another clause's number passes the check (rules voice 8 is guidance, not a rule)", checkRulebook({ rulesMd: "# R\n\n## 100. A [majority]\n\n### 101 One\n**101.1** You can confirm up to 3 proposals a day.\n\n**101.2** You can confirm up to 3 proposals a day.\n", settings: { ...DEFAULT_SETTINGS }, moduleRules: [] }).filter((p) => !/settings\.json|\[setting/.test(p)).length === 0);
 
 console.log("the starter pack's own tests");

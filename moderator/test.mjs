@@ -237,6 +237,7 @@ console.log("moderator runner");
       [{ replace: ["RULES.md", "## 500.", "### 404 Head start\n**404.1** Every player starts the game with 5 points.\n\n## 500."] }], true],
     ["an add that lands in the core block", P(4, "400", { kind: "add", scope: "block", new_num: "404", after_text: "Every player starts the game with 5 points." }),
       [{ replace: ["RULES.md", "## 200.", "### 404 Head start\n**404.1** Every player starts the game with 5 points.\n\n## 200."] }], /rule 404 is in block 100, not block 400/],
+    ["a repeal of a clause in the middle of a rule (202.3): its number stays empty and nothing renumbers (rule 109.1)", P(4, "202.3", { kind: "repeal", scope: "clause", after_text: "" }), [{ replace: ["RULES.md", "**202.3** Every part of a turn is optional, and skipping one has no penalty.\n\n", ""] }], true],
     ["a repeal (403)", P(4, "403", { kind: "repeal", after_text: "[Repealed]" }), [{ replace: ["RULES.md", body403, "[Repealed]"] }], true],
     ["a mark on rule 401", P(4, "401", { kind: "mark", after_text: "[unanimous]" }), [{ replace: ["RULES.md", "### 401 Points", "### 401 Points [unanimous]"] }], true],
     ["a mark on rule 401 that also rewrites it", P(4, "401", { kind: "mark", after_text: "[unanimous]" }), [{ replace: ["RULES.md", "### 401 Points", "### 401 Points [unanimous]"] }, { replace: ["RULES.md", "gets 10 points when", "gets 1000 points when"] }], /mark proposal changed rule 401's text/],

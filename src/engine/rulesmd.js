@@ -22,16 +22,18 @@ const TOMBSTONE = /^\[(?:Repealed|Moved to \d{3})\]$/;
 // book may not have. `at` is the 1-based line number in the file with its comments removed.
 /** @rule 109.1 */
 export function readLevels(text) {
-  const lines = stripComments(String(text ?? "")).split("\n");
+  // a comment keeps its line breaks, so a reported line number is the line of the file
+  const lines = String(text ?? "").replace(/<!--[\s\S]*?-->/g, (c) => c.replace(/[^\n]/g, "")).split("\n");
   const blocks = [], rules = [], clauses = [], strayText = [];
-  let rule = null, inClause = false;
+  let rule = null, inClause = false, prevStray = false;
   lines.forEach((raw, i) => {
     const line = raw.trim();
     let m;
     if ((m = line.match(/^##\s+(\d+)\./))) { blocks.push(m[1]); rule = null; inClause = false; }
     else if ((m = line.match(/^###\s+(\d+)\s/))) { rule = { num: m[1], clauses: [] }; rules.push(rule); inClause = false; }
     else if ((m = line.match(/^\*\*(\d+\.\d+)\*\*/))) { const c = { num: m[1], rule: rule?.num ?? null, at: i + 1 }; clauses.push(c); rule?.clauses.push(c); inClause = true; }
-    else if (line && rule && !inClause && !/^#/.test(line) && !TOMBSTONE.test(line)) strayText.push({ rule: rule.num, at: i + 1 });
+    else if (line && rule && !inClause && !/^#/.test(line) && !TOMBSTONE.test(line)) { if (!prevStray) strayText.push({ rule: rule.num, at: i + 1 }); prevStray = true; return; }   // once a paragraph, not once a line
+    prevStray = false;
   });
   return { blocks, rules, clauses, strayText, text: lines };
 }

@@ -325,7 +325,7 @@ export function checkGame(dir, label) {
   const copy = mkdtempSync(join(tmpdir(), "moderator-check-"));
   try {
     for (const name of readdirSync(dir)) if (name !== ".git" && name !== "node_modules") cpSync(join(dir, name), join(copy, name), { recursive: true });
-    const r = checkTree(copy, label);
+    const r = checkTree(copy, label, { started: true });   // a night is processed from day 1 on: a repealed clause leaves its number empty (rule 109.1)
     return { ok: true, out: `tests: ${r.tests}` };
   } catch (e) {
     return { ok: false, out: String(e.message || e).slice(-4000) };
