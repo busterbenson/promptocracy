@@ -47,7 +47,7 @@ export type Ctx = {
 };
 
 // What a player chooses at sign-up: a COLOR (the player colors of palette v2) and a SHAPE (one of the
-// traced pieces, or the plain pawn). Both lists live in ONE data file, pieces.json, which the join page
+// board pieces; the pawn is the default). Both lists live in ONE data file, pieces.json, which the join page
 // and the API read; nothing is written out per color or per shape in code. A color is unique per game
 // (`players.color` stores its key); a shape is not (`players.shape`). Monster-only colors are not in the
 // file, so they cannot be offered.

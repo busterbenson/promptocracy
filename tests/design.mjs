@@ -6,7 +6,8 @@ import { ROOT } from "./lib.mjs";
 import { DEADLINE_CLOCK, DEPLOY_CLOCK } from "../src/lib/votes.js";
 import { parseRules, markOf, renderMarkdown, hl, linkCites } from "../public/js/rulebook.js";
 import { createBallot } from "../public/js/ballot.js";
-import { TRACED, ROLES, FOOT, HEIGHT } from "../public/js/pieces-data.js";
+import { TRACED, ROLES, FIXED, FOOT, HEIGHT } from "../public/js/pieces-data.js";
+import { recolor, targets, creatureSVG, CREATURE_PIECES } from "../public/js/pieces.js";
 import { createProposer } from "../public/js/propose.js";
 
 let pass = 0, fail = 0;
@@ -162,10 +163,44 @@ check("the colors are one list: 16 players, each with a unique lowercase key, a 
 check("the monster-only colors are not in it (Bog, Wraith, Hex pink), nor the moderator's lavender", !PIECES.colors.some((c) => /^(bog|wraith|hex pink|lavender)$/i.test(c.name)) && !PIECES.colors.some((c) => ["#6E9A3C", "#471C47", "#AD1A6C", "#6B50A4", "#B7A3EF"].includes(c.main.toUpperCase())));
 check("the two neutrals beside Onyx and Chalk are there (Umber, Buff)", ["onyx", "chalk", "umber", "buff"].every((k) => PIECES.colors.some((c) => c.key === k)));
 check("a color's shade is darker than its main (Chalk and Buff included), so a piece reads as solid", PIECES.colors.every((c) => { const L = (h) => [1, 3, 5].reduce((a, i, n) => a + parseInt(h.slice(i, i + 2), 16) * [.2126, .7152, .0722][n], 0); return L(c.shade) < L(c.main); }));
-check("nine shapes: the eight traced pieces and the pawn, each with art, a footprint, a height and a source palette", PIECES.shapes.length === 9 && PIECES.shapes.some((s) => s.key === "pawn") && PIECES.shapes.every((s) => TRACED[s.key] && TRACED[s.key].body.includes("<path") && ROLES[s.key] && FOOT[s.key] && HEIGHT[s.key] && TRACED[s.key].w > 0 && TRACED[s.key].h > 0) && Object.keys(TRACED).length === 9);
+check("nine player shapes, the board-piece set with the Osprey in the Balloon's place, each with art, a footprint, a height and a source palette", PIECES.shapes.length === 9 && PIECES.shapes.map((s) => s.key).join() === "keeper,frog,robot,osprey,diver,wizard,crow,astronaut,pawn" && PIECES.shapes.every((s) => TRACED[s.key] && TRACED[s.key].body.includes("<path") && ROLES[s.key] && FOOT[s.key] && HEIGHT[s.key] && TRACED[s.key].w > 0 && TRACED[s.key].h > 0));
+check("two pieces only the game places: the Ghost (recolored, rule 604.2) and the Blob (a creature, its own colors); nothing else, and no Balloon", Object.keys(TRACED).length === 11 && ROLES.ghost && TRACED.ghost && TRACED.blob && !ROLES.blob && FOOT.blob && HEIGHT.blob && !TRACED.balloon && !PIECES.shapes.some((s) => ["ghost", "blob"].includes(s.key)) && CREATURE_PIECES.join() === "blob");
 const rgb = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
 const near = (a, b) => Math.hypot(...rgb(a).map((v, i) => v - rgb(b)[i])) <= 40;
-check("the art is recolorable: every shape has fills that belong to its main and shade roles (these are what a player's color replaces)", PIECES.shapes.every((s) => { const fills = [...TRACED[s.key].body.matchAll(/fill="(#[0-9A-Fa-f]{6})"/g)].map((m) => m[1]); return ["main", "shade"].every((role) => fills.filter((f) => near(f, ROLES[s.key][role])).length >= 1); }));
+const fillsOf = (body) => [...body.matchAll(/fill="(#[0-9A-Fa-f]{6})"|style="fill:var\(--outline\)"/g)].map((m) => m[1] || "ink");
+check("the art is recolorable: every recolored shape has fills that belong to its main role (these are what a player's color replaces)", Object.keys(ROLES).every((k) => fillsOf(TRACED[k].body).filter((f) => f !== "ink" && near(f, ROLES[k].main)).length >= 1));
+{
+  const lum = (h) => rgb(h).reduce((a, v, n) => a + v * [.2126, .7152, .0722][n], 0);
+  const bad = [];
+  for (const k of Object.keys(ROLES)) for (const c of PIECES.colors) {
+    const src = fillsOf(TRACED[k].body), out = fillsOf(recolor(k, c)), tg = targets(c);
+    if (out.length !== src.length) { bad.push(`${k}/${c.key}: ${src.length} fills became ${out.length}`); continue; }
+    src.forEach((f, i) => {
+      const o = out[i];
+      if (o !== "ink" && !/^#[0-9A-F]{6}$/i.test(o)) bad.push(`${k}/${c.key}: ${f} became ${o}`);
+      // a fill that IS a role's source color becomes exactly that role's step of the player's color
+      for (const [role, hex] of Object.entries(ROLES[k])) if (f.toUpperCase() === hex && !(FIXED[k] || []).includes(hex) && o !== tg[role]) bad.push(`${k}/${c.key}: ${role} ${f} became ${o}, not ${tg[role]}`);
+    });
+  }
+  check("every shape in every color: each source fill comes out as a color or the outline, and each role's own fill takes the player color's step for that role", bad.length === 0, bad.slice(0, 5).join("; "));
+  const fixedBad = [];
+  for (const [k, list] of Object.entries(FIXED)) for (const c of PIECES.colors) {
+    const src = fillsOf(TRACED[k].body), out = fillsOf(recolor(k, c));
+    src.forEach((f, i) => { if (list.includes(f.toUpperCase()) && out[i] !== f) fixedBad.push(`${k}/${c.key}: ${f} became ${out[i]}`); });
+  }
+  check("a shape's fixed fills (the astronaut's eye highlights) come out unchanged in every color, though they sit within reach of its main role", Object.keys(FIXED).length >= 1 && FIXED.astronaut.every((h) => TRACED.astronaut.body.includes(`fill="${h}"`) && near(h, ROLES.astronaut.main)) && fixedBad.length === 0, fixedBad.slice(0, 5).join("; "));
+  const glassBad = [];
+  for (const k of Object.keys(ROLES).filter((k) => ROLES[k].glass)) for (const c of PIECES.colors) {
+    const src = fillsOf(TRACED[k].body), out = fillsOf(recolor(k, c));
+    const g = out[src.indexOf(ROLES[k].glass)], m = out[src.indexOf(ROLES[k].main)];
+    if (!(g && m && lum(g) > lum(m))) glassBad.push(`${k}/${c.key}: glass ${g} vs main ${m}`);
+  }
+  check("glass (the astronaut's visor) is the player's tint mixed 68% toward white, and comes out lighter than the piece's main in every color", ROLES.astronaut.glass && targets({ main: "#000000", shade: "#000000", tint: "#000000", deep: "#000000" }).glass === "#ADADAD" && glassBad.length === 0, glassBad.slice(0, 5).join("; "));
+}
+{
+  const blob = creatureSVG({ name: "Blob" });
+  check("a creature named for a piece (the Blob) is drawn as that piece in its own colors with the page's outline; a creature with no piece gets null", blob && blob.includes('fill="#256262"') && blob.includes("var(--outline)") && !blob.includes('fill="#18202B"') && creatureSVG({ name: " blob " }) === blob && creatureSVG({ name: "Crow" }) === null && creatureSVG({ name: "Snail-knight" }) === null && creatureSVG({}) === null);
+}
 
 console.log("the theme");
 const css = read("public/theme.css");

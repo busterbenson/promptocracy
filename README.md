@@ -17,7 +17,7 @@ board and by email.
 
 - `src/index.ts`: the Worker and its small hand-written router (no framework)
 - `src/routes/`, `src/lib/`: the page and API handlers, and shared code
-- `public/`: the static files: `board.html` (one board page for every game), `site.css`, `theme.css` (every color and font: palette v2, light and dark), `js/` (`board.js` draws the board as SVG, `pieces.js` and `pieces-data.js` the traced pieces, `rulebook.js` the rulebook, `landing.js` the picture on the front page)
+- `public/`: the static files: `board.html` (one board page for every game), `site.css`, `theme.css` (every color and font: palette v2, light and dark), `js/` (`board.js` draws the board as SVG, `pieces.js` and `pieces-data.js` the traced pieces (`pieces-data.js` is written by `scripts/build-pieces-data.mjs` from the art set), `rulebook.js` the rulebook, `landing.js` the picture on the front page)
 - `migrations/`: the D1 schema (`0001_init.sql`, `0002_island_board.sql`, `0003_mcp_oauth.sql`, `0004_piece_shape.sql`)
 - `templates/RULES.md`: the starter ruleset a new game repo begins with; `templates/settings.json` and `templates/rules/` are its settings and rule modules, the starter pack that games with no bundle run on
 - `src/engine/`: the rule-module engine (hooks, effects, the module lint); `src/generated/` is written at build time and not committed
@@ -98,7 +98,7 @@ two games is two unrelated players.
 - A game has a **join code** (8 characters, made by `scripts/create-game.sh`
   when the game is created; it is never committed, because this repo is public).
   The join link is `https://<site>/<slug>/join/<CODE>`. A code opens only its own game.
-- Joining asks for an email, a display name, a piece shape (one of nine: eight traced pieces and the pawn) and a piece color (one of the player colors of palette v2, unique per game; both lists are `src/lib/pieces.json`, and a color someone has is unavailable). Nothing is created
+- Joining asks for an email, a display name, a piece shape (one of the nine player pieces of the board-piece set) and a piece color (one of the player colors of palette v2, unique per game; both lists are `src/lib/pieces.json`, and a color someone has is unavailable). Nothing is created
   until the person clicks the link we email them, so nobody can sign up someone else.
 - Log-in is a **magic link** by email, for that game: single use, expires in 15
   minutes. Limits: 3 links per (game, email) per 15 minutes, and 10 per email

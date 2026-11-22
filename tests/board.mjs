@@ -176,7 +176,7 @@ try {
   console.log("piece colors and spawning");
   const page = await client(A).get(`/hex/join/${g.code}`);
   check("the join page offers every player color of the palette by name (16, from one data file) and none of the monster-only colors", page.status === 200 && (page.text.match(/name="color"/g) || []).length === PIECES.colors.length && PIECES.colors.length === 16 && PIECES.colors.every((c) => page.text.includes(`<span class="nm">${c.name}</span>`)) && !/Bog|Wraith|Hex pink/.test(page.text) && !page.text.includes('name="marker"'));
-  check("and nine shapes: the eight traced pieces and the pawn", (page.text.match(/name="shape"/g) || []).length === 9 && ["Lantern keeper", "Frog", "Robot", "Balloon", "Diver", "Wizard", "Crow", "Astronaut", "Pawn"].every((n) => page.text.includes(`<span class="nm">${n}</span>`)));
+  check("and nine shapes: the board-piece set (the Osprey in the Balloon's place), and no Balloon, Ghost or Blob", (page.text.match(/name="shape"/g) || []).length === 9 && ["Lantern keeper", "Frog", "Robot", "Osprey", "Diver", "Wizard", "Crow", "Astronaut", "Pawn"].every((n) => page.text.includes(`<span class="nm">${n}</span>`)) && !/value="(balloon|ghost|blob)"/.test(page.text));
   const ana = await join(A, "hex", g.code, { email: "ana@example.com", name: "Ana", color: "teal" });
   const page2 = await client(A).get(`/hex/join/${g.code}`);
   check("a color someone took is shown as taken and cannot be picked", /value="teal"[^>]*disabled/.test(page2.text) && !/value="cobalt"[^>]*disabled/.test(page2.text) && page2.text.includes("<small>Ana</small>"));
