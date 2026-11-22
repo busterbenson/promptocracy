@@ -295,6 +295,36 @@ with sync_playwright() as p:
                 page.click('#pzone [data-p="unlock"]'); wait_text(page, "#pzone .tkstep.pr .tkdet", "3 of 3 left")
             check(f"{tag}: no page errors", not errors, str(errors)); c.close()
 
+    # ============================================================ nokey (continued): "Needs everyone" on Add a rule (rule 105.2)
+    if mode == "nokey":
+        for w, h in [(1280, 900), (390, 844)]:
+            for scheme in ["light", "dark"]:
+                tag = f"{w}-{scheme}"
+                c, page, errors = new_page(b, w, h, scheme, ada_c)
+                tab(page, "rules"); page.wait_for_selector("#chatcol .cnm small", state="attached"); tab(page, "summary")
+                page.click('#pzone [data-p="bar-menu"]'); page.click('#pzone [data-p="bar-rule"]'); page.wait_for_selector("#mroot .pmenu")
+                page.click('#mroot [data-p="add"][data-n="400"]'); page.wait_for_selector("#pfWords")
+                check(f"{tag}: Add a rule has a 'Needs everyone' toggle, off, with nothing said about it", page.locator('#mroot input[data-p="unanimous"]').count() == 1 and not page.locator('#mroot input[data-p="unanimous"]').is_checked() and count(page, "#mroot .pfu .rpill") == 0 and text(page, "#mroot .pfu") == "Needs everyone")
+                page.fill("#pfWords", "Every player starts with 5 points.")
+                page.click('#mroot input[data-p="unanimous"]'); page.wait_for_selector("#mroot .pfu .rpill")
+                check(f"{tag}: on, it names rule 105.2 with a pill and says nothing else, and the words you typed are still there", page.locator('#mroot input[data-p="unanimous"]').is_checked() and text(page, "#mroot .pfu .rpill") == "105.2" and text(page, "#mroot .pfu") == "Needs everyone 105.2" and page.input_value("#pfWords") == "Every player starts with 5 points.", text(page, "#mroot .pf"))
+                shot(page, f"needs-everyone-form-{tag}")
+                page.click('#mroot [data-p="draft"]'); page.wait_for_selector("#mroot .ruling")
+                slip = text(page, "#mroot .ruling")
+                check(f"{tag}: the slip is an add marked unanimous and needing every player: 'Add rule 4xx, marked unanimous' and 'unanimous · needs 5 of 5'", re.search(r"Add rule 4\d\d, marked unanimous, to block 400", slip) and "unanimous · needs 5 of 5" in slip and not BANNED.search(slip), slip)
+                shot(page, f"needs-everyone-slip-{tag}")
+                page.click('#mroot [data-p="edit"]'); page.wait_for_selector("#pfWords")
+                check(f"{tag}: Change my words keeps the toggle on", page.locator('#mroot input[data-p="unanimous"]').is_checked())
+                page.click('#mroot input[data-p="unanimous"]'); page.click('#mroot [data-p="draft"]'); page.wait_for_selector("#mroot .ruling")
+                slip = text(page, "#mroot .ruling")
+                check(f"{tag}: off again, the same words draft a majority rule: no 'marked unanimous', 'majority · needs 3 of 5'", "marked unanimous" not in slip and "majority · needs 3 of 5" in slip, slip)
+                page.click('#mroot [data-p="cancel"]')
+                page.click('#pzone [data-p="bar-menu"]'); page.click('#pzone [data-p="bar-rule"]'); page.wait_for_selector("#mroot .pmenu")
+                page.click('#mroot [data-p="add"][data-n="400"]'); page.wait_for_selector("#pfWords")
+                check(f"{tag}: Cancel and open again: the toggle is off and the words are empty", not page.locator('#mroot input[data-p="unanimous"]').is_checked() and page.input_value("#pfWords") == "")
+                sideways(page, w, tag)
+                check(f"{tag}: no page errors", not errors, str(errors)); c.close()
+
     # ============================================================ many: a daily limit of ten
     if mode == "many":
         for w, h in [(390, 844), (375, 740), (1280, 900)]:

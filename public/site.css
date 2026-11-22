@@ -311,6 +311,8 @@ a.ppill:hover{background:var(--surface-2)}
 .adet{display:grid;grid-template-columns:max-content 1fr;gap:2px 14px;margin:0;font-size:.95rem}
 .adet dt{color:var(--ink-muted)}
 .adet dd{margin:0;font-weight:700;overflow-wrap:anywhere}
+.pf .pfu{display:flex;align-items:center;gap:10px;min-height:44px}
+.pf .pfu label{display:flex;align-items:center;gap:8px}
 .pf textarea.prefill{font-family:var(--font-mono);font-size:.78rem}
 .pf .row,.ruling .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .pf .linkbtn,.ruling .linkbtn{margin-top:0;align-self:flex-start}
