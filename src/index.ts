@@ -49,6 +49,7 @@ import * as oauthMeta from "./routes/oauth-meta";
 import * as oauthRegister from "./routes/oauth-register";
 import * as oauthToken from "./routes/oauth-token";
 import { preflight, withCors } from "./lib/oauth";
+import { buildId, stampHtml } from "./lib/build.js";
 
 const SUBROUTES = new Set(["api", "join", "auth", "mcp", "oauth", ".well-known", "art"]);
 
@@ -70,6 +71,17 @@ const secure = (res: Response) => {
   // on form posts, which would lock out the Continue button. Nothing is sent cross-site.
   out.headers.set("referrer-policy", "same-origin");
   return out;
+};
+
+// Pages that load /js modules carry the deploy's id (src/lib/build.js).
+const stamp = async (res: Response, env: Env) => {
+  if (res.status !== 200 || !/^text\/html/i.test(res.headers.get("content-type") || "")) return res;
+  const html = await res.clone().text();
+  const out = stampHtml(html, buildId(env));
+  if (out === null) return res;
+  const headers = new Headers(res.headers);
+  headers.delete("content-length"); headers.delete("etag");
+  return new Response(out, { status: res.status, headers });
 };
 
 const notFound = () => new Response("Not found", { status: 404 });
@@ -103,6 +115,11 @@ async function route(request: Request, env: Env, execCtx: ExecutionContext): Pro
   }
 
   const isRoot = path === "/";
+  // The deploy's id, for a page to compare with (src/lib/build.js): cheap, never cached.
+  const isVersion = path === "/api/version";
+  // /v/<id>/js/<file>: the same page scripts under a URL that changes with every deploy (the import map in a stamped page points here).
+  const versioned = /^\/v\/[A-Za-z0-9._-]{1,64}\/js\/([A-Za-z0-9._-]+\.js)$/.exec(path);
+  const isVersioned = !!versioned && !versioned[1].includes("..");
   const isCss = path === "/site.css" || path === "/theme.css";
   // The pages' own scripts: one flat folder, plain file names only.
   const isScript = /^\/js\/[A-Za-z0-9._-]+\.js$/.test(path) && !path.includes("..");
@@ -110,8 +127,8 @@ async function route(request: Request, env: Env, execCtx: ExecutionContext): Pro
   const isPortrait = /^\/portraits\/(gremlin|starling|chalant)\.svg$/.test(path);
   const slug = segs[0];
   const sub = segs[1];
-  const isGame = !isRoot && !isCss && !isScript && !isPortrait && validSlug(slug) && (sub === undefined || SUBROUTES.has(sub));
-  if (!isRoot && !isCss && !isScript && !isPortrait && !isGame) return notFound();
+  const isGame = !isRoot && !isVersion && !isVersioned && !isCss && !isScript && !isPortrait && validSlug(slug) && (sub === undefined || SUBROUTES.has(sub));
+  if (!isRoot && !isVersion && !isVersioned && !isCss && !isScript && !isPortrait && !isGame) return notFound();
 
   // /auth/verify is the one POST that is a browser form post (the "Continue"
   // button); it is guarded by an Origin check inside the handler instead.
@@ -126,6 +143,8 @@ async function route(request: Request, env: Env, execCtx: ExecutionContext): Pro
 
   const ctx: Ctx = { request, env, waitUntil: (p) => execCtx.waitUntil(p), params: {}, data: {} };
 
+  if (isVersion) return method === "GET" || method === "HEAD" ? new Response(buildId(env), { headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" } }) : notFound();
+  if (isVersioned) return method === "GET" || method === "HEAD" ? env.ASSETS.fetch(new Request(new URL(`/js/${versioned![1]}`, url), { method, headers: request.headers })) : notFound();
   if (isRoot) return run(landing, method, ctx);
   if (isCss) return method === "GET" || method === "HEAD" ? env.ASSETS.fetch(request) : notFound();
   if (isScript) return method === "GET" || method === "HEAD" ? env.ASSETS.fetch(request) : notFound();
@@ -204,7 +223,7 @@ async function route(request: Request, env: Env, execCtx: ExecutionContext): Pro
 
 export default {
   async fetch(request: Request, env: Env, execCtx: ExecutionContext): Promise<Response> {
-    return secure(await route(request, env, execCtx));
+    return secure(await stamp(await route(request, env, execCtx), env));
   },
   // The midnight run (wrangler.toml [triggers], every 5 minutes): lock the days that have ended, process them, open the
   // next (src/lib/day.ts). Idempotent, so a late or doubled tick is harmless.

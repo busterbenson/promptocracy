@@ -10,6 +10,9 @@ export type Env = {
   DEV_MODE?: string;
   MAIL_FROM?: string;
   SITE_URL?: string;
+  // The deploy's id (wrangler.toml [version_metadata]); BUILD_ID overrides it (the tests). src/lib/build.js.
+  CF_VERSION_METADATA?: { id: string };
+  BUILD_ID?: string;
   ASSETS: { fetch(req: Request | string): Promise<Response> };
   // Where /<slug>/api/rules reads rules from. Unset = GitHub. Tests point it at a local stub.
   RULES_BASE_URL?: string;
@@ -154,7 +157,7 @@ export function siteUrl(env: Env, request: Request): string {
 // Every game lives under /<slug>/. These words would collide with the site's
 // own routes and files, so no game may use them.
 export const RESERVED_SLUGS = new Set([
-  "api", "auth", "join", "assets", "static", "site.css", "theme.css", "index.html", "admin", "www", "mail", "help", "about", "rules", "board", "js", "vendor", "art",
+  "api", "auth", "join", "assets", "static", "site.css", "theme.css", "index.html", "admin", "www", "mail", "help", "about", "rules", "board", "js", "vendor", "art", "v", "version",
 ]);
 export const validSlug = (s: unknown): s is string =>
   typeof s === "string" && /^[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])$/.test(s) && !RESERVED_SLUGS.has(s);
