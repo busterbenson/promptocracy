@@ -197,6 +197,8 @@ ${p.kind === "commission" && p.ticket ? `<div class="sdiff">${wPill(p.ticket.n)}
         : u.prefilled ? "The new wording" : "What should change?";
       const mode = u.kind === "amend" ? `<button type="button" class="linkbtn" data-p="mode">${u.prefilled ? "Describe the change in my own words" : "Edit the wording instead"}</button>` : "";
       field = `<label for="pfWords">${lab}</label><textarea id="pfWords" maxlength="2500"${u.prefilled ? ' rows="7" class="prefill"' : ' rows="4"'}${off}>${esc(u.words || "")}</textarea>${mode}`;
+      // A new rule is majority unless it is marked unanimous, which takes every player's yes (rule 105.2).
+      if (u.kind === "add") field += `<label class="pfu"><input type="checkbox" data-p="unanimous"${u.unanimous ? " checked" : ""}${off}> Needs everyone</label>${u.unanimous ? `<p class="mono unote">${withPills("Every player's yes to pass (rule 105.2).")}</p>` : ""}`;
     }
     return `<div class="pf">${field}${u.err ? `<p class="notice err" role="alert">${withPills(u.err)}</p>` : ""}<div class="row"><button class="btn small" type="button" data-p="draft"${off}>${u.busy ? "Drafting…" : "Ask Chalant to draft it"}</button><button class="linkbtn" type="button" data-p="cancel">Cancel</button></div></div>`;
   }
@@ -361,7 +363,7 @@ ${S.ui.err ? `<p class="notice err" role="alert">${withPills(S.ui.err)}</p>` : "
   function startAdd(block, champ) {
     const u = S.ui;
     if (u && u.kind === "add" && u.rule === block && !u.busy) return;   // opened again: the words you were writing are still there
-    S.ui = mkUi({ rule: block, step: "write", kind: "add", target: block, words: "", prefilled: false, err: "", ...(champ && champAvail() ? { champion: true } : {}) });
+    S.ui = mkUi({ rule: block, step: "write", kind: "add", target: block, words: "", prefilled: false, unanimous: false, err: "", ...(champ && champAvail() ? { champion: true } : {}) });
   }
 
   /** @rule 103.1 */
@@ -377,6 +379,7 @@ ${S.ui.err ? `<p class="notice err" role="alert">${withPills(S.ui.err)}</p>` : "
     const body = u.kind === "action" ? { kind: "action", type: u.type, params: u.params } : { kind: u.kind, target: u.target };
     if (["amend", "addclause", "add"].includes(u.kind)) body.words = u.words;
     if (u.kind === "amend" && u.prefilled) body.prefilled = true;
+    if (u.kind === "add" && u.unanimous) body.mark = "u";
     if (u.kind === "move") body.to = u.to;
     if (u.champion && u.kind !== "action") body.champion = true;
     const r = await api("/api/proposals", body);
@@ -446,6 +449,9 @@ ${S.ui.err ? `<p class="notice err" role="alert">${withPills(S.ui.err)}</p>` : "
       else S.ui = mkUi({ rule: n, step: rule.clauses.length ? "scope" : "menu", scope: "whole", ...(el.dataset.champ === "1" && champAvail() ? { champion: true } : {}) });   // the Champion's change button: the toggle starts ticked
     } else if (a === "champion") {
       u.champion = !!el.checked;
+    } else if (a === "unanimous") {
+      const ta = document.getElementById("pfWords"); if (ta) u.words = ta.value;
+      u.unanimous = !!el.checked;
     } else if (a === "scope") {
       u.scope = el.dataset.s || null; u.step = el.dataset.s ? "menu" : "scope";
     } else if (a === "kind") {
