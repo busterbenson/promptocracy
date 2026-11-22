@@ -99,16 +99,36 @@ with sync_playwright() as p:
         check("a failing /api/version never reloads", len(loads) == 1, f"loads={len(loads)}")
         ctx.close()
 
-        # 6b. a half-typed field is never thrown away: no reload while a textarea holds text, one as soon as it is empty
+        # 6b. a half-typed field is never thrown away: no reload while a field the player typed in holds text, one soon after it is emptied.
+        # A prefilled or read-only field (the account panel's invite link, a number field's default) never blocks the reload.
         answer = {"id": None}
         ctx, page, errors, loads, asked = open_page(b, f"/{slug}/", answer)
-        page.evaluate("() => { const t = document.createElement('textarea'); t.id = 'typed'; t.value = 'half a proposal'; document.body.appendChild(t); }")
+        page.evaluate("""() => { const w = document.createElement('div'); w.innerHTML = '<input id="ro" type="text" readonly value="http://x/join/ABC"><input id="num" type="number" value="3"><textarea id="typed"></textarea>'; document.body.appendChild(w); }""")
+        page.click("#typed"); page.keyboard.type("half a proposal")
         answer["id"] = "build-GGG"
         fire_visible(page); page.wait_for_timeout(1200)
-        check("text in a field: no reload", len(loads) == 1, f"loads={len(loads)}")
-        page.evaluate("document.getElementById('typed').value = ''")
+        check("typed text in a field: no reload", len(loads) == 1, f"loads={len(loads)}")
+        page.fill("#typed", "")
         fire_visible(page); page.wait_for_timeout(1500)
-        check("field empty again: exactly one reload", len(loads) == 2, f"loads={len(loads)}")
+        check("field emptied: exactly one reload", len(loads) == 2, f"loads={len(loads)}")
+        ctx.close()
+        answer = {"id": None}
+        ctx, page, errors, loads, asked = open_page(b, f"/{slug}/", answer)
+        page.evaluate("""() => { const w = document.createElement('div'); w.innerHTML = '<input id="ro" type="text" readonly value="http://x/join/ABC"><input id="num" type="number" value="3"><textarea id="pre">scripted</textarea>'; document.body.appendChild(w); }""")
+        answer["id"] = "build-HHH"
+        fire_visible(page); page.wait_for_timeout(1500)
+        check("prefilled / read-only / scripted fields never block the reload", len(loads) == 2, f"loads={len(loads)}")
+        ctx.close()
+
+        # 6c. no visibility event needed after the field is emptied: the deferred check asks again by itself (20 s)
+        answer = {"id": None}
+        ctx, page, errors, loads, asked = open_page(b, f"/{slug}/", answer)
+        page.evaluate("""() => { const t = document.createElement('textarea'); t.id = 'typed'; document.body.appendChild(t); }""")
+        page.click("#typed"); page.keyboard.type("half a proposal")
+        answer["id"] = "build-III"
+        fire_visible(page); page.wait_for_timeout(1200)
+        page.fill("#typed", ""); page.wait_for_timeout(22000)
+        check("deferred reload retries by itself once the field is empty", len(loads) == 2, f"loads={len(loads)}")
         ctx.close()
 
         # 7. the landing page is guarded too
