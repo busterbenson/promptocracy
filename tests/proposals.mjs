@@ -10,8 +10,9 @@ import { tmpdir } from "node:os";
 import { join as pjoin } from "node:path";
 import { ROOT, client, createGame, d1, join, migrate, newState, startPlaying, freePort, startRulesStub, startServer } from "./lib.mjs";
 import { dayOpenBinds } from "../src/lib/day-gate.js";
+import { WORKSHOP_RULE } from "../src/lib/tickets.js";
 import {
-  DRAFT_INSERT_SQL, WITHDRAW_SQL, answerSchema, citedIn, clauseText, conflictCandidates, draftOf, markFor, modelPrompt, needsModel, nextRuleNum, notWiredConflictRefusal, notWiredParts, notWiredRefusal, parseBook, readModelAnswer, readRequest, referencesTo, settingsText, textOf,
+  DRAFT_INSERT_SQL, WITHDRAW_SQL, answerSchema, citedIn, clauseText, conflictCandidates, draftOf, markFor, modelPrompt, needsModel, nextRuleNum, notWiredConflictRefusal, notWiredParts, notWiredRefusal, parseBook, partsOf, readModelAnswer, readRequest, referencesTo, settingsText, textOf,
 } from "../src/lib/proposals.js";
 
 let pass = 0, fail = 0;
@@ -68,6 +69,7 @@ console.log("the moderator's code drafts (rule 103.1), after the mockup's makeDr
   check("requests that can't be drafted say why: no such rule, a mark on a clause, moving a clause, a move to its own block, reword with no words",
     /no rule 999/.test(req({ kind: "repeal", target: "999" }).error) && /not a clause/.test(req({ kind: "mark", target: "202.2" }).error) && /whole rule/.test(req({ kind: "move", target: "202.2", to: "300" }).error) &&
     /already in block 400/.test(req({ kind: "move", target: "403", to: "400" }).error) && /few words/.test(req({ kind: "amend", target: "401" }).error));
+  check("the commission's vote rule is the workshop rule tickets.js names (WORKSHOP_RULE), and a book without it is majority", J(partsOf({ kind: "commission", target: "800" })) === J([WORKSHOP_RULE]) && markFor(parseBook(MD.replace(/### 801 [^\n]*\n/, "### 899 Gone [m]\n")), { kind: "commission", target: "800" }) === "majority");
   check("a commission is voted at rule 801's mark (the workshop's), whatever block it is filed under", markFor(B, { kind: "commission", target: "800" }) === "majority" && markFor(parseBook(MD.replace("### 801 Commissions [m]", "### 801 Commissions [u]")), { kind: "commission", target: "800" }) === "unanimous");
   check("the mark a proposal needs is the strictest part it touches (rule 103.4): a move keeps its rule's own mark wherever it goes (403 into block 100 stays majority, 105 stays unanimous), a new rule is majority even in block 100, a change to 101 needs everyone",
     markFor(B, { kind: "move", target: "403", to_block: "100" }) === "majority" && markFor(B, { kind: "move", target: "105", to_block: "300" }) === "unanimous" && markFor(B, { kind: "add", target: "100", to_block: "100" }) === "majority" && markFor(B, { kind: "repeal", target: "403" }) === "majority" && markFor(B, { kind: "amend", target: "101.1" }) === "unanimous");

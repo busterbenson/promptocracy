@@ -29,7 +29,7 @@ const md = readFileSync(join(ROOT, "templates", "RULES.md"), "utf8");
 // What a model that moves the Era's threshold to 50 leaves in 402's own test file (the starter's file pins 100 in several tests, so the scripted
 // change replaces it, as the "win" scenario of fake-claude.mjs does).
 const TEST402_AT_50 = 'import { test } from "node:test";\nimport assert from "node:assert/strict";\nimport { makeCtx } from "promptocracy/engine/testing";\nimport rule from "./402.ts";\ntest("402.2: reaching 50 points wins the Era", () => {\n  assert.equal(rule.dayEnd!(makeCtx({ settings: { \"eras.points_to_win\": 50 } }), { before: { a: 40 }, given: [{ player: "a", delta: 10 }] } as any).length, 1);\n});\n';
-check("markOf: 107 is core (block 100 [unanimous]), 402 is majority", markOf(md, 107) === "unanimous" && markOf(md, 402) === "majority" && markOf(md, 999) === null);
+check("markOf: 107 is core (it says [u]), 402 is majority, a block has no mark, a missing rule and a \"[Moved to N]\" forwarder have none", markOf(md, 107) === "unanimous" && markOf(md, 402) === "majority" && markOf(md, 999) === null && markOf("### 105 [Moved to 302]\n", 105) === null && markOf("### 105 Votes [u]\n", 105) === "unanimous");
 const R = (number, mark, o = {}) => ({ number, mark, added: 0, ...o });
 check("108.1: a core rule prevails over a majority rule", prevailing(R(402, "majority"), R(107, "unanimous")).number === 107);
 check("108.1: same kind, the older prevails", prevailing(R(402, "majority", { added: 0 }), R(410, "majority", { added: 3 })).number === 402 && prevailing(R(410, "majority", { added: 3 }), R(402, "majority", { added: 0 })).number === 402);
