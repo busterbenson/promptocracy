@@ -75,23 +75,23 @@ console.log("her cap, a setting (rule 106.7)");
 console.log("her answer: what the platform keeps");
 {
   const ok = (o) => { const a = read(o); return a.ok ? a : null; };
-  const q = ok({ say: "Word for word:", quotes: [{ num: "103.3", text: "The proposer may withdraw a confirmed proposal until it goes on the ballot, unless they have ended their turn (rule 202.4)." }] });
+  const q = ok({ say: "Word for word:", quotes: [{ num: "103.3", text: "The proposer may withdraw a confirmed proposal until it goes on the ballot (104.3)." }] });
   check("a quote that is the clause's own words is kept, with its number", q && q.quotes.length === 1 && q.quotes[0].num === "103.3" && q.dropped.length === 0, J(q));
   const piece = ok({ say: "x", quotes: [{ num: "103.3", text: "may withdraw a confirmed proposal until it goes on the ballot" }] });
   check("a piece of a clause is a quote too (a whole sentence is not required)", piece && piece.quotes.length === 1);
-  const fancy = ok({ say: "x", quotes: [{ num: "rule 402.1", text: "The first player to reach 100 points wins." }, { num: "402.1", text: "THE FIRST  PLAYER to reach 100 points   wins" }] });
-  check("a quote is compared as the rulebook reads: case, spacing, curly quotes and a 'rule' before the number don't matter; a duplicate is kept once", fancy && fancy.quotes.length === 1 && fancy.quotes[0].num === "402.1", J(fancy));
-  const fake = ok({ say: "x", quotes: [{ num: "103.3", text: "The proposer may withdraw a confirmed proposal at any time, even after the ballot." }, { num: "999", text: "anything" }, { num: "103.3", text: "" }, { num: "402.1", text: "The first player to reach 100 points wins." }] });
+  const fancy = ok({ say: "x", quotes: [{ num: "rule 402.2", text: "The first player to reach 100 points wins." }, { num: "402.2", text: "THE FIRST  PLAYER to reach 100 points   wins" }] });
+  check("a quote is compared as the rulebook reads: case, spacing, curly quotes and a 'rule' before the number don't matter; a duplicate is kept once", fancy && fancy.quotes.length === 1 && fancy.quotes[0].num === "402.2", J(fancy));
+  const fake = ok({ say: "x", quotes: [{ num: "103.3", text: "The proposer may withdraw a confirmed proposal at any time, even after the ballot." }, { num: "999", text: "anything" }, { num: "103.3", text: "" }, { num: "402.2", text: "The first player to reach 100 points wins." }] });
   check("a quote that is not the clause's words, one of a rule that does not exist and an empty one are dropped (and say why); the real one stays",
-    fake && fake.quotes.length === 1 && fake.quotes[0].num === "402.1" && fake.dropped.length === 3 && fake.dropped.includes("not the rule's words") && fake.dropped.includes("no such rule") && fake.dropped.includes("empty quote"), J(fake));
+    fake && fake.quotes.length === 1 && fake.quotes[0].num === "402.2" && fake.dropped.length === 3 && fake.dropped.includes("not the rule's words") && fake.dropped.includes("no such rule") && fake.dropped.includes("empty quote"), J(fake));
   const wrongNum = ok({ say: "x", quotes: [{ num: "103.2", text: "The proposer may withdraw a confirmed proposal until it goes on the ballot" }] });
   check("a real sentence under the WRONG number is dropped (the number is part of the quote)", wrongNum && wrongNum.quotes.length === 0 && wrongNum.dropped.length === 1);
   check("a quote of a whole rule's number finds a sentence of any of its clauses, and a quote longer than 600 characters or more than 4 are cut",
     ok({ say: "x", quotes: [{ num: "103", text: "The proposer may withdraw a confirmed proposal until it goes on the ballot" }] })?.quotes.length === 1 &&
     ok({ say: "x", quotes: [{ num: "103", text: "a ".repeat(400) }] })?.dropped[0] === "quote too long" &&
-    ok({ say: "x", quotes: Array.from({ length: 8 }, (_, i) => ({ num: "402.1", text: "The first player to reach 100 points wins".slice(0, 20 + i) })) })?.quotes.length <= 4);
+    ok({ say: "x", quotes: Array.from({ length: 8 }, (_, i) => ({ num: "402.2", text: "The first player to reach 100 points wins".slice(0, 20 + i) })) })?.quotes.length <= 4);
 
-  const cut = ok({ say: "x", quotes: [{ num: "103.3", text: "withdraw a confirmed proposal until it goes on the ballot" }, { num: "103.3", text: "The proposer may withdraw a confirmed proposal until it goes on the ballot, unless they have ended their turn (rule 202.4)." }] });
+  const cut = ok({ say: "x", quotes: [{ num: "103.3", text: "withdraw a confirmed proposal until it goes on the ballot" }, { num: "103.3", text: "The proposer may withdraw a confirmed proposal until it goes on the ballot (104.3)." }] });
   check("a quote cut out of the middle of a sentence is shown with an ellipsis at the cut; a whole sentence has none", cut && cut.quotes.length === 2 && cut.quotes[0].text.startsWith("\u2026") && cut.quotes[0].text.endsWith("\u2026") && !cut.quotes[1].text.startsWith("\u2026") && !cut.quotes[1].text.endsWith("\u2026"), J(cut?.quotes));
   const tiny = ok({ say: "x", quotes: [{ num: "103.3", text: "withdraw" }, { num: "103.3", text: "may withdraw" }, { num: "103.3", text: "not withdraw" }, { num: "202.4", text: "Ending is final" }] });
   check("a fragment of fewer than 4 words that cuts a sentence is dropped (it could turn a 'may not' into a 'may'); words the clause doesn't have in that order are dropped as such", tiny && tiny.quotes.length === 0 && J(tiny.dropped) === J(["quote too short", "quote too short", "not the rule's words", "quote too short"]), J(tiny));
@@ -100,7 +100,7 @@ console.log("her answer: what the platform keeps");
   const rp = S.plainForQuote(rulesMd);
   check("a fabricated 'Word for word' in her say is logged (it can't be dropped: it is her prose); the rulebook's own words and the player's own phrase in quotation marks are not",
     read({ say: 'Word for word: "The proposer may withdraw a confirmed proposal at any time even after the ballot closes."' }).ok && S.readStarlingAnswer(J({ say: 'Word for word: "The proposer may withdraw a confirmed proposal at any time even after the ballot closes."' }), { ...ctx, rulesPlain: rp, playerText: "x" }).flagged.includes("unverified quote in say") &&
-    !S.readStarlingAnswer(J({ say: 'It says "The proposer may withdraw a confirmed proposal until it goes on the ballot, unless they have ended their turn" so no.' }), { ...ctx, rulesPlain: rp, playerText: "x" }).flagged.includes("unverified quote in say") &&
+    !S.readStarlingAnswer(J({ say: 'It says "The proposer may withdraw a confirmed proposal until it goes on the ballot (104.3)" so no.' }), { ...ctx, rulesPlain: rp, playerText: "x" }).flagged.includes("unverified quote in say") &&
     !S.readStarlingAnswer(J({ say: 'You said "points for trying should count if somebody else voted yes on it" and I like it.' }), { ...ctx, rulesPlain: rp, playerText: "points for trying should count if somebody else voted yes on it" }).flagged.includes("unverified quote in say"));
   check("a cut quote that the model ended with a full stop is shown without it, before the ellipsis", ok({ say: "x", quotes: [{ num: "103.3", text: "withdraw a confirmed proposal until it goes on the ballot." }] })?.quotes[0].text === "\u2026withdraw a confirmed proposal until it goes on the ballot\u2026");
   const d = ok({ say: "ok", draft: { kind: "amend", target: "401", words: "Make it 15 points." } });

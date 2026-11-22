@@ -72,7 +72,7 @@ check("a defined attribute shows its value and the rule that defines it: Speed 2
 check("a missing required attribute is an empty row (Hearts —), and the entry is not refused", (() => { const v = view({ name: "Ghost", catalogKind: "creature" }); const r = row(v, "hearts"); return r.state === "missing" && r.shown === "" && v.rows[0].key === "hearts"; })());
 check("a missing attribute the defining rule gives words for shows those words as the state line: Speed missing -> \"Does not move\"", (() => { const v = view({ name: "Ghost", catalogKind: "creature", attrs: { hearts: 1 } }); return J(v.missing) === J(["Does not move"]) && row(v, "speed").state === "missing"; })());
 check("an item with no acquired shows the empty row; a rule value that names a rule the rulebook lacks shows as missing, one that exists shows its number", (() => {
-  const rules = knownNumbers("### 709 Hats\n**709.1** x\n");
+  const rules = knownNumbers("### 709 Hats [m]\n**709.1** x\n");
   const a = view({ name: "Hat", catalogKind: "item" }, { ...ctx, rules });
   const b = view({ name: "Hat", catalogKind: "item", attrs: { acquired: "710" } }, { ...ctx, rules });
   const c = view({ name: "Hat", catalogKind: "item", attrs: { acquired: "709" } }, { ...ctx, rules });
@@ -108,7 +108,7 @@ check("a bad definition fails: a key with capitals, an unknown type, no kinds, a
 check("a required list for an unknown kind, or an attribute with no type, fails", buildRegistry([mod(704, undefined, { dragon: [] })]).errors.length === 1 && buildRegistry([mod(704, undefined, { item: [{ key: "acquired" }] })]).errors.length === 1);
 
 console.log("the three claim checks (docs/catalog.md section 2)");
-const known = knownNumbers("### 602 Hearts\n**602.1** x\n### 704 Needs\n");
+const known = knownNumbers("### 602 Hearts [m]\n**602.1** x\n### 704 Needs\n");
 check("(a) a registry key defined by a rule the text does not have fails the check", catalogClaimProblems({ registry: { speed: { key: "speed", rule: 699, type: "number", kinds: ["creature"] } }, known }).length === 1 && catalogClaimProblems({ registry: { speed: { key: "speed", rule: 602, type: "number", kinds: ["creature"] } }, known }).length === 0);
 check("(b) attr() needs a literal key the registry has: a typo, a flavor key and a variable all fail; a registry key passes", (() => {
   const src = (call) => ({ "rules/603.ts": `export default { rule: 603,\n  /** @rule 603 */\n  f(ctx, e) { return ${call}; } };\n` });
@@ -143,7 +143,7 @@ const attrsModule = (rule, key) => `import { defineRule } from "promptocracy/eng
 {
   const out = pjoin(work, "out-ok");
   const e = bundle({ BUNDLE_OUT: out, GAMES_SOURCE: tree((d) => {
-    put(d, "RULES.md", readFileSync(pjoin(FIX, "RULES.md"), "utf8") + "\n## 600. Hearts [majority]\n\n### 602 Speed\n**602.1** A creature has a speed.\n\n## 700. Making things [majority]\n\n### 704 What each kind needs\n**704.1** A creature needs hearts.\n");
+    put(d, "RULES.md", readFileSync(pjoin(FIX, "RULES.md"), "utf8") + "\n## 600. Hearts\n\n### 602 Speed [m]\n**602.1** A creature has a speed.\n\n## 700. Making things\n\n### 704 What each kind needs [m]\n**704.1** A creature needs hearts.\n");
     put(d, "rules/602.ts", attrsModule(602, "speed"));
     put(d, "rules/704.ts", readFileSync(pjoin(ROOT, "templates/rules/704.ts"), "utf8"));
     put(d, "game.json", J({ engine: 1, modules: [107, 202, 504, 505, 602, 704] }));
@@ -154,25 +154,25 @@ const attrsModule = (rule, key) => `import { defineRule } from "promptocracy/eng
   check("a game with no catalog.json bundles with no entries; the starter pack's required lists are in the bundle too", /catalog: \[\]/.test(gen) && /STARTER: any = \{[^]*required: \{"creature"/.test(gen));
 }
 fixed("two rules defining the same attribute fail the build, naming the rule that has it", (d) => {
-  put(d, "RULES.md", readFileSync(pjoin(FIX, "RULES.md"), "utf8") + "\n## 600. Hearts [majority]\n\n### 602 Speed\n**602.1** x\n\n### 603 Pace\n**603.1** x\n");
+  put(d, "RULES.md", readFileSync(pjoin(FIX, "RULES.md"), "utf8") + "\n## 600. Hearts\n\n### 602 Speed [m]\n**602.1** x\n\n### 603 Pace [m]\n**603.1** x\n");
   put(d, "rules/602.ts", attrsModule(602, "speed")); put(d, "rules/603.ts", attrsModule(603, "speed"));
   put(d, "game.json", J({ engine: 1, modules: [107, 202, 504, 505, 602, 603] }));
 }, /rule 602 already defines speed; only one rule can \(703\.3\)/);
 fixed("an attribute defined by a module whose rule is not in RULES.md fails the build", (d) => { put(d, "rules/602.ts", attrsModule(602, "speed")); put(d, "game.json", J({ engine: 1, modules: [107, 202, 504, 505, 602] })); }, /rules\/602\.ts is a module for rule 602, which RULES\.md does not have/);
 fixed("a rule that reads attr() with a key no rule defines fails the build", (d) => {
-  put(d, "RULES.md", readFileSync(pjoin(FIX, "RULES.md"), "utf8") + "\n## 600. Hearts [majority]\n\n### 602 Speed\n**602.1** x\n");
+  put(d, "RULES.md", readFileSync(pjoin(FIX, "RULES.md"), "utf8") + "\n## 600. Hearts\n\n### 602 Speed [m]\n**602.1** x\n");
   put(d, "rules/602.ts", `import { attr, defineRule } from "promptocracy/engine";\nexport default defineRule({ rule: 602,\n  /** @rule 602.1 */\n  actionAllowed(ctx, actor) {\n    return attr(actor, "speed") ? null : null;\n  },\n});\n`);
   put(d, "game.json", J({ engine: 1, modules: [107, 202, 504, 505, 602] }));
 }, /catalog claims failed[^]*attr\(\.\.\., "speed"\) reads an attribute no rule defines/);
 fixed("a module whose attributes cannot be plain data (a circular one) fails the build with that reason", (d) => {
-  put(d, "RULES.md", readFileSync(pjoin(FIX, "RULES.md"), "utf8") + "\n## 600. Hearts [majority]\n\n### 602 Speed\n**602.1** x\n");
+  put(d, "RULES.md", readFileSync(pjoin(FIX, "RULES.md"), "utf8") + "\n## 600. Hearts\n\n### 602 Speed [m]\n**602.1** x\n");
   put(d, "rules/602.ts", `import { defineRule } from "promptocracy/engine";\nconst loop: any = { key: "speed", type: "number", kinds: ["creature"] };\nloop.self2 = loop;\nexport const attributes = [loop];\nexport default defineRule({ rule: 602 });\n`);
   put(d, "game.json", J({ engine: 1, modules: [107, 202, 504, 505, 602] }));
 }, /rules\/602\.ts: attributes and required must be plain data/);
 fixed("a catalog.json that is not valid fails the build, naming the entry and the reason", (d) => put(d, "catalog.json", J([{ id: "C1", name: "Blob", kind: "dragon" }])), /catalog\.json entry 1 \(C1\): kind must be one of item, creature/);
 fixed("a catalog.json that is not JSON fails the build", (d) => put(d, "catalog.json", "[oops"), /catalog\.json is missing or is not valid JSON/);
 fixed("an entry whose id is used twice fails the build", (d) => put(d, "catalog.json", J([{ id: "C1", name: "A", kind: "creature" }, { id: "C1", name: "B", kind: "creature" }])), /this id is used twice/);
-fixed("a required list with an unknown kind fails the build", (d) => { put(d, "RULES.md", readFileSync(pjoin(FIX, "RULES.md"), "utf8") + "\n### 704 Needs\n**704.1** x\n"); put(d, "rules/704.ts", `import { defineRule } from "promptocracy/engine";\nexport const required = { dragon: [{ key: "hearts", type: "number" }] };\nexport default defineRule({ rule: 704 });\n`); put(d, "game.json", J({ engine: 1, modules: [107, 202, 504, 505, 704] })); }, /required\.dragon must be a list for one of item, creature/);
+fixed("a required list with an unknown kind fails the build", (d) => { put(d, "RULES.md", readFileSync(pjoin(FIX, "RULES.md"), "utf8") + "\n### 704 Needs [m]\n**704.1** x\n"); put(d, "rules/704.ts", `import { defineRule } from "promptocracy/engine";\nexport const required = { dragon: [{ key: "hearts", type: "number" }] };\nexport default defineRule({ rule: 704 });\n`); put(d, "game.json", J({ engine: 1, modules: [107, 202, 504, 505, 704] })); }, /required\.dragon must be a list for one of item, creature/);
 check("the starter pack's rule 704 is the same file as Rickshaw's would be, and its required lists are Buster's three", readFileSync(pjoin(ROOT, "templates/rules/704.ts"), "utf8").includes('creature: [{ key: "hearts", type: "number" }]') && readFileSync(pjoin(ROOT, "templates/catalog.json"), "utf8").trim() === "[]");
 
 check("(b) a regex literal holding a quote, or an attr() inside a template's ${}, does not hide a later call or read: attr is read from the code", J(attrCalls('const q = /"/g;\nattr(e, "nope");').map((c) => c.key)) === J(["nope"]) && J(attrCalls("const t = `${attr(e, \"in\")}`;").map((c) => c.key)) === J(["in"]) && J(attrCalls("const r = /'/; const t = `a${x}b`; attr(e, 'k');").map((c) => c.key)) === J(["k"]) && J(attrCalls('const d = a / b; const s = "x"; attr(e, "y");').map((c) => c.key)) === J(["y"]) && attrCalls('const r = /"/; const v = entry.attrs.speed;').some((c) => c.problem));

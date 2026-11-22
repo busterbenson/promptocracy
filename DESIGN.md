@@ -140,7 +140,7 @@ settings identical.
   same blank slab. All colors are CSS tokens in `public/theme.css`; the player colors are data (`src/lib/pieces.json`), so a new
   palette is a one-file change. Pieces are traced vector shapes recolored per player, their feet on the tile's centre with a contact shadow;
   a tile's coordinates show only on hover, right-click or long-press.
-- **Rulebook.** `public/js/rulebook.js` parses `RULES.md`: `## 100. Title [unanimous]` is a hundreds block (`[u]` and `[m]` are short for the two marks), `### 101 Title` a rule that may carry its own mark (it overrides its block's), `**101.1**` a clause; file order is reading order. Every rule shows its revision (rev 1 until a passed change raises it). A file in the older format still reads as plain markdown.
+- **Rulebook.** `public/js/rulebook.js` parses `RULES.md`: `## 100. Title` is a hundreds block (no mark), `### 101 Title [u]` a rule with its own mark (`[u]` unanimous, `[m]` majority, rule 105.1), `**101.1**` a clause; file order is reading order. Every rule shows its revision (rev 1 until a passed change raises it). A file in the older format still reads as plain markdown.
 
 ## MCP
 

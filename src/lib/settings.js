@@ -43,11 +43,13 @@ export const DEFAULT_SETTINGS = {
   "gremlin.thread_replies_per_day": 20,
   // How many of a player's messages Starling answers in a day (rule 106.7), midnight to midnight in the game's zone, like Gremlin's.
   "starling.messages_per_day": 60,
+  // The points that win an Era (rule 402.2): the first player to reach this many in an Era becomes Champion. The rule's module reads it.
+  "eras.points_to_win": 100,
 };
 
 // Settings added after engine 1 shipped. A game's settings.json may leave these out (its tagged files predate them),
 // and then the default applies. Present, they are validated like any other, and RULES.md must name them.
-export const OPTIONAL_SETTINGS = Object.freeze(["game.timezone", "night.apply_minutes", "night.apply_effort", "proposals.per_day", "gremlin.messages_per_day", "workshop.price_ceiling", "gremlin.thread_replies_per_day", "starling.messages_per_day"]);
+export const OPTIONAL_SETTINGS = Object.freeze(["game.timezone", "night.apply_minutes", "night.apply_effort", "proposals.per_day", "gremlin.messages_per_day", "workshop.price_ceiling", "gremlin.thread_replies_per_day", "starling.messages_per_day", "eras.points_to_win"]);
 export const EFFORTS = Object.freeze(["low", "medium", "high"]);
 
 // Is this an IANA time zone the runtime knows? (Intl throws a RangeError for anything else.)
@@ -76,6 +78,7 @@ const VALIDATORS = {
   "starling.messages_per_day": (v) => (isInt(v, 0, STARLING_MESSAGES_MAX) ? null : `must be a whole number from 0 to ${STARLING_MESSAGES_MAX}`),
   "workshop.price_ceiling": (v) => (isInt(v, 0, PRICE_CEILING_MAX) ? null : `must be a whole number from 0 to ${PRICE_CEILING_MAX}`),
   "gremlin.thread_replies_per_day": (v) => (isInt(v, 0, GREMLIN_THREAD_MAX) ? null : `must be a whole number from 0 to ${GREMLIN_THREAD_MAX}`),
+  "eras.points_to_win": (v) => (isInt(v, 1, 10000) ? null : "must be a whole number from 1 to 10000"),
   "night.apply_effort": (v) => (EFFORTS.includes(v) ? null : `must be one of ${EFFORTS.join(", ")}`),
 };
 function exactly(v, keys) {

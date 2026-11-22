@@ -50,8 +50,11 @@ console.log("the moderator's code drafts (rule 103.1), after the mockup's makeDr
     d.after_text.includes("302.1 When you move") && d.after_text.includes("302.2 You can only move") && !/504\.\d/.test(d.after_text) && d.after_text.endsWith("504 [Moved to 302]"), d.after_text);
   ({ r, d } = drafted({ kind: "mark", target: "401" }));
   check("lock a rule: 'Mark rule 401 (Points) unanimous:' [majority] -> [unanimous]; it needs the votes of its CURRENT mark (rule 105.3)", d.head === "Mark rule 401 (Points) unanimous:" && d.before_text === "[majority]" && d.after_text === "[unanimous]" && markFor(B, { ...r, ...d }) === "majority", J(d));
-  ({ r, d } = drafted({ kind: "mark", target: "400" }));
-  check("lock a block: 'Mark block 400 (Points and winning) unanimous:'", d.head === "Mark block 400 (Points and winning) unanimous:" && r.scope === "block", J(d));
+  check("a block carries no mark, so it cannot be marked (rule 105.1): a mark is on a rule", /Pick a rule or a clause/.test(req({ kind: "mark", target: "400" }).error || ""));
+  ({ r, d } = drafted({ kind: "add", target: "400", words: "Every player starts with 5 points." }));
+  check("a new rule is majority unless the proposal marks it unanimous (105.2): the draft says so and carries the mark", r.mark === null && d.head === "Add rule 404 to block 400:" && markFor(B, { ...r, ...d }) === "majority", J(d));
+  ({ r, d } = drafted({ kind: "add", target: "400", words: "Every player starts with 5 points.", mark: "unanimous" }));
+  check("a new rule the proposal marks unanimous: headed so, and it needs everyone (105.2); only an add takes a mark", r.mark === "unanimous" && d.head === "Add rule 404, marked unanimous, to block 400:" && markFor(B, { ...r, ...d }) === "unanimous" && req({ kind: "repeal", target: "403", mark: "unanimous" }).mark === null, J([r, d]));
   ({ r, d } = drafted({ kind: "reword", target: "401.1", words: "A player whose proposal passes gets 15 points.", prefilled: true }));
   check("reword with the current text edited in place (prefilled) is exact already: drafted by code, the words are the new text", !needsModel(r) && r.kind === "amend" && d.head === "Edit clause 401.1 (Points) to read:" && d.after_text === "A player whose proposal passes gets 15 points." && d.before_text === "A player whose proposal passes and is applied gets 10 points when it is applied (rule 107).", J(d));
   check("reword in plain words needs the small model; a clause reword is headed 'Edit clause 504.1 (...) to read:'", needsModel(req({ kind: "reword", target: "401.1", words: "15 points" })) && draftOf(B, req({ kind: "amend", target: "504.1", words: "x" }), "new").head.startsWith("Edit clause 504.1 ("));
@@ -65,8 +68,8 @@ console.log("the moderator's code drafts (rule 103.1), after the mockup's makeDr
   check("requests that can't be drafted say why: no such rule, a mark on a clause, moving a clause, a move to its own block, reword with no words",
     /no rule 999/.test(req({ kind: "repeal", target: "999" }).error) && /not a clause/.test(req({ kind: "mark", target: "202.2" }).error) && /whole rule/.test(req({ kind: "move", target: "202.2", to: "300" }).error) &&
     /already in block 400/.test(req({ kind: "move", target: "403", to: "400" }).error) && /few words/.test(req({ kind: "amend", target: "401" }).error));
-  check("the mark a proposal needs is the strictest part it touches (rule 103.4): moving 403 into block 100 needs unanimous, a new rule in block 100 too",
-    markFor(B, { kind: "move", target: "403", to_block: "100" }) === "unanimous" && markFor(B, { kind: "add", target: "100", to_block: "100" }) === "unanimous" && markFor(B, { kind: "repeal", target: "403" }) === "majority");
+  check("the mark a proposal needs is the strictest part it touches (rule 103.4): a move keeps its rule's own mark wherever it goes (403 into block 100 stays majority, 105 stays unanimous), a new rule is majority even in block 100, a change to 101 needs everyone",
+    markFor(B, { kind: "move", target: "403", to_block: "100" }) === "majority" && markFor(B, { kind: "move", target: "105", to_block: "300" }) === "unanimous" && markFor(B, { kind: "add", target: "100", to_block: "100" }) === "majority" && markFor(B, { kind: "repeal", target: "403" }) === "majority" && markFor(B, { kind: "amend", target: "101.1" }) === "unanimous");
 }
 
 console.log("parts that are not wired yet (no untouchable rules), refused at drafting");
@@ -84,10 +87,10 @@ console.log("parts that are not wired yet (no untouchable rules), refused at dra
   check("there is no rule 110 to propose on: it is not in the book, and a request naming it is an error, not a draft", !B.byNum["110"] && !B.byNum["110.1"] && /no rule 110/.test(req({ kind: "repeal", target: "110" }).error));
   check("and the number 110 is never handed to a new rule: block 100 ends at 109 (Numbers and settings), so its next free number is 111, not 110",
     nextRuleNum(B, "100") === "111" && nextRuleNum(parseBook(MD.replace("### 109 Numbers and settings", "### 108 Numbers and settings")), "100") === "109");
-  check("moving 203, repealing 202, and unlocking block 100 (it holds six of the eight) are refused too", refuse({ kind: "move", target: "203", to: "300" }) && refuse({ kind: "repeal", target: "202" }) && refuse({ kind: "mark", target: "100" }));
-  check("a proposal on an ordinary rule is not refused: reword 401 or 504.1, repeal 403, move 504 to 400, add a clause to 105, mark block 500, move 404 or add a rule to block 500",
+  check("moving 203, repealing 202, and unlocking 107 (it holds the lock and the deadline) are refused too", refuse({ kind: "move", target: "203", to: "300" }) && refuse({ kind: "repeal", target: "202" }) && refuse({ kind: "mark", target: "107" }));
+  check("a proposal on an ordinary rule is not refused: reword 401 or 504.1, repeal 403, move 504 to 400, add a clause to 105, mark rule 502, move 404 or add a rule to block 500",
     [{ kind: "amend", target: "401.1", words: "x", prefilled: true }, { kind: "amend", target: "504.1", words: "x", prefilled: true }, { kind: "repeal", target: "403" }, { kind: "move", target: "504", to: "400" },
-      { kind: "addclause", target: "105", words: "Be kind." }, { kind: "mark", target: "500" }, { kind: "add", target: "500", words: "Be kind." }].every((b) => refuse(b) === null), J(["401.1", "504.1", "403.1"].map((t) => refuse({ kind: "amend", target: t, words: "x", prefilled: true }))));
+      { kind: "addclause", target: "105", words: "Be kind." }, { kind: "mark", target: "502" }, { kind: "add", target: "500", words: "Be kind." }].every((b) => refuse(b) === null), J(["401.1", "504.1", "403.1"].map((t) => refuse({ kind: "amend", target: t, words: "x", prefilled: true }))));
   check("a not-wired refusal never takes a P-number: the draft is refused before anything is stored (see the route test below)", typeof refuse({ kind: "amend", target: "104.4", words: "x", prefilled: true }) === "string");
   check("adding a clause to 203 or a rule to block 100 changes nothing already there: allowed", refuse({ kind: "addclause", target: "203", words: "Weekends are long." }) === null && refuse({ kind: "add", target: "100", words: "Be kind." }) === null);
   const same = B.byNum["203.1"];
@@ -99,7 +102,7 @@ console.log("parts that are not wired yet (no untouchable rules), refused at dra
     /rule 202\.4/.test(refuse({ kind: "amend", target: "202", words: r202.replace("Ending is final", "Ending is not final"), prefilled: true }) || ""));
   const r103 = draftOf(B, req({ kind: "amend", target: "103", words: textOf(B.byNum["103"]), prefilled: true }), "x").before_text;
   check("text appended to a not-wired clause inside a whole-rule reword changes it: refused (103.2 + 'Except ... ten proposals on Sundays.')",
-    /rule 103\.2/.test(refuse({ kind: "amend", target: "103", words: r103.replace("next day's ballot.", "next day's ballot. Except that a player may confirm ten proposals on Sundays."), prefilled: true }) || ""), r103);
+    /rule 103\.2/.test(refuse({ kind: "amend", target: "103", words: r103.replace("goes on the ballot (104.3).", "goes on the ballot (104.3). Except that a player may confirm ten proposals on Sundays."), prefilled: true }) || ""), r103);
   check("a reword elsewhere (401) is not refused", refuse({ kind: "amend", target: "401.1", words: "15", prefilled: true }) === null);
 }
 
@@ -108,7 +111,7 @@ console.log("the conflicts the moderator names (rule 108.3)");
   check("citing a rule cites all its clauses (rule 109.1): repealing clause 107.1 names the parts that cite 'rule 107' or '(107)', and a clause that cites another clause of 107 is not named for it",
     referencesTo(B, "107.1").includes("106.1") && referencesTo(B, "107.1").includes("203.2") && !referencesTo(B, "107.1").includes("107.5") && !referencesTo(B, "107.1").includes("107.1"), J(referencesTo(B, "107.1")));
   check("repealing 504 names the rules that refer to it (505.1 cites rule 504.1), and not 504's own clauses", referencesTo(B, "504").includes("505.1") && !referencesTo(B, "504").some((n) => n.startsWith("504")), J(referencesTo(B, "504")));
-  check("repealing 202 names 103.3 (it cites rule 202.4) and 107.1-style references to it, never 202 itself", referencesTo(B, "202").includes("103.3") && !referencesTo(B, "202").includes("202"), J(referencesTo(B, "202")));
+  check("repealing 202 names 103.6 (it cites 202.4) and 107.1-style references to it, never 202 itself", referencesTo(B, "202").includes("103.6") && !referencesTo(B, "202").includes("202"), J(referencesTo(B, "202")));
   check("a draft of a repeal carries those conflicts", J(drafted({ kind: "repeal", target: "504" }).d.conflicts) === J(referencesTo(B, "504")));
 }
 
@@ -566,7 +569,7 @@ try {
   const ends2 = d1(state, `SELECT ends_at FROM days WHERE game_id = '${gid}' AND n = 2`)[0].ends_at;
   const past = new Date(Date.parse(ends2) + 1000).toISOString(), justBefore = new Date(Date.parse(ends2) - 1000).toISOString();
   const boId = d1(state, `SELECT id FROM players WHERE display_name = 'Bo'`)[0].id;
-  const draftRow = (id, iso) => sqlRun(DRAFT_INSERT_SQL, [id, boId, "repeal", "rule", "402", null, null, "", null, "h", "", "", "[]", "{}", "code", "s", iso, gid, ...dayOpenBinds(2, Date.parse(iso), boId)]);
+  const draftRow = (id, iso) => sqlRun(DRAFT_INSERT_SQL, [id, boId, "repeal", "rule", "402", null, null, "", null, "h", "", "", "[]", "{}", "code", "s", null, iso, gid, ...dayOpenBinds(2, Date.parse(iso), boId)]);
   draftRow("qa-fixture-d1", past); draftRow("qa-fixture-d2", justBefore);
   check("the draft INSERT's own guard: with a time past day 2's midnight it lands nothing; 1 s before, it lands", J(d1(state, "SELECT id FROM proposals WHERE id LIKE 'qa-fixture-%'").map((r) => r.id)) === J(["qa-fixture-d2"]));
   const p5 = t2.data.proposal.number;

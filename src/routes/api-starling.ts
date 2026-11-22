@@ -198,7 +198,7 @@ export async function turn(ctx: Ctx, player: Player, body: any, nowMs: number) {
     if (noDraft) { meta.refused = { error: `Nothing was drafted: ${noDraft}` }; notes.push("draft refused: day gate"); }
     else {
       // an action goes through the SAME drafter as the form's (readAction: the type, each detail, the rule it comes from); she never writes one in herself
-      const asked = a.draft.kind === "action" ? { kind: "action", type: a.draft.type, params: a.draft.params } : { kind: a.draft.kind, target: a.draft.target, words: a.draft.words, to: a.draft.to };
+      const asked = a.draft.kind === "action" ? { kind: "action", type: a.draft.type, params: a.draft.params } : { kind: a.draft.kind, target: a.draft.target, words: a.draft.words, to: a.draft.to, mark: a.draft.mark };
       const d = await draft(ctx, player, asked, later, { atLimit: true });
       if (d.body?.ok && d.body.proposal?.id) { proposalId = d.body.proposal.id; }
       else { meta.refused = { error: String(d.body?.error ?? "The draft was refused.").slice(0, 400), ...(d.body?.reason ? { reason: String(d.body.reason).slice(0, 40) } : {}) }; notes.push(`draft refused: ${d.body?.drafting || d.status}`); }

@@ -85,18 +85,13 @@ export function disallowed(dir, paths) {
   });
 }
 
-// A rule's mark (rule 105): its own, else its block's. "unanimous" rules are the core rules (rule 105.5).
+// A rule's mark (rule 105.1): its own, [u] or [m] after its title; a rule without one is majority (105.2); null when the rule isn't
+// in the book. "unanimous" rules are the core rules (rule 105.5). A block has no mark.
 /** @rule 108.1 */
 export function markOf(rulesMd, number) {
-  let block = null;
   for (const line of String(rulesMd).split("\n")) {
-    const b = /^##\s+(\d+)\.\s.*?\[(unanimous|majority|u|m)\]\s*$/.exec(line);
-    if (b) { block = b[2]; continue; }
     const r = /^###\s+(\d+)\s+(.*?)(?:\s+\[(unanimous|majority|u|m)\])?\s*$/.exec(line);
-    if (r && Number(r[1]) === Number(number)) {
-      const m = r[3] ?? block;
-      return m === "u" || m === "unanimous" ? "unanimous" : "majority";
-    }
+    if (r && Number(r[1]) === Number(number)) return r[3] === "u" || r[3] === "unanimous" ? "unanimous" : "majority";
   }
   return null;
 }
@@ -133,8 +128,8 @@ export function sections(md) {
   return out;
 }
 const norm = (t) => String(t ?? "").replace(/\s+/g, " ").trim();
-// The text as a player reads it, for comparing with a draft: no markdown bold, no heading marks.
-const plain = (t) => norm(String(t ?? "").replace(/\*\*/g, "").replace(/^#{1,6}\s+/gm, ""));
+// The text as a player reads it, for comparing with a draft: no markdown bold, no heading marks, no rule's [u]/[m] (105.1; a mark is not part of a draft's words).
+const plain = (t) => norm(String(t ?? "").replace(/\*\*/g, "").replace(/^(#{1,6}\s+.*?)[ \t]+\[(?:unanimous|majority|u|m)\][ \t]*$/gm, "$1").replace(/^#{1,6}\s+/gm, ""));
 // What a proposal may touch: the rules (by number) whose text, module and tests it may change. Its target and, for a
 // new or moved rule, its new number; for a mark change on a block, the block heading.
 /** @rule 107.4 */
@@ -245,6 +240,9 @@ export function scopeProblems({ beforeMd, afterMd, beforeSettings, afterSettings
     if (f.startsWith("rules/") || f.startsWith("rulings/") || f === "catalog.json") out.push(`${f} is not part of the rule this proposal changes`);
   }
   if (!markChange) for (const n of rules) if (a[`r${n}`] && b[`r${n}`] && markOf(beforeMd, n) !== markOf(afterMd, n)) out.push(`rule ${n}'s mark changed`);
+  // A new rule is added with the mark the proposal carries (rule 105.2: majority unless it was marked unanimous); a moved rule keeps its own.
+  if (p.kind === "add") { const n = ownRule(p), want = p.mark === "unanimous" ? "unanimous" : "majority"; if (n !== null && b[`r${n}`] !== undefined && markOf(afterMd, n) !== want) out.push(`rule ${n} is added ${markOf(afterMd, n)}, but the proposal's mark is ${want} (rule 105.2)`); }
+  if (p.kind === "move") { const n = ownRule(p), was = markOf(beforeMd, ruleOf(p.target)); if (n !== null && b[`r${n}`] !== undefined && markOf(afterMd, n) !== was) out.push(`rule ${n} was moved and its mark changed: a move keeps the rule's own mark`); }
   if (markChange) {
     // A mark proposal changes the mark and nothing else: the heading's [unanimous]/[majority], to the voted one.
     const strip = (t) => norm(String(t ?? "").replace(/\s*\[(unanimous|majority|u|m)\]/g, ""));

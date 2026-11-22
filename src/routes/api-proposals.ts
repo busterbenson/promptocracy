@@ -175,7 +175,7 @@ export async function draft(ctx: Ctx, player: any, body: any, nowMs: number, o: 
     )
     : env.DB.prepare(DRAFT_INSERT_SQL).bind(
       id, player.id, req.kind, req.scope, req.target, d.new_num, req.to_block, req.words, req.title, d.head,
-      d.before_text, d.after_text, JSON.stringify(conflicts), JSON.stringify(settings), after === null ? "code" : "model", sha, now,
+      d.before_text, d.after_text, JSON.stringify(conflicts), JSON.stringify(settings), after === null ? "code" : "model", sha, req.mark ?? null, now,
       game.id, ...dayOpenBinds(game.day, nowMs, player.id),
     );
   const [res] = await env.DB.batch([

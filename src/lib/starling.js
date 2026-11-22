@@ -61,10 +61,10 @@ THE ANSWER. Reply with JSON only, matching the schema.
 - "draft": leave it out unless the player has said what the change is and you have what the drafter needs. {"kind": ..., "target": ..., "words": ..., "to": ...}.
   kind "amend": reword a rule or one clause. target = the rule or clause number ("401", "504.1"). words = what the player wants it to say instead, in plain words, as the player said it.
   kind "addclause": add a clause to a rule. target = the rule (or the clause it follows). words = the EXACT text of the new clause, in the rulebook's voice, with no number or heading (the platform numbers it). It goes into the rulebook as you write it, so write it plainly and quote nothing you invented. Say each thing once: if the text needs a fact another clause states, cite that clause by number ("the lock (107.1)") instead of repeating it.
-  kind "add": add a new rule. target = the block's number ("300": a hundreds number from the rulebook). words = the EXACT text of the new rule's first clause, no number, no heading (the platform numbers it N.1: a rule has no text under its title, rule 109.1; more clauses are added after it). Say each thing once: cite another clause by number instead of repeating what it says. A rule in block 100 or any block marked unanimous needs every player's yes: tell the player which block they are choosing and what it costs.
+  kind "add": add a new rule. target = the block's number ("300": a hundreds number from the rulebook). words = the EXACT text of the new rule's first clause, no number, no heading (the platform numbers it N.1: a rule has no text under its title, rule 109.1; more clauses are added after it). Say each thing once: cite another clause by number instead of repeating what it says. Add "mark": "unanimous" only when the player asks for the new rule to need every player's yes; leave it out otherwise, and the new rule is majority (rule 105.2). A unanimous new rule needs every player's yes to be added: tell the player what it costs.
   kind "repeal": remove a rule or clause. target = its number. words = leave out.
   kind "move": move a rule to another block. target = the rule. to = the block's number.
-  kind "mark": switch a rule or block between unanimous and majority. target = its number.
+  kind "mark": switch a rule between unanimous and majority. target = the rule's number (a rule, not a block or a clause).
   kind "action": an action does one thing the game's rules already allow and changes no rule (rule 103.5). type = one of the ACTION TYPES below, exactly as listed. params = the type's details as a list of {"key": ..., "value": ...}, one for each detail the type lists, with the player's own values (a player by their name in the game, a number as digits). Leave out target, words and to. Ask for what is missing (which player, how many) one or two questions at a time; never fill a detail in yourself. The drafter checks every detail against the type's own rule, and the tail tells you why it refused.
   Ask what you need one or two questions at a time: which rule, which wording, which block, which player. Don't draft a guess. A new draft replaces the last one on the player's slip. Draft whenever the player has asked for a change you have the details of, unless the tail says nothing can be drafted right now. Don't announce a conflict between rules yourself: the drafter finds them, and the tail tells you what it found.
 - "escalate": {"category": "conflict" | "loophole" | "ruling" | "other", "reason": one plain sentence of what you can't settle}. Use it when a player asks for an official ruling on what a rule means, when two rules really do clash, or when you see a possible loophole: you can't rule on meaning, only Chalant can. Say in "say" that you've passed it to Chalant. Don't escalate what the rulebook plainly answers.
@@ -80,7 +80,7 @@ export function systemDay({ rulesMd, localDate, perDay, actions = [] }) {
 
 ${actionTypesText(actions)}
 
-THE RULEBOOK (what the game's rules say right now; quote rule numbers from it, never invent one; the [majority] or [unanimous] after a block or rule heading is its mark: majority needs more than half of the players, unanimous needs every player):
+THE RULEBOOK (what the game's rules say right now; quote rule numbers from it, never invent one; the [m] (majority) or [u] (unanimous) after a rule's heading is its mark: majority needs more than half of the players, unanimous needs every player):
 <rulebook>
 ${rulesMd}
 </rulebook>`;
@@ -148,7 +148,7 @@ export function answerSchema() {
       draft: {
         type: "object",
         properties: {
-          kind: { type: "string", enum: KINDS }, target: { type: "string" }, words: { type: "string" }, to: { type: "string" },
+          kind: { type: "string", enum: KINDS }, target: { type: "string" }, words: { type: "string" }, to: { type: "string" }, mark: { type: "string" },
           type: { type: "string" },
           params: { type: "array", items: { type: "object", properties: { key: { type: "string" }, value: { type: "string" } }, required: ["key", "value"], additionalProperties: false } },
         },
@@ -270,12 +270,13 @@ export function readStarlingAnswer(text, ctx) {
     const target = oneLine(d.target);
     const words = typeof d.words === "string" ? d.words.trim() : "";
     const to = oneLine(d.to);
+    const mark = /^(unanimous|u)$/i.test(oneLine(d.mark)) ? "unanimous" : null;   // only a new rule takes one (rule 105.2); the drafter ignores it elsewhere
     if (kind === "action") {
       // Only SHAPED here: whether the type exists, and every detail, is the drafter's to check against the game's own rule (readAction).
       const type = oneLine(d.type).slice(0, 40), params = paramsOf(d.params);
       if (type && params) draft = { kind, type, params };
       else dropped.push("an action draft with no type or malformed details");
-    } else if (KINDS.includes(kind) && target && [...words].length <= WORDS_MAX) draft = { kind, target, words, to };
+    } else if (KINDS.includes(kind) && target && [...words].length <= WORDS_MAX) draft = { kind, target, words, to, ...(mark && kind === "add" ? { mark } : {}) };
     else dropped.push("a draft that is not a kind, a target and words");
   }
 

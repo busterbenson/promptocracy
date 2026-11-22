@@ -20,26 +20,26 @@ const PIECES = JSON.parse(read("src/lib/pieces.json"));
 console.log("the rulebook parser");
 const T = parseRules(read("templates/RULES.md"));
 check("the starter rules parse with no problems: eight blocks, 100 to 500, making things (700), the workshop (800) and the actions (900), in file order", T.warnings.length === 0 && T.sections.map((s) => s.num).join() === "100,200,300,400,500,700,800,900", J(T.warnings));
-check("each block is marked: 100 and 900 unanimous, the rest majority; only 202 (End turn) and 203 (the day), in block 200, and 901, the grant action (majority in the unanimous block of actions: adding an action type needs everyone, using one does not), carry their own mark (105.2)", T.sections.map((s) => s.change).join() === "unanimous,majority,majority,majority,majority,majority,majority,unanimous" && T.sections.flatMap((s) => s.rules).filter((r) => r.mark !== null).map((r) => `${r.num}:${r.mark}`).join() === "202:unanimous,203:unanimous,901:majority" && T.sections.flatMap((s) => s.rules).every((r) => (r.num === "901" ? markOf(r) === "majority" : r.num === "202" || r.num === "203" ? markOf(r) === "unanimous" : markOf(r) === r.sec.change)));
+check("every rule carries its own mark and a block carries none (rule 105.1): rules 101-109 unanimous, 202 and 203 (End turn, the day) unanimous in block 200, the grant action 901 majority (adding an action type needs everyone only if the proposal marks it so, using one does not), every other rule majority", T.sections.every((s) => s.change === undefined) && T.sections.flatMap((s) => s.rules).every((r) => r.mark === "unanimous" || r.mark === "majority") && T.sections.flatMap((s) => s.rules).map((r) => `${r.num}:${markOf(r)[0]}`).join() === "101:u,102:u,103:u,104:u,105:u,106:u,107:u,108:u,109:u,201:m,202:u,203:u,204:m,301:m,401:m,402:m,403:m,501:m,502:m,503:m,504:m,505:m,701:m,702:m,703:m,704:m,705:m,801:m,802:m,803:m,804:m,901:m");
 check("the rules are numbered from 101 within their hundreds block, 32 in all, each under the right block (107 The night; 302 retired by the reorganization, its job now 107.4; making things, 701-705; the workshop, 801 802 803 804: 802 holds only 802.1, what nothing can do; 109 Numbers and settings ends block 100)", T.sections.map((s) => s.rules.map((r) => r.num).join()).join(" | ") === "101,102,103,104,105,106,107,108,109 | 201,202,203,204 | 301 | 401,402,403 | 501,502,503,504,505 | 701,702,703,704,705 | 801,802,803,804 | 901" && T.sections.every((s) => s.rules.every((r) => Math.floor(Number(r.num) / 100) * 100 === Number(s.num))));
 check("every rule has a title and text", T.sections.flatMap((s) => s.rules).every((r) => r.title && (r.paras.length || r.clauses.length)));
 check("the intro is the paragraph above the first block, not a rule", T.intro.length === 1 && /rules in effect/.test(T.intro[0].s) && !/2xx/.test(T.intro[0].s));
-check("a list inside a rule stays with that rule", parseRules("## 100. A [u]\n\n### 101 One\nEither:\n- this, or\n- that.\n\n### 102 Two\nText.\n").byNum["101"].paras.some((p) => p.t === "ul" && p.items.length === 2));
+check("a list inside a rule stays with that rule", parseRules("## 100. A\n\n### 101 One [u]\nEither:\n- this, or\n- that.\n\n### 102 Two [m]\nText.\n").byNum["101"].paras.some((p) => p.t === "ul" && p.items.length === 2));
 
-const sample = `# Rules\n\nIntro.\n\n## 100. Core [u]\n\n### 101 One\n**101.1** Text one.\n\n### 102 Two [m]\n**102.1** Clause a.\n\n**102.2** Clause b\ncontinues.\n\n## 200. Rest [majority]\n\n### 201 Three [unanimous]\n**201.1** Text.\n`;
+const sample = `# Rules\n\nIntro.\n\n## 100. Core\n\n### 101 One [u]\n**101.1** Text one.\n\n### 102 Two [m]\n**102.1** Clause a.\n\n**102.2** Clause b\ncontinues.\n\n## 200. Rest\n\n### 201 Three [unanimous]\n**201.1** Text.\n\n### 202 Four\n**202.1** Text.\n`;
 const S = parseRules(sample);
-check("[u] and [m] are short for [unanimous] and [majority], on a block and on a rule", S.sections[0].change === "unanimous" && S.sections[1].change === "majority" && S.byNum["102"].mark === "majority" && S.byNum["201"].mark === "unanimous", J(S.sections.map((s) => s.change)));
-check("a rule's own mark overrides its block's: 102 is majority in a unanimous block, 201 unanimous in a majority block", markOf(S.byNum["102"]) === "majority" && markOf(S.byNum["201"]) === "unanimous" && markOf(S.byNum["101"]) === "unanimous");
-check("clauses are numbered 102.1, 102.2 under their rule, and a wrapped clause is one paragraph", S.byNum["102"].clauses.map((c) => c.num).join() === "102.1,102.2" && S.byNum["102.2"].paras[0].s === "Clause b continues." && S.warnings.length === 0, J(S.warnings));
-const bad = parseRules(`## 150. Odd\n### 151 X\n## 200. Two [m]\n### 301 Wrong block\n### 301 Wrong block\n**302.1** orphan\n`);
-check("problems are named with their line: a block not a multiple of 100, a missing mark, a rule in the wrong block, a number used twice, a clause in the wrong rule", bad.warnings.some((w) => /Line 1: Block 150 is not a multiple of 100/.test(w)) && bad.warnings.some((w) => /Line 1: Block 150 does not say/.test(w)) && bad.warnings.some((w) => /Line 4: Rule 301 is in block 200/.test(w)) && bad.warnings.some((w) => /Number 301 is used twice/.test(w)) && bad.warnings.some((w) => /Clause 302.1 is in rule 301/.test(w)), J(bad.warnings));
-const own = parseRules("## 100. Core [u]\n\n### 101 One\nText of its own.\n\n### 102 Two\n**102.1** A.\n\n**102.3** C, after a repealed 102.2.\n");
+check("[u] and [m] are short for [unanimous] and [majority] on a rule, and a block has no mark", S.sections.every((s) => s.change === undefined) && S.byNum["101"].mark === "unanimous" && S.byNum["102"].mark === "majority" && S.byNum["201"].mark === "unanimous", J(S.sections.map((s) => s.change)));
+check("a rule without a mark is majority (105.2) and is reported (105.1); a block with a mark is reported too", markOf(S.byNum["202"]) === "majority" && S.warnings.some((w) => /Rule 202 does not say \[unanimous\] or \[majority\]/.test(w)) && parseRules("## 100. Core [u]\n\n### 101 One [u]\n**101.1** T.\n").warnings.some((w) => /Block 100 carries a mark/.test(w)));
+check("clauses are numbered 102.1, 102.2 under their rule, and a wrapped clause is one paragraph", S.byNum["102"].clauses.map((c) => c.num).join() === "102.1,102.2" && S.byNum["102.2"].paras[0].s === "Clause b continues." && S.warnings.length === 1, J(S.warnings));
+const bad = parseRules(`## 150. Odd\n### 151 X\n## 200. Two\n### 301 Wrong block [m]\n### 301 Wrong block [m]\n**302.1** orphan\n`);
+check("problems are named with their line: a block not a multiple of 100, a rule with no mark, a rule in the wrong block, a number used twice, a clause in the wrong rule", bad.warnings.some((w) => /Line 1: Block 150 is not a multiple of 100/.test(w)) && bad.warnings.some((w) => /Line 2: Rule 151 does not say/.test(w)) && bad.warnings.some((w) => /Line 4: Rule 301 is in block 200/.test(w)) && bad.warnings.some((w) => /Number 301 is used twice/.test(w)) && bad.warnings.some((w) => /Clause 302.1 is in rule 301/.test(w)), J(bad.warnings));
+const own = parseRules("## 100. Core\n\n### 101 One [u]\nText of its own.\n\n### 102 Two [u]\n**102.1** A.\n\n**102.3** C, after a repealed 102.2.\n");
 check("text under a rule's title is reported with its line (a rule has no text of its own, rule 109.1); a clause number skipped by a repeal is not", own.warnings.length === 1 && /Line 4: Text under rule 101 comes before its first clause/.test(own.warnings[0]) && own.byNum["102"].clauses.map((c) => c.num).join() === "102.1,102.3", J(own.warnings));
 check("a rule before any block is reported, not lost silently", parseRules("### 101 Loose\ntext\n").warnings.some((w) => /outside any block/.test(w)));
-const prose = parseRules("## 100. Core [u]\nProse before any rule.\n\n### 101 One\n**101.1**\n**101.2** Second.\n");
+const prose = parseRules("## 100. Core\nProse before any rule.\n\n### 101 One [u]\n**101.1**\n**101.2** Second.\n");
 check("prose between a block heading and its first rule is reported (it is not shown), and a clause with no text is still a clause", prose.warnings.length === 1 && /Line 2: Text under block 100 comes before its first rule/.test(prose.warnings[0]) && prose.byNum["101"].clauses.map((c) => c.num).join() === "101.1,101.2" && prose.byNum["101.2"].paras[0].s === "Second.", J(prose.warnings));
 check("search highlights words in the text but never inside a tag or an HTML entity (a query 'amp' leaves &amp; alone)", hl("An <b>ample</b> &amp; Tom&#39;s", "amp") === "An <b><mark>amp</mark>le</b> &amp; Tom&#39;s" && hl("a &lt; b", "lt") === "a &lt; b" && hl("plain", "") === "plain");
-const wrap = parseRules("## 100. Core [u]\n### 101 One\n- A proposal needs votes\n  from every player.\n- Or not.\nAfter.\n");
+const wrap = parseRules("## 100. Core\n### 101 One [u]\n- A proposal needs votes\n  from every player.\n- Or not.\nAfter.\n");
 check("an indented line continues the list item above it, in order, not a paragraph before the list", J(wrap.byNum["101"].paras) === J([{ t: "ul", items: ["A proposal needs votes from every player.", "Or not."] }, { t: "p", s: "After." }]), J(wrap.byNum["101"].paras));
 check("a file in the older format (no blocks) has no sections, so the page falls back to plain markdown", parseRules("# Rules\n\n## Core rules\n\n**101. Follow.** text\n").sections.length === 0 && /<h2>Core rules<\/h2>/.test(renderMarkdown("# Rules\n\n## Core rules\n\n**101. Follow.** text\n")));
 
@@ -51,13 +51,13 @@ const keep = [
   ["104", "Votes are counted by code, not by the moderator."],
   ["201", "A game has at most 8 players. [setting: max_players]"],
   ["202", "you move at most once a day."],
-  ["301", "If more than half of all players vote to overturn it, the ruling is reversed"],
+  ["301", "If a majority (104.1) votes to overturn it, the ruling is reversed"],
   ["107", "and all go live together."],
   ["401", "A player whose proposal passes and is applied gets 10 points"],
-  ["402", "The first player to reach 100 points wins the Era, and the Era ends that night."],
+  ["402", "The first player to reach 100 points wins the Era. [setting: eras.points_to_win]"],
   ["403", "(Suber's rule 213.)"],
   ["503", "8x8 charted island centered on the origin. [setting: board.island]"],
-  ["504", "5x5 square with its four corners cut off. [setting: board.chart_radius]"],
+  ["504", "every tile within 2 tiles of you is charted [setting: board.chart_radius], except the 4 corners of that square."],
 ];
 check("each old rule's sentences survive word for word under their new number", keep.every(([, t]) => rules.includes(t)), keep.filter(([, t]) => !rules.includes(t)).join(" | "));
 check("no rule has text of its own: each is its title and its clauses (rule 109.1), the ten rules that had text now state it as clause 1", T.sections.flatMap((s) => s.rules).every((r) => r.paras.length === 0 && r.clauses.length > 0) && ["101", "201", "204", "301", "401", "403", "501", "502", "503", "505"].every((n) => T.byNum[n + ".1"] && T.byNum[n].clauses.length === 1));
@@ -70,15 +70,15 @@ console.log("the day rules (step 1, PR 2)");
 check("the day model replaces the turn model: 103 is proposals (no join order), 203 Time (the 24-hour skip) is gone, and 203 Days, 202.1-202.4 and 107.1 are in, worded as approved",
   T.byNum["103"].title === "Proposals" && !/order they joined/.test(rules) && !/skipped for that round/.test(rules) && T.byNum["203"].title === "Days" &&
   T.byNum["202"].clauses.map((c) => c.num).join() === "202.1,202.2,202.3,202.4,202.5" && T.byNum["203"].clauses.map((c) => c.num).join() === "203.1,203.2" && T.byNum["107"].clauses.map((c) => c.num).join().startsWith("107.1") &&
-  rules.includes("there is no order of play") && rules.includes("Ending is final: after it they can't move, propose or vote until the next day") && rules.includes("A day runs from midnight to midnight in the game's time zone. [setting: game.timezone]") &&
+  rules.includes("there is no order of play") && rules.includes("Ending is final: after it they can't move, propose, withdraw a proposal or vote until the next day") && rules.includes("A day runs from midnight to midnight in the game's time zone. [setting: game.timezone]") &&
   rules.includes("A day always runs to midnight, even if every player has ended their turn.") && rules.includes("the game is locked: nobody can move, vote, propose, post in a ticket's discussion, talk to Starling or Gremlin or end their turn, on the site or through an AI client (rule 204)"));
 console.log("the proposal rules (step 1, PR 3)");
 check("103 Proposals is 103.1-103.8 (103.5, 103.7 and 103.8 are the action rules; 103.6 is not wired yet) and 105 Votes needed is 105.1-105.5, worded as approved; the moderator moved to 106",
   T.byNum["103"].clauses.map((c) => c.num).join() === "103.1,103.2,103.3,103.4,103.5,103.6,103.7,103.8" && T.byNum["105"].title === "Votes needed" && T.byNum["105"].clauses.map((c) => c.num).join() === "105.1,105.2,105.3,105.4,105.5" &&
-  T.byNum["106"].title === "The moderator" && rules.includes("Drafting costs nothing: only a locked-in proposal counts toward the day's limit.") &&
-  rules.includes("Each confirmed proposal gets the next number (P1, P2, ...) and goes on the next day's ballot.") && rules.includes("You can confirm up to 3 proposals a day. [setting: proposals.per_day]") && rules.includes("A withdrawn proposal doesn't count toward the limit (103.2).") &&
-  rules.includes("The mark sets the votes needed to change, add or repeal any rule in the block.") && rules.includes("The votes a proposal needs are set when it is confirmed, from the marks in effect then.") &&
-  rules.includes("Rules marked unanimous, by their block or by their own mark, are the core rules."));
+  T.byNum["106"].title === "The moderator" && rules.includes("Locking it in confirms it, and unlocking it withdraws it (103.3).") && !/Drafting costs nothing/.test(rules) &&
+  rules.includes("Each confirmed proposal gets the next number (P1, P2, ...) and goes on the ballot (104.3).") && rules.includes("You can confirm up to 3 proposals a day. [setting: proposals.per_day]") && rules.includes("A withdrawn proposal doesn't count toward the limit (103.2).") &&
+  rules.includes("Every rule is marked [unanimous] or [majority]; [u] and [m] are short for them. The mark sets the votes needed to change or repeal that rule.") && rules.includes("A proposal that adds a rule makes it majority unless the proposal marks it unanimous. Adding a rule marked unanimous needs a unanimous vote.") && rules.includes("The votes a proposal needs are set when it is confirmed, from the marks in effect then.") &&
+  rules.includes("Rules marked unanimous are the core rules."));
 check("108.3 (Starling names conflicts when drafting) is in",
   T.byNum["108"].clauses.map((c) => c.num).join() === "108.1,108.2,108.3,108.4,108.5" &&
   rules.includes("When drafting, Starling names any other rule the proposal would conflict with, so the proposer can change that rule too."));
@@ -90,10 +90,10 @@ check("what 110.1 listed is ordinary rules, each unanimous: sign-in 102.4, the p
 console.log("the vote rules (step 1, PR 4)");
 check("104 Voting is 104.1-104.5 and 107 has 107.6 (the 3 am deadline, live by 4 am) and 107.7 (not applied: back to the owner), worded as approved for what the code does; each is unanimous",
   T.byNum["104"].clauses.map((c) => c.num).join() === "104.1,104.2,104.3,104.4,104.5" && T.byNum["107"].clauses.map((c) => c.num).join().includes("107.6,107.7") &&
-  rules.includes("Not voting counts as no, except on the Champion's change (402.4).") && rules.includes("are the players when the day starts. A player who joins during the day votes from the next day.") &&
-  rules.includes("until midnight or until they end their turn (rule 202.4), and may change their vote until then.") &&
+  rules.includes("Not voting counts as no, except on the Champion's change (402.4).") && rules.includes("are the players when the day starts.") && !/votes from the next day/.test(rules) &&
+  rules.includes("yes or no on each one until midnight, and may change their vote until then.") &&
   rules.includes("During the day everyone can see who has voted on a proposal, and how many have. After midnight every vote is shown.") &&
-  rules.replace(/\s+/g, " ").includes(`The moderator has until ${DEADLINE_CLOCK} to process the day; a passed proposal not applied by then is not applied (rule 107.7). The changes it made must be live by ${DEPLOY_CLOCK}; a change not live by then is not applied either.`) && DEADLINE_CLOCK === "3:00 am" && DEPLOY_CLOCK === "4:00 am" && rules.includes("It goes back to its proposer with the moderator's reason and a suggestion") &&
+  rules.replace(/\s+/g, " ").includes(`The moderator has until ${DEADLINE_CLOCK} to process the day; a passed proposal not applied by then is not applied (rule 107.7). The changes it made must be live by ${DEPLOY_CLOCK}; a change not live by then is not applied either.`) && DEADLINE_CLOCK === "3:00 am" && DEPLOY_CLOCK === "4:00 am" && rules.includes("it goes back to its proposer with the moderator's reason and a suggestion") &&
   !/48 hours/.test(rules) && ["104.4", "104.5", "107.6"].every((n) => T.byNum[n] && markOf(T.byNum[n.slice(0, 3)]) === "unanimous"));
 console.log("the night's rules (step 1, PR 5)");
 check("106 is 106.1-106.7 (Starling's is 106.2, Gremlin's 106.3; both are in 106.4 and 106.7; rulings 106.5; the drafter audit is 106.6), 107 is 107.1-107.8 (order, redraft, text + code + tests, the budget, the day tag), 108 is 108.1-108.5, 402 is 402.1-402.4 (Eras)",

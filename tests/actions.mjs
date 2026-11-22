@@ -43,16 +43,16 @@ console.log("the request (rule 103.5)");
 console.log("the votes it needs (rule 103.7): the stricter of its own rule and the strictest rule it touches");
 {
   const row = (r) => ({ kind: "action", target: "901", action: J(r) });
-  const withMark = (md, heading, mark) => md.replace(new RegExp(`^(### ${heading}.*?)(\\s*\\[(?:majority|unanimous)\\])?$`, "m"), `$1 [${mark}]`);
+  const withMark = (md, heading, mark) => md.replace(new RegExp(`^(### ${heading}.*?)(\\s*\\[(?:majority|unanimous|u|m)\\])?$`, "m"), `$1 [${mark}]`);
   const bookOf = (md) => parseBook(md);
   const a = ask({ to: "Ana", amount: 4 }).action;
   check("as the rules stand: its own rule 901 is majority and 401 and 402 are majority: a majority", markFor(B, row(a)) === "majority" && J(partsOf(row(a))) === J(["901", "401", "402"]));
   check("a touched rule marked unanimous (402): the action needs everyone", markFor(bookOf(withMark(MD, "402", "unanimous")), row(a)) === "unanimous");
-  check("a touched rule inside a unanimous block (401 moved by its block's mark) needs everyone: block 400 unanimous", markFor(bookOf(MD.replace("## 400. Points and winning [majority]", "## 400. Points and winning [unanimous]")), row(a)) === "unanimous");
+  check("a touched rule marked unanimous (401, the other rule it touches) needs everyone too", markFor(bookOf(withMark(MD, "401", "unanimous")), row(a)) === "unanimous");
   check("its own rule marked unanimous (901) while it touches only majority rules: everyone", markFor(bookOf(withMark(MD, "901", "unanimous")), row(a)) === "unanimous");
-  check("its own rule majority inside the unanimous block 900 stays majority (105.2: a rule's own mark beats its block's)", markFor(B, row(a)) === "majority" && B.byNum["900"].change === "unanimous" && B.byNum["901"].mark === "majority");
+  check("its own rule 901 is marked majority (105.1), and a block carries no mark", markFor(B, row(a)) === "majority" && B.byNum["900"].change === undefined && B.byNum["901"].mark === "majority");
   check("all of it as votes: of 5 players, majority needs 3 and unanimous 5", neededOf(markFor(B, row(a)), 5) === 3 && neededOf(markFor(bookOf(withMark(MD, "402", "unanimous")), row(a)), 5) === 5);
-  check("a plain change to rule 901 or to block 900 follows their own marks: 901 majority, adding a rule to 900 unanimous (adding an action type is a core change)", markFor(B, { kind: "amend", target: "901" }) === "majority" && markFor(B, { kind: "add", to_block: "900" }) === "unanimous");
+  check("a plain change to rule 901 follows its own mark (majority); adding a rule to block 900 is majority unless the proposal marks it unanimous (105.2)", markFor(B, { kind: "amend", target: "901" }) === "majority" && markFor(B, { kind: "add", to_block: "900" }) === "majority" && markFor(B, { kind: "add", to_block: "900", mark: "unanimous" }) === "unanimous");
 }
 
 // ----------------------------------------------------------------------------------------------- end to end

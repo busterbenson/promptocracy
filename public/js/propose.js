@@ -38,8 +38,8 @@ export function ruleText(r) {
 const textOf = (node) => (node.kind === "clause" ? clauseText(node) : node.kind === "rule" ? ruleText(node) : "");
 /** @rule 103.1 */
 const nextClause = (rule) => rule.num + "." + (Math.max(0, ...rule.clauses.map((c) => Number(c.num.split(".")[1]) || 0)) + 1);
-/** @rule 105.2 */
-const markOf = (rule) => rule.mark || rule.sec.change || "majority";
+/** @rule 105.1, 105.2 */
+const markOf = (rule) => rule.mark || "majority";
 
 // A word-level tracked change: what went (struck) and what came (marked), after the mockup's wordDiff.
 /** @rule 103.1 */
@@ -259,11 +259,6 @@ ${S.ui.err ? `<p class="notice err" role="alert">${withPills(S.ui.err)}</p>` : "
     return `<div class="proposeact">${direct("Propose a change", false)}${tail}</div>`;
   }
 
-  // A block's own row: a change to the block itself (its mark, rule 105.3), on the ballot or yours and waiting for tomorrow.
-  /** @rule 103.1, 103.2 */
-  function blockMarksHTML(sec) {
-    return [...onBallot(), ...S.list.filter((p) => p.mine && p.status === "confirmed")].filter((p, i, a) => p.kind === "mark" && p.target === sec.num && a.indexOf(p) === i).map(chgHTML).join("");
-  }
   // The "+ Add a rule" card at the end of a block's row: disabled, with the reason, when proposing is not open to you.
   /** @rule 103.1 */
   function addCardHTML(sec) {
@@ -283,7 +278,7 @@ ${S.ui.err ? `<p class="notice err" role="alert">${withPills(S.ui.err)}</p>` : "
   // Which block a new rule goes in: the choice the banner's button opens.
   /** @rule 103.1 */
   function pickHTML() {
-    return `<div class="pmenu" role="menu">${S.RB.sections.map((s) => `<button type="button" role="menuitem" class="pmi" data-p="add" data-n="${esc(s.num)}"${S.champ ? ' data-champ="1"' : ""}><span class="l"><b>${esc(s.num)} · ${esc(s.title)}</b><small>${s.rules.length} rule${s.rules.length === 1 ? "" : "s"} · ${s.change === "unanimous" ? "needs everyone to agree" : "majority"}</small></span><span aria-hidden="true" class="mnote">→</span></button>`).join("")}</div>`;
+    return `<div class="pmenu" role="menu">${S.RB.sections.map((s) => `<button type="button" role="menuitem" class="pmi" data-p="add" data-n="${esc(s.num)}"${S.champ ? ' data-champ="1"' : ""}><span class="l"><b>${esc(s.num)} · ${esc(s.title)}</b><small>${s.rules.length} rule${s.rules.length === 1 ? "" : "s"}</small></span><span aria-hidden="true" class="mnote">→</span></button>`).join("")}</div>`;
   }
 
   // ---- the propose bar (above the tabs, every tab): the day's slots, what is left, and one Propose menu (rules 103.1, 103.2, 103.3) ----------
@@ -486,7 +481,7 @@ ${S.ui.err ? `<p class="notice err" role="alert">${withPills(S.ui.err)}</p>` : "
   const mineTouches = (rule) => { const ns = S.list.filter((q) => q.mine && q.status === "confirmed" && touches(q, rule.num)).map((q) => q.n); return ns.length ? ns.join(", ") : null; };
 
   return {
-    load, click, input, mineTouches, barHTML, proposeHTML, blockMarksHTML, addCardHTML, addFlowHTML, pickHTML, boxHTML, ageChip, onBallotRule,
+    load, click, input, mineTouches, barHTML, proposeHTML, addCardHTML, addFlowHTML, pickHTML, boxHTML, ageChip, onBallotRule,
     chgFor: chgHTML, actionBody: actionHTML, cardKey, rpill, pPill, mineList, onBallot: () => onBallot(), canPropose: () => can(), canCommission: () => base(),
     ghostsOf: (sec) => ghosts(sec),
     ghostCount: () => (S.RB ? S.RB.sections.reduce((n, s) => n + ghosts(s).length, 0) : 0),

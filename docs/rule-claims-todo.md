@@ -136,24 +136,24 @@ under rule 101 or 102; a follow-up change claims them and moves `src/` into the 
 - line 200: `own`
 - line 204: `add`
 - line 290: `obj`
-- line 440: `refuse`
-- line 442: `own`
-- line 524: `typeOf`
+- line 438: `refuse`
+- line 440: `own`
+- line 522: `typeOf`
 
 ## src/lib/settings.js (12)
 
-- line 54: `validTimeZone`
-- line 61: `isInt`
-- line 62: `isObj`
-- line 63: `evenInt`
-- line 67: `max_players`
-- line 71: `mcp_enabled`
-- line 81: `exactly`
-- line 90: `spawnSpots`
-- line 91: `inside`
-- line 99: `validateSettings`
-- line 119: `getSettings`
-- line 133: `settingsForSize`
+- line 56: `validTimeZone`
+- line 63: `isInt`
+- line 64: `isObj`
+- line 65: `evenInt`
+- line 69: `max_players`
+- line 73: `mcp_enabled`
+- line 84: `exactly`
+- line 93: `spawnSpots`
+- line 94: `inside`
+- line 102: `validateSettings`
+- line 122: `getSettings`
+- line 136: `settingsForSize`
 
 ## src/lib/starling.js (2)
 

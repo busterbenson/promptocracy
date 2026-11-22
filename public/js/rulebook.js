@@ -3,8 +3,8 @@
 //   parseRules(md)                      -> { intro, sections, byNum, warnings }
 //   mountRulebook(root, md, options)    draws it into `root`; options: { settings, revisions, proposer, cards, action }
 //     returns { rulebook, goto, redraw, describe, items, openRule, preview, count }
-// The file's convention (templates/RULES.md): "## 100. Title [unanimous]" is a block ([u] and [majority] / [m] work too),
-// "### 101 Title" a rule (it may carry its own mark, which overrides its block's), "**101.1** text" a clause. File order is
+// The file's convention (templates/RULES.md): "## 100. Title" is a block (it has no mark), "### 101 Title [u]" a rule with its
+// own mark ([u] and [m], or [unanimous] and [majority]; every rule has one, rule 105.1), "**101.1** text" a clause. File order is
 // reading order. Every rule is shown with its revision; `revisions` maps a rule number to its passed changes, newest
 // first: [{ rev, n: "P15" }]. A rule with none is rev 1, the text it was written with.
 
@@ -37,10 +37,10 @@ export function parseRules(md) {
       flush();
       const num = m[1], mark = m[3] ? MARKS[m[3]] : null;
       if (parseInt(num, 10) % 100) warn(i, "Block " + num + " is not a multiple of 100.");
-      if (!mark) warn(i, "Block " + num + " does not say [unanimous] or [majority].");
+      if (mark) warn(i, "Block " + num + " carries a mark. A mark is on each rule, not on a block (rule 105.1).");
       if (sec && parseInt(num, 10) <= parseInt(sec.num, 10)) warn(i, "Block " + num + " comes after block " + sec.num + ".");
       claim(num, i);
-      sec = { kind: "block", num, title: m[2], change: mark, rules: [] };
+      sec = { kind: "block", num, title: m[2], rules: [] };
       out.sections.push(sec); out.byNum[num] = sec; rule = null; cl = null;
       continue;
     }
@@ -49,6 +49,7 @@ export function parseRules(md) {
       if (!sec) { warn(i, "Rule " + m[1] + " is outside any block."); continue; }
       if (blockOf(m[1]) !== sec.num) warn(i, "Rule " + m[1] + " is in block " + sec.num + ".");
       claim(m[1], i);
+      if (!m[3] && !/^\[Moved to \d{3}\]$/.test(m[2])) warn(i, "Rule " + m[1] + " does not say [unanimous] or [majority] (rule 105.1).");
       rule = { kind: "rule", num: m[1], title: m[2], sec, clauses: [], paras: [], mark: m[3] ? MARKS[m[3]] : null };
       sec.rules.push(rule); out.byNum[rule.num] = rule; cl = null;
       continue;
@@ -73,7 +74,7 @@ export function parseRules(md) {
   return out;
 }
 
-export const markOf = (rule) => rule.mark || rule.sec.change || "majority";
+export const markOf = (rule) => rule.mark || "majority";   // a rule without a mark is majority (rule 105.2)
 const paraText = (p) => (p.t === "p" ? p.s : p.items.join(" "));
 const plainOf = (r) => [r.num, r.title, ...r.paras.map(paraText), ...r.clauses.map((c) => c.num + " " + c.paras.map(paraText).join(" "))].join(" ").replace(/\*\*|`/g, "").replace(/\[setting: ([\w.]+)\]/g, "$1 ");
 const settingText = (v) => (v && typeof v === "object" ? Object.values(v).join("×") : typeof v === "boolean" ? (v ? "on" : "off") : String(v));
@@ -166,12 +167,10 @@ export function mountRulebook(root, md, { settings = {}, revisions = {}, propose
       const all = RB.sections.find((x) => x === s).rules.length + (P ? P.ghostsOf(s).length : 0);
       const grid = q || state.grid.has(s.num);
       const add = !q && P ? P.addCardHTML(s) : "";
-      const foot = !q && P ? P.blockMarksHTML(s) : "";
-      h += `<section class="bsec" id="${id(s.num)}" data-sec="${s.num}"><div class="bsh"><span class="sn">${s.num}</span><h2>${esc(s.title)}</h2>${s.change === "unanimous" ? LOCKSVG(16) : ""}<span class="sr-only">${markPlain(s.change)}</span><button type="button" class="gtog" data-grid="${s.num}" aria-pressed="${!!grid}">${grid ? "Row" : "All " + all}</button></div>${foot}<div class="brow${grid ? " grid" : ""}" data-sec="${s.num}">${its.map((i) => cardHTML(i, q)).join("")}${add}</div></section>`;
+      h += `<section class="bsec" id="${id(s.num)}" data-sec="${s.num}"><div class="bsh"><span class="sn">${s.num}</span><h2>${esc(s.title)}</h2><button type="button" class="gtog" data-grid="${s.num}" aria-pressed="${!!grid}">${grid ? "Row" : "All " + all}</button></div><div class="brow${grid ? " grid" : ""}" data-sec="${s.num}">${its.map((i) => cardHTML(i, q)).join("")}${add}</div></section>`;
     }
     return { html: h || '<p class="muted none">No rule matches.</p>', matches, q };
   }
-  const markPlain = (m) => (m === "unanimous" ? "everyone must agree" : "majority");
 
   // ---- the page: banner, search, the blocks, the legend ----------------------------------------------------------
   root.innerHTML = `<div class="rbmain">
@@ -229,7 +228,7 @@ ${text}${box}${act ? `<div class="mact" data-slot="rule-action">${act}</div>` : 
   function addCard(spec) {
     const s = RB.byNum[spec.key];
     if (!s || !P) return null;
-    return { cls: "addcard", label: `Add a rule to block ${s.num}`, html: `<div class="mtop"><span class="mnum">New rule</span><h2>Add a rule to block ${esc(s.num)}</h2><span class="mmeta">${esc(s.title)} · ${s.change === "unanimous" ? "Everyone must agree" : "Majority"}</span></div>${P.addFlowHTML(s)}` };
+    return { cls: "addcard", label: `Add a rule to block ${s.num}`, html: `<div class="mtop"><span class="mnum">New rule</span><h2>Add a rule to block ${esc(s.num)}</h2><span class="mmeta">${esc(s.title)}</span></div>${P.addFlowHTML(s)}` };
   }
   function pickCard() {
     if (!P) return null;
