@@ -259,6 +259,8 @@ try {
   // On CI this fetch has failed ("fetch failed", no response at all) 3 times in about 6 runs of shard 1, never alone and never on the Mac, on
   // identical code; the sweep itself passes whenever it is reached. Until the cause is found (issue: art sweep CI flake), a connection-level failure
   // is logged with its cause and the server's log, and retried once. A second failure, or any real answer, is reported as is.
+  // (The request the dropped connection belonged to can have run part of the sweep. src/lib/art-sweep.ts therefore changes the database per hash in one
+  // transaction, so the retry finishes the sweep; tests/art-sweep.mjs cuts the sweep off at every call to prove it. What drops the connection is still unknown.)
   const cron = async (retry = true) => {
     try { const r = await fetch(`${srv.base}/__scheduled?cron=15+3+*+*+*`, { signal: AbortSignal.timeout(30000) }); await r.text(); return r.status; }
     catch (e) {
