@@ -318,6 +318,10 @@ with sync_playwright() as p:
                 page.click('#mroot input[data-p="unanimous"]'); page.click('#mroot [data-p="draft"]'); page.wait_for_selector("#mroot .ruling")
                 slip = text(page, "#mroot .ruling")
                 check(f"{tag}: off again, the same words draft a majority rule: no 'marked unanimous', 'majority · needs 3 of 5'", "marked unanimous" not in slip and "majority · needs 3 of 5" in slip, slip)
+                page.click('#mroot [data-p="cancel"]')
+                page.click('#pzone [data-p="bar-menu"]'); page.click('#pzone [data-p="bar-rule"]'); page.wait_for_selector("#mroot .pmenu")
+                page.click('#mroot [data-p="add"][data-n="400"]'); page.wait_for_selector("#pfWords")
+                check(f"{tag}: Cancel and open again: the toggle is off and the words are empty", not page.locator('#mroot input[data-p="unanimous"]').is_checked() and page.input_value("#pfWords") == "")
                 sideways(page, w, tag)
                 check(f"{tag}: no page errors", not errors, str(errors)); c.close()
 

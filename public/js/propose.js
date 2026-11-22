@@ -197,8 +197,8 @@ ${p.kind === "commission" && p.ticket ? `<div class="sdiff">${wPill(p.ticket.n)}
         : u.prefilled ? "The new wording" : "What should change?";
       const mode = u.kind === "amend" ? `<button type="button" class="linkbtn" data-p="mode">${u.prefilled ? "Describe the change in my own words" : "Edit the wording instead"}</button>` : "";
       field = `<label for="pfWords">${lab}</label><textarea id="pfWords" maxlength="2500"${u.prefilled ? ' rows="7" class="prefill"' : ' rows="4"'}${off}>${esc(u.words || "")}</textarea>${mode}`;
-      // A new rule is majority unless it is marked unanimous, which takes every player's yes (rule 105.2).
-      if (u.kind === "add") field += `<label class="pfu"><input type="checkbox" data-p="unanimous"${u.unanimous ? " checked" : ""}${off}> Needs everyone</label>${u.unanimous ? `<p class="mono unote">${withPills("Every player's yes to pass (rule 105.2).")}</p>` : ""}`;
+      // A new rule is majority unless it is marked unanimous, which takes every player's yes (rule 105.2). The Champion's change takes no yes votes (rule 402.4), so it has no toggle.
+      if (u.kind === "add" && !u.champion) field += `<label class="pfu"><input type="checkbox" data-p="unanimous"${u.unanimous ? " checked" : ""}${off}> Needs everyone</label>${u.unanimous ? `<p class="mono unote">${withPills("Every player's yes to pass (rule 105.2).")}</p>` : ""}`;
     }
     return `<div class="pf">${field}${u.err ? `<p class="notice err" role="alert">${withPills(u.err)}</p>` : ""}<div class="row"><button class="btn small" type="button" data-p="draft"${off}>${u.busy ? "Drafting…" : "Ask Chalant to draft it"}</button><button class="linkbtn" type="button" data-p="cancel">Cancel</button></div></div>`;
   }
@@ -379,7 +379,7 @@ ${S.ui.err ? `<p class="notice err" role="alert">${withPills(S.ui.err)}</p>` : "
     const body = u.kind === "action" ? { kind: "action", type: u.type, params: u.params } : { kind: u.kind, target: u.target };
     if (["amend", "addclause", "add"].includes(u.kind)) body.words = u.words;
     if (u.kind === "amend" && u.prefilled) body.prefilled = true;
-    if (u.kind === "add" && u.unanimous) body.mark = "u";
+    if (u.kind === "add" && u.unanimous && !u.champion) body.mark = "u";
     if (u.kind === "move") body.to = u.to;
     if (u.champion && u.kind !== "action") body.champion = true;
     const r = await api("/api/proposals", body);
