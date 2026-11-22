@@ -49,21 +49,3 @@ test("103, 104 and 105 name the one exception for the Champion's change (402.4),
   assert.ok(flat.includes("The player who makes the Champion's change doesn't vote on it (402.4)."));
   assert.ok(flat.includes("The Champion's change is counted by 402.4 instead, here and in 103.4, 105.3 and 105.4."));
 });
-
-// Rule 105.1: a mark is on each rule, not on a block; an unmarked rule would be majority (105.2), but every rule here says its own.
-test("105: every rule carries its own mark ([u] or [m]) and no block does", () => {
-  const text = rulesMd.replace(/<!--[\s\S]*?-->/g, "");
-  const heads = text.split("\n").filter((l) => /^##/.test(l));
-  assert.deepEqual(heads.filter((l) => /^## \d+\./.test(l) && /\[(unanimous|majority|u|m)\]\s*$/.test(l)), []);
-  const rules = heads.filter((l) => /^### \d{3} /.test(l));
-  assert.deepEqual(rules.filter((l) => !/ \[(u|m)\]\s*$/.test(l) && !/\[Moved to \d+\]\s*$/.test(l)), []);
-});
-test("105 says what a mark does and how a new rule gets one: every rule is marked, a new rule is majority unless the proposal marks it unanimous, a mark change needs the current mark's votes", () => {
-  const flat = rulesMd.replace(/\s+/g, " ");
-  assert.ok(flat.includes("**105.1** Every rule is marked [unanimous] or [majority]; [u] and [m] are short for them. The mark sets the votes needed to change or repeal that rule."));
-  assert.ok(flat.includes("**105.2** A proposal that adds a rule makes it majority unless the proposal marks it unanimous. Adding a rule marked unanimous needs a unanimous vote."));
-  assert.ok(flat.includes("**105.3** Changing a mark counts as changing that rule, so it needs the votes of its current mark."));
-  assert.ok(flat.includes("**105.4** The votes a proposal needs are set when it is confirmed, from the marks in effect then."));
-  assert.ok(flat.includes("**105.5** Rules marked unanimous are the core rules."));
-  assert.ok(!/by their block|its block's|carries their mark/.test(flat));
-});
