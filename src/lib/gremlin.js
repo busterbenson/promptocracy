@@ -344,7 +344,7 @@ export function readEscalate(raw) {
   return ESCALATION_CATEGORIES.includes(category) && reason ? { category, reason } : null;
 }
 /** Does a ticket's list of things to make hold something to build: a rule item, or an entry with a needsBuild key? @rule 801.4 */
-const hasBuild = (items) => (items || []).some((x) => x && (x.kind === "rule" || (x.needsBuild && x.needsBuild.length)));
+export const hasBuild = (items) => (items || []).some((x) => x && (x.kind === "rule" || (x.needsBuild && x.needsBuild.length)));
 export function readGremlinAnswer(text, ctx) {
   let a;
   try {
