@@ -83,6 +83,13 @@ const HOUSE = "It is drawn as an isometric game asset, seen from above at a thre
  * a copper pot as clay and a bog or a beach as a patterned slab. Everything else keeps the two-colour rule.
  */
 const HOUSE_LOOSE = "It is drawn as an isometric game asset, seen from above at a three-quarter angle with its front toward the lower right corner, in flat vector shapes of a few muted colours true to its materials, each in a few hard-edged tone bands, a shiny material lit by one bright highlight band, with crisp dark navy outlines in hex #1F2A44, alone on a plain white background.";
+/**
+ * The house style for a tile (2026-11-23, tiles judged in place on the board): a tile is not an asset on a white page but ground that the
+ * board repeats, so it is drawn as a flat top-down square the board maps onto the tile's diamond. Everything else in the house style
+ * holds: flat vector shapes, a few muted colours true to its materials in hard-edged tone bands, one light. The navy outline is left to the
+ * pieces: around every mark of a repeated texture it draws a dark net across the board.
+ */
+const HOUSE_TILE = "It is drawn as a game board texture in flat vector shapes of a few muted colours true to its materials, each in a few hard-edged tone bands, its shapes edged in a slightly darker shade of their own colour, lit by one soft light from the upper left.";
 /** Words that name a material that defines how a thing looks: water and ice, the metals, stone. */
 const MATERIAL_WORDS = /\b(?:water|ice|copper|brass|bronze|iron|steel|tin|pewter|silver|gold|golden|metal|metallic|stone|stones|rock|rocks|rocky|marble|granite|slate)\b/i;
 /** Does this entry get the loosened palette? Every tile does; a creature never does; any other kind does when its words name a defining material. @rule 801.2 */
@@ -102,7 +109,7 @@ export const KIND_BLOCKS = Object.freeze({
   structure: "It is one solid thing on its own, made of its own materials, cut out cleanly at its base with the white page all around it.",
   item: "It is one small object on its own, sized for a person to carry.",
   feature: "It is a landmark standing on its own, with the parts that show what it is for.",
-  tile: "It is only the ground: a square tile of that surface as an isometric diamond filling the picture from corner to corner, a thin slab with straight edges that sits flush against a neighbouring tile, its surface lying flat and level in a few large, simple areas that read at a glance.",
+  tile: "It is a flat square of that ground seen straight from above, its surface filling the whole picture and running on past every edge, so copies laid side by side join without a seam. Its marks are spread evenly across the square, many small similar ones of varied size and spacing, every part of it as busy as every other, in mid tones close in value so a piece standing on it stays clear. Anything growing in it stays low and lies within the surface.",
 });
 /** A creature's temper, shown in how it stands (rule 602.1). An entry with no temper adds nothing. */
 const TEMPER = Object.freeze({
@@ -126,7 +133,7 @@ export function stylePrompt(kind, attrs, words, details = "") {
   const temper = k === "creature" && attrs && Object.hasOwn(TEMPER, attrs.temper) ? ` ${TEMPER[attrs.temper]}` : "";
   const footprint = s ? s.w === s.h ? "" : `It is about ${s.w} units wide by ${s.h} units deep.` : "";
   const d = shortDetails(details);
-  return [`${what}.`, d, KIND_BLOCKS[k] + temper, footprint, loosePalette(kind, what) ? HOUSE_LOOSE : HOUSE].filter(Boolean).join(" ").replace(/ {2,}/g, " ").trim() + " No people's likenesses.";
+  return [`${what}.`, d, KIND_BLOCKS[k] + temper, footprint, k === "tile" ? HOUSE_TILE : loosePalette(kind, what) ? HOUSE_LOOSE : HOUSE].filter(Boolean).join(" ").replace(/ {2,}/g, " ").trim() + " No people's likenesses.";
 }
 
 // ---- the description before drawing (rule 801.2) -----------------------------------------------------------------------------------
@@ -143,8 +150,10 @@ export function shortDetails(t) {
   return /[.!?]$/.test(cut) ? cut : cut + ".";
 }
 /**
- * The one question asked before a drawing of this kind: how it looks, in visual words an illustrator can draw. A structure, an item and a
- * tile are asked the way a field guide tells a reader how to recognise a thing (11-23, second climb: asked for "the parts that tell it apart
+ * The one question asked before a drawing of this kind: how it looks, in visual words an illustrator can draw. A tile is asked for ground
+ * the board repeats (11-23, tiles judged in place on the board): its surface and the small marks a person knows it by, spread evenly, since
+ * one large telling feature repeats on every tile of a patch. A structure and an item are asked the way a field guide tells a reader how
+ * to recognise a thing (11-23, second climb: asked for "the parts that tell it apart
  * from look-alikes" without naming it, the cheap model wrote a pine as a "narrow column" and a teapot with a kettle's handle; asked like a
  * field guide, it wrote the open crown, the side handle and the bright metal). A creature and a landmark keep the question they passed on.
  * A loosened palette (loosePalette) asks for each colour with its hex code. @rule 801.2
@@ -155,7 +164,7 @@ export function describeAsk(kind, words) {
     return `Describe how a typical "${what}" looks, the way a field guide tells a reader how to recognise it, for an illustrator drawing it as a small flat game piece: first its overall shape and proportions, then the two or three features a person recognises it by, each as the simple drawn shape it makes, and where they sit, then its colours${loose ? ", each with its hex code, as bright and lustrous as its material really is" : ""}. At most 35 words, present tense, only big shapes that show at small size, the thing alone; nothing about the background, the camera or the art style.`;
   }
   if (k === "tile") {
-    return `Describe how the ground of "${what}" looks seen from above as one square of terrain, the way a field guide tells a reader how to recognise it, for an illustrator drawing it as a flat board-game tile: what covers it, and the one or two flat features a person recognises it by, drawn large, together taking at least a third of the square. Everything in it lies flat: name only flat areas, each with what it is, about how much of the square it takes, and its colour with its hex code; only the ground's own surface, with no mounds, no plants and no loose objects on it, nothing standing up from it. At most 35 words, present tense, plain visual words; nothing about the camera or the art style.`;
+    return `Describe how the ground of "${what}" looks seen straight from above, the way a board-game artist paints it as a texture that repeats across the board: the surface that covers it, and the small marks scattered evenly all over it that make a person recognise that terrain, each with its rough size as a share of the square and its colour with its hex code, all in mid tones close in value. Everything lies flat in the surface and is spread evenly, with nothing larger than the rest. At most 35 words, present tense, plain visual words; nothing about the camera or the art style.`;
   }
   const how = k === "creature"
     ? `how "${what}" looks, so an illustrator draws that exact animal or being and nothing similar: its body shape and proportions, the parts and markings that tell it apart from look-alikes, and its colours.`
@@ -196,7 +205,7 @@ export function checkQuestion(kind, words) {
   const what = asked(words), k = kindBlock(kind);
   const ask = {
     creature: `This picture was drawn for: "${what}". Would someone seeing it cold, with no caption, name that exact animal or being (judge it by its body shape, proportions and markings, not its colour), one character on its own, with a calm expression (not worried, sad or frowning)?`,
-    tile: `This picture was drawn as a ground tile of: "${what}". Would someone seeing it cold, with no caption, name that exact kind of terrain from its surface (not just a coloured or patterned slab), and does that terrain fill an isometric diamond from corner to corner, with nothing standing, lying or growing on top of it (no object, building, plant, animal or figure) and no face anywhere on it?`,
+    tile: `This picture was drawn as ground of: "${what}", a texture the board repeats tile after tile. Would someone seeing it cold, with no caption, name that exact kind of terrain from its surface (not just a coloured or patterned square), and is it a flat top-down square of that ground filling the picture edge to edge, its marks spread evenly with no single feature that stands out from the rest, in mid tones close in value, with nothing standing on top of it (no object, building, animal or figure) and no face anywhere on it?`,
   }[k] ?? `This picture was drawn for: "${what}". Would someone seeing it cold, with no caption, name that exact thing or a plain synonym of it, including the material, colour or kind the words give it (judge what it is and what it is made of), ${k === "structure" ? "one thing on its own (a plant or tree counts), not a character," : "an inanimate object on its own,"} with no face, no eyes, no mouth and no arms or legs anywhere on it?`;
   return `${ask} Is it also free of legible writing (no words, letters or numbers anywhere on it), unless those words themselves ask for writing? Say yes only if every part of that is clearly true; if anything is doubtful or missing, say no. Reply as JSON: {"answer": "yes" or "no", "reason": "a short phrase"}.`;
 }

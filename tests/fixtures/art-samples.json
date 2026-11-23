@@ -1,5 +1,5 @@
 {
-  "note": "One TRAIN sample entry per kind (the subjects the blocks were tuned on) one HOLDOUT per kind (drawn once to confirm in the first climb, a dev check in the second) and one HOLDOUT B per kind (new in the second climb, never tuned on, drawn only after TRAIN and HOLDOUT pass), for the live drawing run (a scratch worker that calls stylePrompt, describeFor, runImage and lookAt on the real AI binding) and for the tests that prove no subject is ever written into a prompt. These words are Gremlin's side of the prompt: they are NEVER part of the house style, a kind's block or a question.",
+  "note": "One TRAIN sample entry per kind (the subjects the blocks were tuned on) one HOLDOUT per kind (drawn once to confirm in the first climb, a dev check in the second) and one HOLDOUT B per kind (new in the second climb, never tuned on, drawn only after TRAIN and HOLDOUT pass), for the live drawing run (a scratch worker that calls stylePrompt, describeFor, runImage and lookAt on the real AI binding) and for the tests that prove no subject is ever written into a prompt. These words are Gremlin's side of the prompt: they are NEVER part of the house style, a kind's block or a question. tileHoldout: the two terrains held out of the tile climb of 2026-11-23 (tiles judged in place on the board), drawn once on the final tile block with no change after.",
   "samples": [
     {
       "kind": "structure",
@@ -98,6 +98,18 @@
       "kind": "feature",
       "attrs": {},
       "words": "a stone milestone marker"
+    }
+  ],
+  "tileHoldout": [
+    {
+      "kind": "tile",
+      "attrs": {},
+      "words": "a grassy meadow"
+    },
+    {
+      "kind": "tile",
+      "attrs": {},
+      "words": "a snowy field"
     }
   ]
 }
