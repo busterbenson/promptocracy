@@ -8,13 +8,14 @@
 //   art/<sha256>   a drawing someone saved to an entry (copied from tmp/); never expires on its own
 
 export const HASH = /^[0-9a-f]{64}$/;
-/** The model that draws, unless IMAGE_MODEL says otherwise: FLUX.2 klein 4B on Workers AI (3.2 of the plan; 9B is a one-line switch). */
-export const IMAGE_MODEL = "@cf/black-forest-labs/flux-2-klein-4b";
+/** The model that draws, unless IMAGE_MODEL says otherwise: FLUX.2 klein 9B on Workers AI (Buster, 2026-11-23: it passed the most in the
+ * art climb; 4B, `@cf/black-forest-labs/flux-2-klein-4b`, is the one-line switch back). */
+export const IMAGE_MODEL = "@cf/black-forest-labs/flux-2-klein-9b";
 export const MAX_PROMPT = 300;          // what Gremlin may write as an art prompt (3.4 of the plan)
 export const MAX_BYTES = 4 * 1024 * 1024;
 export const DRAW_TIMEOUT_MS = 25_000;   // inside the 30 s a Worker may keep working after its response (ctx.waitUntil), with room left for the writes
 export const DRAWING_STALE_MS = 60_000; // a draw still pending after this is a draw that died: the card says it failed and offers Redraw
-export const ART_COST_MICRO = 2000;      // what one drawing is counted as in the monthly budget: $0.002 (FLUX.2 klein 4B is about $0.0016-0.0021, step2-plan 3.1)
+export const ART_COST_MICRO = 20000;     // what one drawing is counted as in the monthly budget: $0.02, klein 9B (about 10x 4B's $0.0016-0.0021, step2-plan 3.1); a 4B drawing is over-counted, never under
 export const MAX_SAVED = 20;            // the most drawings one entry keeps (the same limit catalog.json reads, LIMITS.saved)
 
 /** The key of a drawing as made. Refuses anything that is not 64 lowercase hex characters, so a key can never name another path. @rule 801.2 */
@@ -63,6 +64,19 @@ export function sizeFor(kind, attrs) {
  * outline, is tied to the part it colours by its hex value.
  */
 const HOUSE = "It is drawn as an isometric game asset, seen from above at a three-quarter angle with its front toward the lower right corner, in flat vector shapes of two muted colours true to it, each in a few hard-edged tone bands, with crisp dark navy outlines in hex #1F2A44, alone on a plain white background.";
+/**
+ * The same house style with the palette loosened (Buster, 2026-11-23): a ground tile, and a thing whose material defines it (water, metal,
+ * stone), may use a few muted colours true to its materials instead of two, still flat hard-edged bands with navy outlines. Two colours drew
+ * a copper pot as clay and a bog or a beach as a patterned slab. Everything else keeps the two-colour rule.
+ */
+const HOUSE_LOOSE = "It is drawn as an isometric game asset, seen from above at a three-quarter angle with its front toward the lower right corner, in flat vector shapes of a few muted colours true to its materials, each in a few hard-edged tone bands, a shiny material lit by one bright highlight band, with crisp dark navy outlines in hex #1F2A44, alone on a plain white background.";
+/** Words that name a material that defines how a thing looks: water and ice, the metals, stone. */
+const MATERIAL_WORDS = /\b(?:water|ice|copper|brass|bronze|iron|steel|tin|pewter|silver|gold|golden|metal|metallic|stone|stones|rock|rocks|rocky|marble|granite|slate)\b/i;
+/** Does this entry get the loosened palette? Every tile does; a creature never does; any other kind does when its words name a defining material. @rule 801.2 */
+export function loosePalette(kind, words) {
+  const k = kindBlock(kind);
+  return k === "tile" || (k !== "creature" && MATERIAL_WORDS.test(String(words ?? "")));
+}
 
 /**
  * What each kind of entry IS, in a few positive general words (rule 801.2): the one block the entry's catalog kind picks, between the
@@ -72,10 +86,10 @@ const HOUSE = "It is drawn as an isometric game asset, seen from above at a thre
  */
 export const KIND_BLOCKS = Object.freeze({
   creature: "It is a folkloric storybook creature, earnest and a little eerie, shaped like a small rounded toy true to that animal's own body, proportions and markings, its whole length shown, with a calm, content face.",
-  structure: "It is one solid thing standing on its own, made of its own materials.",
+  structure: "It is one solid thing on its own, made of its own materials, cut out cleanly at its base with the white page all around it.",
   item: "It is one small object on its own, sized for a person to carry.",
   feature: "It is a landmark standing on its own, with the parts that show what it is for.",
-  tile: "It is only the ground: a square tile of that surface as an isometric diamond filling the picture from corner to corner, a thin slab with straight edges that sits flush against a neighbouring tile, its surface lying flat and level.",
+  tile: "It is only the ground: a square tile of that surface as an isometric diamond filling the picture from corner to corner, a thin slab with straight edges that sits flush against a neighbouring tile, its surface lying flat and level in a few large, simple areas that read at a glance.",
 });
 /** A creature's temper, shown in how it stands (rule 602.1). An entry with no temper adds nothing. */
 const TEMPER = Object.freeze({
@@ -97,9 +111,9 @@ export function stylePrompt(kind, attrs, words, details = "") {
   const k = kindBlock(kind);
   const s = k === "structure" && attrs && typeof attrs.size === "object" && attrs.size ? attrs.size : null;
   const temper = k === "creature" && attrs && Object.hasOwn(TEMPER, attrs.temper) ? ` ${TEMPER[attrs.temper]}` : "";
-  const footprint = s ? `It takes up a ${s.w} by ${s.h} square footprint of the board.` : "";
+  const footprint = s ? s.w === s.h ? "" : `It is about ${s.w} units wide by ${s.h} units deep.` : "";
   const d = shortDetails(details);
-  return [`${what}.`, d, KIND_BLOCKS[k] + temper, footprint, HOUSE].filter(Boolean).join(" ").replace(/ {2,}/g, " ").trim() + " No people's likenesses.";
+  return [`${what}.`, d, KIND_BLOCKS[k] + temper, footprint, loosePalette(kind, what) ? HOUSE_LOOSE : HOUSE].filter(Boolean).join(" ").replace(/ {2,}/g, " ").trim() + " No people's likenesses.";
 }
 
 // ---- the description before drawing (rule 801.2) -----------------------------------------------------------------------------------
@@ -115,14 +129,26 @@ export function shortDetails(t) {
   const cut = one.length > MAX_DETAILS ? one.slice(0, MAX_DETAILS).replace(/[,;:]?\s+\S*$/, "") : one;
   return /[.!?]$/.test(cut) ? cut : cut + ".";
 }
-/** The one question asked before a drawing of this kind: how it looks, in visual words an illustrator can draw. @rule 801.2 */
+/**
+ * The one question asked before a drawing of this kind: how it looks, in visual words an illustrator can draw. A structure, an item and a
+ * tile are asked the way a field guide tells a reader how to recognise a thing (11-23, second climb: asked for "the parts that tell it apart
+ * from look-alikes" without naming it, the cheap model wrote a pine as a "narrow column" and a teapot with a kettle's handle; asked like a
+ * field guide, it wrote the open crown, the side handle and the bright metal). A creature and a landmark keep the question they passed on.
+ * A loosened palette (loosePalette) asks for each colour with its hex code. @rule 801.2
+ */
 export function describeAsk(kind, words) {
-  const what = asked(words), k = kindBlock(kind);
-  const how = {
-    creature: `how "${what}" looks, so an illustrator draws that exact animal or being and nothing similar: its body shape and proportions, the parts and markings that tell it apart from look-alikes, and its colours.`,
-    tile: `how the ground surface of "${what}" looks seen from above, as a flat square of terrain: what the surface is made of, its colours, and how two or three large areas of it lie across the square like regions on a map. Describe only what lies flat in the surface itself, nothing that stands up from it.`,
-  }[k] ?? `how "${what}" looks, so an illustrator draws that exact thing and nothing similar: its overall shape and true proportions, the parts that tell it apart from look-alikes, what it is made of and how that material catches the light, its colours, and its condition. Describe the thing alone, as an inanimate object.`;
-  return `Describe ${how} Write at most 30 words, present tense, the way an illustrator blocks in a small game piece: first its overall shape and proportions, then the two or three parts that tell it apart and where they sit, then its colours. Use only big shapes that show at small size. Describe it as one single thing on its own. Do not repeat its name and name nothing it might be confused with; say nothing about the background, the camera or the art style.`;
+  const what = asked(words), k = kindBlock(kind), loose = loosePalette(kind, what);
+  if (k === "structure" || k === "item") {
+    return `Describe how a typical "${what}" looks, the way a field guide tells a reader how to recognise it, for an illustrator drawing it as a small flat game piece: first its overall shape and proportions, then the two or three features a person recognises it by, each as the simple drawn shape it makes, and where they sit, then its colours${loose ? ", each with its hex code, as bright and lustrous as its material really is" : ""}. At most 35 words, present tense, only big shapes that show at small size, the thing alone; nothing about the background, the camera or the art style.`;
+  }
+  if (k === "tile") {
+    return `Describe how the ground of "${what}" looks seen from above as one square of terrain, the way a field guide tells a reader how to recognise it, for an illustrator drawing it as a flat board-game tile: what covers it, and the one or two flat features a person recognises it by, drawn large, together taking at least a third of the square. Everything in it lies flat: name only flat areas, each with what it is, about how much of the square it takes, and its colour with its hex code; only the ground's own surface, with no mounds, no plants and no loose objects on it, nothing standing up from it. At most 35 words, present tense, plain visual words; nothing about the camera or the art style.`;
+  }
+  const how = k === "creature"
+    ? `how "${what}" looks, so an illustrator draws that exact animal or being and nothing similar: its body shape and proportions, the parts and markings that tell it apart from look-alikes, and its colours.`
+    : `how "${what}" looks, so an illustrator draws that exact thing and nothing similar: its overall shape and true proportions, the parts that tell it apart from look-alikes, what it is made of and how that material catches the light, its colours, and its condition. Describe the thing alone, as an inanimate object.`;
+  const colours = loose ? "then the colours that make its material recognisable at a glance, as bright and lustrous as that material really is even when old or worn, each with its hex code, tied to the part it colours" : "then its colours";
+  return `Describe ${how} Write at most 30 words, present tense, the way an illustrator blocks in a small game piece: first its overall shape and proportions, then the two or three parts that tell it apart and where they sit, ${colours}. Use only big shapes that show at small size. Describe it as one single thing on its own. Do not repeat its name and name nothing it might be confused with; say nothing about the background, the camera or the art style.`;
 }
 
 // ---- the check after drawing (rule 801.2) ---------------------------------------------------------------------------------------------
@@ -145,7 +171,7 @@ export function checkQuestion(kind, words) {
   const ask = {
     creature: `This picture was drawn for: "${what}". Would someone seeing it cold, with no caption, name that exact animal or being (judge it by its body shape, proportions and markings, not its colour), one character on its own, with a calm expression (not worried, sad or frowning)?`,
     tile: `This picture was drawn as a ground tile of: "${what}". Would someone seeing it cold, with no caption, name that exact kind of terrain from its surface (not just a coloured or patterned slab), and does that terrain fill an isometric diamond from corner to corner, with nothing standing, lying or growing on top of it (no object, building, plant, animal or figure) and no face anywhere on it?`,
-  }[k] ?? `This picture was drawn for: "${what}". Would someone seeing it cold, with no caption, name that exact thing or a plain synonym of it, including the material, colour or kind the words give it (judge what it is and what it is made of), an inanimate object on its own, with no face, no eyes, no mouth and no arms or legs anywhere on it?`;
+  }[k] ?? `This picture was drawn for: "${what}". Would someone seeing it cold, with no caption, name that exact thing or a plain synonym of it, including the material, colour or kind the words give it (judge what it is and what it is made of), ${k === "structure" ? "one thing on its own (a plant or tree counts), not a character," : "an inanimate object on its own,"} with no face, no eyes, no mouth and no arms or legs anywhere on it?`;
   return `${ask} Say yes only if every part of that is clearly true; if anything is doubtful or missing, say no. Reply as JSON: {"answer": "yes" or "no", "reason": "a short phrase"}.`;
 }
 /** The shape of the check's answer, for the API's structured output. */
@@ -219,12 +245,14 @@ const crcTable = (() => { const t = new Uint32Array(256); for (let n = 0; n < 25
 const crc32 = (b) => { let c = 0xffffffff; for (const x of b) c = crcTable[(c ^ x) & 0xff] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; };
 const u32 = (n) => new Uint8Array([(n >>> 24) & 255, (n >>> 16) & 255, (n >>> 8) & 255, n & 255]);
 const chunk = (type, data) => { const t = new TextEncoder().encode(type); const body = new Uint8Array(t.length + data.length); body.set(t); body.set(data, 4); return [u32(data.length), body, u32(crc32(body))]; };
-/** A small valid PNG whose colour follows `seed` (stored deflate blocks, no compression library), for the tests and the screenshots. @rule 801.2 */
+/** A small valid PNG whose colour follows `seed` and whose bytes differ for every seed (stored deflate blocks, no compression library), for the tests and the screenshots. @rule 801.2 */
 export function stubPng(seed = 0, size = 96) {
   const hue = (Math.abs(Number(seed) || 0) * 47) % 360;
   const px = (x, y) => { const k = (hue + (x + y) * 0.9) % 360, a = k / 60, f = a - Math.floor(a), q = Math.round(255 * (1 - f)), t = Math.round(255 * f), v = 230; return [[v, t, 40], [q, v, 40], [40, v, t], [40, q, v], [t, 40, v], [v, 40, q]][Math.floor(a) % 6]; };
   const raw = new Uint8Array(size * (size * 3 + 1));
   for (let y = 0; y < size; y++) { raw[y * (size * 3 + 1)] = 0; for (let x = 0; x < size; x++) raw.set(px(x, y), y * (size * 3 + 1) + 1 + x * 3); }
+  const n = Math.abs(Math.trunc(Number(seed) || 0)) >>> 0;
+  if (n >= 360) raw.set(u32(n), 1);   // the colour repeats every 360 seeds, so a Worker's random seed often drew a fixture's exact bytes (a flaky sweep test): a seed past 360 writes itself into the first pixels; seeds under 360 keep the bytes catalog.json's fixture hashes name
   const blocks = [];
   for (let i = 0; i < raw.length; i += 65535) { const part = raw.subarray(i, Math.min(raw.length, i + 65535)); const last = i + 65535 >= raw.length ? 1 : 0; blocks.push(new Uint8Array([last, part.length & 255, part.length >>> 8, ~part.length & 255, (~part.length >>> 8) & 255]), part); }
   let a = 1, b = 0; for (const x of raw) { a = (a + x) % 65521; b = (b + a) % 65521; }

@@ -1,5 +1,5 @@
 {
-  "note": "One TRAIN sample entry per kind (the subjects the blocks were tuned on) and one HOLDOUT per kind (never tuned on, only drawn to confirm), for the live drawing run (a scratch worker that calls stylePrompt, describeFor, runImage and lookAt on the real AI binding) and for the tests that prove no subject is ever written into a prompt. These words are Gremlin's side of the prompt: they are NEVER part of the house style, a kind's block or a question.",
+  "note": "One TRAIN sample entry per kind (the subjects the blocks were tuned on) one HOLDOUT per kind (drawn once to confirm in the first climb, a dev check in the second) and one HOLDOUT B per kind (new in the second climb, never tuned on, drawn only after TRAIN and HOLDOUT pass), for the live drawing run (a scratch worker that calls stylePrompt, describeFor, runImage and lookAt on the real AI binding) and for the tests that prove no subject is ever written into a prompt. These words are Gremlin's side of the prompt: they are NEVER part of the house style, a kind's block or a question.",
   "samples": [
     {
       "kind": "structure",
@@ -64,6 +64,40 @@
       "kind": "feature",
       "attrs": {},
       "words": "a wooden signpost with two arrows"
+    }
+  ],
+  "holdoutB": [
+    {
+      "kind": "structure",
+      "attrs": {
+        "size": {
+          "w": 1,
+          "h": 1
+        }
+      },
+      "words": "a red brick chimney"
+    },
+    {
+      "kind": "tile",
+      "attrs": {},
+      "words": "a shallow rocky stream"
+    },
+    {
+      "kind": "item",
+      "attrs": {},
+      "words": "a polished brass lantern"
+    },
+    {
+      "kind": "creature",
+      "attrs": {
+        "temper": "neutral"
+      },
+      "words": "a red fox"
+    },
+    {
+      "kind": "feature",
+      "attrs": {},
+      "words": "a stone milestone marker"
     }
   ]
 }

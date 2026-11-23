@@ -25,7 +25,7 @@ export type Env = {
   // The agents' (Gremlin's) monthly budget per game, in dollars (src/lib/agent.ts): unset = the site's own limit. The tests lower it.
   AGENT_BUDGET_USD?: string;
   // Generated art (src/lib/art.ts): the R2 bucket (private; the Worker serves it through /<slug>/art/<sha256>) and the Workers AI binding that
-  // draws. IMAGE_MODEL picks the model (default FLUX.2 klein 4B). ART_STUB is for the tests: it replaces the model with fixed bytes
+  // draws. IMAGE_MODEL picks the model (default FLUX.2 klein 9B). ART_STUB is for the tests: it replaces the model with fixed bytes
   // (src/lib/art.js); unset in production, where an unset AI binding means drawing is simply unavailable.
   ART: R2Like;
   AI?: { run(model: string, input: any): Promise<any> };
