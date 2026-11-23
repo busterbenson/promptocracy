@@ -74,14 +74,28 @@ export function rowView(r) {
   return out;
 }
 // One page of a player's own history, newest rows first by id; `before` is the cursor (an id). Only this player's rows with this agent.
+// `scope` narrows it to one conversation (Gremlin's, rule 801.6): {ticketId} is that ticket's own lines (and the day's excuse, which belongs to
+// no ticket); {ticketId: null} is what was said outside any ticket; no scope is every line (Starling's one stream).
 // Returns {rows (oldest first within the page), next (the cursor for the page before it, or null)}.
-/** @rule 106.7 */
-export async function historyPage(db, gameId, playerId, agent, before) {
+/** @rule 106.7, 801.6 */
+export async function historyPage(db, gameId, playerId, agent, before, scope) {
   const cur = Number.isInteger(before) && before > 0 ? before : null;
+  const one = scope && scope.ticketId ? "AND (c.ticket_id = ? OR c.role = 'excuse')" : scope ? "AND c.ticket_id IS NULL" : "";
   const rows = (await db.prepare(
     `SELECT c.id, c.role, c.body, c.local_date, c.day, c.meta, c.at, c.proposal_id, t.number AS ticket_number FROM chat_messages c LEFT JOIN tickets t ON t.id = c.ticket_id
-     WHERE c.game_id = ? AND c.player_id = ? AND c.agent = ? ${cur ? "AND c.id < ?" : ""} ORDER BY c.id DESC LIMIT ${HISTORY_PAGE + 1}`,
-  ).bind(...[gameId, playerId, agent, ...(cur ? [cur] : [])]).all()).results;
+     WHERE c.game_id = ? AND c.player_id = ? AND c.agent = ? ${one} ${cur ? "AND c.id < ?" : ""} ORDER BY c.id DESC LIMIT ${HISTORY_PAGE + 1}`,
+  ).bind(...[gameId, playerId, agent, ...(scope && scope.ticketId ? [scope.ticketId] : []), ...(cur ? [cur] : [])]).all()).results;
   const page = rows.slice(0, HISTORY_PAGE);
   return { rows: page.reverse().map(rowView), next: rows.length > HISTORY_PAGE ? page[0].id : null };
+}
+
+/**
+ * The lines Gremlin is shown before a turn: this player's own, oldest first, from ONE conversation, the ticket's (rule 801.6), or from outside any ticket
+ * when none is open. Never another ticket's, and the lines before `beforeId` only (the new message is not history yet). @rule 801.6
+ */
+export async function modelHistory(db, gameId, playerId, agent, ticketId, beforeId) {
+  const rows = (await db.prepare(
+    `SELECT role, body FROM chat_messages WHERE game_id = ? AND player_id = ? AND agent = ? AND id < ? AND ticket_id ${ticketId ? "= ?" : "IS NULL"} ORDER BY id DESC LIMIT ?`,
+  ).bind(...[gameId, playerId, agent, beforeId, ...(ticketId ? [ticketId] : []), HISTORY_FOR_MODEL]).all()).results;
+  return rows.reverse();
 }
