@@ -280,7 +280,7 @@ ${sl.kind !== "action" && (sl.after_text || sl.before_text) ? `<div class="tx cd
     const mine = ++S.seq;
     const r = await api(historyPath(scope || null));
     if (mine !== S.seq) return;   // a later switch is the one that counts
-    if (!r.ok) { S.err = (r.data && r.data.error) || "Something went wrong."; S.msgs = []; S.next = null; S.scope = scope || null; return; }   // never the old ticket's lines under the new ticket's box
+    if (!r.ok) { S.err = (r.data && r.data.error) || "Something went wrong."; S.msgs = []; S.next = null; S.scope = undefined; return; }   // never the old ticket's lines under the new ticket's box
     S.msgs = r.data.messages; S.next = r.data.next; S.state = r.data.state; S.scope = r.data.ticket || null; S.err = "";
   }
   /** The ticket on the slip: yours or nothing. `auto`: it was inferred from the history, so it is attached only if it can still be written. @rule 801.2 */
@@ -312,11 +312,13 @@ ${sl.kind !== "action" && (sl.after_text || sl.before_text) ? `<div class="tx cd
     draw();
     const rule = agent.proposals ? S.rule : null, intent = agent.proposals && !rule ? S.intent : null;
     optimistic.rule = rule;
+    const at = S.scope;   // the answer can take 30 s: if the window has moved to another ticket by then, it is not that window's line (rule 801.6)
     const r = await api(`/api/chat/${agent.path}`, S.ticket ? { ticket: S.ticket, body: text } : rule ? { rule, body: text } : intent ? { intent, body: text } : { body: text });
     S.busy = false;
     if (r.ok && rule && r.data.out === "ok") S.rule = null;   // the rule rides on the first message that was answered (not at the cap, or when she is out)
     if (r.ok && intent && r.data.out === "ok") S.intent = null;
     S.msgs = S.msgs.filter((m) => m !== optimistic);
+    if (S.scope !== at) { if (r.ok && r.data.state) S.state = r.data.state; draw(); return; }
     if (!r.ok) {
       S.draft = text;
       S.err = (r.data && r.data.error) || "Something went wrong.";

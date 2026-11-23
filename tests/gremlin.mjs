@@ -149,6 +149,10 @@ console.log("his answer: what the platform keeps");
     !("price" in dropBuild({ say: "ok", ticket: { makes: [{ kind: "rule", draft: "x" }] } }, 6).patch) &&
     dropBuild({ say: "ok", ticket: { makes: [{ kind: "entry", name: "Dragon", catalogKind: "creature" }], price: { points: 3, reason: "r" } } }, 6).patch.price === 0 &&
     !("price" in dropBuild({ say: "ok", ticket: { title: "t" } }, 6).patch));
+  const odd = [undefined, null, "6", "x", NaN].map((price) => dropBuild({ say: "ok", ticket: { makes: [{ kind: "entry", name: "Dragon", catalogKind: "creature", needsBuild: [] }] } }, price));
+  check("the price-drop branch reads the ticket's price as a number: '6' fires it (an empty needsBuild list is nothing to build), undefined, null, NaN and text do not and nothing throws",
+    odd.map((r) => ("price" in r.patch) ? 1 : 0).join("") === "00100" && odd.every((r) => r.ok));
+  check("a refusal writes nothing, so it never zeroes a price", !("price" in G.readGremlinAnswer(ans({ say: "no", refusal: "Not this.", ticket: { makes: [{ kind: "entry", name: "Dragon", catalogKind: "creature" }] } }), { ...ctx, price: 6, makes: [{ kind: "rule", draft: "x" }] }).patch));
   const built = read({ say: "ok", ticket: { makes: [{ kind: "entry", name: "Dragon", catalogKind: "creature", attrs: [{ key: "flies", value: "yes" }], needsBuild: ["flies"] }, { kind: "rule", draft: "A dragon can cross walls." }], price: { points: 6, reason: "Two nights." } } });
   check("a price on a ticket that has something to build (a rule item or a needsBuild key) is kept as he set it", built.patch.price === 6 && built.patch.price_reason === "Two nights." && !built.unbuiltPrice);
   const gate = read({ say: "ok", state: "Approved", proposal: "P3", paid: 99, ticket: { title: "T", state: "Approved", proposal_id: "x", queue_pos: 1, paid: 5, number: 9, player_id: "p2", rule: "801 anew", tasks: ["a"] } });

@@ -121,9 +121,17 @@ with sync_playwright() as p:
         page.click('[data-w="gremlin"]'); page.wait_for_function("document.querySelector('#mroot') && document.querySelector('#mroot').hidden && document.querySelector('.ch-in .chip') && document.querySelector('.ch-in .chip').textContent.includes('W1')")
         check(f"{tag}: Talk to Gremlin on the card closes the card and attaches the chat to that ticket (a W1 chip)", not vis(page, "#mroot .mcard") and "W1" in text(page, ".ch-in .chip"), text(page, ".ch-in"))
         check(f"{tag}: and the log is W1's own conversation again, all {n0 + 2} lines of it, with W2 nowhere (rule 801.6)", msgs(page) == n0 + 2 and "W1" in text(page, "#chatLog .slip"), f"{msgs(page)} vs {n0 + 2}")
-        # detaching the ticket leaves its conversation: the window is what was said outside any ticket (none here), not W1's lines
+        # a slow answer that lands after the window has moved on stays out of it (rule 801.6): hold the POST, detach the ticket, then let it through
+        held = []
+        page.route("**/shop/api/chat/gremlin", lambda route: held.append(route) if route.request.method == "POST" else route.continue_())
+        page.fill("#chatText", "how heavy is the wall?"); page.keyboard.press("Enter")
+        page.wait_for_function("document.querySelector('#chatLog .typing') !== null"); page.wait_for_timeout(300)
+        check(f"{tag}: the message is out and waiting for his answer", len(held) == 1 and vis(page, "#chatLog .typing"))
         page.click('.ch-in .chip [data-c="detach"]'); page.wait_for_function("document.querySelector('.ch-in .chip') === null")
-        check(f"{tag}: detaching W1 takes its conversation out of the window: no chip, no lines, no slip (rule 801.6)", msgs(page) == 0 and not vis(page, "#chatLog .slip") and "Ghost" not in text(page, "#chatLog"), text(page, "#chatLog"))
+        check(f"{tag}: detaching W1 takes its conversation out of the window: no chip, no lines (the typing dots of the pending answer aside), no slip (rule 801.6)", msgs(page) - page.locator("#chatLog .typing").count() == 0 and not vis(page, "#chatLog .slip") and "Ghost" not in text(page, "#chatLog"), text(page, "#chatLog"))
+        held[0].continue_(); page.wait_for_function("document.querySelector('#chatLog .typing') === null", timeout=20000); page.wait_for_timeout(500)
+        page.unroute("**/shop/api/chat/gremlin")
+        check(f"{tag}: his answer, landing after the window moved on, is not put into it: still no lines, no slip, no chip", msgs(page) == 0 and not vis(page, "#chatLog .slip") and page.locator(".ch-in .chip").count() == 0, text(page, "#chatLog"))
         page.keyboard.press("Escape")
         check(f"{tag}: no console errors", not errors, str(errors))
         c.close()

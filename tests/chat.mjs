@@ -195,6 +195,16 @@ try {
   const tix = (r) => [...new Set(r.data.messages.filter((m) => m.role !== "excuse").map((m) => m.ticket))].join();
   check("the window's history is one ticket's: GET ?ticket=<its number> returns that ticket's lines and no other's", tix(gQ) === Q && tix(gP) === P && tix(gW) === "W1" && gQ.data.ticket === Q && gP.data.messages.length === 8 && gQ.data.messages.length === 4, J([tix(gQ), tix(gP), tix(gW)]));
   check("?ticket=none is what was said outside any ticket (null ticket on every line), and with no ticket named it is the conversation he was last in (the ticketless one: his last message had none)", gN.data.messages.length === 2 && gN.data.messages.every((m) => m.ticket === null) && gN.data.ticket === null && gLast.data.ticket === null && gLast.data.messages.length === 2);
+  // the day's excuse shows in whichever conversation is open, an older day's does not (the excuse belongs to no ticket)
+  const ins = (date, body) => d1(state, `INSERT INTO chat_messages (game_id, player_id, agent, local_date, day, role, body, at) VALUES ('${gid}', '${id.Ana}', 'gremlin', '${date}', 1, 'excuse', '${body}', '2026-11-10T19:00:00.000Z')`);
+  ins("2026-11-09", "yesterday-excuse"); 
+  const exOld = [await Ana.get(`${CH}?ticket=${Q}`), await Ana.get(`${CH}?ticket=none`)];
+  check("an excuse from an older day is in no window", exOld.every((r) => !r.text.includes("yesterday-excuse")));
+  d1(state, `DELETE FROM chat_messages WHERE body = 'yesterday-excuse'`);
+  ins("2026-11-10", "today-excuse");
+  const exNew = [await Ana.get(`${CH}?ticket=${Q}`), await Ana.get(`${CH}?ticket=${P}`), await Ana.get(`${CH}?ticket=none`)];
+  check("today's excuse is in whichever conversation is open (a ticket's, another's, none)", exNew.every((r) => r.data.messages.some((m) => m.role === "excuse" && m.body === "today-excuse")));
+  d1(state, `DELETE FROM chat_messages WHERE body = 'today-excuse'`);
   await say(Ana, "back on the frog", Q);
   check("with no ticket named it is the one of his last message: the frog's ticket after that", (await Ana.get(CH)).data.ticket === Q);
   check("another player's ticket or a made-up one is a 404, not an empty page; a visitor is still 401", (await Bo.get(`${CH}?ticket=${Q}`)).status === 404 && (await Ana.get(`${CH}?ticket=W999`)).status === 404 && (await Ana.get(`${CH}?ticket=x`)).status === 404 && (await visitor.get(`${CH}?ticket=${Q}`)).status === 401);
