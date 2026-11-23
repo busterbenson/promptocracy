@@ -1,23 +1,25 @@
-// A piece's outline and, when nobody has marked where it stands, a measured guess at that point (the middle of its
-// footprint, by the rule FEET_AT is marked by). build-pieces-data.mjs uses it to crop the art and as the fallback for a
-// piece with no FEET_AT mark (a new piece, a player's drawing); the pieces in the set are all marked by eye, since a
-// lantern held out or a hose fools the measurement.
-//   silhouette(body, w, h)      the art's opaque pixels, one per art unit: a Uint8Array of w*h, row by row
-//   stance(mask, w, h, key)     { x, y, left, right, top, bottom, feet }: the point that goes on the tile centre, the
-//                               figure's edges, and the half width of what touches the floor
+// A piece's outline and the floor ellipse it stands in. build-pieces-data.mjs uses them to crop the art and to find the
+// point every piece stands on, the ellipse's centre: the pieces in the set and any piece added later (a player's drawing)
+// by the same rule.
+//   silhouette(body, w, h)        the art's opaque pixels, one per art unit: a Uint8Array of w*h, row by row
+//   floorEllipse(mask, w, h, key) { cx, cy, rx, ry, left, right, front }: the circle on the floor the piece stands in
+//   stance(mask, w, h, key)       { x, y, left, right, top, bottom, ellipse }: the point that goes on the tile (the
+//                                 ellipse's centre) and the figure's edges
 // The art is VTracer output: absolute M / C / L / Z paths, each with a translate(). Hand-placed parts (an eye in a <g>) sit
 // inside the figure, so they never change its outline and are skipped.
 
 // The board's tile is a square seen at elevation ~42 degrees, so a circle on the floor is drawn sin(42) as deep as it is wide
-// (HH / HW in public/js/pieces.js).
+// (HH / HW in public/js/pieces.js: 18.74 / 28 = 0.669).
 export const FLOOR_RATIO = Math.sin(42 * Math.PI / 180);
-// The ground-contact band: the bottom 12% of the figure. A column whose lowest opaque pixel is in it touches the floor.
-// Wider bands start catching what hangs low but stands off the floor (the frog's haunch, the robot's side panels, the
-// astronaut's pack).
-export const CONTACT_BAND = 0.12;
-// Where the measurement is fooled, by hand (each says why):
+// The ground-contact band: the bottom 16% of the figure. A column whose lowest opaque pixel is in it touches the floor. A far
+// foot stands behind the near one, so its lowest pixel is higher on screen: 12% saw only the near boot of the astronaut and the
+// diver, and stopped short of the osprey's far toes. Wider bands start catching what hangs low but stands off the floor (the crow's belly and the diver's
+// suit at 18%, the robot's side panel at 22%).
+export const CONTACT_BAND = 0.16;
+// Where a piece's far foot is higher than that, by hand (each says why):
 export const BAND_FOR = {
-  diver: 0.15, // mid-stride: the back boot is lifted ~13% of the figure above the front one, so 12% sees one boot and too shallow a depth
+  frog: 0.18,  // sitting: the far front foot is behind the body, its toes 17% of the figure up; 16% stops short of it and of the haunch's side
+  robot: 0.2,  // the far foot block stands well behind the near one, its lowest corner 20% up; its side panel (22%) stays out
 };
 
 const num = /-?\d+(?:\.\d+)?/g;
@@ -71,35 +73,47 @@ export function silhouette(body, w, h) {
 }
 
 /**
- * The point a piece stands on: the middle of its footprint on the floor, across and in depth.
- * Across: on one base (a pawn, a hem, a belly), the middle of the base; on feet, the middle of the whole figure, its leftmost
- * and rightmost pixels, so its two sides are the same distance from the tile's sides (the feet alone pick one foot on a figure
- * in mid-stride).
- * In depth (Buster, 2026-11-22: halfway between the front and the back of the footprint, the rule FEET_AT is marked by): the
- * floor contact is the columns whose lowest pixel is in the contact band. Columns that touch in a row (gaps under GAP of the
- * figure's width joined, so a foot's toes stay one foot) are one foot or one base. The lowest pixel of a foot is its front;
- * its back is hidden behind it, so it is taken as round: as deep on the floor as it is wide, drawn FLOOR_RATIO as deep on
- * screen. The footprint's front is the front-most foot's front, its back the back-most foot's back, and the point is
- * halfway between. One base (a pawn, a hem) is one round foot: a circle on the floor as wide as the base where it meets
- * the floor, so its centre is half its projected depth (width x HH/HW) above the bottom, across at the base's middle. Two feet in a 3/4 view, near one in front and far
- * one behind, come out between the near toe and the far heel. `feet` is half the span of the floor contact.
+ * The floor ellipse: the circle on the floor a piece stands in, drawn as the board draws a circle on its floor (FLOOR_RATIO
+ * as deep as it is wide). Fitted to the drawing (Buster, 2026-11-22: "the ellipses strategy"):
+ * - its two ends are the widest floor contact: the left-most and right-most columns whose lowest pixel is in the contact
+ *   band, all feet together (a near foot, a far foot, a hem, a haunch on the floor);
+ * - its front (lowest) point is on the visible bottom of the base or feet;
+ * - it is as wide as that contact, so it is width x FLOOR_RATIO deep, and its centre is half that above the front, across at
+ *   the contact's middle.
+ * The band starts at CONTACT_BAND of the figure and grows to the ellipse's own half depth when that is deeper: the side of a
+ * round base (a pawn, a belly) meets the floor at the ellipse's widest point, half its depth above the front, so a fixed band
+ * would cut the base short. It stops growing at MAX_BAND.
+ * Returns { cx, cy, rx, ry, left, right, front } in the mask's units.
  */
-export const GAP = 0.02;
-export function stance(mask, w, h, key = "") {
+export const MAX_BAND = 0.3;
+export function floorEllipse(mask, w, h, key = "") {
+  const { low, top, bottom } = profile(mask, w, h), tall = bottom - top;
+  let band = (BAND_FOR[key] || CONTACT_BAND) * tall, left = 0, right = 0;
+  for (let i = 0; i < 20; i++) {
+    const touch = [...low.keys()].filter((x) => low[x] >= 0 && low[x] + 1 >= bottom - band);
+    left = touch[0]; right = touch[touch.length - 1] + 1;
+    const want = Math.min((right - left) * FLOOR_RATIO / 2, MAX_BAND * tall);
+    if (want <= band + 0.5) break;
+    band = want;
+  }
+  const rx = (right - left) / 2, ry = rx * FLOOR_RATIO;
+  return { cx: (left + right) / 2, cy: bottom - ry, rx, ry, left, right, front: bottom };
+}
+
+// Each column's lowest opaque pixel (-1 for an empty column), the figure's top row and the row below its bottom.
+function profile(mask, w, h) {
   const low = new Int32Array(w).fill(-1);
   for (let x = 0; x < w; x++) for (let y = h - 1; y >= 0; y--) if (mask[y * w + x]) { low[x] = y; break; }
   let top = h;
   for (let i = 0; i < mask.length && top === h; i++) if (mask[i]) top = Math.floor(i / w);
+  return { low, top, bottom: Math.max(...low) + 1 };
+}
+
+/**
+ * The point a piece stands on: the centre of its floor ellipse. Also the figure's edges and the ellipse itself.
+ */
+export function stance(mask, w, h, key = "") {
+  const { low, top, bottom } = profile(mask, w, h), e = floorEllipse(mask, w, h, key);
   const cols = [...low.keys()].filter((x) => low[x] >= 0), left = cols[0], right = cols[cols.length - 1] + 1;
-  const bottom = Math.max(...low) + 1, band = (BAND_FOR[key] || CONTACT_BAND) * (bottom - top); // a share of the figure, not of its canvas
-  const touch = cols.filter((x) => low[x] + 1 >= bottom - band), feet = (touch[touch.length - 1] + 1 - touch[0]) / 2;
-  const runs = [];
-  for (const x of touch) {
-    const r = runs[runs.length - 1];
-    if (r && x - r.right <= GAP * (right - left)) { r.right = x + 1; r.front = Math.max(r.front, low[x] + 1); }
-    else runs.push({ left: x, right: x + 1, front: low[x] + 1 });
-  }
-  const front = Math.max(...runs.map((r) => r.front)), back = Math.min(...runs.map((r) => r.front - (r.right - r.left) * FLOOR_RATIO));
-  const x = runs.length === 1 ? (runs[0].left + runs[0].right) / 2 : (left + right) / 2;
-  return { x, y: (front + back) / 2, left, right, top, bottom, feet };
+  return { x: e.cx, y: e.cy, left, right, top, bottom, ellipse: e };
 }

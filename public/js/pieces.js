@@ -63,7 +63,7 @@ export function ensureDefs() {
 }
 
 // One piece standing on (0, FOOT_DROP): a shadow under it (clipped to the tile top), then the art. Every shape is on the
-// same canvas standing on CANVAS.x, CANVAS.y (the middle of its footprint on the floor, across and front to back) and is
+// same canvas standing on CANVAS.x, CANVAS.y (the centre of its floor ellipse, fitted to its art: FOOTPRINT) and is
 // HEIGHT times its FIT tall, so that point goes on the same spot for all of them. On a tile (`clip`) that spot is FOOT_DROP
 // board units below the tile centre, toward its front corner, so a piece rises less into the tile behind; off a tile (a
 // thumbnail, a pill) it is (0, 0). The shadow follows the figure's width: a soft one a little wider than the figure, and a

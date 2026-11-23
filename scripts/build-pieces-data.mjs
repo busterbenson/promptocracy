@@ -5,9 +5,11 @@
 // is invisible at board size, and it keeps the file small).
 // The shapes are the player shapes in src/lib/pieces.json plus the pieces only the game places: the Ghost a dead player
 // becomes (rule 604.2, drawn in their colour) and the Blob creature (drawn in its own colours).
-// Every piece then goes on one shared CANVAS, shifted so the point it stands on (FEET_AT, set by eye; for a piece without
-// an entry, measured by scripts/piece-footprint.mjs) lands on the canvas's foot point, so pieces.js draws every one the same
-// way. Each is then sized by its visual bulk (FIT, see SIZE below), not its height. HALF_WIDTH sizes its shadow.
+// Every piece then goes on one shared CANVAS, shifted so the point it stands on lands on the canvas's foot point, so
+// pieces.js draws every one the same way. That point is the centre of its floor ellipse, fitted to the art by
+// scripts/piece-footprint.mjs (floorEllipse): the circle on the floor around everything that touches it, as the board draws
+// a circle on its floor. Each is then sized by its visual bulk (FIT, see SIZE below), not its height. HALF_WIDTH sizes its
+// shadow.
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { silhouette, stance } from "./piece-footprint.mjs";
@@ -21,7 +23,7 @@ const KEYS = [...PLAYER, "ghost", "blob"];
 const TOP = 400, MARGIN = 10;
 // The shared canvas, in art units (a figure is 400 tall): the foot point is centred across it, with room above for the
 // tallest figure and below for the front of the widest footprint; `tall` is how tall every figure is on it. A piece that does not fit stops the build: widen it.
-const CANVAS = { w: 480, h: 470, x: 240, y: 380, tall: TOP };
+const CANVAS = { w: 480, h: 480, x: 240, y: 375, tall: TOP };
 // How tall a figure stands, in board units, before FIT: the canvas's 400 units are HEIGHT board units.
 const HEIGHT = 37;
 // A piece must fit across its tile on the board (56 wide, pieces drawn at 1.1) with this much floor left on each side.
@@ -30,27 +32,6 @@ const HEIGHT = 37;
 // never resizes the others. Then a piece is no taller than SIZE.h and no wider than SIZE.w (the tile is 56 wide), and one
 // that would be shrinks to fit. FIT is the result, a multiplier on HEIGHT.
 const BOARD_SCALE = 1.1, SIZE = { area: 861, h: 44, w: 46 };
-// Where each piece stands, marked by eye on its art: the middle of its footprint on the floor, in the source SVG's own
-// coordinates (its viewBox). Across, halfway between its left-most and right-most floor contact; in depth (screen y, which
-// is depth on the isometric floor), halfway between its front-most and back-most (Buster, 2026-11-22: a frog marked
-// between its front feet, with its haunch behind, looks pushed forward). A back edge hidden behind the figure is judged
-// from the art. This point goes on the tile (pieces.js FOOT_DROP). Measuring it from the outline gets fooled by a lantern
-// held out, a hose or a tail, so every piece in the set has one. A piece without an entry (a new one, or a player's
-// drawing) falls back to the measured stance() in scripts/piece-footprint.mjs, which follows the same rule.
-const FEET_AT = {
-  keeper: [248, 815],    // midway from the near boot's toe to the far boot's heel, and between the boots (the depth rule moves it under 1 board unit: kept)
-  frog: [322, 742],      // midway from the front toes to the back of the haunch, and from the haunch's side to the far front foot's toes
-  robot: [405, 672],     // midway from the near foot block's front corner to the far block's back corner (under 1 board unit from the depth rule: kept)
-  osprey: [326, 782],    // midway from the near toes to the far heel, and from the tail over the floor to the far toes
-  diver: [482, 748],     // midway from the front boot's toe to the lifted back boot's heel (under 1 board unit from the depth rule: kept)
-  wizard: [274, 744],    // midway from the near foot's toe to the back of the robe's hem, and across the hem
-  crow: [382, 758],      // midway from the near toes to the far heel, and from the back of the body over the floor to the far toes
-  astronaut: [396, 719], // midway from the near boot's toe to the far boot's heel, and across both boots
-  pawn: [266, 671],      // the middle of the base, a circle on the floor: as wide as the base in the contact band, half its projected depth above the bottom
-  ghost: [345, 638],     // the middle of the hem, a circle on the floor (the same rule as the pawn)
-  blob: [338, 582],      // the middle of the belly it sits on, a circle on the floor (the same rule as the pawn)
-};
-
 const roles = JSON.parse(readFileSync(join(dir, "roles.json"), "utf8"));
 const num = /-?\d+(?:\.\d+)?/g;
 const J = JSON.stringify;
@@ -68,10 +49,11 @@ function convert(key) {
   const body = scaled(key, svg, s, ox, oy), mask = silhouette(body, w, TOP), c = stance(mask, w, TOP, key);
   AREA[key] = mask.reduce((n, v) => n + v, 0);
   if (c.top > 1 || c.bottom < TOP - 1 || c.left > 1 || c.right < w - 1) throw new Error(`${key}: the crop missed the art (${J(c)})`);
-  const feet = FEET_AT[key] ? [(FEET_AT[key][0] - ox) * s, (FEET_AT[key][1] - oy) * s] : [c.x, c.y];
-  const placed = place(key, w, body, feet, c);
-  // source -> canvas is (x * s + tx, y * s + ty): kept so the tests can check a marked point lands on the foot point
-  if (FEET_AT[key]) MARKED[key] = { at: FEET_AT[key], map: [+s.toFixed(5), +(placed.dx - ox * s).toFixed(2), +(placed.dy - oy * s).toFixed(2)] };
+  const placed = place(key, w, body, [c.x, c.y], c), e = c.ellipse;
+  // The fitted ellipse on the canvas (its centre is the foot point, to the rounding of the shift), and its centre in the
+  // source SVG's own units, so a change in the art or the fit shows in the tests.
+  FOOTPRINT[key] = { cx: +(e.cx + placed.dx).toFixed(1), cy: +(e.cy + placed.dy).toFixed(1), rx: +e.rx.toFixed(1), ry: +e.ry.toFixed(1),
+    at: [Math.round(c.x / s + ox), Math.round(c.y / s + oy)] };
   return placed.art;
 }
 
@@ -97,7 +79,7 @@ function scaled(key, svg, s, ox, oy) {
 }
 
 // Move the art so the point it stands on is the canvas's foot point; shrink it if it is too wide for a tile.
-const HALF_WIDTH = {}, FIT = {}, MARKED = {}, AREA = {};
+const HALF_WIDTH = {}, FIT = {}, FOOTPRINT = {}, AREA = {};
 function place(key, w, body, [fx, fy], f) {
   const dx = Math.round((CANVAS.x - fx) * 10) / 10, dy = Math.round((CANVAS.y - fy) * 10) / 10;
   if (dx < 0 || dy < 0 || dx + w > CANVAS.w || dy + TOP > CANVAS.h) throw new Error(`${key}: does not fit the canvas once its feet are on the foot point (shift ${dx}, ${dy}; art ${w} x ${TOP})`);
@@ -130,15 +112,15 @@ const out = `// GENERATED by scripts/build-pieces-data.mjs from the board-piece 
 export const TRACED = ${JSON.stringify(TRACED)};
 export const ROLES = ${JSON.stringify(ROLES)};
 export const FIXED = ${JSON.stringify(FIXED)};
-// Every shape is on this canvas (art units) standing on (x, y), and is HEIGHT board units tall, times its FIT. HALF_WIDTH: half the figure's width. MARKED: the point each shape stands on,
-// marked by eye in its source SVG, and the map from the source to the canvas (x * s + tx, y * s + ty).
+// Every shape is on this canvas (art units) standing on (x, y), and is HEIGHT board units tall, times its FIT. HALF_WIDTH: half the figure's width. FOOTPRINT: the
+// floor ellipse each shape stands in, fitted to its art (centre cx, cy and radii rx, ry on the canvas; its centre is the foot point), and that centre in the source SVG's units (at).
 export const CANVAS = ${JSON.stringify(CANVAS)};
 export const HEIGHT = ${HEIGHT};
 export const FIT = ${JSON.stringify(pick(FIT))};
 // What FIT aims for: each silhouette's area on the board (board units squared, at board scale), and the caps on height and width.
 export const SIZE = ${JSON.stringify({ ...SIZE, scale: BOARD_SCALE })};
 export const HALF_WIDTH = ${JSON.stringify(pick(HALF_WIDTH))};
-export const MARKED = ${JSON.stringify(pick(MARKED))};
+export const FOOTPRINT = ${JSON.stringify(pick(FOOTPRINT))};
 `;
 writeFileSync(join(ROOT, "public/js/pieces-data.js"), out);
 console.log(`pieces-data.js: ${KEYS.length} shapes, ${(out.length / 1024).toFixed(0)} KB`);
