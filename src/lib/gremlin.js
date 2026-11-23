@@ -127,12 +127,12 @@ REFUSING. If a commission names nothing to make, or would do something no worksh
 THE CATALOG. Everything a commission adds is a catalog entry of one kind, or a rule:
 - kinds: ${KIND_IDS.join(", ")}. What each kind must carry, and which attributes rules define, are in THE CATALOG NOW below.
 - An entry has "attrs" (the values of its required attributes) and "flavor" (anything else it has, shown but never read by code). If the player wants something to DO something (fly, bite, glow, cross walls), that is a rule: add a rule item with "draft" (one sentence of what the rule does, "num" empty) and list the entry's key for it in "needsBuild". That is what costs nights and points. Otherwise it is flavor and it is free.
-- Sizes are W×H tiles, written 2x1, up to 4x4. A rule value is a rule number like 801.2.
+- Sizes are W×H tiles, written like 1x1, 2x1 or 3x2: any size from 1x1 (one tile) up to 4x4. A structure of one tile is 1x1, and that is allowed. A rule value is a rule number like 801.2.
 - Only reference rule numbers that exist in the rulebook below.
 
 ART. Every new entry gets a drawing, made by the site while you draft. Give each entry a short art prompt in its makes item's "art": one sentence of what the thing looks like (at most ${MAX_PROMPT} characters), plain words, no style words (the site adds the style), nothing about text, logos or real people. A different prompt for an entry you already drew makes a new drawing; leave "art" empty to keep the one it has. You never draw or redraw by saying so: the player's Redraw button does that.
 
-PRICES. You set the price in points when you draft, with a one-line reason (${PRICE_REASON_MAX} characters at most), always. 0 for simple things with no rule and no code (a new item's art and properties). A few points per night of work for anything that needs building, more for fiddly. The hard ceiling is ${ceiling} points: nothing costs more. You are generous but a bit inconsistent on purpose: your mood of the day (below) bends the price. When the queue ahead of this ticket is long, you may say so.
+PRICES. You set the price in points when you draft, with a one-line reason (${PRICE_REASON_MAX} characters at most), always. 0 for anything with nothing to build, of any kind: a plain creature, tile, structure or item that needs no rule and no code (its art and properties) is free, with no mood tax and no fee. The site sets any price above 0 on a ticket that makes no rule and lists no needsBuild back to 0. When a later turn adds something to build, price it that same turn. A few points per night of work for anything that needs building, more for fiddly. The hard ceiling is ${ceiling} points: nothing costs more. You are generous but a bit inconsistent on purpose: your mood of the day (below) bends the price of what needs building, never what is free. When the queue ahead of this ticket is long, you may say so.
 
 FORMAT. Reply with JSON only, in exactly this shape, every key present every time:
 ${ANSWER_SHAPE}
@@ -228,6 +228,8 @@ export function gremlinRequest({ ceiling, rulesMd, mood, localDate, catalog, his
  * schema with many OPTIONAL properties nested in arrays of objects, and takes a fully required one in seconds; tests/gremlin.mjs holds the
  * structural budget this was verified at. The reader (readGremlinAnswer) still checks every meaning. @rule 801.2
  */
+/** The price's reason when the platform sets a price to 0 because nothing needs building. @rule 801.4 */
+export const NO_BUILD_REASON = "Nothing to build, so it's free.";
 export const ESCALATE_NONE = "none";
 const ESCALATE_SHAPE = `{"category": "${ESCALATE_NONE}", "reason": ""}`;
 export const MAKES_SHAPE = `{"kind": "entry", "name": "", "catalogKind": "", "attrs": [{"key": "", "value": ""}], "flavor": [{"key": "", "value": ""}], "needsBuild": [], "num": "", "draft": "", "art": ""}`;
@@ -325,9 +327,9 @@ export function readMakeItem(m, i, cat = {}) {
 }
 
 /**
- * The model's answer text read into what the platform will save. `ctx`: {ceiling, systemText, catalog ({registry, required}: the game's), makes (the ticket's current list)}. Returns
+ * The model's answer text read into what the platform will save. `ctx`: {ceiling, systemText, catalog ({registry, required}: the game's), makes (the ticket's current list), price (its current price)}. Returns
  *   {ok: true, say, refusal, patch: {title?, brief?, estimate?, running_cost?, tasks?, makes?, price?, price_reason?},
- *    rejected: [reason...], notes: [...], clamped, unbuiltPrice}   the reasons are what he sees next turn; notes are saved-with-a-change
+ *    rejected: [reason...], notes: [...], clamped, unbuiltPrice (he priced a ticket with nothing to build: set to 0)}   the reasons are what he sees next turn; notes are saved-with-a-change
  *   {ok: false, code: "malformed" | "invalid", reason}              nothing is saved and the player gets a canned line
  * Unknown fields at any level are dropped (a state, a proposal, a rule: he has no such field). @rule 801.2, 801.3, 801.4
  */
@@ -341,6 +343,8 @@ export function readEscalate(raw) {
   const reason = oneLine(raw.reason).slice(0, ESCALATE_REASON_MAX);
   return ESCALATION_CATEGORIES.includes(category) && reason ? { category, reason } : null;
 }
+/** Does a ticket's list of things to make hold something to build: a rule item, or an entry with a needsBuild key? @rule 801.4 */
+export const hasBuild = (items) => (items || []).some((x) => x && (x.kind === "rule" || (x.needsBuild && x.needsBuild.length)));
 export function readGremlinAnswer(text, ctx) {
   let a;
   try {
@@ -403,13 +407,19 @@ export function readGremlinAnswer(text, ctx) {
         let p = Math.round(n);
         if (p < 0) { p = 0; clamped = true; }
         if (p > ctx.ceiling) { p = ctx.ceiling; clamped = true; }
+        // Nothing to build (no rule item, no needsBuild key) costs 0 points (rule 801.4), whatever he asked for: the platform sets it, he is told.
+        unbuiltPrice = p > 0 && !hasBuild(patch.makes || ctx.makes || []);
+        if (unbuiltPrice) { p = 0; clamped = false; notes.push("price: set to 0, because nothing on this ticket needs building (rule 801.4). If you add something to build, price it that turn."); }
         patch.price = p;
-        patch.price_reason = why;
-        const items = patch.makes || ctx.makes || [];
-        unbuiltPrice = p > 0 && !items.some((x) => x.kind === "rule" || (x.needsBuild && x.needsBuild.length));
+        patch.price_reason = unbuiltPrice ? NO_BUILD_REASON : why;
         if (clamped) notes.push(`price: kept, but at the ceiling of ${ctx.ceiling} points.`);
       }
     }
+  }
+  // A turn that takes the last thing to build off a priced ticket and sends no price leaves a price on nothing: it goes to 0 with it (rule 801.4).
+  if (!refusal && !("price" in patch) && patch.makes && !hasBuild(patch.makes) && Number(ctx.price) > 0) {
+    patch.price = 0; patch.price_reason = NO_BUILD_REASON; unbuiltPrice = true;
+    notes.push("price: set to 0, because nothing on this ticket needs building any more (rule 801.4). If you add something to build, price it that turn.");
   }
   return { ok: true, say, refusal, patch, rejected, notes, clamped, unbuiltPrice, escalate: readEscalate(a.escalate) };
 }

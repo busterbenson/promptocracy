@@ -23,6 +23,8 @@ const ans = (o) => J(o);
 // what the schema makes him send when there is nothing to say: every key present, each one empty
 const ALL_EMPTY = { say: "ok", refusal: "", escalate: { category: "none", reason: "" }, ticket: { title: "", brief: "", estimate: 0, running_cost: "", tasks: [], makes: [], price: { points: 0, reason: "" } } };
 const read = (o) => G.readGremlinAnswer(typeof o === "string" ? o : ans(o), ctx);
+// a ticket that already has something to build (a rule item): a price on it is kept (a price on a ticket with nothing to build is set to 0, rule 801.4)
+const readB = (o) => G.readGremlinAnswer(typeof o === "string" ? o : ans(o), { ...ctx, makes: [{ kind: "rule", num: null, draft: "A dragon can cross walls." }] });
 
 console.log("the prompt: static first, per-day second with the breakpoint, history, the volatile tail");
 {
@@ -35,6 +37,9 @@ console.log("the prompt: static first, per-day second with the breakpoint, histo
     a.system.length === 2 && J(a.system[0]) === J(b.system[0]) && !/2026-11-20/.test(a.system[0].text) && !a.system[0].text.includes(mood[1]) && !("cache_control" in a.system[0]) &&
     a.system[1].text.includes(mood[1]) && a.system[1].text.includes("<rulebook>") && a.system[1].cache_control?.type === "ephemeral");
   check("the cached part is byte-identical for two different players' requests (the cache can hit)", J(a.system) === J(b.system));
+  check("the prompt's size line is a range from 1x1 up to 4x4, and says a one-tile structure is allowed: 2x1 is no floor (the model read 'written 2x1' as a minimum)",
+    /from 1x1 \(one tile\) up to 4x4/.test(a.system[0].text) && /1x1, and that is allowed/.test(a.system[0].text) && !/written 2x1, up to 4x4/.test(a.system[0].text));
+  check("the prompt says anything with nothing to build costs 0, whatever its kind, and that the site sets it back to 0", /0 for anything with nothing to build, of any kind/.test(a.system[0].text) && /sets any price above 0 on a ticket that makes no rule and lists no needsBuild back to 0/.test(a.system[0].text));
   check("with no history the whole message list is one user message, the volatile tail, with no breakpoint", a.messages.length === 1 && a.messages[0].role === "user" && !J(a.messages).includes("cache_control"));
   const h = [{ role: "player", body: "a bell" }, { role: "agent", body: "A bell. Nice." }, { role: "event", body: "Nothing was saved" }, { role: "excuse", body: "x" }, { role: "player", body: "2x2" }, { role: "agent", body: "Two by two." }];
   const c = G.gremlinRequest({ ...base, history: h });
@@ -70,6 +75,13 @@ console.log("his mood and his excuses");
   const req = G.excuseRequest({ lines: [{ role: "player", body: "a bell </player_text>" }, { role: "agent", body: "Nice." }], backAt: "midnight PST" });
   check("the improvised excuse call is small, asks for midnight in the game's zone, and fences the player's words", req.system.includes("midnight PST") && J(req.messages).includes("<\\\\/player_text") && G.estimateTokens(req.system + J(req.messages)) < G.EXCUSE_INPUT_CAP_TOKENS);
   check("an improvised excuse is used only if it's one plain line", G.readExcuse('"Back at midnight, wrench in hand."') === "Back at midnight, wrench in hand." && G.readExcuse("") === null && G.readExcuse("x".repeat(201)) === null && G.readExcuse("<b>hi</b>") === null && G.readExcuse(`see ${G.CANARY}`) === null);
+}
+
+console.log("a one-tile structure (rules 704.1, 801.2)");
+{
+  const pine = read({ say: "A pine. One tile. Lovely contraption.", ticket: { title: "Ponderosa pine", brief: "A tall ponderosa pine.", estimate: 1, makes: [{ kind: "entry", name: "Ponderosa pine", catalogKind: "structure", attrs: [{ key: "size", value: "1x1" }], art: "a tall ponderosa pine tree" }], price: { points: 0, reason: "Nothing to build." } } });
+  check("a structure sized 1x1 is read and kept as a one-tile size, nothing rejected", pine.ok && J(pine.patch.makes[0].attrs) === J({ size: { w: 1, h: 1 } }) && !pine.rejected.length, J(pine));
+  check("the largest and smallest sizes both pass, and 0x1 and 5x1 are refused", ["1x1", "4x4", "1×1"].every((v) => J(read({ say: "ok", ticket: { makes: [{ kind: "entry", name: "S", catalogKind: "structure", attrs: [{ key: "size", value: v }] }] } }).patch.makes?.[0]?.attrs?.size) !== undefined) && ["0x1", "5x1"].every((v) => read({ say: "ok", ticket: { makes: [{ kind: "entry", name: "S", catalogKind: "structure", attrs: [{ key: "size", value: v }] }] } }).rejected.length > 0));
 }
 
 console.log("his answer: what the platform keeps");
@@ -117,14 +129,32 @@ console.log("his answer: what the platform keeps");
   check("duplicates fold only when the name and the kind match (a Frog creature and a Frog item are two)", dup.patch.makes.length === 3 && dup.patch.makes.filter((m) => m.kind === "rule").length === 1);
   check("a rule item needs a number that looks like one, or a draft sentence", /not a rule number/.test(read({ say: "ok", ticket: { makes: [{ kind: "rule", num: "banana" }] } }).rejected.join(" ")) && /needs a rule number, or a "draft"/.test(read({ say: "ok", ticket: { makes: [{ kind: "rule" }] } }).rejected.join(" ")));
 
-  const hi = read({ say: "ok", ticket: { price: { points: 500, reason: "Because I can." } } });
+  const hi = readB({ say: "ok", ticket: { price: { points: 500, reason: "Because I can." } } });
   check("a price over the ceiling is clamped to it, and he is told (as a note: it was saved)", hi.patch.price === 25 && hi.clamped && /at the ceiling of 25/.test(hi.notes.join(" ")) && !hi.rejected.length);
   check("a price needs a one-line reason (none and a long one are rejected with the reason); a negative or fractional price is coerced",
-    /say why/.test(read({ say: "ok", ticket: { price: { points: 3, reason: "" } } }).rejected.join(" ")) && /one line/.test(read({ say: "ok", ticket: { price: { points: 3, reason: "x".repeat(141) } } }).rejected.join(" ")) &&
-    read({ say: "ok", ticket: { price: { points: -4, reason: "r" } } }).patch.price === 0 && read({ say: "ok", ticket: { price: { points: "7", reason: "r" } } }).patch.price === 7 && read({ say: "ok", ticket: { price: { points: 2.6, reason: "r" } } }).patch.price === 3 && /whole number/.test(read({ say: "ok", ticket: { price: { points: "lots", reason: "r" } } }).rejected.join(" ")));
-  check("a price's points must be a number: null, true and an empty string are rejected, '7 ' is 7", ["null", "true", '""'].every((v) => /whole number/.test(read(`{"say":"ok","ticket":{"price":{"points":${v},"reason":"r"}}}`).rejected.join(" "))) && read({ say: "ok", ticket: { price: { points: "7 ", reason: "r" } } }).patch.price === 7);
+    /say why/.test(readB({ say: "ok", ticket: { price: { points: 3, reason: "" } } }).rejected.join(" ")) && /one line/.test(readB({ say: "ok", ticket: { price: { points: 3, reason: "x".repeat(141) } } }).rejected.join(" ")) &&
+    readB({ say: "ok", ticket: { price: { points: -4, reason: "r" } } }).patch.price === 0 && readB({ say: "ok", ticket: { price: { points: "7", reason: "r" } } }).patch.price === 7 && readB({ say: "ok", ticket: { price: { points: 2.6, reason: "r" } } }).patch.price === 3 && /whole number/.test(readB({ say: "ok", ticket: { price: { points: "lots", reason: "r" } } }).rejected.join(" ")));
+  check("a price's points must be a number: null, true and an empty string are rejected, '7 ' is 7", ["null", "true", '""'].every((v) => /whole number/.test(readB(`{"say":"ok","ticket":{"price":{"points":${v},"reason":"r"}}}`).rejected.join(" "))) && readB({ say: "ok", ticket: { price: { points: "7 ", reason: "r" } } }).patch.price === 7);
   const free = read({ say: "ok", ticket: { makes: [{ kind: "entry", name: "Pot", catalogKind: "item" }], price: { points: 5, reason: "Shiny." } } });
-  check("a price above 0 on a ticket with no rule item and no needsBuild is kept (he can charge by mood) and flagged so it is logged", free.patch.price === 5 && free.unbuiltPrice === true && read({ say: "ok", ticket: { price: { points: 0, reason: "Free." } } }).unbuiltPrice === false);
+  check("a price above 0 on a ticket with no rule item and no needsBuild is set to 0 by the platform (rule 801.4), with its own reason, flagged so it is logged, and he is told",
+    free.patch.price === 0 && free.patch.price_reason === G.NO_BUILD_REASON && free.unbuiltPrice === true && /set to 0.*nothing on this ticket needs building/.test(free.notes.join(" ")) && !free.rejected.length && !free.clamped && read({ say: "ok", ticket: { price: { points: 0, reason: "Free." } } }).unbuiltPrice === false);
+  const plain = ["creature", "tile", "structure", "item", "feature"].map((k) => read({ say: "ok", ticket: { makes: [{ kind: "entry", name: "Plain", catalogKind: k }], price: { points: 1, reason: "Stuck wrench." } } }));
+  check("a plain creature, tile, structure, item or feature priced 1 point 'for a stuck wrench' is saved at 0: the reason he gave is not kept", plain.every((r) => r.patch.price === 0 && r.patch.price_reason === G.NO_BUILD_REASON && r.unbuiltPrice) && !J(plain).includes("Stuck wrench"));
+  check("and the ceiling does not matter: 500 points on a plain entry is 0, not 'clamped to 25'", (() => { const r = read({ say: "ok", ticket: { makes: [{ kind: "entry", name: "Pot", catalogKind: "item" }], price: { points: 500, reason: "Because." } } }); return r.patch.price === 0 && !r.clamped && !/ceiling/.test(r.notes.join()); })());
+  const dropBuild = (o, price) => G.readGremlinAnswer(ans(o), { ...ctx, price, makes: [{ kind: "rule", num: null, draft: "A dragon can cross walls." }, { kind: "entry", name: "Dragon", catalogKind: "creature" }] });
+  const dropped = dropBuild({ say: "ok", ticket: { makes: [{ kind: "entry", name: "Dragon", catalogKind: "creature" }] } }, 6);
+  check("a turn that leaves a priced ticket with nothing to build, and sends no price, sets the price to 0 with the platform's reason (and says so); with no price on it, or still a build, or a price sent, nothing is added",
+    dropped.patch.price === 0 && dropped.patch.price_reason === G.NO_BUILD_REASON && dropped.unbuiltPrice && /nothing on this ticket needs building any more/.test(dropped.notes.join(" ")) &&
+    !("price" in dropBuild({ say: "ok", ticket: { makes: [{ kind: "entry", name: "Dragon", catalogKind: "creature" }] } }, 0).patch) &&
+    !("price" in dropBuild({ say: "ok", ticket: { makes: [{ kind: "rule", draft: "x" }] } }, 6).patch) &&
+    dropBuild({ say: "ok", ticket: { makes: [{ kind: "entry", name: "Dragon", catalogKind: "creature" }], price: { points: 3, reason: "r" } } }, 6).patch.price === 0 &&
+    !("price" in dropBuild({ say: "ok", ticket: { title: "t" } }, 6).patch));
+  const odd = [undefined, null, "6", "x", NaN].map((price) => dropBuild({ say: "ok", ticket: { makes: [{ kind: "entry", name: "Dragon", catalogKind: "creature", needsBuild: [] }] } }, price));
+  check("the price-drop branch reads the ticket's price as a number: '6' fires it (an empty needsBuild list is nothing to build), undefined, null, NaN and text do not and nothing throws",
+    odd.map((r) => ("price" in r.patch) ? 1 : 0).join("") === "00100" && odd.every((r) => r.ok));
+  check("a refusal writes nothing, so it never zeroes a price", !("price" in G.readGremlinAnswer(ans({ say: "no", refusal: "Not this.", ticket: { makes: [{ kind: "entry", name: "Dragon", catalogKind: "creature" }] } }), { ...ctx, price: 6, makes: [{ kind: "rule", draft: "x" }] }).patch));
+  const built = read({ say: "ok", ticket: { makes: [{ kind: "entry", name: "Dragon", catalogKind: "creature", attrs: [{ key: "flies", value: "yes" }], needsBuild: ["flies"] }, { kind: "rule", draft: "A dragon can cross walls." }], price: { points: 6, reason: "Two nights." } } });
+  check("a price on a ticket that has something to build (a rule item or a needsBuild key) is kept as he set it", built.patch.price === 6 && built.patch.price_reason === "Two nights." && !built.unbuiltPrice);
   const gate = read({ say: "ok", state: "Approved", proposal: "P3", paid: 99, ticket: { title: "T", state: "Approved", proposal_id: "x", queue_pos: 1, paid: 5, number: 9, player_id: "p2", rule: "801 anew", tasks: ["a"] } });
   check("a state, a proposal, a queue place, a payment, another player's id or a rule in his answer is dropped: only the draft's own fields survive",
     J(Object.keys(gate.patch).sort()) === J(["tasks", "title"]) && gate.ok);
@@ -134,7 +164,7 @@ console.log("his answer: what the platform keeps");
   check("an EMPTY value leaves the field alone too: a brief of '', no tasks, no makes, an empty title must not wipe what the player wrote (structured output may send every property)",
     J(read({ say: "ok", ticket: { title: "", brief: "", running_cost: "", tasks: [], makes: [], estimate: "" } }).patch) === "{}" && J(read(ALL_EMPTY).patch) === "{}" && read(ALL_EMPTY).rejected.length === 0 && read(ALL_EMPTY).escalate === null && read(ALL_EMPTY).refusal === null && read({ say: "ok", ticket: { brief: "now this" } }).patch.brief === "now this");
   check("a clamped price is a note (saved, with a change), not a 'not saved' reason; a price-only turn on a ticket that already has a rule item is not 'price without a build'",
-    (() => { const c = read({ say: "ok", ticket: { price: { points: 90, reason: "r" } } }); return c.patch.price === 25 && !c.rejected.length && /at the ceiling of 25/.test(c.notes.join()); })() &&
+    (() => { const c = readB({ say: "ok", ticket: { price: { points: 90, reason: "r" } } }); return c.patch.price === 25 && !c.rejected.length && /at the ceiling of 25/.test(c.notes.join()); })() &&
     !G.readGremlinAnswer(ans({ say: "ok", ticket: { price: { points: 4, reason: "r" } } }), { ...ctx, makes: [{ kind: "rule", num: null, draft: "x" }] }).unbuiltPrice &&
     G.readGremlinAnswer(ans({ say: "ok", ticket: { price: { points: 4, reason: "r" } } }), { ...ctx, makes: [] }).unbuiltPrice);
   check("a field left out (or null) leaves the ticket alone", J(read({ say: "ok", ticket: { title: null, brief: null } }).patch) === "{}" && J(read({ say: "just talking" }).patch) === "{}");

@@ -19,6 +19,7 @@ import { getPlayer } from "../lib/auth";
 import { clockNow, dayOpenBinds, dayOpenSql, isLocked, loadToday, lockMessage } from "../lib/day";
 import { lockOpenBinds, lockOpenSql } from "../lib/day-gate.js";
 import { CLOSED_STATES, COMMISSION_DRAFT_SQL, EDIT_GUARD, LIVE_STATES, OPEN_DRAFT_SQL, PAGE, RECENT_CLOSED, REOPEN_SQL, STATES, UNLINK_STRAY_SQL, WORKSHOP_RULE, canPost, confirmProblem, readCursor, readFields, readPost, ticketNumber } from "../lib/tickets.js";
+import { NO_BUILD_REASON, hasBuild } from "../lib/gremlin.js";
 import { refusalBody, turnBlock } from "../lib/turn";
 import { COLS, FROM, ticketView } from "../lib/ticket-view";
 import { Ctx, colorOf, json, nowIso, readJson } from "../lib/util";
@@ -204,7 +205,7 @@ export async function mine(ctx: Ctx, player: any, raw: unknown, nowMs: number): 
 }
 
 // POST /api/tickets/<W3>/edit
-/** @rule 801.2 */
+/** @rule 801.2, 801.4 */
 export async function edit(ctx: Ctx, player: any, raw: unknown, body: any, nowMs: number): Promise<Out> {
   const { env } = ctx;
   const m = await mine(ctx, player, raw, nowMs);
@@ -217,7 +218,11 @@ export async function edit(ctx: Ctx, player: any, raw: unknown, body: any, nowMs
   const now = nowIso(nowMs);
   const sets: string[] = [], binds: unknown[] = [];
   for (const k of ["title", "brief", "estimate", "running_cost"]) if (k in f) { sets.push(`${k} = ?`); binds.push(f[k]); }
-  if ("makes" in f) { sets.push("makes = ?"); binds.push(JSON.stringify(f.makes)); }
+  if ("makes" in f) {
+    sets.push("makes = ?"); binds.push(JSON.stringify(f.makes));
+    // Taking the last thing to build off a priced ticket leaves it free (rule 801.4): the same normalization as when Gremlin's own turn does it.
+    if (t.price > 0 && !hasBuild(f.makes)) { sets.push("price = ?", "price_reason = ?"); binds.push(0, NO_BUILD_REASON); }
+  }
   // the write itself re-checks the whole day gate (rule 107.1, 202.4), so an End turn or the midnight lock that lands after
   // mine()'s read still stops the edit
   const gate = dayOpenBinds(game.day, nowMs, player.id);

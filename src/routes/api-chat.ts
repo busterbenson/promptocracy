@@ -1,7 +1,11 @@
 // The chat window's routes (rules 106.3, 106.7, 107.1): a player's private chat with Gremlin, the workshop's helper.
-//   GET  /<slug>/api/chat/gremlin[?before=<id>]   YOUR history with him, 50 rows at a time (oldest first within a page; `next` is the
-//                                                 cursor of the page before it), and the window's state: the day's cap, what is left,
-//                                                 and a reason when the composer is closed (the lock, the cap). Signed-in players only.
+//   GET  /<slug>/api/chat/gremlin[?ticket=W3|none][&before=<id>]
+//                                                 YOUR history with him about one ticket (rule 801.6), 50 rows at a time (oldest first
+//                                                 within a page; `next` is the cursor of the page before it), and the window's state: the
+//                                                 day's cap, what is left, and a reason when the composer is closed (the lock, the cap).
+//                                                 `ticket=none` is what was said outside any ticket; with no `ticket` it is the
+//                                                 conversation you were last in. `ticket` in the answer names the one shown. Signed-in
+//                                                 players only.
 //   POST /<slug>/api/chat/gremlin                 {ticket?: "W3", body}: one turn. The message is stored (under the cap, in the same
 //                                                 statement), the model answers as JSON, the platform validates it and writes ONLY that draft
 //                                                 ticket's fields, and the reply is stored. At the cap he gives his one improvised excuse of
@@ -10,7 +14,7 @@
 // A player reads only their own rows: every query here selects on the signed-in player's id and nothing else. Chat text is private; the
 // moderator's night read (api-moderator.ts) gets counts, outcomes and reasons, never text.
 import { Player, getPlayer } from "../lib/auth";
-import { EXCUSE_SQL, HISTORY_FOR_MODEL, PLAYER_MESSAGE_SQL, historyPage, rowView, usedToday } from "../lib/chat.js";
+import { EXCUSE_SQL, PLAYER_MESSAGE_SQL, historyPage, modelHistory, rowView, usedToday } from "../lib/chat.js";
 import { agentsReady, callModel, logCall, monthSpend } from "../lib/agent";
 import { escalate } from "../lib/escalate.js";
 import { clockNow, isLocked, loadToday, lockMessage, settingsOf, timeZoneOf } from "../lib/day";
@@ -73,8 +77,15 @@ export async function stateOf(ctx: Ctx, game: any, day: any, player: Player, now
   return { agent, date, cap, used, left: Math.max(0, cap - used), closed, ready: agentsReady(env) };
 }
 
+// The ticket a request names: yours, or nothing (a ticket of another player's is no ticket of yours).
+/** @rule 801.6 */
+async function ticketOf(env: any, game: any, player: Player, raw: unknown): Promise<any | null> {
+  const n = /^\s*[wW]?(\d{1,6})\s*$/.exec(String(raw));
+  return n ? await env.DB.prepare("SELECT * FROM tickets WHERE game_id = ? AND number = ? AND player_id = ?").bind(game.id, Number(n[1]), player.id).first() : null;
+}
+
 // GET /api/chat/gremlin
-/** @rule 106.7 */
+/** @rule 106.7, 801.6 */
 export const get = async (ctx: Ctx) => {
   const { env, request } = ctx;
   const player = await getPlayer(env, request, ctx.data.game!);
@@ -82,11 +93,22 @@ export const get = async (ctx: Ctx) => {
   if (shut) return send(shut);
   const nowMs = await clockNow(env);
   const { game, day } = await loadToday(env, ctx.data.game!, nowMs, player.id);
-  const raw = new URL(request.url).searchParams.get("before");
+  const url = new URL(request.url);
+  const raw = url.searchParams.get("before");
   const before = raw === null ? undefined : Number(raw);
   if (raw !== null && !(Number.isInteger(before) && before! > 0)) return json({ error: "That is not a place in the history." }, 400);
-  const h = await historyPage(env.DB, game.id, player.id, AGENT, before);
-  return json({ messages: h.rows, next: h.next, state: await stateOf(ctx, game, day, player, nowMs) });
+  // One conversation at a time (rule 801.6): the named ticket's, what was said outside any ticket, or (none named) the one he was last in.
+  const named = url.searchParams.get("ticket");
+  let ticket: any = null;
+  if (named === null) {
+    const lastRow: any = await env.DB.prepare("SELECT ticket_id FROM chat_messages WHERE game_id = ? AND player_id = ? AND agent = ? AND role != 'excuse' ORDER BY id DESC LIMIT 1").bind(game.id, player.id, AGENT).first();
+    ticket = lastRow?.ticket_id ? await env.DB.prepare("SELECT * FROM tickets WHERE id = ?").bind(lastRow.ticket_id).first() : null;
+  } else if (named !== "none") {
+    ticket = await ticketOf(env, game, player, named);
+    if (!ticket) return json({ error: "There is no such ticket of yours." }, 404);
+  }
+  const h = await historyPage(env.DB, game.id, player.id, AGENT, before, { ticketId: ticket?.id ?? null, date: localDate(timeZoneOf(game), nowMs) });
+  return json({ messages: h.rows, next: h.next, ticket: ticket ? `W${ticket.number}` : null, state: await stateOf(ctx, game, day, player, nowMs) });
 };
 
 // One stored line, as the client reads it (the same whitelist the history uses).
@@ -117,7 +139,7 @@ export async function excuse(ctx: Ctx, game: any, day: any, player: Player, nowM
 }
 
 // POST /api/chat/gremlin: one turn.
-/** @rule 106.3, 106.7, 801.2, 801.4 */
+/** @rule 106.3, 106.7, 801.2, 801.4, 801.6 */
 export async function turn(ctx: Ctx, player: Player, body: any, nowMs: number): Promise<Out> {
   const { env } = ctx;
   const shut = chatGate(ctx.data.game!, player);
@@ -147,8 +169,7 @@ export async function turn(ctx: Ctx, player: Player, body: any, nowMs: number): 
   // the ticket this turn is about: yours, or nothing
   let ticket: any = null;
   if (body?.ticket !== undefined && body?.ticket !== null && body?.ticket !== "") {
-    const n = /^\s*[wW]?(\d{1,6})\s*$/.exec(String(body.ticket));
-    ticket = n ? await env.DB.prepare("SELECT * FROM tickets WHERE game_id = ? AND number = ? AND player_id = ?").bind(game.id, Number(n[1]), player.id).first() : null;
+    ticket = await ticketOf(env, game, player, body.ticket);
     if (!ticket) return out({ error: "There is no such ticket of yours." }, 404);
   }
 
@@ -168,7 +189,8 @@ export async function turn(ctx: Ctx, player: Player, body: any, nowMs: number): 
   // ---- what he is told ----
   const { md: rulesMd } = await bookFor(game);
   const ceiling: number = settingsOf(game)["workshop.price_ceiling"];
-  const hist = ((await env.DB.prepare("SELECT role, body FROM chat_messages WHERE game_id = ? AND player_id = ? AND agent = ? AND id < ? ORDER BY id DESC LIMIT ?").bind(game.id, player.id, AGENT, myId, HISTORY_FOR_MODEL).all()).results as any[]).reverse();
+  // what was said on THIS ticket (rule 801.6), never another's: the cap counts the day's messages, but the conversation belongs to the ticket
+  const hist = await modelHistory(env.DB, game.id, player.id, AGENT, ticket?.id ?? null, myId);
   const tasks = ticket ? ((await env.DB.prepare("SELECT text FROM ticket_tasks WHERE ticket_id = ? ORDER BY pos").bind(ticket.id).all()).results as any[]).map((r) => r.text) : [];
   const posts = ticket ? ((await env.DB.prepare("SELECT x.body, x.author_kind, p.display_name FROM ticket_posts x LEFT JOIN players p ON p.game_id = x.game_id AND p.id = x.player_id WHERE x.ticket_id = ? ORDER BY x.id DESC LIMIT 20").bind(ticket.id).all()).results as any[]).reverse().map((r) => ({ by: r.author_kind === "player" ? r.display_name : r.author_kind, author: r.author_kind, body: r.body })) : [];
   const queue: any = await env.DB.prepare("SELECT COUNT(*) AS n FROM tickets WHERE game_id = ? AND queue_pos IS NOT NULL AND state IN ('Approved', 'Building')").bind(game.id).first();
@@ -206,7 +228,7 @@ export async function turn(ctx: Ctx, player: Player, body: any, nowMs: number): 
     return out({ ok: true, out: code, messages: [mine, await reply("agent", line, { canned: code }, outcome, reason)], state: await stateNow() });
   };
   if (!r.ok) return canned(r.code, r.code, r.reason);
-  const a = readGremlinAnswer(r.text, { ceiling, systemText: systemStatic({ ceiling }), catalog: catalogFor(game), makes: ticket ? JSON.parse(ticket.makes || "[]") : [] });
+  const a = readGremlinAnswer(r.text, { ceiling, systemText: systemStatic({ ceiling }), catalog: catalogFor(game), makes: ticket ? JSON.parse(ticket.makes || "[]") : [], price: ticket?.price ?? 0 });
   if (!a.ok) return canned(a.code === "invalid" ? "malformed" : a.code, a.code, a.reason);
 
   // The model can take 30 seconds: the write and its gate use the clock NOW, not the one this request began with, so an answer that lands
@@ -233,7 +255,7 @@ export async function turn(ctx: Ctx, player: Player, body: any, nowMs: number): 
     escNote = got === "stored" ? "escalated" : `escalation dropped: ${got}`;
     if (got === "stored") meta.escalated = a.escalate.category;
   }
-  lines.push(await reply("agent", a.say, meta, a.refusal ? "refused" : "ok", a.refusal ? "commission refused" : [a.clamped ? "price clamped" : "", a.unbuiltPrice ? "price without a build" : "", escNote].filter(Boolean).join("; ") || null));
+  lines.push(await reply("agent", a.say, meta, a.refusal ? "refused" : "ok", a.refusal ? "commission refused" : [a.clamped ? "price clamped" : "", a.unbuiltPrice ? "price set to 0: nothing to build" : "", escNote].filter(Boolean).join("; ") || null));
   if (wrote.length && !saved) {
     const fresh: any = ticket ? await env.DB.prepare("SELECT state FROM tickets WHERE id = ?").bind(ticket.id).first() : null;
     const again = await loadToday(env, ctx.data.game!, later, player.id);

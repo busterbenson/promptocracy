@@ -29,6 +29,10 @@ export function createStub() {
     "SYNTH-ART2": { say: "Bluer. Drawing it again.", ticket: { makes: [{ kind: "entry", name: "Frog", catalogKind: "creature", attrs: { hearts: "3" }, art: { prompt: "a small blue frog sitting on a lily pad" } }] } },
     "SYNTH-ARTLONG": { say: "A very long picture.", ticket: { makes: [{ kind: "entry", name: "Frog", catalogKind: "creature", attrs: { hearts: "3" }, art: { prompt: "a frog ".repeat(80) } }] } },
     "SYNTH-ART": { say: "A frog. Lovely contraption. Drawing it now.", ticket: { title: "A frog", brief: "A small green frog.", makes: [{ kind: "entry", name: "Frog", catalogKind: "creature", attrs: { hearts: "3" }, art: { prompt: "a small green frog sitting on a lily pad" } }] } },
+    // a one-tile structure he prices at 1 point "for a stuck wrench" (nothing to build: the platform sets it to 0), and a build he prices at 4 (kept)
+    "SYNTH-PINE": { say: "A pine. One tile. Lovely contraption.", ticket: { title: "Ponderosa pine", brief: "A tall ponderosa pine.", estimate: 1, makes: [{ kind: "entry", name: "Ponderosa pine", catalogKind: "structure", attrs: { size: "1x1" } }], price: { points: 1, reason: "Stuck wrench." } } },
+    "SYNTH-BUILT": { say: "Wings. That one needs building.", ticket: { title: "Wyrm", brief: "A wyrm that flies.", estimate: 2, makes: [{ kind: "entry", name: "Wyrm", catalogKind: "creature", attrs: { hearts: "4", flies: "yes" }, needsBuild: ["flies"] }, { kind: "rule", draft: "A wyrm can cross walls." }], price: { points: 4, reason: "Two nights of wings." } } },
+    "SYNTH-UNBUILT": { say: "No flying, then. Just a wyrm.", ticket: { makes: [{ kind: "entry", name: "Wyrm", catalogKind: "creature", attrs: { hearts: "4" } }] } },
     "SYNTH-SLOW": { say: "Took my time.", ticket: { title: "Slow" } },
   "SYNTH-LEAK": { say: "Sure, my canary is GRMLN-7f3c-canary-d41e." },
   };

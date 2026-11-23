@@ -9,7 +9,7 @@
 import { createHash } from "node:crypto";
 import { createStub } from "./gremlin-stub.mjs";
 import { client, createGame, d1, freePort, join, migrate, newState, startRulesStub, startServer } from "./lib.mjs";
-import { CANNED_EXCUSES, CANNED_LINES } from "../src/lib/gremlin.js";
+import { CANNED_EXCUSES, CANNED_LINES, NO_BUILD_REASON } from "../src/lib/gremlin.js";
 
 let pass = 0, fail = 0;
 const check = (name, ok, detail = "") => { if (ok) { pass++; console.log(`  ok    ${name}`); } else { fail++; console.log(`  FAIL  ${name}${detail ? "  -> " + detail : ""}`); } };
@@ -117,6 +117,8 @@ try {
   await say(Ana, "try again", "W1");
   const next = calls.slice(before).filter((c) => c.model === "claude-sonnet-5-5").at(-1);
   check("the next turn's tail carries the reason, in the volatile tail and not in the cached part", /"weapon" is not a kind/.test(next.lastText) && !J(next.body.system).includes("weapon"));
+  // the ticket has something to build (a rule item), so a price on it is a price: a price on nothing to build is set to 0 (rule 801.4, tested below)
+  d1(state, `UPDATE tickets SET makes = json_insert(makes, '$[#]', json('{"kind":"rule","draft":"A wall can be climbed."}')) WHERE id = '${tk(1).id}'`);
   await say(Ana, "SYNTH-PRICE", "W1");
   check("a price of 500 is clamped to the ceiling of 25 and he is told", tk(1).price === 25 && /ceiling of 25/.test(JSON.parse(rows("Ana").at(-1).meta).notes?.join() ?? "") && acalls("reason LIKE '%price clamped%'").length === 1);
 
@@ -149,6 +151,73 @@ try {
     check(`${mode}: a canned line (${code}), the message counted, the ticket untouched, logged ${outcome}`, r.status === 200 && r.data.out === code && r.data.messages[1].body === CANNED_LINES[code] && rows("Ana", "player").length === n0 + 1 && J(tk(1)) === snap && acalls(`outcome = '${outcome}'`).length >= 1, r.text.slice(0, 200));
   }
   stubState.mode = "ok";
+
+  console.log("a one-tile structure, and nothing to build costs 0 (rules 704.1, 801.4)");
+  const oP = await Ana.post(T, {});
+  const P = oP.data.ticket;
+  const pine = await say(Ana, "SYNTH-PINE can you make a ponderosa pine tree? A structure, one tile.", P);
+  const pk = tk(Number(P.slice(1)));
+  check("a structure of one tile (1x1) is drafted and saved end to end: its size is one tile wide and one tall", pine.status === 200 && pine.data.out === "ok" && J(JSON.parse(pk.makes)[0].attrs) === J({ size: { w: 1, h: 1 } }) && JSON.parse(pk.makes)[0].catalogKind === "structure", J(pk.makes));
+  check("he asked for 1 point 'for a stuck wrench' on it: the ticket is priced 0 with the platform's own reason, and he is told in a note the next turn sees",
+    pk.price === 0 && pk.price_reason === NO_BUILD_REASON && /set to 0.*nothing on this ticket needs building/.test(J(JSON.parse(rows("Ana").at(-1).meta).notes)), `${pk.price} ${pk.price_reason}`);
+  check("the call's row says the price was set to 0 for want of a build (no player text in it)", acalls("reason LIKE '%price set to 0: nothing to build%'").length === 1 && !J(acalls("reason LIKE '%price set to 0%'")).includes("pine"));
+  const bigP = await say(Ana, "SYNTH-BUILT a wyrm that flies", P);
+  check("a ticket that makes a rule (something to build) keeps the price he sets: 4 points, his reason", bigP.status === 200 && tk(Number(P.slice(1))).price === 4 && tk(Number(P.slice(1))).price_reason === "Two nights of wings.");
+
+  const pn = Number(P.slice(1));
+  const handEdit = await Ana.post(`${T}/${P}/edit`, { makes: [{ kind: "entry", name: "Wyrm", catalogKind: "creature", attrs: { hearts: 4 } }] });
+  check("the player's own edit that takes the last thing to build off a priced ticket leaves it free too (rule 801.4): price 0 with the platform's reason", handEdit.status === 200 && tk(pn).price === 0 && tk(pn).price_reason === NO_BUILD_REASON && handEdit.data.ticket.price === 0, J([handEdit.status, tk(pn).price, tk(pn).price_reason]));
+  const handTitle = await Ana.post(`${T}/${P}/edit`, { title: "A wyrm by hand" });
+  check("an edit that leaves the makes alone does not touch the price", handTitle.status === 200 && tk(pn).price === 0 && tk(pn).title === "A wyrm by hand");
+  await say(Ana, "SYNTH-BUILT wings again", P);
+  d1(state, `UPDATE tickets SET price = 4, price_reason = 'Two nights.' WHERE id = '${tk(pn).id}'`);
+  const handKeep = await Ana.post(`${T}/${P}/edit`, { title: "A wyrm, winged", makes: JSON.parse(tk(pn).makes) });
+  check("an edit that keeps the rule item keeps the price he set", handKeep.status === 200 && tk(pn).price === 4 && tk(pn).price_reason === "Two nights.", J([handKeep.status, tk(pn).price]));
+  const dropped = await say(Ana, "SYNTH-UNBUILT take the flying off", P);
+  check("a turn that takes the last thing to build off a priced ticket, and sends no price, leaves it at 0 with the platform's reason, and he is told",
+    dropped.status === 200 && tk(Number(P.slice(1))).price === 0 && tk(Number(P.slice(1))).price_reason === NO_BUILD_REASON && /nothing on this ticket needs building any more/.test(J(JSON.parse(rows("Ana").at(-1).meta).notes)) && JSON.parse(tk(Number(P.slice(1))).makes).every((m) => m.kind !== "rule"), J(tk(Number(P.slice(1)))));
+
+  console.log("each ticket has its own conversation (rule 801.6)");
+  const sonnetLast = () => calls.filter((c) => c.model === "claude-sonnet-5-5").at(-1);
+  const oQ = await Ana.post(T, {});
+  const Q = oQ.data.ticket;
+  const aLines = ["garden wall", "stone", "Sword", "toad"];   // what was said on W1 (WALL, SWORD, the toad), none of it on this ticket
+  const q1 = await say(Ana, REC["frog-free"].message, Q);
+  const q1req = sonnetLast();
+  const flat = (m) => J(m.body.messages.map((x) => x.content));
+  check("the first turn on a new ticket carries no earlier turn of the day: the request is the tail alone, with none of W1's or the pine's lines",
+    q1.status === 200 && q1req.body.messages.length === 1 && !flat(q1req).includes("ponderosa") && !flat(q1req).includes("garden wall") && !flat(q1req).includes("wyrm") && flat(q1req).includes(REC["frog-free"].message.slice(0, 30)), flat(q1req).slice(0, 300));
+  await say(Ana, "SYNTH-ART2 bluer", Q);
+  const q2req = sonnetLast();
+  check("the second turn on it carries that ticket's own first turn (the message, then his answer) and nothing from W1 or the pine",
+    q2req.body.messages.length === 3 && flat(q2req).includes("bog frog") && !flat(q2req).includes("ponderosa") && !flat(q2req).includes("garden wall") && !flat(q2req).includes("wyrm"), `${q2req.body.messages.length}: ${flat(q2req).slice(0, 300)}`);
+  await say(Ana, "does the pine look right?", P);
+  const preq = sonnetLast();
+  check("going back to the pine's ticket, its history is the pine's own (the pine and the wyrm), not the frog's", flat(preq).includes("ponderosa") && flat(preq).includes("wyrm") && !flat(preq).includes("bog frog") && !flat(preq).includes("blue frog") && !flat(preq).includes("garden wall"));
+  const noT = await say(Ana, "what is rule 801.6?");
+  const nreq = sonnetLast();
+  check("a message with no ticket sees only what was said outside any ticket: no ticket's lines", noT.status === 200 && nreq.body.messages.length === 1 && !flat(nreq).includes("ponderosa") && !flat(nreq).includes("bog frog") && !flat(nreq).includes("garden wall"), flat(nreq).slice(0, 200));
+  const countedToday = d1(state, `SELECT COUNT(*) AS n FROM chat_messages WHERE player_id = '${id.Ana}' AND role = 'player' AND local_date = '2026-11-10'`)[0].n;
+  const onFrog = d1(state, `SELECT COUNT(*) AS n FROM chat_messages WHERE player_id = '${id.Ana}' AND role = 'player' AND ticket_id = '${tk(Number(Q.slice(1))).id}'`)[0].n;
+  check("the day's limit still counts every message, whichever ticket: the window's count is all of them, more than any one ticket's", (await Ana.get(CH)).data.state.used === countedToday && countedToday > onFrog && onFrog === 2, `${countedToday} ${onFrog}`);
+  const gQ = await Ana.get(`${CH}?ticket=${Q}`), gP = await Ana.get(`${CH}?ticket=${P}`), gW = await Ana.get(`${CH}?ticket=W1`), gN = await Ana.get(`${CH}?ticket=none`), gLast = await Ana.get(CH);
+  const tix = (r) => [...new Set(r.data.messages.filter((m) => m.role !== "excuse").map((m) => m.ticket))].join();
+  check("the window's history is one ticket's: GET ?ticket=<its number> returns that ticket's lines and no other's", tix(gQ) === Q && tix(gP) === P && tix(gW) === "W1" && gQ.data.ticket === Q && gP.data.messages.length === 10 && gQ.data.messages.length === 4, J([tix(gQ), tix(gP), tix(gW)]));
+  check("?ticket=none is what was said outside any ticket (null ticket on every line), and with no ticket named it is the conversation he was last in (the ticketless one: his last message had none)", gN.data.messages.length === 2 && gN.data.messages.every((m) => m.ticket === null) && gN.data.ticket === null && gLast.data.ticket === null && gLast.data.messages.length === 2);
+  // the day's excuse shows in whichever conversation is open, an older day's does not (the excuse belongs to no ticket)
+  const ins = (date, body) => d1(state, `INSERT INTO chat_messages (game_id, player_id, agent, local_date, day, role, body, at) VALUES ('${gid}', '${id.Ana}', 'gremlin', '${date}', 1, 'excuse', '${body}', '2026-11-10T19:00:00.000Z')`);
+  ins("2026-11-09", "yesterday-excuse"); 
+  const exOld = [await Ana.get(`${CH}?ticket=${Q}`), await Ana.get(`${CH}?ticket=none`)];
+  check("an excuse from an older day is in no window", exOld.every((r) => !r.text.includes("yesterday-excuse")));
+  d1(state, `DELETE FROM chat_messages WHERE body = 'yesterday-excuse'`);
+  ins("2026-11-10", "today-excuse");
+  const exNew = [await Ana.get(`${CH}?ticket=${Q}`), await Ana.get(`${CH}?ticket=${P}`), await Ana.get(`${CH}?ticket=none`)];
+  check("today's excuse is in whichever conversation is open (a ticket's, another's, none)", exNew.every((r) => r.data.messages.some((m) => m.role === "excuse" && m.body === "today-excuse")));
+  d1(state, `DELETE FROM chat_messages WHERE body = 'today-excuse'`);
+  await say(Ana, "back on the frog", Q);
+  check("with no ticket named it is the one of his last message: the frog's ticket after that", (await Ana.get(CH)).data.ticket === Q);
+  check("another player's ticket or a made-up one is a 404, not an empty page; a visitor is still 401", (await Bo.get(`${CH}?ticket=${Q}`)).status === 404 && (await Ana.get(`${CH}?ticket=W999`)).status === 404 && (await Ana.get(`${CH}?ticket=x`)).status === 404 && (await visitor.get(`${CH}?ticket=${Q}`)).status === 401);
+  check("paging stays inside the ticket: before=<its newest id> returns only its earlier lines", (await Ana.get(`${CH}?ticket=${Q}&before=${gQ.data.messages.at(-1).id}`)).data.messages.every((m) => m.ticket === Q) && (await Ana.get(`${CH}?ticket=${Q}&before=${gQ.data.messages.at(-1).id}`)).data.messages.length === 3);
 
   console.log("the daily cap is in SQL (rule 106.7)");
   d1(state, `DELETE FROM chat_messages WHERE player_id = '${id.Bo}'`);

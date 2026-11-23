@@ -38,13 +38,23 @@ export const settingsLine = (settings) => Object.entries(settings || {}).map(([k
 const LEFT_SHOWN = 10;   // "N left" appears in the last ten messages of the day
 
 export function createChat({ api, root, me, slug, agent = AGENTS.gremlin, rpill, wpill, onTicket, onProposals, onSlip, started = () => true }) {
-  const S = { msgs: [], next: null, state: null, ticket: null, rule: null, intent: null, live: null, slips: {}, lockErr: {}, slip: null, busy: false, draft: "", err: "", sheet: false, open: true, loaded: false, loading: false, tab: "", note: "" };
+  const S = { msgs: [], next: null, state: null, ticket: null, scope: undefined, seq: 0, rule: null, intent: null, live: null, slips: {}, lockErr: {}, slip: null, busy: false, draft: "", err: "", sheet: false, open: true, loaded: false, loading: false, tab: "", note: "" };
   const col = root.querySelector("#chatcol"), fab = root.querySelector("#chatfab");
   const mine = () => ACTIVE === agent.key;
   if (!document.getElementById("chat-symbols")) { const d = document.createElement("div"); d.id = "chat-symbols"; d.innerHTML = SYMBOLS; document.body.appendChild(d); }
   const desktop = () => !!(window.matchMedia && matchMedia("(min-width: 900px)").matches);
   const reduced = () => !!(window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches);
   const player = () => (me() && me().player) || null;
+  /**
+   * The history's address. Gremlin's chat is one ticket's conversation at a time (rule 801.6): `scope` is a ticket number, null for what was said
+   * outside any ticket, undefined to let the server pick the one the player was last in. Starling's is one stream, so nothing is added. @rule 801.6
+   */
+  const historyPath = (scope, before) => {
+    const q = [];
+    if (!agent.proposals && scope !== undefined) q.push(`ticket=${encodeURIComponent(scope || "none")}`);
+    if (before) q.push(`before=${before}`);
+    return `/api/chat/${agent.path}${q.length ? `?${q.join("&")}` : ""}`;
+  };
   /** The window exists for a player of a game that has started, nobody else (rules 106.3, 203.1); the server refuses the rest. */
   const live = () => !!player() && started();
   const key = () => `promptocracy:chat:${slug}:${player() && player().color ? player().color.key : "x"}:${agent.key}`;   // /api/me names no id: a color is one player in a game
@@ -232,8 +242,9 @@ ${sl.kind !== "action" && (sl.after_text || sl.before_text) ? `<div class="tx cd
   }
   /** The window's state again (the cap, the lock, the day) without touching the log; the lines the server has since the last one are added. @rule 106.7, 107.1 */
   async function readState() {
-    const r = await api(`/api/chat/${agent.path}`);
-    if (r.ok) {
+    const at = S.scope;
+    const r = await api(historyPath(at));
+    if (r.ok && S.scope === at) {   // an answer that comes back after the window moved to another ticket is that ticket's no longer (rule 801.6)
       S.state = r.data.state;
       if (r.data.slips) S.slips = { ...S.slips, ...r.data.slips };
       if (r.data.live !== undefined) S.live = r.data.live;
@@ -254,13 +265,31 @@ ${sl.kind !== "action" && (sl.after_text || sl.before_text) ? `<div class="tx cd
   async function load() {
     if (!live()) return;
     S.loading = true;
-    const r = await api(`/api/chat/${agent.path}`);
+    const asked = S.ticket;
+    const r = await api(historyPath(asked || undefined));
     S.loading = false;
-    if (r.ok) { S.msgs = r.data.messages; S.next = r.data.next; S.state = r.data.state; S.slips = r.data.slips || {}; S.live = r.data.live || null; S.loaded = true; S.err = ""; } else S.err = (r.data && r.data.error) || "Something went wrong.";
+    // a ticket picked while this first read was out ("Commission something", "Talk to Gremlin"): its answer is the other conversation's, so only the window's state is kept and that ticket's own log is read (rule 801.6)
+    if (r.ok && !agent.proposals && (S.ticket || null) !== (asked || null)) {
+      S.state = r.data.state; S.slips = r.data.slips || {}; S.live = r.data.live || null; S.loaded = true; S.err = "";
+      await showScope(S.ticket);
+      draw();
+      return;
+    }
+    if (r.ok) { S.msgs = r.data.messages; S.next = r.data.next; S.state = r.data.state; S.slips = r.data.slips || {}; S.live = r.data.live || null; S.loaded = true; S.err = ""; S.scope = agent.proposals ? null : (r.data.ticket || null); } else S.err = (r.data && r.data.error) || "Something went wrong.";
     // the ticket the last turns were about stays on the slip; the box is attached to it only while it is still a draft
-    const lastTicket = S.ticket || ([...S.msgs].reverse().find((m) => m.ticket) || {}).ticket;
+    const lastTicket = S.ticket || S.scope || ([...S.msgs].reverse().find((m) => m.ticket) || {}).ticket;
     if (lastTicket) await loadSlip(lastTicket, !S.ticket);
+    // a ticket that can't take a message any more (on the ballot, approved): the window goes back to what was said outside any ticket, not that ticket's log under a box that sends to none
+    if (!agent.proposals && !S.ticket && S.scope) { S.slip = null; await showScope(null); }
     draw();
+  }
+  /** Shows one conversation: a ticket's (its number) or what was said outside any ticket (null). @rule 801.6 */
+  async function showScope(scope) {
+    const mine = ++S.seq;
+    const r = await api(historyPath(scope || null));
+    if (mine !== S.seq) return;   // a later switch is the one that counts
+    if (!r.ok) { S.err = (r.data && r.data.error) || "Something went wrong."; S.msgs = []; S.next = null; S.scope = undefined; return; }   // never the old ticket's lines under the new ticket's box
+    S.msgs = r.data.messages; S.next = r.data.next; S.state = r.data.state; S.scope = r.data.ticket || null; S.err = "";
   }
   /** The ticket on the slip: yours or nothing. `auto`: it was inferred from the history, so it is attached only if it can still be written. @rule 801.2 */
   async function loadSlip(n, auto) {
@@ -273,10 +302,10 @@ ${sl.kind !== "action" && (sl.after_text || sl.before_text) ? `<div class="tx cd
     const log = e.target;
     if (log.scrollTop > 40 || !S.next || S.loading) return;
     S.loading = true;
-    const before = log.scrollHeight;
-    const r = await api(`/api/chat/${agent.path}?before=${S.next}`);
+    const before = log.scrollHeight, at = S.scope;
+    const r = await api(historyPath(at, S.next));
     S.loading = false;
-    if (!r.ok) return;
+    if (!r.ok || S.scope !== at) return;
     S.msgs = r.data.messages.concat(S.msgs); S.next = r.data.next; if (r.data.slips) S.slips = { ...S.slips, ...r.data.slips };
     draw();
     const l2 = col.querySelector(".ch-log"); if (l2) l2.scrollTop = l2.scrollHeight - before;
@@ -291,11 +320,13 @@ ${sl.kind !== "action" && (sl.after_text || sl.before_text) ? `<div class="tx cd
     draw();
     const rule = agent.proposals ? S.rule : null, intent = agent.proposals && !rule ? S.intent : null;
     optimistic.rule = rule;
+    const at = S.scope;   // the answer can take 30 s: if the window has moved to another ticket by then, it is not that window's line (rule 801.6)
     const r = await api(`/api/chat/${agent.path}`, S.ticket ? { ticket: S.ticket, body: text } : rule ? { rule, body: text } : intent ? { intent, body: text } : { body: text });
     S.busy = false;
     if (r.ok && rule && r.data.out === "ok") S.rule = null;   // the rule rides on the first message that was answered (not at the cap, or when she is out)
     if (r.ok && intent && r.data.out === "ok") S.intent = null;
     S.msgs = S.msgs.filter((m) => m !== optimistic);
+    if (S.scope !== at) { if (r.ok && r.data.state) S.state = r.data.state; draw(); return; }
     if (!r.ok) {
       S.draft = text;
       S.err = (r.data && r.data.error) || "Something went wrong.";
@@ -321,7 +352,7 @@ ${sl.kind !== "action" && (sl.after_text || sl.before_text) ? `<div class="tx cd
     if (a === "min") minimize();
     else if (a === "close") { S.sheet = false; place(); }
     else if (a === "send") await send();
-    else if (a === "detach") { S.ticket = null; S.slip = null; draw(); }
+    else if (a === "detach") { S.ticket = null; S.slip = null; if (!agent.proposals) await showScope(null); draw(); }
     else if (a === "detach-rule") { S.rule = null; draw(); }
     else if (a === "detach-intent") { S.intent = null; draw(); }
     else if (a === "lock" || a === "unlock") await lockOrUnlock(el.dataset.id, a === "lock" ? "confirm" : "withdraw");
@@ -363,7 +394,9 @@ ${sl.kind !== "action" && (sl.after_text || sl.before_text) ? `<div class="tx cd
   async function attach(n, o = {}) {
     S.ticket = n || null;
     if (n) await loadSlip(n); else S.slip = null;
-    if (o.open) open(); else draw();
+    const switched = !agent.proposals && S.loaded && S.scope !== (S.ticket || null);
+    if (switched) await showScope(S.ticket);   // the window shows this ticket's conversation (rule 801.6)
+    if (o.open) open(); else draw(switched);
   }
   /** Can he be reached? True until the server says there is no key. @rule 106.3 */
   const ready = () => !S.state || S.state.ready !== false;
