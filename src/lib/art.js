@@ -118,7 +118,7 @@ export function stylePrompt(kind, attrs, words, details = "") {
 
 // ---- the description before drawing (rule 801.2) -----------------------------------------------------------------------------------
 // A small image model draws the generic member of a class from a name alone (any conifer for a named pine, a brown pot for a copper one). So
-// before drawing, the cheap text model that looks at drawings is asked once what makes Gremlin's words look like THAT thing, in plain visual
+// before drawing, a text model (DESCRIBE_MODEL) is asked once what makes Gremlin's words look like THAT thing, in plain visual
 // words, and its answer is written after his words. The question is per kind, like the look's; a failed or late answer draws from the words alone.
 export const DESCRIBE_TIMEOUT_MS = 6_000;
 export const MAX_DETAILS = 400;
@@ -159,6 +159,14 @@ export function describeAsk(kind, words) {
 // ticket by its requester starts it instead (src/lib/art.ts redrawFailed; the card asks again every 2 s while a drawing is out).
 /** The model that looks at a drawing: the cheapest one that reads images (the same API as the agents, src/lib/agent.ts). */
 export const CHECK_MODEL = "claude-haiku-5-5";
+/**
+ * The model that writes the description before a drawing (describeFor). Sonnet, not the cheap look model (11-23, third climb): asked the
+ * same question, Sonnet wrote the same description run after run, while Haiku's changed shape from one ask to the next (a signpost's two
+ * arrows came back as "two boards angled in opposite directions", which the image model drew as a crossed X). Same prompts, klein 9B, 3
+ * draws a subject: a signpost passed 0 of 3 with Haiku and 4 of 9 with Sonnet. It costs about $0.0015 a description (Haiku: $0.0002) and
+ * takes about 2 s (2.6 s at most), inside DESCRIBE_TIMEOUT_MS. The look stays on CHECK_MODEL.
+ */
+export const DESCRIBE_MODEL = "claude-sonnet-5-5";
 export const CHECK_TIMEOUT_MS = 8_000;   // one look at a picture; past this the drawing is simply "unchecked"
 export const DRAW_BUDGET_MS = 27_000;    // everything one draw may use (the description, the drawing and the look), inside the 30 s a Worker keeps working after its response, leaving room for the writes
 const CHECK_MIN_MS = 3_000;              // a look needs at least this much time left, or it is not started

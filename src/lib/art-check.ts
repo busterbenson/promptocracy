@@ -2,7 +2,7 @@
 // are the pure parts in src/lib/art.js; this is the one place a model is shown a picture. It uses the agents' API (src/lib/agent.ts:
 // the key only in a header, a hard timeout, no prompt or picture logged) and the cheapest model that reads images.
 // A check that errors, times out or is refused is "unchecked" and never a pass. Its cost is counted in the month's budget like any call.
-import { CHECK_MODEL, CHECK_SCHEMA, checkQuestion, describeAsk, readVerdict, shortDetails } from "./art.js";
+import { CHECK_MODEL, CHECK_SCHEMA, DESCRIBE_MODEL, checkQuestion, describeAsk, readVerdict, shortDetails } from "./art.js";
 import { callModel, logCall } from "./agent";
 import { Env } from "./util";
 
@@ -51,7 +51,7 @@ export async function lookAt(env: Env, game: { id: string }, tz: string, playerI
  * them that exact thing. Returns the description, or "" (draw from the words alone) when there is no key, an error or no time. Never throws.
  * ART_CHECK_STUB (the tests) answers without a call. @rule 801.2
  */
-export async function describeFor(env: Env, game: { id: string }, tz: string, playerId: string | null, kind: string | null, words: string, timeoutMs: number): Promise<string> {
+export async function describeFor(env: Env, game: { id: string }, tz: string, playerId: string | null, kind: string | null, words: string, timeoutMs: number, model: string = DESCRIBE_MODEL): Promise<string> {
   const stub = env.ART_CHECK_STUB;
   if (stub && stub !== "model") return "";
   if (!env.MODEL_API_KEY) return "";
@@ -59,15 +59,15 @@ export async function describeFor(env: Env, game: { id: string }, tz: string, pl
   let r;
   try {
     r = await callModel(env, {
-      model: CHECK_MODEL, maxTokens: 2000, effort: "low", timeoutMs: Math.max(1000, timeoutMs),
+      model, maxTokens: 2000, effort: "low", timeoutMs: Math.max(1000, timeoutMs),
       system: "You describe how things look, for an illustrator, in plain concrete visual words.",
       messages: [{ role: "user", content: describeAsk(kind, words) }],
     });
   } catch { r = null; }
   if (!r || !r.ok) {
-    await logCall(env, game, tz, Date.now(), { player_id: playerId, agent: "gremlin", purpose: "art_describe", model: CHECK_MODEL, outcome: "failed", ms: Date.now() - t0, reason: r && !r.ok ? r.reason : "error", usage: r && !r.ok ? r.usage : undefined });
+    await logCall(env, game, tz, Date.now(), { player_id: playerId, agent: "gremlin", purpose: "art_describe", model, outcome: "failed", ms: Date.now() - t0, reason: r && !r.ok ? r.reason : "error", usage: r && !r.ok ? r.usage : undefined });
     return "";
   }
-  await logCall(env, game, tz, Date.now(), { player_id: playerId, agent: "gremlin", purpose: "art_describe", model: CHECK_MODEL, outcome: "ok", ms: r.ms, usage: r.usage });
+  await logCall(env, game, tz, Date.now(), { player_id: playerId, agent: "gremlin", purpose: "art_describe", model, outcome: "ok", ms: r.ms, usage: r.usage });
   return shortDetails(r.text);
 }

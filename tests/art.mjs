@@ -11,7 +11,7 @@ import { client, createGame, d1, freePort, join, migrate, newState, r2Delete, r2
 import { readFileSync } from "node:fs";
 import { join as pjoin } from "node:path";
 import { ROOT } from "./lib.mjs";
-import { ART_COST_MICRO, CHECK_MODEL, HASH, IMAGE_MODEL, KIND_BLOCKS, MAX_DETAILS, MAX_PROMPT, artKey, checkQuestion, describeAsk, drawChecked, kindBlock, loosePalette, readVerdict, runImage, sha256Hex, shortDetails, sizeFor, sniffType, stubPng, stylePrompt, tmpKey } from "../src/lib/art.js";
+import { ART_COST_MICRO, CHECK_MODEL, DESCRIBE_MODEL, HASH, IMAGE_MODEL, KIND_BLOCKS, MAX_DETAILS, MAX_PROMPT, artKey, checkQuestion, describeAsk, drawChecked, kindBlock, loosePalette, readVerdict, runImage, sha256Hex, shortDetails, sizeFor, sniffType, stubPng, stylePrompt, tmpKey } from "../src/lib/art.js";
 import { answerSchema, readMakeItem, systemStatic } from "../src/lib/gremlin.js";
 
 let pass = 0, fail = 0;
@@ -284,7 +284,7 @@ try {
     check("a clear yes keeps the drawing with nothing recorded on the draw, after one look", y.ok && draws(y.n)[0].state === "done" && draws(y.n)[0].reason === null && refs(y.n).length === 1 && looksOf().length === L0 + 1);
     check("the look is one call to the cheap model with the picture (base64 PNG) and that kind's question, a hard timeout, no player text; its cost is counted in the month's budget", !!sent && sent.model === "claude-haiku-5-5" && sent.body.messages[0].content[0].source.media_type === "image/png" && /^[A-Za-z0-9+/=]+$/.test(sent.body.messages[0].content[0].source.data) && Buffer.from(sent.body.messages[0].content[0].source.data, "base64").length === r2Get(state, tmpKey(refs(y.n)[0].hash)).length && /name that exact animal or being/.test(sent.body.messages[0].content[1].text) && lookRows()[0].outcome === "ok" && lookRows()[0].agent === "gremlin" && lookRows()[0].cost_micro > 0 && !/check yes/.test(J(lookRows())));
     const describes = () => calls.filter((c) => /^You describe how things look/.test(String(c.body.system ?? "")));
-    check("before the drawing the cheap model is asked once how the entry looks (its kind's question, Gremlin's words), and that call is logged and counted too", describes().length >= 1 && /that exact animal or being/.test(describes()[0].lastText) && /a small green frog/.test(describes()[0].lastText) && d1(state, "SELECT * FROM agent_calls WHERE purpose = 'art_describe' AND outcome = 'ok'").length >= 1);
+    check("before the drawing the description model (Sonnet, not the look's Haiku) is asked once how the entry looks (its kind's question, Gremlin's words), and that call is logged and counted too, under its own model", DESCRIBE_MODEL === "claude-sonnet-5-5" && DESCRIBE_MODEL !== CHECK_MODEL && describes().length >= 1 && describes()[0].body.model === DESCRIBE_MODEL && d1(state, "SELECT model FROM agent_calls WHERE purpose = 'art_describe'").every((r) => r.model === DESCRIBE_MODEL) && /that exact animal or being/.test(describes()[0].lastText) && /a small green frog/.test(describes()[0].lastText) && d1(state, "SELECT * FROM agent_calls WHERE purpose = 'art_describe' AND outcome = 'ok'").length >= 1);
     const get = async (n) => (await Bo.get(`${T}/W${n}`)).data.ticket.entry_views[0].art;
     // 2) no, then no: the first drawing is kept with the failure; the NEXT read redraws it; the redraw's no is kept and recorded, and it stops there
     stubState.looks = ["no", "no"]; const L1 = looksOf().length, R1 = lookRows().length;

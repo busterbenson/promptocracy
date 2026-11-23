@@ -24,12 +24,12 @@ under rule 101 or 102; a follow-up change claims them and moves `src/` into the 
 
 ## src/lib/art.js (6)
 
-- line 244: `crcTable`
-- line 245: `crc32`
-- line 246: `u32`
-- line 247: `chunk`
-- line 251: `px`
-- line 262: `concat`
+- line 252: `crcTable`
+- line 253: `crc32`
+- line 254: `u32`
+- line 255: `chunk`
+- line 259: `px`
+- line 272: `concat`
 
 ## src/lib/art.ts (5)
 
