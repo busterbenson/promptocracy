@@ -21,11 +21,12 @@ export const ART_COST_MICRO = 20000;     // what one drawing is counted as in th
 /**
  * What one drawing is counted as in the monthly budget, by IMAGE_MODEL (micro-dollars, a 1024 x 1024 picture; over-counted, never under).
  * FLUX.2 [dev] (`@cf/black-forest-labs/flux-2-dev`, the same multipart form as klein) is priced per step: $0.00041 per 512 x 512 output
- * tile per step (Workers AI pricing, 11-23), so 4 tiles x 25 steps = $0.041. Its default step count is not documented; 25 is measured, not
- * billed: 1 step drew in 7.7 s, 50 steps in 21.0 s, the default in 13.6-14.4 s (fourth climb, one drawing at a time). Counted as $0.05.
+ * tile per step (Workers AI pricing, 11-23). Its default is 50 steps: Cloudflare's usage analytics (aiInferenceAdaptiveGroups, fifth
+ * climb, 11-23) bill every default 1024 x 1024 drawing as 200 processed output tiles = 7,500 neurons = $0.0825 (steps=1 bills 4 tiles,
+ * 10 bills 40, 20 bills 80). Counted as $0.085. (klein 9B bills 1,363.6 neurons = $0.015, counted as $0.02.)
  * A model not listed here is counted at the dearest listed price.
  */
-export const ART_COST_BY_MODEL = { "@cf/black-forest-labs/flux-2-klein-9b": ART_COST_MICRO, "@cf/black-forest-labs/flux-2-klein-4b": ART_COST_MICRO, "@cf/black-forest-labs/flux-2-dev": 50000 };
+export const ART_COST_BY_MODEL = { "@cf/black-forest-labs/flux-2-klein-9b": ART_COST_MICRO, "@cf/black-forest-labs/flux-2-klein-4b": ART_COST_MICRO, "@cf/black-forest-labs/flux-2-dev": 85000 };
 /** The budget cost of one drawing by `model` (ART_COST_BY_MODEL). @rule 106.7 */
 export const artCostMicro = (model) => ART_COST_BY_MODEL[model] ?? Math.max(...Object.values(ART_COST_BY_MODEL));
 export const MAX_SAVED = 20;            // the most drawings one entry keeps (the same limit catalog.json reads, LIMITS.saved)
@@ -185,14 +186,19 @@ const CHECK_MIN_MS = 3_000;              // a look needs at least this much time
 
 /** Gremlin's words as the check quotes them: one line, capped like the drawing's. @rule 801.2 */
 const asked = (words) => String(words ?? "").replace(/\s+/g, " ").trim().slice(0, MAX_PROMPT).replace(/[\s.]+$/, "");
-/** The one question a drawing of this kind is asked: what it should show, and what makes it a clear yes. A kind not in the catalog is asked the landmark's. @rule 801.2 */
+/**
+ * The one question a drawing of this kind is asked: what it should show, and what makes it a clear yes. A kind not in the catalog is asked
+ * the landmark's. Every kind is also asked about writing: FLUX.2 [dev] letters boards and posts on its own (3 of 8 signposts in the fifth
+ * climb, 11-23, with no writing in the description), and the question without it passed 3 of those 4 lettered drawings; with it, all 4 fail
+ * and are redrawn. @rule 801.2
+ */
 export function checkQuestion(kind, words) {
   const what = asked(words), k = kindBlock(kind);
   const ask = {
     creature: `This picture was drawn for: "${what}". Would someone seeing it cold, with no caption, name that exact animal or being (judge it by its body shape, proportions and markings, not its colour), one character on its own, with a calm expression (not worried, sad or frowning)?`,
     tile: `This picture was drawn as a ground tile of: "${what}". Would someone seeing it cold, with no caption, name that exact kind of terrain from its surface (not just a coloured or patterned slab), and does that terrain fill an isometric diamond from corner to corner, with nothing standing, lying or growing on top of it (no object, building, plant, animal or figure) and no face anywhere on it?`,
   }[k] ?? `This picture was drawn for: "${what}". Would someone seeing it cold, with no caption, name that exact thing or a plain synonym of it, including the material, colour or kind the words give it (judge what it is and what it is made of), ${k === "structure" ? "one thing on its own (a plant or tree counts), not a character," : "an inanimate object on its own,"} with no face, no eyes, no mouth and no arms or legs anywhere on it?`;
-  return `${ask} Say yes only if every part of that is clearly true; if anything is doubtful or missing, say no. Reply as JSON: {"answer": "yes" or "no", "reason": "a short phrase"}.`;
+  return `${ask} Is it also free of legible writing (no words, letters or numbers anywhere on it), unless those words themselves ask for writing? Say yes only if every part of that is clearly true; if anything is doubtful or missing, say no. Reply as JSON: {"answer": "yes" or "no", "reason": "a short phrase"}.`;
 }
 /** The shape of the check's answer, for the API's structured output. */
 export const CHECK_SCHEMA = { type: "object", additionalProperties: false, required: ["answer", "reason"], properties: { answer: { type: "string", enum: ["yes", "no"] }, reason: { type: "string" } } };

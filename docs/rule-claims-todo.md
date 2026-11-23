@@ -7,7 +7,7 @@ Every function that carries out the game should say which rule it implements, wi
 `src/` is only reported for now: these functions have no claim yet. Site plumbing such as sign-in and email goes
 under rule 101 or 102; a follow-up change claims them and moves `src/` into the strict set.
 
-166 of 505 functions outside `src/engine/` are unclaimed.
+166 of 506 functions outside `src/engine/` are unclaimed.
 
 ## src/index.ts (6)
 
@@ -24,12 +24,12 @@ under rule 101 or 102; a follow-up change claims them and moves `src/` into the 
 
 ## src/lib/art.js (6)
 
-- line 252: `crcTable`
-- line 253: `crc32`
-- line 254: `u32`
-- line 255: `chunk`
-- line 259: `px`
-- line 272: `concat`
+- line 270: `crcTable`
+- line 271: `crc32`
+- line 272: `u32`
+- line 273: `chunk`
+- line 277: `px`
+- line 290: `concat`
 
 ## src/lib/art.ts (5)
 
