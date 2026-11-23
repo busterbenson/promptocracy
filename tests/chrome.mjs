@@ -2,12 +2,19 @@
 // History), the rule card with its Back stack, the player card, the account menu and the bell. A real `wrangler dev` on a
 // throwaway LOCAL D1 and headless Chromium (tests/browser-chrome.py). The rules come from templates/RULES.md through a local stub.
 // Set CHROME_SHOTS=<dir> to keep the screenshots (light and dark, 1280 and 390). Run: node tests/chrome.mjs
+// Debug loop: `node tests/chrome.mjs --only "S1-ACC-05"` (or CHROME_ONLY=a|b) prints and judges only the checks whose name contains one of the
+// texts (case-insensitive), and fails if none matched. The fixture and the browser still run in full (the checks share one page's state); what it saves is reading 300 lines of output.
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { mkdirSync, readFileSync, rmSync } from "node:fs";
 import { ROOT, createGame, d1, join, migrate, newState, startPlaying, startRulesStub, startServer, PYTHON } from "./lib.mjs";
 
 const shots = process.env.CHROME_SHOTS || "";
+const oi = process.argv.indexOf("--only");
+const ONLY = (oi > 0 ? process.argv[oi + 1] || "" : process.env.CHROME_ONLY || "").split("|").map((t) => t.trim().toLowerCase()).filter(Boolean);
+if (oi > 0 && !ONLY.length) { console.log("  FAIL  --only needs the text of a check name"); process.exit(1); }
+process.env.CHROME_ONLY = ONLY.join("|");   // the python half reads it
+let matched = 0;
 if (shots) mkdirSync(shots, { recursive: true });
 // random ports: other agents and test runs on this machine use the fixed ones
 const PORT = 19000 + Math.floor(Math.random() * 900) * 2;
@@ -56,7 +63,7 @@ try {
   const tiny = await createGame(state, { slug: "tiny", name: "Full House", repo: "busterbenson/chrome-game", rulesBase: stub.base, max: 1 });
   const zed = await join(srv.base, "tiny", tiny.code, { email: "zed@example.com", name: "Zed", color: "cobalt" });
   // /api/invite (the join link): players of this game only. Results print as ok / FAIL, never the link or the code.
-  const inv = async (name, ok, bad = "") => { console.log(ok ? "  ok    " + name : "  FAIL  " + name + (bad ? "  -> " + bad : "")); if (!ok) failed = true; };
+  const inv = async (name, ok, bad = "") => { if (ONLY.length && !ONLY.some((t) => name.toLowerCase().includes(t))) return; matched++; console.log(ok ? "  ok    " + name : "  FAIL  " + name + (bad ? "  -> " + bad : "")); if (!ok) failed = true; };
   const noCookie = await fetch(srv.base + "/setup/api/invite");
   const adaOnSetup = await fetch(srv.base + "/setup/api/invite", { headers: { cookie: ada.cookieFor("/chrome/") } });
   const adaOwn = await ada.get("/chrome/api/invite");
@@ -81,6 +88,7 @@ try {
   if (process.env.CHROME_SERVE) { console.log("SERVE", srv.base, cookie); await new Promise((res) => setTimeout(res, Number(process.env.CHROME_SERVE) * 1000)); }   // for debugging: keep the fixture up
   const r = await promisify(execFile)(PYTHON, [ROOT + "/tests/browser-chrome.py", srv.base, shots || "-", cookie, samCookie, deeCookie, eliCookie, louCookie, zedCookie], { timeout: 240000, maxBuffer: 1 << 24 });
   process.stdout.write(r.stdout);
+  if (ONLY.length) { const py = Number((r.stdout.match(/^matched (\d+) checks/m) || [])[1] || 0); if (matched + py === 0) { failed = true; console.log("  FAIL  --only matched no check: " + ONLY.join(" | ")); } }
 } catch (e) {
   failed = true;
   if (e.stdout) process.stdout.write(e.stdout);

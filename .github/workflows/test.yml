@@ -2,7 +2,7 @@ name: test
 
 # Tiers (Buster 2026-11-20: the suite was too heavy to run whole on every push):
 #   fast  - every PR push, drafts included: rule claims, design, engine (~2 min, no server, no browser)
-#   test  - the full suite split across 3 machines by measured minutes (scripts/ci-shard.mjs): on PRs that are ready
+#   test  - the rest of the suite (everything but the fast tier, which `fast` already ran) split across 3 machines by measured minutes (scripts/ci-shard.mjs): on PRs that are ready
 #           (not drafts; marking a draft ready runs it), on every push to main, and by hand. Merge gate: all 3 green.
 on:
   workflow_dispatch:
@@ -30,6 +30,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: node scripts/ci-shard.mjs --verify 3
       - run: node scripts/ci-shard.mjs --fast
 
   test:

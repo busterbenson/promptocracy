@@ -2,7 +2,7 @@
 # Bo (vermilion) and Cy (cobalt). Two proposals are on today's ballot: P1 (Bo) adds a clause to rule 401, P2 (Cy) adds a rule to
 # block 400. Ada's piece is at x 2, y 0 (1N 3E). Every checklist ID the chrome PR claims has a check here; "ok"/"FAIL" lines, and
 # any FAIL makes the exit code 1. Usage: browser-chrome.py <base> <screenshot dir or -> <Ada's session cookie>
-import re, sys
+import os, re, sys
 from urllib.parse import urlparse
 from playwright.sync_api import sync_playwright
 from pill_align import misaligned, npc_heights_match
@@ -11,8 +11,14 @@ base, out, cookie, sam_cookie, dee_cookie, eli_cookie, lou_cookie, zed_cookie = 
 host = urlparse(base).hostname
 failed = []
 SLUG = "chrome"
+# CHROME_ONLY="a|b" (tests/chrome.mjs --only): judge and print only the checks whose name contains one of these texts (the page work still runs)
+ONLY = [t.strip().lower() for t in os.environ.get("CHROME_ONLY", "").split("|") if t.strip()]
+matched = 0
 
 def check(name, ok, detail=""):
+    global matched
+    if ONLY and not any(t in name.lower() for t in ONLY): return
+    matched += 1
     print(("ok    " if ok else "FAIL  ") + name + (f"  -> {detail}" if detail and not ok else ""))
     if not ok: failed.append(name)
 
@@ -690,5 +696,6 @@ with sync_playwright() as pw:
     c.close()
     b.close()
 
+print(f"\nmatched {matched} checks") if ONLY else None
 print("\nbrowser-chrome:", "FAILED %d: %s" % (len(failed), "; ".join(failed)) if failed else "all checks passed")
 sys.exit(1 if failed else 0)

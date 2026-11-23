@@ -40,5 +40,19 @@ check("the CLI prints the rows as JSON and exits 1 with the message on an error"
   return ok.status === 0 && J(JSON.parse(ok.stdout)) === J([{ slug: "one" }]) && bad.status === 1 && /nope/.test(bad.stderr);
 })());
 
+// migrate() with a template (scripts/ci-shard.mjs sets PROMPTOCRACY_MIGRATED_TEMPLATE): a copy has the template's schema and migration history, and writing to it leaves the template alone
+{
+  const template = newState();
+  migrate(template);   // no env var set yet: the wrangler path
+  process.env.PROMPTOCRACY_MIGRATED_TEMPLATE = template;
+  const copy = newState();
+  migrate(copy);
+  const hist = (st) => J(localD1(st, "SELECT name FROM d1_migrations ORDER BY id"));
+  check("migrate() with a template copies it: the same migration history and tables, in the state's own folder", copy !== template && d1File(copy).endsWith(d1File(template).split("/").pop()) && hist(copy) === hist(template) && localD1(copy, "SELECT COUNT(*) AS n FROM d1_migrations")[0].n >= 19);
+  localD1(copy, g("g9", "nine"));
+  check("a write to the copy never reaches the template, and a second migrate() on the copy leaves its data", localD1(template, "SELECT COUNT(*) AS n FROM games")[0].n === 0 && (migrate(copy), localD1(copy, "SELECT COUNT(*) AS n FROM games")[0].n === 1));
+  delete process.env.PROMPTOCRACY_MIGRATED_TEMPLATE;
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
