@@ -79,11 +79,12 @@ function scaled(key, svg, s, ox, oy) {
 }
 
 // Move the art so the point it stands on is the canvas's foot point; shrink it if it is too wide for a tile.
-const HALF_WIDTH = {}, FIT = {}, FOOTPRINT = {}, AREA = {};
+const HALF_WIDTH = {}, FIT = {}, FOOTPRINT = {}, AREA = {}, MID = {};
 function place(key, w, body, [fx, fy], f) {
   const dx = Math.round((CANVAS.x - fx) * 10) / 10, dy = Math.round((CANVAS.y - fy) * 10) / 10;
   if (dx < 0 || dy < 0 || dx + w > CANVAS.w || dy + TOP > CANVAS.h) throw new Error(`${key}: does not fit the canvas once its feet are on the foot point (shift ${dx}, ${dy}; art ${w} x ${TOP})`);
   HALF_WIDTH[key] = (f.right - f.left) / 2;
+  MID[key] = dy + TOP / 2 - CANVAS.y;   // the art spans dy .. dy + TOP on the canvas (the crop is checked), so this is its vertical middle, from the foot point
   const u = BOARD_SCALE * HEIGHT / TOP; // board units per canvas unit, before FIT
   const fit = Math.min(Math.sqrt(SIZE.area / (AREA[key] * u * u)), SIZE.h / (BOARD_SCALE * HEIGHT), SIZE.w / ((f.right - f.left) * u));
   FIT[key] = Math.floor(fit * 1000) / 1000;
@@ -122,6 +123,8 @@ export const FIT = ${JSON.stringify(pick(FIT))};
 export const SIZE = ${JSON.stringify({ ...SIZE, scale: BOARD_SCALE })};
 export const HALF_WIDTH = ${JSON.stringify(pick(HALF_WIDTH))};
 export const FOOTPRINT = ${JSON.stringify(pick(FOOTPRINT))};
+// The middle of each figure's painted height, in canvas units from the foot point (negative = above it): what a small piece's box is centred on.
+export const MID = ${JSON.stringify(pick(MID))};
 `;
 writeFileSync(join(ROOT, "public/js/pieces-data.js"), out);
 console.log(`pieces-data.js: ${KEYS.length} shapes, ${(out.length / 1024).toFixed(0)} KB`);
