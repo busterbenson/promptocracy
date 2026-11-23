@@ -169,7 +169,7 @@ check("seededRng: same seed, same numbers; different seed, different numbers", (
   const x = [a(), a(), a()], y = [b(), b(), b()], z = [c(), c(), c()];
   return J(x) === J(y) && J(x) !== J(z);
 })());
-check("the action kinds are move, propose, vote, end_turn; and deepFreeze is idempotent", J(ACTION_KINDS) === '["move","propose","vote","end_turn"]' && deepFreeze(deepFreeze({ a: { b: 1 } })).a.b === 1);
+check("the action kinds are move, propose, vote, end_turn; and deepFreeze is idempotent", J(ACTION_KINDS) === '["move","propose","vote","end_turn","give_heart"]' && deepFreeze(deepFreeze({ a: { b: 1 } })).a.b === 1);
 
 console.log("effects");
 check("a chart effect needs integer tiles inside the world, at most 500", validateEffect({ type: "chart", tiles: [{ x: 1, y: 2, z: 0 }] }) === null && validateEffect({ type: "chart", tiles: [{ x: 1.5, y: 0 }] }) !== null && validateEffect({ type: "chart", tiles: [{ x: 2e6, y: 0 }] }) !== null && validateEffect({ type: "chart", tiles: Array.from({ length: 501 }, () => ({ x: 0, y: 0 })) }) !== null && validateEffect({ type: "chart" }) !== null);
@@ -292,7 +292,7 @@ check("a restatement is not an error: a clause that repeats another clause's num
 
 console.log("the starter pack's own tests");
 {
-  const out = execFileSync(process.execPath, ["--test", ...["202", "504", "505", "rulebook"].map((n) => `templates/rules/${n}.test.ts`)], { cwd: ROOT, encoding: "utf8", env: { ...process.env, NO_COLOR: "1" } });
+  const out = execFileSync(process.execPath, ["--test", ...["202", "504", "505", "404", "601", "602", "603", "604", "rulebook"].map((n) => `templates/rules/${n}.test.ts`)], { cwd: ROOT, encoding: "utf8", env: { ...process.env, NO_COLOR: "1" } });
   const n = (k) => Number((new RegExp(`# ${k} (\\d+)`).exec(out) ?? [])[1]);
   check("node --test templates/rules: every test passes", n("fail") === 0 && n("pass") >= 22, `pass ${n("pass")} fail ${n("fail")}`);
 }
@@ -366,7 +366,7 @@ check("hookClaimProblems: every hook the LOADED module has must be a tagged func
 }
 
 console.log("how rules share a hook");
-check("every wired hook declares one combine mode: veto (can-I), sequence (effects), decide (one handler)", J(Object.fromEntries(Object.entries(HOOKS).filter(([, h]) => h.wired).map(([k, h]) => [k, h.mode]))) === '{"actionAllowed":"veto","afterAction":"sequence","spawnTile":"decide","applyOrder":"decide","onEnacted":"sequence","dayEnd":"sequence","championChange":"veto","actionType":"sequence","applyAction":"sequence"}' && Object.values(HOOKS).every((h) => ["veto", "sequence", "decide"].includes(h.mode)));
+check("every wired hook declares one combine mode: veto (can-I), sequence (effects), decide (one handler)", J(Object.fromEntries(Object.entries(HOOKS).filter(([, h]) => h.wired).map(([k, h]) => [k, h.mode]))) === '{"actionAllowed":"veto","afterAction":"sequence","spawnTile":"decide","applyOrder":"decide","onEnacted":"sequence","dayEnd":"sequence","championChange":"veto","giveHeart":"veto","actionType":"sequence","applyAction":"sequence","night":"sequence","ending":"decide"}' && Object.values(HOOKS).every((h) => ["veto", "sequence", "decide"].includes(h.mode)));
 check("championChange (402.4): a game with no module for it has no Champion's change (a refusal); with one it is allowed; any module may refuse, with its rule named; a bad answer is a RuleError", (() => {
   const none = assembleRules([one, order]).championChange(ctx, A);
   const yes = assembleRules([one, order, m(402, { championChange: () => null })]).championChange(ctx, A);
@@ -375,6 +375,13 @@ check("championChange (402.4): a game with no module for it has no Champion's ch
   const byPower = assembleRules([one, order, m(402, { championChange: (c, a, p) => (p === "name" ? refuse("no naming", 409) : null) })]);
   const names = byPower.championChange(ctx, A, "name"), changes = byPower.championChange(ctx, A), noneName = assembleRules([one, order]).championChange(ctx, A, "name");
   return none && none.status === 409 && /no Champion's change/.test(none.error) && yes === null && no && no.rule === 406 && no.error === "not this Era" && no.status === 409 && bad instanceof RuleError && bad.rule === 402 && names && names.error === "no naming" && changes === null && /no naming of Eras/.test(noneName.error);
+})(), "");
+check("giveHeart (603.4): opt-in like championChange: a game with no module for it has no giving of hearts (a refusal); with one, its answer stands, with its rule named; a bad answer is a RuleError", (() => {
+  const none = assembleRules([one, order]).giveHeart(ctx, A, "t");
+  const yes = assembleRules([one, order, m(603, { giveHeart: () => null })]).giveHeart(ctx, A, "t");
+  const no = assembleRules([one, order, m(603, { giveHeart: (c, g, t) => (t === "t" ? refuse("not next to them", 409) : null) })]).giveHeart(ctx, A, "t");
+  const bad = throws(() => assembleRules([one, order, m(603, { giveHeart: () => ({ status: 409 }) })]).giveHeart(ctx, A, "t"));
+  return none && none.status === 409 && /no giving of hearts/.test(none.error) && yes === null && no && no.rule === 603 && no.error === "not next to them" && bad instanceof RuleError && bad.rule === 603;
 })(), "");
 check("veto: a refusal names the rule that made it", (() => {
   const r = assembleRules([m(202, { actionAllowed: () => null }), m(504, { actionAllowed: () => refuse("no", 409) }), one, order]).actionAllowed(ctx, A, { kind: "move" });

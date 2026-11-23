@@ -7,16 +7,16 @@ Every function that carries out the game should say which rule it implements, wi
 `src/` is only reported for now: these functions have no claim yet. Site plumbing such as sign-in and email goes
 under rule 101 or 102; a follow-up change claims them and moves `src/` into the strict set.
 
-165 of 484 functions outside `src/engine/` are unclaimed.
+165 of 488 functions outside `src/engine/` are unclaimed.
 
 ## src/index.ts (6)
 
-- line 66: `secure`
-- line 77: `stamp`
-- line 88: `notFound`
-- line 94: `run`
-- line 99: `route`
-- line 226: `fetch`
+- line 67: `secure`
+- line 78: `stamp`
+- line 89: `notFound`
+- line 95: `run`
+- line 100: `route`
+- line 227: `fetch`
 
 ## src/lib/art-sweep.ts (1)
 
@@ -24,12 +24,12 @@ under rule 101 or 102; a follow-up change claims them and moves `src/` into the 
 
 ## src/lib/art.js (6)
 
-- line 105: `crcTable`
-- line 106: `crc32`
-- line 107: `u32`
-- line 108: `chunk`
-- line 112: `px`
-- line 123: `concat`
+- line 124: `crcTable`
+- line 125: `crc32`
+- line 126: `u32`
+- line 127: `chunk`
+- line 131: `px`
+- line 142: `concat`
 
 ## src/lib/art.ts (3)
 
@@ -61,7 +61,7 @@ under rule 101 or 102; a follow-up change claims them and moves `src/` into the 
 
 ## src/lib/catalog.js (1)
 
-- line 275: `bad`
+- line 279: `bad`
 
 ## src/lib/drafter.ts (1)
 
@@ -149,18 +149,18 @@ under rule 101 or 102; a follow-up change claims them and moves `src/` into the 
 
 ## src/lib/settings.js (12)
 
-- line 56: `validTimeZone`
-- line 63: `isInt`
-- line 64: `isObj`
-- line 65: `evenInt`
-- line 69: `max_players`
-- line 73: `mcp_enabled`
-- line 84: `exactly`
-- line 93: `spawnSpots`
-- line 94: `inside`
-- line 102: `validateSettings`
-- line 122: `getSettings`
-- line 136: `settingsForSize`
+- line 61: `validTimeZone`
+- line 68: `isInt`
+- line 69: `isObj`
+- line 70: `evenInt`
+- line 74: `max_players`
+- line 78: `mcp_enabled`
+- line 93: `exactly`
+- line 102: `spawnSpots`
+- line 103: `inside`
+- line 111: `validateSettings`
+- line 131: `getSettings`
+- line 145: `settingsForSize`
 
 ## src/lib/starling.js (2)
 
@@ -227,12 +227,12 @@ under rule 101 or 102; a follow-up change claims them and moves `src/` into the 
 
 ## src/routes/api-me.ts (1)
 
-- line 4: `get`
+- line 5: `get`
 
 ## src/routes/api-moderator.ts (2)
 
-- line 49: `unauthorized`
-- line 253: `num`
+- line 50: `unauthorized`
+- line 254: `num`
 
 ## src/routes/api-notifications-read.ts (1)
 

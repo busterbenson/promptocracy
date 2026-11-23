@@ -1,17 +1,18 @@
 // PUBLIC. Never include emails, player ids or the join code.
 import { getPlayer } from "../lib/auth";
+import { stateOf } from "../engine/host";
 import { eraView } from "../lib/eras";
 import { Ctx, colorOf, json, seatLimit } from "../lib/util";
 
-/** @rule 102, 106.5, 402.1 */
+/** @rule 102, 106.5, 402.1, 404, 601, 603.1 */
 export const get = async ({ env, data, request }: Ctx) => {
   const g = data.game!;
   const viewer = await getPlayer(env, request, g);
   const players = (
     await env.DB.prepare(
-      "SELECT display_name AS name, color, shape, score, turn_order, is_host FROM players WHERE game_id = ? ORDER BY turn_order",
+      "SELECT display_name AS name, color, shape, score, turn_order, is_host, hearts, dead_day, ghost_day FROM players WHERE game_id = ? ORDER BY turn_order",
     ).bind(g.id).all()
-  ).results.map((p: any) => ({ ...p, color: colorOf(p.color), is_host: !!p.is_host }));
+  ).results.map(({ dead_day, ghost_day, ...p }: any) => ({ ...p, color: colorOf(p.color), is_host: !!p.is_host, state: stateOf({ dead_day, ghost_day }), dead_day: dead_day ?? null, ghost_day: ghost_day ?? null }));
   const events = (
     await env.DB.prepare("SELECT kind, text, created_at FROM events WHERE game_id = ? ORDER BY id DESC LIMIT 50")
       .bind(g.id)
@@ -37,6 +38,9 @@ export const get = async ({ env, data, request }: Ctx) => {
       day: g.day,
       winning_score: g.winning_score,
       max_players: seatLimit(g),
+      ending: g.ending ?? null,
+      ended_day: g.ended_day ?? null,
+      ending_player: g.ending_player_id ? ((await env.DB.prepare("SELECT display_name AS name FROM players WHERE game_id = ? AND id = ?").bind(g.id, g.ending_player_id).first()) as any)?.name ?? null : null,
     },
     era: await eraView(env, g, viewer?.id),
     players,

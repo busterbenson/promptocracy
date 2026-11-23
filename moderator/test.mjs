@@ -226,26 +226,27 @@ console.log("moderator runner");
   const t7 = await night({ scenario: { apply: { 4: { action: "ops", ops: [{ remove: "RULES.md" }, { dir: "RULES.md" }, { write: ["RULES.md/x", "y"] }] }, 5: { action: "win", to: 50 } } }, state: { job: job([P(4, "401"), P(5, "402.2")]) }, opts: { audit: false } });
   check("a change that turns RULES.md into a folder fails only that proposal", t7.r.status === "claimed" && t7.claims[0].outcomes[0].applied === false && t7.claims[0].outcomes[1].applied === true, J([t7.r.status, t7.claims[0]?.outcomes]));
   // Every kind of proposal, done right, applies; each done wrong is refused (pass 3).
-  const r403 = md.slice(md.indexOf("### 403 "), md.indexOf("## 500."));
+  const r403 = md.slice(md.indexOf("### 403 "), md.indexOf("### 404 "));
+  const rep502 = md.slice(md.indexOf("### 502 "), md.indexOf("### 503 ")).split("\n").slice(1).join("\n").trim();
   const body403 = r403.split("\n").slice(1).join("\n").trim(), body403m = body403.replace("**403.1**", "**302.1**");   // a move renumbers the clauses with the rule (rule 109.1)
   const kinds = [
     ["a move (403 to block 300 as 302, with its forwarder)", P(4, "403", { kind: "move", new_num: "302", to_block: "300", after_text: `302 Paradox\n\n${body403m}\n\n403 [Moved to 302]` }),
       [{ replace: ["RULES.md", r403, "### 403 [Moved to 302]\n\n"] }, { replace: ["RULES.md", "## 400.", `### 302 Paradox [m]\n${body403m}\n\n## 400.`] }], true],
     ["a move that lands in the core block", P(4, "403", { kind: "move", new_num: "302", to_block: "300", after_text: `302 Paradox\n\n${body403m}\n\n403 [Moved to 302]` }),
       [{ replace: ["RULES.md", r403, "### 403 [Moved to 302]\n\n"] }, { replace: ["RULES.md", "## 200.", `### 302 Paradox [m]\n${body403m}\n\n## 200.`] }], /rule 302 is in block 100, not block 300/],
-    ["an add (404 in block 400)", P(4, "400", { kind: "add", scope: "block", new_num: "404", after_text: "Every player starts the game with 5 points." }),
-      [{ replace: ["RULES.md", "## 500.", "### 404 Head start [m]\n**404.1** Every player starts the game with 5 points.\n\n## 500."] }], true],
-    ["an add that lands in the core block", P(4, "400", { kind: "add", scope: "block", new_num: "404", after_text: "Every player starts the game with 5 points." }),
-      [{ replace: ["RULES.md", "## 200.", "### 404 Head start [m]\n**404.1** Every player starts the game with 5 points.\n\n## 200."] }], /rule 404 is in block 100, not block 400/],
+    ["an add (405 in block 400)", P(4, "400", { kind: "add", scope: "block", new_num: "405", after_text: "Every player starts the game with 5 points." }),
+      [{ replace: ["RULES.md", "## 500.", "### 405 Head start [m]\n**405.1** Every player starts the game with 5 points.\n\n## 500."] }], true],
+    ["an add that lands in the core block", P(4, "400", { kind: "add", scope: "block", new_num: "405", after_text: "Every player starts the game with 5 points." }),
+      [{ replace: ["RULES.md", "## 200.", "### 405 Head start [m]\n**405.1** Every player starts the game with 5 points.\n\n## 200."] }], /rule 405 is in block 100, not block 400/],
     ["a repeal of a clause in the middle of a rule (202.3): its number stays empty and nothing renumbers (rule 109.1)", P(4, "202.3", { kind: "repeal", scope: "clause", after_text: "" }), [{ replace: ["RULES.md", "**202.3** Every part of a turn is optional, and skipping one has no penalty.\n\n", ""] }], true],
-    ["a repeal (403)", P(4, "403", { kind: "repeal", after_text: "[Repealed]" }), [{ replace: ["RULES.md", body403, "[Repealed]"] }], true],
+    ["a repeal (502)", P(4, "502", { kind: "repeal", after_text: "[Repealed]" }), [{ replace: ["RULES.md", rep502, "[Repealed]"] }], true],   // 502: nothing cites it (403 is cited by 404.2 now)
     ["a mark on rule 401", P(4, "401", { kind: "mark", after_text: "[unanimous]" }), [{ replace: ["RULES.md", "### 401 Points [m]", "### 401 Points [u]"] }], true],
     ["a mark on rule 401 that also rewrites it", P(4, "401", { kind: "mark", after_text: "[unanimous]" }), [{ replace: ["RULES.md", "### 401 Points [m]", "### 401 Points [u]"] }, { replace: ["RULES.md", "gets 10 points when", "gets 1000 points when"] }], /mark proposal changed rule 401's text/],
     ["a mark on a block (blocks carry none, rule 105.1)", P(4, "401", { kind: "mark", after_text: "[unanimous]" }), [{ replace: ["RULES.md", "### 401 Points [m]", "### 401 Points [u]"] }, { replace: ["RULES.md", "## 400. Points and winning", "## 400. Points and winning [u]"] }], /mark proposal changed block 400's heading|order of the rules|heading changed/],
-    ["a new rule added marked unanimous (the proposal's mark is unanimous)", P(4, "400", { kind: "add", scope: "block", new_num: "404", mark: "unanimous", after_text: "Every player starts the game with 5 points." }),
-      [{ replace: ["RULES.md", "## 500.", "### 404 Head start [u]\n**404.1** Every player starts the game with 5 points.\n\n## 500."] }], true],
-    ["a new rule added marked unanimous when the proposal did not mark it", P(4, "400", { kind: "add", scope: "block", new_num: "404", after_text: "Every player starts the game with 5 points." }),
-      [{ replace: ["RULES.md", "## 500.", "### 404 Head start [u]\n**404.1** Every player starts the game with 5 points.\n\n## 500."] }], /rule 404 is added unanimous, but the proposal's mark is majority/],
+    ["a new rule added marked unanimous (the proposal's mark is unanimous)", P(4, "400", { kind: "add", scope: "block", new_num: "405", mark: "unanimous", after_text: "Every player starts the game with 5 points." }),
+      [{ replace: ["RULES.md", "## 500.", "### 405 Head start [u]\n**405.1** Every player starts the game with 5 points.\n\n## 500."] }], true],
+    ["a new rule added marked unanimous when the proposal did not mark it", P(4, "400", { kind: "add", scope: "block", new_num: "405", after_text: "Every player starts the game with 5 points." }),
+      [{ replace: ["RULES.md", "## 500.", "### 405 Head start [u]\n**405.1** Every player starts the game with 5 points.\n\n## 500."] }], /rule 405 is added unanimous, but the proposal's mark is majority/],
     ["a setting the proposal sets (night.apply_minutes, by its voted settings)", P(4, "401", { settings: { "night.apply_minutes": 30 } }), [...good, { replace: ["settings.json", '"night.apply_minutes": 20', '"night.apply_minutes": 30'] }], true],
     ["a 108.4 note on the rule it overrides", P(4, "402.2"), [{ replace: ["RULES.md", "The first player to reach 100 points wins the Era", "The first player to reach 50 points wins the Era"] }, { replace: ["settings.json", '"eras.points_to_win": 100', '"eras.points_to_win": 50'] }, { write: ["rules/402.test.ts", TEST402_AT_50] }, { replace: ["RULES.md", "### 505 New players", "This rule gives way to rule 402.\n\n### 505 New players"] }], true, { outcome: "applied", conflict: { rule: 504, why: "x" } }],
     ["a 'note' on the overridden rule that says something else", P(4, "402.2"), [{ replace: ["RULES.md", "### 505 New players", "Rule 504 is void.\n\n### 505 New players"] }], /one-sentence note at its end saying it gives way to rule 402/, { outcome: "applied", conflict: { rule: 504, why: "x" } }],
@@ -291,23 +292,23 @@ console.log("moderator runner");
   check("kinds: an add-clause after 402.3 that rewrites 402.3 itself is refused", ta3.claims[0]?.outcomes[0]?.applied === false && /clause 402\.3 changed/.test(ta3.claims[0].outcomes[0].reason), J(ta3.claims[0]?.outcomes));
   const tmv = await night({ scenario: { apply: { 4: { action: "ops", ops: [{ replace: ["RULES.md", r502, "### 502 [Moved to 302]\n\n"] }, { replace: ["RULES.md", "## 400.", `### 302 Coordinates [m]\n${moved502}\nA day lasts two hours.\n\n## 400.`] }] } } }, state: { job: job([P(4, "502", { kind: "move", new_num: "302", to_block: "300", after_text: draft502 })]) }, opts: { audit: false } });
   check("kinds: a move that also adds a sentence to the moved rule is refused", tmv.claims[0]?.outcomes[0]?.applied === false && /a move changed the rule's text/.test(tmv.claims[0].outcomes[0].reason), J(tmv.claims[0]?.outcomes));
-  const pAdd = P(4, "400", { kind: "add", scope: "block", new_num: "404", after_text: "You get 1 more point when your proposal is applied. This rule prevails over rule 402." });
-  const tn = await night({ scenario: { apply: { 4: { action: "ops", ops: [{ replace: ["RULES.md", "## 500.", "### 404 Bonus [m]\n**404.1** You get 1 more point when your proposal is applied. This rule prevails over rule 402.\n\n## 500."] }, { replace: ["RULES.md", "### 403 Paradox", "This rule gives way to rule 404.\n\n### 403 Paradox"] }], result: { outcome: "applied", conflict: { rule: 402, why: "x" } } } } }, state: { job: job([pAdd]) }, opts: { audit: false } });
-  check("kinds: an added rule that prevails over 402 gives 402 a note naming the new rule (404), and applies", tn.claims[0]?.outcomes[0]?.applied === true, J(tn.claims[0]?.outcomes));
+  const pAdd = P(4, "400", { kind: "add", scope: "block", new_num: "405", after_text: "You get 1 more point when your proposal is applied. This rule prevails over rule 402." });
+  const tn = await night({ scenario: { apply: { 4: { action: "ops", ops: [{ replace: ["RULES.md", "## 500.", "### 405 Bonus [m]\n**405.1** You get 1 more point when your proposal is applied. This rule prevails over rule 402.\n\n## 500."] }, { replace: ["RULES.md", "### 403 Paradox", "This rule gives way to rule 405.\n\n### 403 Paradox"] }], result: { outcome: "applied", conflict: { rule: 402, why: "x" } } } } }, state: { job: job([pAdd]) }, opts: { audit: false } });
+  check("kinds: an added rule that prevails over 402 gives 402 a note naming the new rule (405), and applies", tn.claims[0]?.outcomes[0]?.applied === true, J(tn.claims[0]?.outcomes));
   const tr = await night({ scenario: { apply: { 4: { action: "ops", ops: [
     { replace: ["rules/202.ts", "export default defineRule({\n  rule: 202,", "export default defineRule({\n  rule: 202,\n  /** @rule 202.4 */\n  onEnacted() {\n    return [];\n  },"] },
     { replace: ["rules/rulebook.test.ts", 'implementers("onEnacted"), [401]', 'implementers("onEnacted"), [202, 401]'] },
     { replace: ["RULES.md", "what they hadn't done is skipped.", "what they hadn't done is skipped. Nothing happens to their points."] }] } } }, state: { job: job([P(4, "202.4", { scope: "clause", after_text: "" })]) }, opts: { audit: false } });
   check("rulebook.test.ts: a module that gains a hook may update the lines for its rule", tr.claims[0]?.outcomes[0]?.applied === true, J(tr.claims[0]?.outcomes));
   // rulebook.test.ts: an add with a module may change only the lines that name it.
-  const mod404 = 'import { defineRule, effects } from "promptocracy/engine";\nexport default defineRule({\n  rule: 404,\n  /** @rule 404 */\n  onEnacted(_ctx, proposal: any) {\n    return [effects.points(proposal.player, 1, "404")];\n  },\n});\n';
-  const test404 = 'import { test } from "node:test";\nimport assert from "node:assert/strict";\nimport { makeCtx } from "promptocracy/engine/testing";\nimport rule from "./404.ts";\ntest("404: +1", () => assert.equal(rule.onEnacted!(makeCtx(), { number: 1, player: "a" } as any)[0].delta, 1));\n';
-  const add404 = [{ replace: ["RULES.md", "## 500.", "### 404 Bonus [m]\n**404.1** You get 1 more point when your proposal is applied.\n\n## 500."] }, { write: ["rules/404.ts", mod404] }, { write: ["rules/404.test.ts", test404] },
-    { replace: ["rules/rulebook.test.ts", 'implementers("onEnacted"), [401]', 'implementers("onEnacted"), [401, 404]'] }, { replace: ["rules/rulebook.test.ts", "[107, 202, 401, 402, 504, 505, 704, 901]", "[107, 202, 401, 402, 404, 504, 505, 704, 901]"] }];
-  const p404 = P(4, "400", { kind: "add", scope: "block", new_num: "404", after_text: "You get 1 more point when your proposal is applied." });
-  const ta = await night({ scenario: { apply: { 4: { action: "ops", ops: add404 } } }, state: { job: job([p404]) }, opts: { audit: false } });
-  check("rulebook.test.ts: an add with a module may update the lines that name it, and applies", ta.claims[0]?.outcomes[0]?.applied === true && /404/.test(g(["show", "main:game.json"], ta.repo.bare)), J(ta.claims[0]?.outcomes));
-  const tb = await night({ scenario: { apply: { 4: { action: "ops", ops: [...add404, { replace: ["rules/rulebook.test.ts", 'assert.deepEqual(rules.implementers("spawnTile"), [505]);', ""] }] } } }, state: { job: job([p404]) }, opts: { audit: false } });
+  const mod405 = 'import { defineRule, effects } from "promptocracy/engine";\nexport default defineRule({\n  rule: 405,\n  /** @rule 405 */\n  onEnacted(_ctx, proposal: any) {\n    return [effects.points(proposal.player, 1, "405")];\n  },\n});\n';
+  const test405 = 'import { test } from "node:test";\nimport assert from "node:assert/strict";\nimport { makeCtx } from "promptocracy/engine/testing";\nimport rule from "./405.ts";\ntest("405: +1", () => assert.equal(rule.onEnacted!(makeCtx(), { number: 1, player: "a" } as any)[0].delta, 1));\n';
+  const add405 = [{ replace: ["RULES.md", "## 500.", "### 405 Bonus [m]\n**405.1** You get 1 more point when your proposal is applied.\n\n## 500."] }, { write: ["rules/405.ts", mod405] }, { write: ["rules/405.test.ts", test405] },
+    { replace: ["rules/rulebook.test.ts", 'implementers("onEnacted"), [401]', 'implementers("onEnacted"), [401, 405]'] }, { replace: ["rules/rulebook.test.ts", "[107, 202, 401, 402, 504, 505, 704, 901]", "[107, 202, 401, 402, 405, 504, 505, 704, 901]"] }];
+  const p405 = P(4, "400", { kind: "add", scope: "block", new_num: "405", after_text: "You get 1 more point when your proposal is applied." });
+  const ta = await night({ scenario: { apply: { 4: { action: "ops", ops: add405 } } }, state: { job: job([p405]) }, opts: { audit: false } });
+  check("rulebook.test.ts: an add with a module may update the lines that name it, and applies", ta.claims[0]?.outcomes[0]?.applied === true && /405/.test(g(["show", "main:game.json"], ta.repo.bare)), J(ta.claims[0]?.outcomes));
+  const tb = await night({ scenario: { apply: { 4: { action: "ops", ops: [...add405, { replace: ["rules/rulebook.test.ts", 'assert.deepEqual(rules.implementers("spawnTile"), [505]);', ""] }] } } }, state: { job: job([p405]) }, opts: { audit: false } });
   check("rulebook.test.ts: the same add that also drops another rule's check is refused", tb.claims[0]?.outcomes[0]?.applied === false && /rulebook\.test\.ts changed beyond the lines/.test(tb.claims[0].outcomes[0].reason), J(tb.claims[0]?.outcomes));
   const t8 = await night({ scenario: { apply: { 4: { action: "ops", ops: [...good, { write: ["rules/401.test.ts", 'import { test } from "node:test";\nimport assert from "node:assert/strict";\nimport rule from "./401.ts";\ntest("401: 15", () => assert.equal(rule.onEnacted!({} as any, { number: 1, player: "a" } as any)[0].delta, 15));\n'] }] } } }, state: { job: job([P(4, "401")]) }, opts: { audit: false } });
   check("scope: the rule's own module and tests may change (the control case)", t8.claims[0]?.outcomes[0]?.applied === true, J(t8.claims[0]?.outcomes));
@@ -406,11 +407,11 @@ console.log("moderator runner");
   // Rule ages (108.1) from the history: a starter rule is 0; a rule added by a proposal is the day its commit names.
   const repo = gameRepo();
   const seed = join(repo.base, "seed");
-  writeFileSync(join(seed, "RULES.md"), readFileSync(join(seed, "RULES.md"), "utf8").replace("## 500.", "### 404 Bonus [m]\n**404.1** You get 1 more point.\n\n## 500."));
-  g(["commit", "-qam", "P9: Add rule 404 (day 3, 4-1)\n\nProposal: P9"], seed);
+  writeFileSync(join(seed, "RULES.md"), readFileSync(join(seed, "RULES.md"), "utf8").replace("## 500.", "### 405 Bonus [m]\n**405.1** You get 1 more point.\n\n## 500."));
+  g(["commit", "-qam", "P9: Add rule 405 (day 3, 4-1)\n\nProposal: P9"], seed);
   writeFileSync(join(seed, "RULES.md"), readFileSync(join(seed, "RULES.md"), "utf8").replace("You get 1 more point.", "You get 2 more points."));
-  g(["commit", "-qam", "P12: Amend rule 404 (day 7, 3-2)\n\nProposal: P12"], seed);
-  check("108.1 ages: starter rules are 0; a rule added on day 3 is 3, and amending it on day 7 doesn't make it newer", ruleAge(seed, 401) === 0 && ruleAge(seed, 404) === 3, J([ruleAge(seed, 401), ruleAge(seed, 404)]));
+  g(["commit", "-qam", "P12: Amend rule 405 (day 7, 3-2)\n\nProposal: P12"], seed);
+  check("108.1 ages: starter rules are 0; a rule added on day 3 is 3, and amending it on day 7 doesn't make it newer", ruleAge(seed, 401) === 0 && ruleAge(seed, 405) === 3, J([ruleAge(seed, 401), ruleAge(seed, 405)]));
 }
 {
   // A lock left by a process that is gone (a crash, a reboot) does not block the night.

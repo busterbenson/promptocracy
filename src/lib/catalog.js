@@ -7,7 +7,8 @@
 // as its type, an unknown kind and a duplicate do.
 //
 // Shapes
-//   registry   { [key]: { key, type, kinds, choices?, default?, missing?, meaning?, rule } }  the attributes rules define (703.1)
+//   registry   { [key]: { key, type, kinds, choices?, whole?, min?, default?, missing?, meaning?, rule } }  the attributes rules define (703.1);
+//              a number may be `whole` (no fractions) and have a `min` (a creature's hearts, 601.2: whole, 0 or more)
 //   required   { [kind]: [{ key, type, choices? }] }                                          what each kind needs (704.1)
 //   ctx        { registry, required }   (both default to empty)
 //   entry      { id, name, kind, attrs, flavor, art, madeBy, day, copiedFrom }               one line of catalog.json (701.1)
@@ -55,7 +56,10 @@ export function readValue(type, raw, def = {}) {
   switch (type) {
     case "number": {
       const n = typeof raw === "number" ? raw : /^\s*-?\d+(?:\.\d+)?\s*$/.test(String(raw ?? "")) ? Number(raw) : NaN;
-      return Number.isFinite(n) && Math.abs(n) <= LIMITS.number ? { value: n } : { error: "must be a number, like 3" };
+      if (!(Number.isFinite(n) && Math.abs(n) <= LIMITS.number)) return { error: "must be a number, like 3" };
+      if (def.whole && !Number.isInteger(n)) return { error: "must be a whole number, like 3" };
+      if (typeof def.min === "number" && n < def.min) return { error: `must be ${def.min} or more` };
+      return { value: n };
     }
     case "yesno": {
       if (typeof raw === "boolean") return { value: raw };
@@ -322,11 +326,12 @@ export function buildRegistry(modules) {
         if (!VALUE_TYPES.includes(a.type)) { errors.push(`${at}: type must be one of ${VALUE_TYPES.join(", ")}`); continue; }
         if (!Array.isArray(a.kinds) || !a.kinds.length || a.kinds.some((k) => !KIND_IDS.includes(k))) { errors.push(`${at}: kinds must be a list of ${KIND_IDS.join(", ")}`); continue; }
         if (a.type === "choice" && (!Array.isArray(a.choices) || !a.choices.length || a.choices.length > LIMITS.choices || a.choices.some((c) => typeof c !== "string" || !clean(c) || clean(c) !== c || c.length > 40))) { errors.push(`${at}: a choice needs a list of short, trimmed choices`); continue; }
+        if ((a.whole !== undefined || a.min !== undefined) && (a.type !== "number" || (a.whole !== undefined && typeof a.whole !== "boolean") || (a.min !== undefined && !Number.isFinite(a.min)))) { errors.push(`${at}: whole (yes or no) and min (a number) are for a number`); continue; }
         if (a.default !== undefined && readValue(a.type, a.default, a).error) { errors.push(`${at}: default is not a ${a.type}`); continue; }
         if (a.missing !== undefined && (typeof a.missing !== "string" || clean(a.missing).length > 80)) { errors.push(`${at}: missing must be a few words`); continue; }
         if (a.meaning !== undefined && (typeof a.meaning !== "string" || a.meaning.length > 300)) { errors.push(`${at}: meaning must be one line`); continue; }
         if (Object.hasOwn(registry, a.key)) { errors.push(`${at}: rule ${registry[a.key].rule} already defines ${a.key}; only one rule can (703.3)`); continue; }
-        registry[a.key] = { key: a.key, type: a.type, kinds: [...a.kinds], ...(a.choices ? { choices: [...a.choices] } : {}), ...(a.default !== undefined ? { default: a.default } : {}), ...(a.missing ? { missing: clean(a.missing) } : {}), ...(a.meaning ? { meaning: clean(a.meaning) } : {}), rule: m.rule };
+        registry[a.key] = { key: a.key, type: a.type, kinds: [...a.kinds], ...(a.choices ? { choices: [...a.choices] } : {}), ...(a.whole ? { whole: true } : {}), ...(a.min !== undefined ? { min: a.min } : {}), ...(a.default !== undefined ? { default: a.default } : {}), ...(a.missing ? { missing: clean(a.missing) } : {}), ...(a.meaning ? { meaning: clean(a.meaning) } : {}), rule: m.rule };
       }
     }
     if (m.required !== undefined && m.rule !== 704) { errors.push(`rules/${m.rule}.ts: only rule 704 holds the required lists`); continue; }

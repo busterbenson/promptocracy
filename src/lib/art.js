@@ -55,15 +55,34 @@ export function sizeFor(kind, attrs) {
 }
 
 /**
+ * The board-piece style, one template for every drawing (Buster's piece set, round 13), its lines joined by single spaces. The blanks:
+ * SUBJECT is Gremlin's words; FACING the default facing, plus the footprint for a structure; WHIMSY is left out (a touch the words
+ * name is in the words); PRIMARY and SECONDARY ask the model to pick two muted colors, since nobody picks colors for an entry.
+ */
+const STYLE = [
+  "{SUBJECT}, shown as its classic, instantly readable silhouette. {FACING}",
+  "An isometric 3D vector illustration of a board-game piece, in the style of isometric game asset packs.",
+  "Character feel: a folkloric spirit-world creature, cartoony but taken seriously, earnest and a little eerie, never goofy, never a mascot and never cute-bright. Proportions, whatever the subject: a chunky, rounded toy body roughly as wide as it is tall, like a squat vinyl toy; a big head relative to the body; short stubby legs or limbs and small feet; simple bold shapes with no fine anatomical detail (no individual feathers, claws, fingers or realistic musculature); a compact footprint. Soft, weighty, rounded forms. A simple, serious face. Eyes: large, round and set wide apart on the face, each a white eye with a big round dark pupil and a small white highlight, giving a wide-eyed, attentive, slightly startled look; simple shapes, no lashes, no tiny dot eyes. No nose. The expression is calm and thoughtful: a short, nearly flat mouth and level brows, never sad, worried or frowning (a hostile creature may look a little cross).",
+  "Whimsy: the figure is gently anthropomorphized, like a character in a hand-drawn storybook film. It has a characterful pose (sitting, perched, or standing with its hands or wings folded) and its own quiet personality, kept dignified and slightly mysterious, and it may carry one small human touch such as a hat, a scarf, a satchel or a walking stick, kept modest and sitting on its chunky body rather than being the focus, but large and bold enough to read clearly at board size (about 40 pixels tall). {WHIMSY}",
+  "Muted, earthy palette of exactly two colors: {PRIMARY} and {SECONDARY}. The primary color is one single hue family painted in four distinct flat tones (a light tint, a main tone, a shade and a deep shadow); the secondary color is painted in a light, a mid and a dark flat tone. All tones are hard-edged flat bands with no gradients, no gloss and no texture. Faces and skin use the light tint of the primary color. Accessories use only the two palette colors or neutral grey. No pink anywhere: inner ears, noses and tongues use the cream or a deeper tone of the fur. Only white in the eyes and neutral greys (beards, metal) are allowed beyond the two colors.",
+  "Crisp, even, dark navy outlines of the same medium weight around the whole figure and along every major edge and shape boundary, on every part including accessories and glasses frames; outlines are always dark navy, never brown or grey.",
+  "The camera looks down at about 30 degrees. The figure is turned 45 degrees, in three-quarter view, facing toward the lower right corner of the picture: we see its front and its left side equally, with both eyes visible. Its head and its body are both turned about 45 degrees toward the lower right, so its nose, beak or face points at the lower right corner of the picture: never front-on, never a flat side profile.",
+  "No base, no plinth, no tile, and absolutely no floor, ground or contact shadow of any kind: the figure floats on the pure white background. Plain pure white background, one figure centered, no text."
+].join(" ");
+const FACING = "Its face and front point toward the lower right corner of the picture.";
+const PRIMARY = "a muted primary colour", SECONDARY = "a muted secondary colour that suit the subject";
+
+/**
  * What the platform adds to Gremlin's words (3.3 of the plan): the style, what the picture must fit, and the negative list. He writes only
- * what the thing is. The style references the plan describes (rendered from the game's own art) are a later step: this is text only.
+ * what the thing is.
  * @rule 801.2
  */
 export function stylePrompt(kind, attrs, words) {
-  const what = String(words ?? "").replace(/\s+/g, " ").trim().slice(0, MAX_PROMPT);
+  const what = String(words ?? "").replace(/\s+/g, " ").trim().slice(0, MAX_PROMPT).replace(/[\s.]+$/, "");
   const s = kind === "structure" && attrs && typeof attrs.size === "object" && attrs.size ? attrs.size : null;
-  const fit = s ? `It fits ${s.w} by ${s.h} tiles, seen from the same angle as the game board.` : "It fits one tile.";
-  return `${what}. A game illustration: 3/4 view, a limited warm palette, clean ink outlines, one object centred on a plain background. ${fit} No text, no frame, no border, no people's likenesses.`;
+  const facing = s ? `${FACING} It fits ${s.w} by ${s.h} tiles, seen from the same angle as the game board.` : FACING;
+  const fill = { SUBJECT: what, FACING: facing, WHIMSY: "", PRIMARY, SECONDARY };
+  return STYLE.replace(/\{(SUBJECT|FACING|WHIMSY|PRIMARY|SECONDARY)\}/g, (m, k) => fill[k]).replace(/ {2,}/g, " ").trim() + " No people's likenesses.";
 }
 
 /**
