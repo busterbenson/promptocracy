@@ -36,8 +36,8 @@ under rule 101 or 102; a follow-up change claims them and moves `src/` into the 
 - line 82: `queueNew`
 - line 106: `fail`
 - line 116: `make`
-- line 152: `redrawFailed`
-- line 176: `gateOf`
+- line 153: `redrawFailed`
+- line 178: `gateOf`
 
 ## src/lib/auth.ts (6)
 

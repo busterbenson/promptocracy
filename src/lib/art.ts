@@ -147,7 +147,8 @@ export async function draw(env: Env, j: Draw): Promise<void> {
  * kept with a failed look (CHECK_FAILED, for the entry's current prompt) gets one more draw. The reservation is one statement that checks
  * that condition itself, so two reads at once start one redraw. The redraw costs no message (it is the platform's, not the player's) and
  * counts in the month's budget like any drawing; a redraw that fails too says RECHECK_FAILED and is not redrawn again. Only on the
- * requester's own Draft. Returns how many were started. Never throws.
+ * requester's own Draft, and only while they could edit it (the day gate, checked in the reservation: no redraw in the midnight lock,
+ * after their End turn or once the game is over). Returns how many were started. Never throws.
  */
 export async function redrawFailed(ctx: Ctx, game: any, player: any, ticket: any, makes: any[], tz: string, nowMs: number): Promise<number> {
   if (!player || ticket.player_id !== player.id || ticket.state !== "Draft") return 0;
@@ -159,8 +160,9 @@ export async function redrawFailed(ctx: Ctx, game: any, player: any, ticket: any
       const f = failed.find((x) => x.entry_name.toLowerCase() === e.name.toLowerCase() && x.prompt === e.prompt);
       if (!f) continue;
       // reserved only while the entry's last draw is still that failed one: a second read at the same moment inserts nothing
-      const r: any = await ctx.env.DB.prepare(`INSERT OR IGNORE INTO art_draws (game_id, ticket_id, entry_name, prompt, state, started_at) SELECT ?, ?, ?, ?, 'pending', ? WHERE (SELECT reason FROM art_draws WHERE ticket_id = ? AND lower(entry_name) = lower(?) ORDER BY id DESC LIMIT 1) LIKE '${CHECK_FAILED}%'`)
-        .bind(game.id, ticket.id, f.entry_name, e.prompt, nowIso(nowMs), ticket.id, e.name).run();
+      // ... and only while the requester could edit the draft themselves (EDIT_GUARD: the day open, their turn not ended, the game playing)
+      const r: any = await ctx.env.DB.prepare(`INSERT OR IGNORE INTO art_draws (game_id, ticket_id, entry_name, prompt, state, started_at) SELECT ?, ?, ?, ?, 'pending', ? WHERE (SELECT reason FROM art_draws WHERE ticket_id = ? AND lower(entry_name) = lower(?) ORDER BY id DESC LIMIT 1) LIKE '${CHECK_FAILED}%' AND EXISTS (SELECT 1 FROM tickets WHERE ${EDIT_GUARD})`)
+        .bind(game.id, ticket.id, f.entry_name, e.prompt, nowIso(nowMs), ticket.id, e.name, ticket.id, player.id, ...dayOpenBinds(game.day, nowMs, player.id)).run();
       if (r?.meta?.changes > 0) jobs.push({ game, player, ticket, name: e.name, prompt: e.prompt, kind: e.kind, attrs: e.attrs, tz, drawId: Number(r.meta.last_row_id), mode: "recheck" });
     }
     if (jobs.length) ctx.waitUntil(Promise.all(jobs.map((j) => draw(ctx.env, j))).then(() => undefined));

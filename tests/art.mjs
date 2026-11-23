@@ -296,6 +296,12 @@ try {
     await new Promise((r) => setTimeout(r, 1500));
     check("a no keeps the drawing with the failure on its draw (state done) and is NOT redrawn in the Worker that drew it: one draw, one drawing, one look", n2.ok && draws(n2.n).length === 1 && draws(n2.n)[0].state === "done" && /^check failed: stub says no/.test(draws(n2.n)[0].reason) && refs(n2.n).length === 1 && looksOf().length === L1 + 1, J(draws(n2.n)));
     const boMsgs = () => d1(state, `SELECT COUNT(*) AS n FROM chat_messages WHERE player_id = '${id.Bo}' AND role = 'player'`)[0].n, msgs2 = boMsgs();
+    // the day gate (Codex P1 on 4a1597e): a read while the day is closed (midnight lock, day over) starts no redraw and no model call
+    d1(state, `UPDATE days SET ends_at = '2000-01-02T00:00:00.000Z' WHERE game_id = '${gid}' AND n = 1`);
+    const locked = await Bo.get(`${T}/W${n2.n}`);
+    await new Promise((r) => setTimeout(r, 500));
+    check("while the day is closed the requester's read starts no redraw (the reservation checks the same day gate as their own edit)", locked.status === 200 && draws(n2.n).length === 1, J(draws(n2.n)));
+    d1(state, `UPDATE days SET ends_at = '2099-01-01T00:00:00.000Z' WHERE game_id = '${gid}' AND n = 1`);
     const g2 = await get(n2.n);
     check("the requester's next read of the ticket starts the redraw: the card says Drawing, a second draw is out", g2.state === "drawing" && draws(n2.n).length === 2 && draws(n2.n)[1].state === "pending", J(g2));
     check("a second read at once starts nothing more (the reservation checks the last draw is still the failed one)", (await Promise.all([get(n2.n), get(n2.n)])) && draws(n2.n).length === 2, J(draws(n2.n)));
