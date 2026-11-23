@@ -96,10 +96,10 @@ export async function queueNew(ctx: Ctx, game: any, player: any, ticket: any, ma
 }
 
 /**
- * One drawing: the model, a look at the picture by its kind's question (src/lib/art-check.ts), the bytes' hash, the picture under tmp/, the rows.
- * A drawing that fails its look is drawn once more when the Worker has the time (src/lib/art.js drawChecked); the one that is kept says on its
- * draw row (reason, state stays done) whether it failed the look or was not looked at; a clear pass leaves reason empty. Never throws; a failure
- * to draw is a failed draw. @rule 801.2
+ * One drawing: a description of how Gremlin's words look (describeFor), the model, a look at the picture by its kind's question
+ * (src/lib/art-check.ts), the bytes' hash, the picture under tmp/, the rows. The drawing is always kept; its draw row says (reason, state
+ * stays done) whether it failed the look (CHECK_FAILED, or RECHECK_FAILED for the redraw redrawFailed made) or was not looked at; a clear
+ * pass leaves reason empty. Never throws; a failure to draw is a failed draw. @rule 801.2
  */
 export async function draw(env: Env, j: Draw): Promise<void> {
   const t0 = Date.now(), model = modelOf(env);
