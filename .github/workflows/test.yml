@@ -1,7 +1,7 @@
 name: test
 
 # Tiers (Buster 2026-11-20: the suite was too heavy to run whole on every push):
-#   fast  - every PR push, drafts included: rule claims, design, engine (~2 min, no server, no browser)
+#   fast  - every PR push, drafts included: the prompt lint, rule claims, design, engine (~2 min, no server, no browser)
 #   test  - the full suite split across 3 machines by measured minutes (scripts/ci-shard.mjs): on PRs that are ready
 #           (not drafts; marking a draft ready runs it), on every push to main, and by hand. Merge gate: all 3 green.
 on:
@@ -30,6 +30,8 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      # The durable prompts must name the general rule, not past cases (prompt-lint.json lists them; hits fail the job).
+      - run: python3 scripts/prompt_lint.py --config prompt-lint.json
       - run: node scripts/ci-shard.mjs --fast
 
   test:

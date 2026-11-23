@@ -144,7 +144,7 @@ under rule 101 or 102; a follow-up change claims them and moves `src/` into the 
 - line 291: `obj`
 - line 439: `refuse`
 - line 441: `own`
-- line 523: `typeOf`
+- line 524: `typeOf`
 
 ## src/lib/settings.js (12)
 
