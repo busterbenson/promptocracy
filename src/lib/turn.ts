@@ -11,19 +11,21 @@ import { DayRow, DayTurn, dayGate } from "./day";
 
 export type Refusal = { status: number; error: string; processing_day?: number };
 
-/** @rule 104.3, 107.1, 202.1, 202.4 */
+/** @rule 104.3, 107.1, 202.1, 202.4, 603.1 */
 export function turnBlock(
   game: { status: string; phase?: string; turn: number; round: number; day?: number; slug: string; settings: string },
   day: DayRow | null,
   turn: DayTurn,
-  player: { id: string },
-  kind: "propose" | "move" | "end_turn" | "vote",
+  player: { id: string; dead_day?: number | null; ghost_day?: number | null },
+  kind: "propose" | "move" | "end_turn" | "vote" | "give_heart",
   nowMs: number,
 ): Refusal | null {
   const gate = dayGate(game, day, turn, nowMs);
   if (gate) return gate;
-  if (kind === "end_turn" || kind === "vote") return null;
-  return checkAction(game, lightContext(game, { moved: !!turn?.moved_at }), { ref: player.id }, { kind });
+  // Voting is the site's own (rule 104.3: the vote route checks the electorate); a move, a proposal and End turn are asked of the rules, which see the
+  // acting player's state (rule 603.1: the dead have no turn, 202.5: a Ghost can't propose).
+  if (kind === "vote" || kind === "give_heart") return null; // give_heart: the route asks the rules itself, with its target (603.4)
+  return checkAction(game, lightContext(game, { moved: !!turn?.moved_at, gave: !!turn?.gave_at }, player as any), { ref: player.id }, { kind } as any);
 }
 
 // A refusal as the routes send it: the 423 of the lock also names the day being processed.

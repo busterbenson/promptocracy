@@ -54,3 +54,5 @@ Answer with ONLY one JSON object, no other text:
 - `ruling` is plain text: no markup, no angle brackets, no lines of dashes. Say what the rules mean here, in
   everyday words ("you", present tense), and cite rules by number
   in parentheses.
+
+When a ruling finds that further play is impossible (rule 403.1, Paradox), the ruling also names the living player 403.1 says wins; the site posts it with `ending: {kind: "paradox", player: <their color>}` and the game ends (rule 404.2).

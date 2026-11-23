@@ -45,11 +45,16 @@ export const DEFAULT_SETTINGS = {
   "starling.messages_per_day": 60,
   // The points that win an Era (rule 402.2): the first player to reach this many in an Era becomes Champion. The rule's module reads it.
   "eras.points_to_win": 100,
+  // Hearts (rule 601.1), hostile creatures (602.3, 602.5) and how long the dead lie before they rise as Ghosts (603.3).
+  "hearts.start": 3,
+  "creatures.appear_steps": 3,
+  "creatures.bite": 1,
+  "death.ghost_days": 3,
 };
 
 // Settings added after engine 1 shipped. A game's settings.json may leave these out (its tagged files predate them),
 // and then the default applies. Present, they are validated like any other, and RULES.md must name them.
-export const OPTIONAL_SETTINGS = Object.freeze(["game.timezone", "night.apply_minutes", "night.apply_effort", "proposals.per_day", "gremlin.messages_per_day", "workshop.price_ceiling", "gremlin.thread_replies_per_day", "starling.messages_per_day", "eras.points_to_win"]);
+export const OPTIONAL_SETTINGS = Object.freeze(["hearts.start", "creatures.appear_steps", "creatures.bite", "death.ghost_days", "game.timezone", "night.apply_minutes", "night.apply_effort", "proposals.per_day", "gremlin.messages_per_day", "workshop.price_ceiling", "gremlin.thread_replies_per_day", "starling.messages_per_day", "eras.points_to_win"]);
 export const EFFORTS = Object.freeze(["low", "medium", "high"]);
 
 // Is this an IANA time zone the runtime knows? (Intl throws a RangeError for anything else.)
@@ -79,6 +84,10 @@ const VALIDATORS = {
   "workshop.price_ceiling": (v) => (isInt(v, 0, PRICE_CEILING_MAX) ? null : `must be a whole number from 0 to ${PRICE_CEILING_MAX}`),
   "gremlin.thread_replies_per_day": (v) => (isInt(v, 0, GREMLIN_THREAD_MAX) ? null : `must be a whole number from 0 to ${GREMLIN_THREAD_MAX}`),
   "eras.points_to_win": (v) => (isInt(v, 1, 10000) ? null : "must be a whole number from 1 to 10000"),
+  "hearts.start": (v) => (isInt(v, 1, 20) ? null : "must be a whole number from 1 to 20"),
+  "creatures.appear_steps": (v) => (isInt(v, 1, 10) ? null : "must be a whole number from 1 to 10"),
+  "creatures.bite": (v) => (isInt(v, 1, 20) ? null : "must be a whole number from 1 to 20"),
+  "death.ghost_days": (v) => (isInt(v, 1, 30) ? null : "must be a whole number from 1 to 30"),
   "night.apply_effort": (v) => (EFFORTS.includes(v) ? null : `must be one of ${EFFORTS.join(", ")}`),
 };
 function exactly(v, keys) {

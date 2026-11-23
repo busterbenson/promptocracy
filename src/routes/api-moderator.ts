@@ -24,6 +24,7 @@
 //                                                day n is processing and before its deadline (107.6); the day goes to
 //                                                deploying. seq is the order the moderator applied them in (1..n, each
 //                                                once); the enactment follows it (107.2).
+import { endGameStatements } from "../lib/end";
 import { logCall, monthSpend } from "../lib/agent";
 import { PRICES } from "../lib/chat.js";
 import { clockNow, deployDeadline, deployedSha, notAppliedStatements, timeZoneOf } from "../lib/day";
@@ -315,7 +316,7 @@ const QUESTION_MAX = 300;
 
 // POST /api/moderator/escalations/:id/ruled {body, path, question, relies_on}: the ruling the night made, posted where the question was asked, closing the escalation.
 // `question` (the moderator's restatement) and `relies_on` (rule numbers) are kept with it for History, which shows them with the ruling's text (rule 106.5).
-/** @rule 106.5 */
+/** @rule 106.5, 403.1, 404.2 */
 export const ruled = async (ctx: Ctx) => {
   if (!(await authorized(ctx))) return unauthorized();
   const { env } = ctx;
@@ -323,7 +324,7 @@ export const ruled = async (ctx: Ctx) => {
   const id = asId(ctx.params.id);
   if (id === null) return json({ error: "Bad escalation." }, 400);
   const body = await readJson(ctx.request);
-  if (!body || typeof body !== "object" || Array.isArray(body) || Object.keys(body).some((k) => !["body", "path", "question", "relies_on"].includes(k))) return json({ error: "Send {body, path, question, relies_on} and nothing else." }, 400);
+  if (!body || typeof body !== "object" || Array.isArray(body) || Object.keys(body).some((k) => !["body", "path", "question", "relies_on", "ending"].includes(k))) return json({ error: "Send {body, path, question, relies_on} and nothing else (and ending, when the ruling finds play impossible)." }, 400);
   const text = typeof body.body === "string" ? body.body.replace(/\r\n?/g, "\n").trim() : "";
   if (!text || text.length > ANSWER_MAX) return json({ error: `A ruling is 1 to ${ANSWER_MAX} characters of plain text.` }, 400);
   if (/[<>]/.test(text)) return json({ error: "A ruling is plain text: no markup." }, 400);
@@ -332,6 +333,13 @@ export const ruled = async (ctx: Ctx) => {
   if (!question || question.length > QUESTION_MAX || /[<>]/.test(question)) return json({ error: `question is 1 to ${QUESTION_MAX} characters of plain text.` }, 400);
   const relies = body.relies_on;
   if (!Array.isArray(relies) || !relies.length || relies.length > 12 || relies.some((r) => typeof r !== "string" || !RULE_REF.test(r))) return json({ error: "relies_on is 1 to 12 rule numbers." }, 400);
+  // Paradox (rules 403.1, 404.2): a ruling that finds play impossible names the living player who wins, by color; posting it ends the game.
+  let winner: any = null;
+  if (body.ending !== undefined) {
+    if (!body.ending || body.ending.kind !== "paradox" || typeof body.ending.player !== "string") return json({ error: "ending is {kind: \"paradox\", player: <the winner's color>}." }, 400);
+    winner = await env.DB.prepare("SELECT id, display_name FROM players WHERE game_id = ? AND color = ? AND dead_day IS NULL").bind(game.id, body.ending.player).first();
+    if (!winner) return json({ error: "Paradox is won by a living player: name one by color." }, 400);
+  }
   const e: any = await env.DB.prepare("SELECT * FROM escalations WHERE id = ? AND game_id = ?").bind(id, game.id).first();
   if (!e) return json({ error: "No such escalation." }, 404);
   if (!e.ruling_owed_at || e.answered_at) return json({ error: e.answered_at ? "Already ruled." : "No ruling is owed on this." }, 409);
@@ -340,6 +348,8 @@ export const ruled = async (ctx: Ctx) => {
   const res = await env.DB.batch([
     env.DB.prepare("UPDATE escalations SET answered_at = ?, ruling_path = ?, ruling_question = ?, ruling_relies_on = ?, ruling_text = ? WHERE id = ? AND game_id = ? AND ruling_owed_at IS NOT NULL AND answered_at IS NULL").bind(now, body.path, question, JSON.stringify(relies), text, id, game.id),
     postStatement(env, game, e, text, now, nowMs),
+    ...(winner ? endGameStatements(env, game, game.day, { ending: "paradox", player: winner.id, reason: "play became impossible" }, winner.display_name, now,
+      "EXISTS (SELECT 1 FROM escalations WHERE id = ? AND game_id = ? AND ruling_path = ? AND answered_at = ?)", [id, game.id, body.path, now]) : []),
   ]);
   if (!((res[0] as any)?.meta?.changes > 0)) return json({ error: "Already ruled." }, 409);
   return json({ ok: true, where: e.ticket_id ? "ticket" : "chat" });
