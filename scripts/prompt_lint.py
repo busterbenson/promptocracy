@@ -225,7 +225,7 @@ def js_scan(src):
     return units, toks
 
 
-def js_symbol_range(toks, symbol):
+def js_symbol_range(toks, symbol, src):
     """(start_offset, end_offset) of the declaration of `symbol`."""
     k, best, depth = None, None, 0
     for idx, (kind, val, _) in enumerate(toks):
@@ -244,8 +244,8 @@ def js_symbol_range(toks, symbol):
             kind, val, off = toks[idx]
             if kind != "p":
                 continue
-            if val == "{" and depth == 0:
-                seen_open = True
+            if val == "{" and depth == 0 and not (toks[idx - 1][0] == "p" and toks[idx - 1][1] in ":|&<,"):
+                seen_open = True   # the body; a { after ":" or "|" or "<" is an object type in the return annotation
             if val in "([{":
                 depth += 1
             elif val in ")]}":
@@ -255,6 +255,9 @@ def js_symbol_range(toks, symbol):
         raise ExtractError(f"symbol {symbol!r}: no closing brace")
     for idx in range(k + 1, len(toks)):
         kind, val, off = toks[idx]
+        if kind == "id" and depth == 0 and val in ("const", "let", "var", "function", "class", "export", "import") \
+                and not src[src.rfind("\n", 0, off) + 1:off].strip():
+            return toks[k][2], off - 1   # no semicolon: the next declaration at the start of a line ends this one
         if kind != "p":
             continue
         if val in "([{":
@@ -270,7 +273,7 @@ def js_units(src, symbol):
     units, toks = js_scan(src)
     if not symbol:
         return units
-    lo, hi = js_symbol_range(toks, symbol)
+    lo, hi = js_symbol_range(toks, symbol, src)
     return [u for u in units if lo <= u.start <= hi]
 
 
@@ -404,7 +407,8 @@ def py_units(src, symbol, calls):
 
 
 def md_units(src, fenced):
-    lines = src.split("\n")
+    # an HTML comment is not prompt text (it is where a keep marker goes)
+    lines = [re.sub(r"<!--.*?-->", "", l) for l in src.split("\n")]
     keep = []
     infence = False
     for n, l in enumerate(lines, 1):
@@ -558,9 +562,12 @@ MARKER = re.compile(r"prompt-lint:\s*keep\b[ \t]*(.*)")
 COMMENT_ONLY = re.compile(r"^\s*(?://|#|/\*|\*|<!--)")
 
 
-def marker_for(raw_lines, line):
-    """(found, reason) for a marker on `line` or on a comment-only line just above it."""
+def marker_for(raw_lines, line, in_prompt=frozenset()):
+    """(found, reason) for a marker on `line` or on a comment-only line just above it.
+    A marker that is part of the prompt text itself (`in_prompt`: its lines) is prompt text, not a comment."""
     for ln in (line, line - 1):
+        if ln in in_prompt:
+            continue
         if 1 <= ln <= len(raw_lines):
             text = raw_lines[ln - 1]
             if ln == line - 1 and not COMMENT_ONLY.match(text):
@@ -588,6 +595,7 @@ def lint_file(path, src, symbol=None, calls=None, fenced=False, allow=frozenset(
     if not units or not any(u.text.strip() for u in units):
         raise ExtractError(f"{path}: no prompt text found" + (f" in {symbol!r}" if symbol else "") + " (a rename would otherwise pass silently)")
     raw_lines = src.split("\n")
+    in_prompt = {u.line_at(m.start()) for u in units for m in MARKER.finditer(u.text)}
     size = sum(u.size() for u in units)
     hits, errors = [], []
     seen = set()
@@ -598,7 +606,7 @@ def lint_file(path, src, symbol=None, calls=None, fenced=False, allow=frozenset(
                 continue
             seen.add(key)
             h = Hit(shown, line, flag, reason, snip)
-            found, why = marker_for(raw_lines, line)
+            found, why = marker_for(raw_lines, line, in_prompt)
             if found:
                 if why:
                     h.kept = why
