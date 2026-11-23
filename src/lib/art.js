@@ -9,13 +9,25 @@
 
 export const HASH = /^[0-9a-f]{64}$/;
 /** The model that draws, unless IMAGE_MODEL says otherwise: FLUX.2 klein 9B on Workers AI (Buster, 2026-11-23: it passed the most in the
- * art climb; 4B, `@cf/black-forest-labs/flux-2-klein-4b`, is the one-line switch back). */
+ * art climb; 4B, `@cf/black-forest-labs/flux-2-klein-4b`, is the one-line switch back). IMAGE_MODEL = `@cf/black-forest-labs/flux-2-dev`
+ * draws with FLUX.2 [dev]: about 2.7x the price (ART_COST_BY_MODEL) and 14 s a drawing against klein 9B's 6.5-10 s, one at a time; in the
+ * fourth climb it drew copper as shiny metal (a battered copper teapot passed 5 of 6 where klein 9B passed 0 of 3 on the same prompt). */
 export const IMAGE_MODEL = "@cf/black-forest-labs/flux-2-klein-9b";
 export const MAX_PROMPT = 300;          // what Gremlin may write as an art prompt (3.4 of the plan)
 export const MAX_BYTES = 4 * 1024 * 1024;
 export const DRAW_TIMEOUT_MS = 25_000;   // inside the 30 s a Worker may keep working after its response (ctx.waitUntil), with room left for the writes
 export const DRAWING_STALE_MS = 60_000; // a draw still pending after this is a draw that died: the card says it failed and offers Redraw
 export const ART_COST_MICRO = 20000;     // what one drawing is counted as in the monthly budget: $0.02, klein 9B (about 10x 4B's $0.0016-0.0021, step2-plan 3.1); a 4B drawing is over-counted, never under
+/**
+ * What one drawing is counted as in the monthly budget, by IMAGE_MODEL (micro-dollars, a 1024 x 1024 picture; over-counted, never under).
+ * FLUX.2 [dev] (`@cf/black-forest-labs/flux-2-dev`, the same multipart form as klein) is priced per step: $0.00041 per 512 x 512 output
+ * tile per step (Workers AI pricing, 11-23), so 4 tiles x 25 steps = $0.041. Its default step count is not documented; 25 is measured, not
+ * billed: 1 step drew in 7.7 s, 50 steps in 21.0 s, the default in 13.6-14.4 s (fourth climb, one drawing at a time). Counted as $0.05.
+ * A model not listed here is counted at the dearest listed price.
+ */
+export const ART_COST_BY_MODEL = { "@cf/black-forest-labs/flux-2-klein-9b": ART_COST_MICRO, "@cf/black-forest-labs/flux-2-klein-4b": ART_COST_MICRO, "@cf/black-forest-labs/flux-2-dev": 50000 };
+/** The budget cost of one drawing by `model` (ART_COST_BY_MODEL). @rule 106.7 */
+export const artCostMicro = (model) => ART_COST_BY_MODEL[model] ?? Math.max(...Object.values(ART_COST_BY_MODEL));
 export const MAX_SAVED = 20;            // the most drawings one entry keeps (the same limit catalog.json reads, LIMITS.saved)
 
 /** The key of a drawing as made. Refuses anything that is not 64 lowercase hex characters, so a key can never name another path. @rule 801.2 */

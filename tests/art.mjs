@@ -11,7 +11,7 @@ import { client, createGame, d1, freePort, join, migrate, newState, r2Delete, r2
 import { readFileSync } from "node:fs";
 import { join as pjoin } from "node:path";
 import { ROOT } from "./lib.mjs";
-import { ART_COST_MICRO, CHECK_MODEL, DESCRIBE_MODEL, HASH, IMAGE_MODEL, KIND_BLOCKS, MAX_DETAILS, MAX_PROMPT, artKey, checkQuestion, describeAsk, drawChecked, kindBlock, loosePalette, readVerdict, runImage, sha256Hex, shortDetails, sizeFor, sniffType, stubPng, stylePrompt, tmpKey } from "../src/lib/art.js";
+import { ART_COST_BY_MODEL, ART_COST_MICRO, CHECK_MODEL, artCostMicro, DESCRIBE_MODEL, HASH, IMAGE_MODEL, KIND_BLOCKS, MAX_DETAILS, MAX_PROMPT, artKey, checkQuestion, describeAsk, drawChecked, kindBlock, loosePalette, readVerdict, runImage, sha256Hex, shortDetails, sizeFor, sniffType, stubPng, stylePrompt, tmpKey } from "../src/lib/art.js";
 import { answerSchema, readMakeItem, systemStatic } from "../src/lib/gremlin.js";
 
 let pass = 0, fail = 0;
@@ -68,6 +68,8 @@ console.log("the call to the image model (the Workers AI binding)");
   const flux2 = { async run(model, input) { calls.push({ model, input }); const form = await new Response(input.multipart.body, { headers: { "content-type": input.multipart.contentType } }).formData(); calls[calls.length - 1].form = Object.fromEntries(form.entries()); return { image: Buffer.from(png).toString("base64") }; } };
   const r = await runImage(flux2, IMAGE_MODEL, { prompt: "a frog", width: 1024, height: 768, seed: 7 });
   check("FLUX.2 klein is called with a multipart form (prompt, width, height, seed) and its base64 answer is read back as the picture", IMAGE_MODEL === "@cf/black-forest-labs/flux-2-klein-9b" && calls[0].model === IMAGE_MODEL && /^multipart\/form-data; boundary=/.test(calls[0].input.multipart.contentType) && J(calls[0].form) === J({ prompt: "a frog", width: "1024", height: "768", seed: "7" }) && sha(r.bytes) === sha(png) && r.type === "image/png");
+  const devR = await runImage(flux2, "@cf/black-forest-labs/flux-2-dev", { prompt: "a frog", width: 1024, height: 1024, seed: 8 });
+  check("FLUX.2 [dev] takes the same multipart form as klein, and a drawing by it is counted at its own price in the budget (more than klein's; an unlisted model at the dearest)", calls[1].model === "@cf/black-forest-labs/flux-2-dev" && J(calls[1].form) === J({ prompt: "a frog", width: "1024", height: "1024", seed: "8" }) && sha(devR.bytes) === sha(png) && artCostMicro("@cf/black-forest-labs/flux-2-dev") === 50000 && artCostMicro(IMAGE_MODEL) === ART_COST_MICRO && artCostMicro("@cf/black-forest-labs/flux-1-schnell") === Math.max(...Object.values(ART_COST_BY_MODEL)));
   const calls1 = [];
   const flux1 = { async run(model, input) { calls1.push({ model, input }); return { image: Buffer.from(png).toString("base64") }; } };
   await runImage(flux1, "@cf/black-forest-labs/flux-1-schnell", { prompt: "a frog", width: 1024, height: 1024, seed: 7 });
