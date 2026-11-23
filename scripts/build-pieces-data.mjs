@@ -87,7 +87,7 @@ function place(key, w, body, [fx, fy], f) {
   const u = BOARD_SCALE * HEIGHT / TOP; // board units per canvas unit, before FIT
   const fit = Math.min(Math.sqrt(SIZE.area / (AREA[key] * u * u)), SIZE.h / (BOARD_SCALE * HEIGHT), SIZE.w / ((f.right - f.left) * u));
   FIT[key] = Math.floor(fit * 1000) / 1000;
-  if (!(FIT[key] > 0)) throw new Error(`${key}: FIT came out ${FIT[key]} (a zero or missing silhouette area, or no footprint)`);
+  if (!(FIT[key] > 0)) throw new Error(`${key}: FIT came out ${FIT[key]} (not a positive number: a bad footprint or area)`);
   const shifted = body
     .replace(/transform="translate\(([-\d.]+),([-\d.]+)\)"/g, (m, x, y) => `transform="translate(${fmt(Number(x) + dx, 1)},${fmt(Number(y) + dy, 1)})"`)
     .replace(/transform="matrix\(([-\d.]+) 0 0 ([-\d.]+) ([-\d.]+) ([-\d.]+)\)"/g, (m, a, d, e, f2) => `transform="matrix(${a} 0 0 ${d} ${fmt(Number(e) + dx, 2)} ${fmt(Number(f2) + dy, 2)})"`);
