@@ -76,17 +76,23 @@ export function sceneSVG(board, { sel = null, me = null, id = "b", showFog = tru
   if (sel) s += `<polygon class="selected" points="${inset(sel.x, sel.y, .94)}"/>`;
   s += `<polygon class="hover" id="${id}-hov" points=""/>`;
   // Pieces and creatures (rule 602) together, back to front, so the nearer one draws on top. A creature is its own piece
-  // (the Blob), or else a ring and the entry's kind letter; a resting one carries a z.
+  // (the Blob), or else a ring and the entry's kind letter; a resting one carries a z. Every shadow first, then every
+  // figure: a shadow never paints over a piece, its own or a neighbour's.
   const creatures = (board.creatures || []).filter((c) => c.at.z === 0);
   const standing = [...pieces.map((p) => ({ p })), ...creatures.map((c) => ({ c }))]
     .sort((a, b) => ((b.p || b.c).at.x + (b.p || b.c).at.y) - ((a.p || a.c).at.x + (a.p || a.c).at.y));
   for (const { p, c } of standing) {
+    const at = P((p || c).at.x + .5, (p || c).at.y + .5);
+    const art = p ? pieceSVG({ shape: p.shape, color: p.color, mirrored: !!p.mirrored, state: p.state, part: "shadow" }) : creatureSVG(c, { part: "shadow" });
+    if (art) s += `<g class="${p ? "piece-shadow" : "creature-shadow"}" transform="translate(${f1(at[0])},${f1(at[1])})">${art}</g>`;
+  }
+  for (const { p, c } of standing) {
     if (p) {
       const at = P(p.at.x + .5, p.at.y + .5);
-      s += `<g class="piece" data-piece="${esc(p.color.key)}" transform="translate(${f1(at[0])},${f1(at[1])})">${pieceSVG({ shape: p.shape, color: p.color, mirrored: !!p.mirrored, state: p.state })}</g>`;
+      s += `<g class="piece" data-piece="${esc(p.color.key)}" transform="translate(${f1(at[0])},${f1(at[1])})">${pieceSVG({ shape: p.shape, color: p.color, mirrored: !!p.mirrored, state: p.state, part: "art" })}</g>`;
     } else {
       const at = P(c.at.x + .5, c.at.y + .5);
-      const art = creatureSVG(c) || `<circle cy="-13" r="11" class="cring"/><text y="-8.5" text-anchor="middle" class="cletter">${esc(String(c.entry || c.kind || "C").charAt(0))}</text>`;
+      const art = creatureSVG(c, { part: "art" }) || `<circle cy="-13" r="11" class="cring"/><text y="-8.5" text-anchor="middle" class="cletter">${esc(String(c.entry || c.kind || "C").charAt(0))}</text>`;
       s += `<g class="creature" data-creature="${c.id}" transform="translate(${f1(at[0])},${f1(at[1])})">${art}${c.resting ? '<text x="12" y="-26" class="czz">z</text>' : ""}</g>`;
     }
   }
