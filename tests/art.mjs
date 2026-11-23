@@ -56,7 +56,7 @@ console.log("what Gremlin may write (rule 801.2)");
   const long = readMakeItem({ kind: "entry", name: "Frog", catalogKind: "creature", art: { prompt: "x".repeat(MAX_PROMPT + 1) } }, 0);
   check("a prompt over 300 characters is not kept, with a reason he sees next turn; the entry is", long.item && !long.item.art && /art prompt is at most 300/.test(long.reasons.join()));
   const entry = answerSchema().properties.ticket.properties.makes.items.properties;
-  check("the answer schema carries the art prompt and his instructions say how to write one", entry.art.properties.prompt.type === "string" && entry.art.additionalProperties === false && /"art": \{"prompt"/.test(systemStatic({ ceiling: 25 })));
+  check("the answer schema carries the art prompt (a string, read as the prompt) and his instructions say how to write one", entry.art.type === "string" && readMakeItem({ kind: "entry", name: "Frog", catalogKind: "creature", art: "a small green frog" }, 0).item.art.prompt === "a small green frog" && /"art": ""/.test(systemStatic({ ceiling: 25 })) && /item's "art"/.test(systemStatic({ ceiling: 25 })));
 }
 
 // ---- the server --------------------------------------------------------------------------------------------------------------------

@@ -1,7 +1,7 @@
 // A LIVE eval of Gremlin (src/lib/gremlin.js + src/lib/agent.ts). It is NOT part of `npm test` and not in CI: it needs the model key and it
 // costs money. Run it by hand:
 //
-//   node tests/gremlin-live.mjs [--only id,id] [--max-calls 40] [--ledger file] [--record tests/fixtures/gremlin-answers.json] [--out results.json] [--list]
+//   node tests/gremlin-live.mjs [--only id,id] [--max-calls 40] [--ledger file] [--record tests/fixtures/gremlin-answers.json] [--out results.json] [--list] [--thread]
 //
 // It builds each case's request with the SAME function the Worker uses (gremlinRequest), makes the REAL call through the Worker's own caller
 // (callModel), reads the answer with readGremlinAnswer, and grades it IN CODE (tests/gremlin-cases.json `expect`), never by a model. With
@@ -14,7 +14,7 @@ import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { ROOT, STARTER_CATALOG } from "./lib.mjs";
-import { CANARY, CHAT_TIMEOUT_MS, MODEL, OUTPUT_CAP_TOKENS, answerSchema, gremlinRequest, moodOf, MOODS, readGremlinAnswer, systemStatic } from "../src/lib/gremlin.js";
+import { CANARY, CHAT_TIMEOUT_MS, MODEL, OUTPUT_CAP_TOKENS, THREAD_OUTPUT_CAP_TOKENS, THREAD_TIMEOUT_MS, answerSchema, gremlinRequest, moodOf, MOODS, readGremlinAnswer, readThreadAnswer, systemStatic, threadAnswerSchema, threadRequest, threadSystemStatic } from "../src/lib/gremlin.js";
 import { costMicro } from "../src/lib/chat.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -79,6 +79,16 @@ function grade(c, a, plain) {
   return f;
 }
 
+// --thread: ONE live thread reply (src/lib/thread.ts's call: the {say, escalate} schema), read by readThreadAnswer. Counts as a call.
+if (has("thread")) {
+  if (ledger.calls >= MAX_CALLS) { console.log(`STOPPED at the call cap (${MAX_CALLS}).`); process.exit(1); }
+  const req = threadRequest({ rulesMd, mood, localDate: "2026-11-20", ticket: { number: 3, title: "Teapot", brief: "A battered copper teapot.", state: "Draft", makes: [], estimate: 1, price: 0, price_reason: "Free." }, posts: [], post: { by: "Bo", body: "Why is this free? Could it make tea that heals?" } });
+  ledger.calls++; save();
+  const r = await agent.callModel({ MODEL_API_KEY: KEY }, { model: MODEL, system: req.system, messages: req.messages, maxTokens: THREAD_OUTPUT_CAP_TOKENS, timeoutMs: Number(flag("timeout", THREAD_TIMEOUT_MS)), schema: threadAnswerSchema(), effort: "low" });
+  const a = r.ok ? readThreadAnswer(r.text, { systemText: threadSystemStatic() }) : r;
+  console.log(`${r.ok && a.ok && a.say ? "PASS" : "FAIL"}  thread reply  ${r.ms} ms  ${r.ok ? `${r.usage.input_tokens} in + ${r.usage.cache_read_input_tokens} cached / ${r.usage.output_tokens} out` : `call failed: ${r.code} ${r.reason}`}\n        say: ${a.say ?? ""}\n        escalate: ${JSON.stringify(a.escalate ?? null)}`);
+  process.exit(r.ok && a.ok && a.say ? 0 : 1);
+}
 const recorded = RECORD && existsSync(RECORD) ? JSON.parse(readFileSync(RECORD, "utf8")) : {};
 const rows = [];
 let spent = 0, cacheReads = 0;
