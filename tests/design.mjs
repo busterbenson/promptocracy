@@ -231,7 +231,7 @@ check("two pieces only the game places: the Ghost (recolored, rule 604.2) and th
     for (let y = 0; y < 200; y++) for (let x = 20; x < 100; x++) if (y < 160 || (x < 45) || (x >= 75)) bp[y * W6 + x] = 1;
     const feet = floorEllipse(bp, W6, H6);
     check("a standing figure is still fitted by its feet (a biped with two feet is neither the long nor the legless case)", feet.kind === "feet" && feet.left === 20 && feet.right === 100, J(feet));
-    check("the ellipse's own kind is reported for every piece in the set, and it is 'feet' for all of them except none: the set keeps its footprints", every.every((k) => floorEllipse(silhouette(TRACED[k].body, TRACED[k].w, TRACED[k].h), TRACED[k].w, TRACED[k].h, k).kind === "feet"));
+    check("every piece in the set is fitted by its feet: the long and legless cases leave the set's footprints alone", every.every((k) => floorEllipse(silhouette(TRACED[k].body, TRACED[k].w, TRACED[k].h), TRACED[k].w, TRACED[k].h, k).kind === "feet"));
     // The canvas: scaled about the foot point, never cropped.
     const cv = { x: 240, y: 375, w: 480, h: 480 };
     check("canvasScale: a figure that fits is left alone; one wide to the left of its foot point, or low-slung past the canvas floor, is scaled about the foot point to fit exactly", canvasScale({ w: 300, h: 400, fx: 150, fy: 300 }, cv) === 1 && Math.abs(canvasScale({ w: 700, h: 400, fx: 480, fy: 300 }, cv) - 0.5) < 1e-9 && Math.abs(canvasScale({ w: 300, h: 400, fx: 150, fy: 250 }, cv) - 0.7) < 1e-9);
@@ -246,7 +246,7 @@ check("two pieces only the game places: the Ghost (recolored, rule 604.2) and th
     const svgOf = (vw, vh, parts) => `<svg version="1.1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${vw} ${vh}">${parts.map((d) => `<path d="${d}" fill="#C88528" transform="translate(0,0)"/>`).join("")}</svg>`;
     const rect = (x0, y0, x1, y1) => `M${x0} ${y0} L${x1} ${y0} L${x1} ${y1} L${x0} ${y1} Z`;
     const stand = svgOf(500, 700, [rect(130, 20, 370, 480), rect(150, 480, 230, 680), rect(270, 480, 350, 680)]);            // a person: body and two feet
-    const lying = svgOf(1400, 700, ["M20 40 L1300 40 L1380 400 L1380 600 L1200 680 L60 330 Z", rect(1250, 560, 1390, 690)]);  // long and low, its tail high at the left
+    const lying = svgOf(1400, 700, ["M20 40 L1300 40 L1380 400 L1380 520 L1200 560 L60 330 Z", rect(1310, 520, 1390, 690)]);  // long and low, its tail high at the left
     const round = svgOf(800, 800, [ring(400, 400, 380, 380)]);                                                               // a ball with no legs
     const tmp = mkdtempSync(pjoin(tmpdir(), "pieces-build-test-")), out = pjoin(tmp, "pieces-data.js");
     try {
@@ -260,7 +260,8 @@ check("two pieces only the game places: the Ghost (recolored, rule 604.2) and th
       const ext = (k) => { const W5 = B.CANVAS.w + 1200, H5 = B.CANVAS.h + 1200; const e = stance(silhouette(shifted(k), W5, H5), W5, H5, k); return { left: e.left - 600, right: e.right - 600, top: e.top - 600, bottom: e.bottom - 600 }; };
       const inside = (k) => { const e = ext(k); return e.left >= 0 && e.right <= B.CANVAS.w && e.top >= 0 && e.bottom <= B.CANVAS.h; };
       check("the build takes a wide lying body and a legless round one on the same canvas: it does not throw, and nothing is cropped (every part of the art is inside the canvas)", ["keeper", "frog", "wizard"].every(inside), J(Object.fromEntries(["keeper", "frog", "wizard"].map((k) => [k, ext(k)]))));
-      check("the wide body is the long case, the ball the legless one, the person stands by its feet; the wide one is drawn smaller on the canvas (its art shorter than the other figures) and larger by its FIT", B.FOOTPRINT.keeper && ext("keeper").bottom - ext("keeper").top < ext("wizard").bottom - ext("wizard").top - 5 && B.FIT.keeper < B.FIT.wizard * 1.3, J({ keeper: ext("keeper"), wizard: ext("wizard"), FIT: B.FIT }));
+      const kindOf = (k) => floorEllipse(silhouette(B.TRACED[k].body, B.TRACED[k].w, B.TRACED[k].h), B.TRACED[k].w, B.TRACED[k].h, k).kind;
+      check("the wide body is the long case, the ball the legless one, the person stands by its feet; the wide one is drawn smaller on the canvas (its art shorter than the other figures) and larger by its FIT", J([kindOf("keeper"), kindOf("frog"), kindOf("wizard")]) === '["long","legless","feet"]' && ext("keeper").bottom - ext("keeper").top < ext("wizard").bottom - ext("wizard").top - 5 && B.FIT.keeper < B.FIT.wizard * 1.3, J({ kinds: [kindOf("keeper"), kindOf("frog"), kindOf("wizard")], keeper: ext("keeper"), wizard: ext("wizard"), FIT: B.FIT }));
       const bad = every.filter((k) => { const t = B.TRACED[k], mk = silhouette(t.body, t.w, t.h), f = B.FOOTPRINT[k]; return tileFit(mk, t.w, t.h, f, 1.1 * B.HEIGHT / B.CANVAS.tall) < B.FIT[k] - 1e-9; });
       check("every piece in a build stays on its tile at the size the build gives it: floor ellipse inside the diamond, the near half of its floor inside it, at most 23.5 board units to either side of the foot point", bad.length === 0, bad.join());
       const wideBoard = { w: (ext("keeper").right - ext("keeper").left) * ub("keeper"), halfFoot: Math.max(Math.abs(ext("keeper").left - B.CANVAS.x), Math.abs(ext("keeper").right - B.CANVAS.x)) * ub("keeper") };

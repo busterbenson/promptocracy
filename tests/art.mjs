@@ -29,6 +29,10 @@ check("only a 64-hex hash makes a key: a path, an uppercase hash, a short one an
 })());
 check("the stub picture is a PNG and nothing but png, jpeg and webp are pictures", sniffType(png) === "image/png" && sniffType(new Uint8Array([0xff, 0xd8, 0xff, 1])) === "image/jpeg" && sniffType(new TextEncoder().encode("<svg onload=alert(1)>")) === null && sniffType(new TextEncoder().encode("not a picture at all")) === null);
 check("a structure's drawing is as wide as the footprint is: 2x1 is 1024 by 768, 1x2 is 768 by 1024, anything else is square", J(sizeFor("structure", { size: { w: 2, h: 1 } })) === J({ width: 1024, height: 768 }) && J(sizeFor("structure", { size: { w: 1, h: 2 } })) === J({ width: 768, height: 1024 }) && J(sizeFor("creature", { size: { w: 2, h: 1 } })) === J({ width: 1024, height: 1024 }) && J(sizeFor("structure", {})) === J({ width: 1024, height: 1024 }));
+{
+  const wall = stylePrompt("structure", { size: { w: 2, h: 1 } }, "a low stone wall"), beast = stylePrompt("creature", {}, "a capybara");
+  check("the body plan comes first for a creature (an upright person, four-legged, long low, legless, a bird) and its footprint fits a square; a structure keeps its own footprint (no square, no body plan)", /body plan its words give it/.test(beast) && /four-legged animal/.test(beast) && /fits inside a square/.test(beast) && !/fits inside a square|body plan its words give it|four-legged/.test(wall) && /fits 2 by 1 tiles/.test(wall) && !/[{}]|  /.test(wall));
+}
 const sp = stylePrompt("structure", { size: { w: 2, h: 1 } }, "a low stone wall");
 check("the platform adds the style to Gremlin's words: his words first, then three-quarter view, dark navy outlines, the footprint, and the negative list; his words are capped", sp.startsWith("a low stone wall, shown as its classic") && /three-quarter view/.test(sp) && /dark navy outlines/.test(sp) && /fits 2 by 1 tiles/.test(sp) && /no text\./.test(sp) && /No people's likenesses/.test(sp) && stylePrompt("item", {}, "x".repeat(900)).indexOf(", shown as its classic") === MAX_PROMPT);
 {
