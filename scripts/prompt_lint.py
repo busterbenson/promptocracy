@@ -35,7 +35,7 @@ extraction error there (the symbol was renamed) is reported, not fatal.
 Exit 0 clean, 1 hits (or a stale keep), 2 a usage or config error (a symbol that is not
 found is an error, never a silent pass). Stdlib only, read-only.
 """
-import argparse, ast, io, json, os, re, sys, tokenize
+import argparse, ast, hashlib, io, json, os, re, sys, tokenize
 
 PUA = ""  # stands for a ${...} / {...} expression inside a literal
 
@@ -473,6 +473,7 @@ MONTH = r"(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)[a-z]*\.?"
 PAST = [
     (re.compile(r"\blast (?:time|round|week|night|turn|session|run|month|year|day|tick)\b", re.I), "refers to a past occasion"),
     (re.compile(r"\b(?:earlier|previously|formerly|originally|yesterday|recently|before now)\b", re.I), "refers to what came before"),
+    (re.compile(r"\bonce (?:\w+ed|had|was|were|did|made|wrote|ran|saw|took|got|sent)\b", re.I), "refers to something that happened once"),
     (re.compile(r"\bwe (?:saw|'ve seen|have seen|found|hit)\b|\bwe(?:'ve| have) (?:had|seen)\b", re.I), "refers to something that was seen"),
     (re.compile(r"\brounds?\s*#?\d+\b", re.I), "names a round"),
     (re.compile(r"\b(?:PRs?|pull request|issue|ticket|bug)s?\s*#?\d+\b", re.I), "names a PR or issue"),
@@ -520,10 +521,192 @@ def example_tail(text, start):
     return "".join(out)
 
 
+# ----------------------------------------------------------------------------------------
+# patch: a negation followed by a closed list of specifics ("No pink anywhere: inner ears, noses and tongues ...")
+# ----------------------------------------------------------------------------------------
+
+# A negation or exclusion. The "n't" forms and "do not" are verb cues: a verb usually follows ("never mention X, Y or Z").
+NEG_CUE = re.compile(
+    r"(?<![\w'’/-])(?:(?P<verb>(?:do|does|did|must|should|shall|will|would|can|could|may|might)\s+not|cannot|\w+n['’]t|never|avoid|skip)"
+    r"|(?P<plain>no|nor|neither|not|without|except|excluding|nothing\s+(?:about|of))(?!\s+to\b))(?![\w-])", re.I)
+EMPTY = {"none", "nothing", "nobody", "anything", "anyone", "else", "other", "others", "more", "either"}   # "no marks, none": not a case
+DETERMINERS = {"a", "an", "the", "any", "its", "their", "his", "her", "your", "our", "one", "some", "this", "that", "these", "those",
+               "more", "than", "of", "all", "every", "each", "even", "also", "ever", "again", "absolutely", "ever", "just", "really"}
+NEG_WORDS = {"no", "nor", "never", "not", "neither", "without", "nothing", "and", "or", "but", "except"}
+# words that cannot sit inside a noun-phrase item: the clause has turned into a sentence
+FINITE = {"is", "are", "was", "were", "be", "been", "being", "use", "uses", "used", "using", "may", "must", "can", "will", "should", "would", "could",
+          "keep", "keeps", "stay", "stays", "goes", "go", "has", "have", "had", "do", "does", "did", "it", "its", "you", "your", "they", "we", "i",
+          "which", "who", "when", "where", "if", "so", "because", "until", "unless", "since", "while", "then", "instead", "rather", "but", "to", "for", "in", "on", "at", "by",
+          "with", "from", "as", "into", "onto", "over", "under", "about", "between", "inside", "outside", "than", "that", "there", "here", "even", "only", "still", "also", "too"}
+# an abstract or format-level word is not a concrete case: a list of these is a rule about the output, not a patch
+META = {"jargon", "idiom", "idioms", "slang", "filler", "pleasantries", "preamble", "sign-off", "instruction", "instructions", "prompt", "budget", "deadline", "guess", "hedging",
+        "markup", "markdown", "formatting", "link", "links", "url", "urls", "heading", "headings", "text", "quote", "quotes",
+        "gradient", "gradients", "gloss", "texture", "textures", "title", "number"}   # a list of these is about the output's format, not a case
+# common verbs: "never open, list, search or name its directory" is a list of verbs, not of things
+VERBS = {"open", "list", "search", "name", "run", "use", "write", "add", "draw", "say", "ask", "tell", "give", "make", "put", "show", "include",
+         "repeat", "reveal", "print", "read", "edit", "touch", "refuse", "delete", "remove", "create", "build", "push", "pull", "poll", "sleep",
+         "loop", "wait", "leave", "change", "set", "call", "mention", "suggest", "send", "post", "merge", "move", "copy", "paste", "check", "stop",
+         "start", "try", "guess", "invent", "assume", "promise", "apologise", "apologize", "explain", "describe", "comment", "answer", "reply",
+         "respond", "save", "store", "log", "wait", "retry", "skip", "fix", "ignore", "obey", "follow", "return", "output", "emit", "generate",
+         "render", "fill", "rename", "restart", "kill", "arm", "seed", "exercise", "hand-roll", "improvise", "redesign", "widen", "carry"}
+COLORS = {"red", "pink", "orange", "yellow", "green", "blue", "purple", "violet", "brown", "grey", "gray", "black", "white", "gold", "golden",
+          "silver", "teal", "cyan", "magenta", "beige", "navy", "crimson", "turquoise", "lavender", "maroon", "tan", "cream"}
+ABSTRACT_SUFFIX = ("tion", "sion", "ence", "ance", "ity", "ment", "ness", "ship", "ism")   # condition, consequence, exception: ideas, not things
+ADJ_SUFFIX = ("y", "ed", "ful", "less", "ous", "ive", "ish", "ly", "ble")
+ITEM_SPLIT = re.compile(r",?\s+(?:or|and|nor)\s+|,\s*|\s*/\s*|\s+(?:or|and|nor)\s+")
+
+
+def _protect(text):
+    """Quoted and backticked spans become one placeholder token each (same length as the span, so indexes still map back)."""
+    spans = []
+
+    def sub(m):
+        n = len(m.group(0))
+        spans.append(m.group(0))
+        return "\x01" + chr(0xE100 + (len(spans) - 1) % 200) * (n - 2) + "\x02"
+    return re.sub(r"`[^`\n]*`|\"[^\"\n]*\"|“[^”\n]*”", sub, text), spans
+
+
+def _clause(text, start):
+    """The text after a cue up to the end of its clause (paren-aware); also returns whether it ended at a colon."""
+    depth, j = 0, start
+    while j < len(text):
+        c = text[j]
+        if c in "([":
+            depth += 1
+        elif c in ")]":
+            if depth == 0:
+                break
+            depth -= 1
+        elif c in ";\n" and depth == 0:
+            break
+        elif c == ":" and depth == 0:
+            return text[start:j], True
+        elif c in ".!?" and depth == 0 and (j + 1 >= len(text) or text[j + 1] in " \n\t") and not re.search(r"(?:e\.g|i\.e|etc|vs)$", text[start:j + 1]):
+            break
+        elif text.startswith(" — ", j) or text.startswith(" – ", j):
+            break
+        j += 1
+    return text[start:j], False
+
+
+PREPS = {"to", "for", "in", "on", "at", "by", "with", "from", "as", "into", "onto", "over", "under", "about", "between", "inside", "outside", "than", "of", "like"}
+DEIXIS = {"this", "these", "those", "your", "our", "their", "my", "its"}   # "these instructions", "your system prompt": the prompt talking about itself
+
+
+def _items(chunk, loose=False):
+    """Leading noun-phrase items of a clause fragment: [(words, protected)], stopping where the clause turns into a sentence.
+    loose: items of up to six words that may contain prepositions (the segments of "never X, never Y")."""
+    out = []
+    parts = [p for p in ITEM_SPLIT.split(chunk) if p is not None]
+    for part in parts:
+        words = [w for w in re.findall(r"[\x01\x02\ue100-\ue1ff]+|[\w'’-]+", part)]
+        if not words:
+            continue
+        # drop repeated negation words and determiners at the front ("no gloss", "never an apology", "and absolutely no floor")
+        k = 0
+        while k < len(words) and (words[k].lower() in NEG_WORDS or words[k].lower() in DETERMINERS):
+            k += 1
+        deixis = any(w.lower() in DEIXIS for w in words[:k])
+        words = words[k:]
+        if not words:
+            return out
+        prot = any("\x01" in w for w in words)
+        low = [w.lower() for w in words]
+        bad = FINITE - PREPS if loose else FINITE
+        if not prot and (len(words) > (6 if loose else 4) or any(w in bad for w in low)):
+            return out
+        if prot and len(words) > 3:
+            return out
+        out.append((words, prot, deixis))
+    return out
+
+
+def _is_adjectivey(words):
+    if len(words) == 1:
+        w = words[0].lower()
+        return "-" in w or w.endswith(ADJ_SUFFIX) and len(w) > 4
+    return False
+
+
+def _concrete(items):
+    keep = []
+    for item in items:
+        words, prot, deixis = item
+        low = [w.lower() for w in words]
+        if prot:
+            keep.append(item)
+            continue
+        if low[-1] in META or low[0] in META or low[0] in EMPTY:
+            continue
+        if deixis or _is_adjectivey(words) or (len(low[-1]) > 6 and low[-1].endswith(ABSTRACT_SUFFIX)):
+            continue
+        keep.append(item)
+    return keep
+
+
+def patch_hits(text):
+    """[(index, reason, snippet)] for a negation followed by a closed list of specifics, or a named colour."""
+    prot, _ = _protect(text.replace(PUA, " "))
+    hits, covered = [], -1
+    for m in NEG_CUE.finditer(prot):
+        if m.start() < covered:
+            continue
+        if m.group("plain") and m.group("plain").lower() == "not" and re.search(r",\s*$", prot[:m.start()]):
+            continue   # "a rule, not a block or a clause": a contrast, not a prohibition
+        clause, colon = _clause(prot, m.end())
+        first = _items(clause)
+        cands = [first]
+        if m.group("verb"):
+            # "never mention coupons, refunds ...", "never ask about the weather ...": the first word is the verb
+            words = clause.split(None, 1)
+            if len(words) > 1 and words[0].lower().strip(",") not in DETERMINERS and not re.match(r"\s*[\w'’-]+\s*,", clause):
+                rest = words[1]
+                cands.append(_items(rest))
+                w2 = rest.split(None, 1)
+                if len(w2) > 1 and w2[0].lower() in PREPS:
+                    cands.append(_items(w2[1]))
+        for pm in re.finditer(r"\(([^()]*)\)", clause):   # "never X another way (a different tool, script or library)"
+            cands.append(_items(pm.group(1)))
+        tail = re.split(r"\s(?:with|using|via|through)\s", clause, maxsplit=1)
+        if len(tail) == 2:   # "don't exercise endpoints with a `curl`/`wget` POST, PUT or upload"
+            cands.append(_items(tail[1]))
+        segs = re.split(r",\s*(?:and\s+)?(?:absolutely\s+)?(?=(?:never|no|not|nor)\b)", clause)
+        if len(segs) >= 2:   # "never curled over the back, never fanned like a peacock's"
+            cands.append(_items(segs[0], True) + [it for sg in segs[1:] for it in _items(sg, True)[:1]])
+        if len([it for it in first if it[1]]) >= 2:   # a list of quoted or backticked cases
+            cands.append([it for it in first if it[1]])
+        ok = None
+        if m.group("verb") and first and all(len(it[0]) == 1 and it[0][0].lower() in VERBS for it in first[:2]):
+            cands = []   # "never open, list, search or name its directory": verbs, not things
+        for c in cands:
+            c = _concrete(c)
+            if len(c) >= 2:
+                ok = c
+                break
+        if ok is None:
+            low = [w.lower() for w in re.findall(r"[\w'’-]+", clause)][:3]
+            if (m.group("plain") or m.group("verb")) and low and low[0] in COLORS:
+                ok = [(low[:1], False, False)]
+            elif colon:
+                tail = prot[m.end() + len(clause) + 1:]
+                head = re.split(r"[.;\n]", tail, maxsplit=1)[0]
+                lead = _items(re.split(r"\b(?:use|uses|are|is|get|gets|stay|stays|take|takes|keep|keeps|should|must|may|can|have|has|follow|come|comes)\b", head, maxsplit=1)[0])
+                lead = _concrete(lead)
+                if len(lead) >= 2 and re.search(r"\b(?:use|uses|are|is|get|gets|stay|stays|take|takes|keep|keeps|should|must|may|can|have|has|follow|come|comes)\b", head):
+                    ok = lead
+        if ok is not None:
+            covered = m.end() + len(clause)
+            snippet = " ".join(prot[m.start():m.end() + len(clause) + (40 if colon else 0)].split())
+            snippet = re.sub(r"[\x01\x02\ue100-\ue1ff]+", "…", snippet)
+            hits.append((m.start(), snippet))
+    return hits
+
+
 def lint_unit(unit, allow):
     """-> list of (line, flag, reason, snippet)"""
     text, hits = unit.text, []
-    add = lambda i, flag, reason, snip: hits.append((unit.line_at(i), flag, reason, " ".join(snip.replace(PUA, "{}").split())[:90]))
+    add = lambda i, flag, reason, snip: hits.append((unit.line_at(i), flag, reason, " ".join(snip.replace(PUA, "{}").split())[:90], i))
 
     for m in EX_TRIG.finditer(text):
         tail = example_tail(text, m.end())
@@ -543,6 +726,9 @@ def lint_unit(unit, allow):
         if not before or before[-1].lower() not in HABITUAL_SUBJECT:
             continue   # "a tool used to build", "is used to size": not a past habit
         add(m.start(), "past", 'habitual "used to" refers to how things were', text[max(0, m.start() - 20):m.end() + 25])
+
+    for i, snip in patch_hits(text):
+        add(i, "patch", "a negation followed by a closed list of specifics: name the property the rule is about, not the cases that broke it", snip)
 
     code_blind = _strip_code(text)
     seen = set()
@@ -564,6 +750,81 @@ def lint_unit(unit, allow):
         seen.add(key)
         add(m.start(), "proper", f'"{run}" looks like a proper noun that is not on the allowlist: a named thing in a durable prompt is a past case or a bias (add game terms to the allowlist)', code_blind[max(0, m.start() - 20):m.end() + 25])
     return hits
+
+
+# ----------------------------------------------------------------------------------------
+# Judged mode (optional): a model labels sentences, the answers are recorded in a file, and the lint only reads the file.
+# The lint itself never calls a model, so CI is deterministic and offline. An agent answers an export, the answers are merged
+# into the recorded file, and a sentence whose wording changes is simply unjudged again.
+# ----------------------------------------------------------------------------------------
+
+JUDGE_PROMPT = """You review lines taken from durable prompts: text that is sent to a model again and again (an app's system prompts, the standard rules an agent brief carries). For each numbered line decide whether it is a PATCH or a RULE.
+
+P (patch): the line, or a clause inside it, exists to rule out or enumerate specific named cases: particular objects, body parts, features, colours, words, commands, tools, places, dates or incidents. Patches are typically added after one failed output ("no pink anywhere: inner ears, noses and tongues use the cream", "never mention coupons, refunds or shipping times", "avoid the words 'delve' and 'tapestry'", a parenthetical naming cases "(a Redash query, a Zendesk note)", "(a parallel agent once published the wrong body)"). Test: if you deleted the named cases, the line would still state the general rule, and the cases only bias later answers toward themselves.
+
+R (rule): everything else. A general rule, a format or tone requirement, a field or schema definition, a voice sample, a structural instruction, a fact the model needs. Lists of format properties (no markup, no links), of abstract categories (deadlines, prices, outcomes, settings), of verbs, or of required fields are R, not P.
+
+Calibrate: most lines are R. Call a line P only when you can point at the specific named case in it.
+
+Output: a single JSON object mapping each line number (as a string) to "P" or "R", nothing else."""
+
+
+def sentences(unit):
+    """[(key, text, line, start, end)] for every sentence of a unit that is long enough to judge. The key is stable across line moves."""
+    text = unit.text
+    out, pos = [], 0
+    for para in re.split(r"\n\s*\n|\n(?=\s*[-*]\s)", text):
+        base = text.find(para, pos)
+        pos = base + len(para)
+        for m in re.finditer(r"\S.*?(?:[.!?](?=\s+[A-Z\"“{(*\-" + PUA + r"])|$)", para, re.S):
+            sent = " ".join(m.group(0).replace(PUA, "{}").split())
+            words = [w for w in sent.replace("{}", "").split() if w]
+            if len(words) < 4 or len(sent) < 25:
+                continue
+            key = hashlib.sha1(sent.encode()).hexdigest()[:16]
+            out.append((key, sent, unit.line_at(base + m.start()), base + m.start(), base + m.end()))
+    return out
+
+
+def load_judged(path):
+    try:
+        data = json.load(open(path))
+    except FileNotFoundError:
+        return {}
+    except (OSError, ValueError) as e:
+        raise ExtractError(f"cannot read judged file {path}: {e}")
+    ans = data.get("answers", {})
+    for k, v in ans.items():
+        if v.get("label") not in ("P", "R"):
+            raise ExtractError(f"judged file {path}: {k} has no P/R label")
+    return ans
+
+
+def judge_export(todo, out_path):
+    """Write the unjudged sentences and the prompt for an agent to answer; todo = {key: text}."""
+    keys = list(todo)
+    json.dump({"prompt": JUDGE_PROMPT, "lines": {str(i + 1): todo[k] for i, k in enumerate(keys)}, "keys": {str(i + 1): k for i, k in enumerate(keys)}},
+              open(out_path, "w"), indent=1)
+    return len(keys)
+
+
+def judge_record(judged_path, export_path, answers_path):
+    """Merge an agent's answers ({"1": "P", ...}) for an export into the recorded judged file."""
+    exp, ans = json.load(open(export_path)), json.load(open(answers_path))
+    cur = {}
+    try:
+        cur = json.load(open(judged_path)).get("answers", {})
+    except FileNotFoundError:
+        pass
+    n = 0
+    for num, key in exp["keys"].items():
+        label = ans.get(num)
+        if label not in ("P", "R"):
+            raise ExtractError(f"answers {answers_path}: line {num} has no P or R answer")
+        cur[key] = {"label": label, "text": exp["lines"][num][:160]}
+        n += 1
+    json.dump({"version": 1, "note": "recorded model answers for prompt-lint --judged; keys are sha1 of the sentence", "answers": cur}, open(judged_path, "w"), indent=1, sort_keys=True)
+    return n
 
 
 # ----------------------------------------------------------------------------------------
@@ -600,7 +861,7 @@ class Hit:
         return f"{self.path}:{self.line}: {self.flag}: {self.reason} | {self.snippet!r}{tag}"
 
 
-def lint_file(path, src, symbol=None, calls=None, fenced=False, allow=frozenset(), budget=None, keeps=(), root_rel=None):
+def lint_file(path, src, symbol=None, calls=None, fenced=False, allow=frozenset(), budget=None, keeps=(), root_rel=None, judged=None, unjudged=None):
     """-> (hits, size, errors). `keeps`: config keep entries for this file (each gets 'used' set)."""
     shown = root_rel or path
     units = extract(path, src, symbol, calls, fenced)
@@ -612,7 +873,18 @@ def lint_file(path, src, symbol=None, calls=None, fenced=False, allow=frozenset(
     hits, errors = [], []
     seen = set()
     for u in units:
-        for line, flag, reason, snip in lint_unit(u, allow):
+        found = list(lint_unit(u, allow))
+        if judged is not None:
+            for k, sent, line, lo, hi in sentences(u):
+                a = judged.get(k)
+                if a is None:
+                    if unjudged is not None:
+                        unjudged[k] = sent
+                elif a["label"] == "P":
+                    found.append((line, "judged", "a model judged this sentence to name specific cases (recorded answer): state the general rule instead", sent[:90], lo))
+                else:   # a recorded R is the model's read of this sentence: it overrules the heuristic flags on it (not the budget)
+                    found = [f for f in found if not lo <= f[4] < hi]
+        for line, flag, reason, snip, _ in found:
             key = (line, flag, snip)
             if key in seen:
                 continue
@@ -662,9 +934,12 @@ def load_config(path):
     return cfg
 
 
-def run_config(cfg_path, root=None, sizes=False, out=sys.stdout):
+def run_config(cfg_path, root=None, sizes=False, out=sys.stdout, judged_path=None, export_path=None):
     cfg = load_config(cfg_path)
     root = root or os.path.dirname(os.path.abspath(cfg_path))
+    judged_path = judged_path or (os.path.join(root, cfg["judged"]) if cfg.get("judged") else None)
+    judged = load_judged(judged_path) if judged_path else None
+    unjudged = {}
     base_allow = set(cfg.get("allow", []))
     keeps = [dict(k) for k in cfg.get("keep", [])]
     failing, advisory, kept, errors, lines = [], [], 0, [], []
@@ -678,7 +953,8 @@ def run_config(cfg_path, root=None, sizes=False, out=sys.stdout):
             except OSError as e:
                 raise ExtractError(f"cannot read {p['file']}: {e}")
             hits, size, errs = lint_file(path, src, p.get("symbol"), p.get("calls"), bool(p.get("fenced")),
-                                         frozenset(base_allow | set(p.get("allow", []))), p["budget"], mine, p["file"])
+                                         frozenset(base_allow | set(p.get("allow", []))), p["budget"], mine, p["file"],
+                                         judged=None if p.get("advisory") and judged is None else judged, unjudged=unjudged)
         except ExtractError as e:
             if not p.get("advisory"):
                 raise
@@ -705,7 +981,13 @@ def run_config(cfg_path, root=None, sizes=False, out=sys.stdout):
         print(h.fmt("  [advisory: not failing]"), file=out)
     for e in errors:
         print(e, file=out)
-    print(f"prompt-lint: {len(cfg.get('prompts', []))} prompts, {len(failing)} hits, {kept} kept, {len(advisory)} advisory, {len(errors)} errors", file=sys.stderr)
+    note = ""
+    if judged is not None:
+        note = f", {len(unjudged)} sentences without a recorded judgement" + (" (run with --judge-export)" if unjudged else "")
+        if export_path and unjudged:
+            judge_export(unjudged, export_path)
+            note += f", exported to {export_path}"
+    print(f"prompt-lint: {len(cfg.get('prompts', []))} prompts, {len(failing)} hits, {kept} kept, {len(advisory)} advisory, {len(errors)} errors{note}", file=sys.stderr)
     return 1 if failing or errors else 0
 
 
@@ -719,17 +1001,29 @@ def main(argv=None):
     ap.add_argument("--calls", action="append", default=[], help="python: only the arguments of this call, e.g. out.append")
     ap.add_argument("--fenced", action="store_true", help="markdown: only the text inside ``` fences")
     ap.add_argument("--sizes", action="store_true", help="print every prompt's size against its budget")
+    ap.add_argument("--judged", help="recorded model answers (JSON); sentences answered P are reported as `judged` hits")
+    ap.add_argument("--judge-export", metavar="OUT", help="write the sentences that have no recorded answer, with the judging prompt, for an agent to answer")
+    ap.add_argument("--judge-record", nargs=2, metavar=("EXPORT", "ANSWERS"), help="merge an agent's answers ({\"1\": \"P\", ...}) for an export into the --judged file")
     a = ap.parse_args(argv)
     try:
+        if a.judge_record:
+            if not a.judged:
+                ap.error("--judge-record needs --judged FILE (the file to merge into)")
+            print(f"recorded {judge_record(a.judged, *a.judge_record)} answers in {a.judged}")
+            return 0
         if a.config:
-            return run_config(a.config, a.root, a.sizes)
+            return run_config(a.config, a.root, a.sizes, judged_path=a.judged, export_path=a.judge_export)
         if not a.targets:
             ap.error("give --config, or one or more FILE[:SYMBOL]")
         rc = 0
         for t in a.targets:
             path, _, sym = t.partition(":")
             src = open(path, encoding="utf-8").read()
-            hits, size, errs = lint_file(path, src, sym or None, a.calls or None, a.fenced, frozenset(a.allow), a.budget)
+            unjudged = {}
+            hits, size, errs = lint_file(path, src, sym or None, a.calls or None, a.fenced, frozenset(a.allow), a.budget,
+                                         judged=load_judged(a.judged) if a.judged else None, unjudged=unjudged)
+            if a.judge_export and unjudged:
+                print(f"exported {judge_export(unjudged, a.judge_export)} unjudged sentences to {a.judge_export}", file=sys.stderr)
             if a.sizes:
                 print(f"  {t}: {size} characters")
             for h in hits:
