@@ -1,0 +1,114 @@
+{
+  "allow": [
+    "Gremlin",
+    "Starling",
+    "Chalant",
+    "Promptocracy"
+  ],
+  "prompts": [
+    {
+      "file": "src/lib/gremlin.js",
+      "symbol": "systemStatic",
+      "budget": 6400,
+      "allow": [
+        "Redraw"
+      ],
+      "why": "Gremlin's static system block (voice, ticket fields, catalog, art, prices, answer format)"
+    },
+    {
+      "file": "src/lib/gremlin.js",
+      "symbol": "systemDay",
+      "budget": 200,
+      "why": "Gremlin's day block: mood, catalog note, rulebook"
+    },
+    {
+      "file": "src/lib/gremlin.js",
+      "symbol": "MOODS",
+      "budget": 500,
+      "why": "the five daily mood lines that bend Gremlin's price"
+    },
+    {
+      "file": "src/lib/gremlin.js",
+      "symbol": "catalogNoteOf",
+      "budget": 300,
+      "why": "the catalog note built from the game's registry"
+    },
+    {
+      "file": "src/lib/gremlin.js",
+      "symbol": "tailText",
+      "budget": 600,
+      "why": "Gremlin's per-turn tail: the ticket as it stands, notes, the new message"
+    },
+    {
+      "file": "src/lib/gremlin.js",
+      "symbol": "excuseRequest",
+      "budget": 700,
+      "why": "the one-line excuse call at the daily limit"
+    },
+    {
+      "file": "src/lib/gremlin.js",
+      "symbol": "threadSystemStatic",
+      "budget": 2600,
+      "why": "Gremlin's system block for a ticket's discussion thread"
+    },
+    {
+      "file": "src/lib/gremlin.js",
+      "symbol": "threadRequest",
+      "budget": 200,
+      "why": "the thread's per-post tail"
+    },
+    {
+      "file": "src/lib/starling.js",
+      "symbol": "systemStatic",
+      "budget": 6600,
+      "why": "Starling's static system block (voice, answer, draft kinds, escalation)"
+    },
+    {
+      "file": "src/lib/starling.js",
+      "symbol": "systemDay",
+      "budget": 400,
+      "why": "Starling's day block: limit, action types, rulebook"
+    },
+    {
+      "file": "src/lib/starling.js",
+      "symbol": "actionTypesText",
+      "budget": 300,
+      "why": "the action types as the game's rules define them"
+    },
+    {
+      "file": "src/lib/starling.js",
+      "symbol": "tailText",
+      "budget": 800,
+      "allow": [
+        "Action",
+        "Propose"
+      ],
+      "why": "Starling's per-turn tail; Action and Propose are the names of the site's own menu"
+    },
+    {
+      "file": "src/lib/proposals.js",
+      "symbol": "modelPrompt",
+      "budget": 5300,
+      "why": "the drafter's prompt for rewording a rule or clause (rules voice, conflicts, settings)"
+    },
+    {
+      "file": "src/lib/art.js",
+      "symbol": "STYLE",
+      "budget": 3200,
+      "advisory": "art.js is being rewritten per kind elsewhere; its hits are listed in the PR, not failing",
+      "why": "the board-piece art style template"
+    }
+  ],
+  "keep": [
+    {
+      "file": "src/lib/gremlin.js",
+      "match": "Samples: \"Free. I like dragons.\"",
+      "reason": "the voice anchor: the quoted lines are the persona's voice spec, not a fix for a past failure; first candidate in the prune pass (tests/prompt-samples/gremlin.md)"
+    },
+    {
+      "file": "src/lib/starling.js",
+      "match": "Samples: \"Points for trying!",
+      "reason": "the voice anchor: the quoted lines are the persona's voice spec, not a fix for a past failure; first candidate in the prune pass (tests/prompt-samples/starling.md)"
+    }
+  ]
+}
