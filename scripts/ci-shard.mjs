@@ -17,19 +17,23 @@ import { localD1 } from "./local-d1.mjs";
 const ROOT = new URL("..", import.meta.url).pathname;
 const chain = JSON.parse(readFileSync(ROOT + "package.json", "utf8")).scripts.test.split("&&").map((s) => s.trim()).filter(Boolean);
 const FAST = ["scripts/check-rule-claims.mjs", "tests/design.mjs", "tests/engine.mjs"];
-// Minutes each suite took on GitHub's ubuntu-24.04 runner (the stack/step2 run 44879160799, 2026-11-21: one shard 21 min, two at 14,
-// because every suite then new weighed DEFAULT). The suites added by threads, Starling and art have no CI timing yet: their weights are
-// estimates from the nearest measured suite (chat.mjs for the chat-driven ones, chat-browser.mjs for the browser ones), to be replaced by
-// the first full run of the second stack. Unknown suites weigh DEFAULT.
-const MINUTES = { "tests/board.mjs": 9.1, "tests/workshop.mjs": 5.5, "tests/chat-browser.mjs": 3.4, "tests/actions.mjs": 3.3, "tests/moderator.mjs": 3.3,
-  "tests/votes.mjs": 2.7, "tests/chat.mjs": 2.2, "tests/e2e.mjs": 2.1, "tests/start.mjs": 2.0, "tests/day.mjs": 1.8, "tests/proposals-per-day.mjs": 1.8,
-  "tests/proposals.mjs": 1.4, "tests/chrome.mjs": 1.3, "tests/workshop-browser.mjs": 1.2, "moderator/test.mjs": 1.2, "tests/workshop-migration.mjs": 0.9,
-  "tests/engine.mjs": 0.8, "tests/actions-migration.mjs": 0.8, "tests/eras-migration.mjs": 0.8, "tests/eras.mjs": 0.6, "tests/eras-browser.mjs": 0.5,
-  "tests/design.mjs": 0.3, "tests/catalog.mjs": 0.2, "tests/gremlin.mjs": 0.2, "scripts/check-rule-claims.mjs": 0.1, "moderator/schedule.test.mjs": 0.1, "moderator/escalations.test.mjs": 0.2,
-  // estimates (see above)
-  "tests/threads.mjs": 2.2, "tests/starling-chat.mjs": 2.2, "tests/starling.mjs": 0.3, "tests/threads-browser.mjs": 2.0, "tests/starling-browser.mjs": 2.0, "tests/propose-bar-browser.mjs": 3.0,
-  "tests/art.mjs": 2.2, "tests/art-sweep.mjs": 0.1, "tests/local-d1.mjs": 0.3, "tests/art-browser.mjs": 2.0 };
-const DEFAULT = 2.5;
+// Minutes each suite took when measured, from the PER-FILE SECONDS this script prints after a run (set CI_TIMINGS_FILE=<path> to get them as JSON).
+// These are the 2026-11-23 numbers on the Mac mini after d1() went in-process and migrations were applied once (every file: a few seconds, apart
+// from the browser suites, tests/engine.mjs and moderator/test.mjs); a GitHub runner is slower by a factor that is about the same for all of
+// them, and the split only needs the proportions. Re-measure after a change that moves a file's time: the old numbers here (board 9.1, workshop
+// 5.5 minutes) were the spawn-per-statement era and balanced nothing once that was gone. A suite not listed weighs DEFAULT.
+const MINUTES = {
+  "moderator/test.mjs": 4.42, "tests/engine.mjs": 1.52, "tests/chrome.mjs": 1.09, "tests/stale-tab.mjs": 0.9,
+  "tests/propose-bar-browser.mjs": 0.85, "tests/art.mjs": 0.72, "tests/chat-browser.mjs": 0.49, "tests/workshop-browser.mjs": 0.48,
+  "tests/proposals.mjs": 0.4, "tests/threads-browser.mjs": 0.26, "tests/starling-browser.mjs": 0.25, "tests/board.mjs": 0.21,
+  "tests/e2e.mjs": 0.19, "tests/eras-browser.mjs": 0.18, "tests/death-browser.mjs": 0.17, "tests/art-browser.mjs": 0.17,
+  "moderator/schedule.test.mjs": 0.16, "tests/threads.mjs": 0.12, "tests/proposals-per-day.mjs": 0.12, "tests/votes.mjs": 0.11,
+  "tests/day.mjs": 0.11, "tests/actions-migration.mjs": 0.08, "tests/chat.mjs": 0.08, "tests/starling-chat.mjs": 0.08,
+  "tests/workshop-migration.mjs": 0.07, "tests/eras-migration.mjs": 0.07, "tests/workshop.mjs": 0.06, "moderator/escalations.test.mjs": 0.06,
+  "tests/start.mjs": 0.05, "tests/eras.mjs": 0.05, "tests/catalog.mjs": 0.05, "tests/actions.mjs": 0.05,
+  "tests/moderator.mjs": 0.04, "tests/death.mjs": 0.04, "tests/design.mjs": 0.02, "tests/local-d1.mjs": 0.01,
+  "tests/art-sweep.mjs": 0.01, "scripts/check-rule-claims.mjs": 0.01, "tests/gremlin.mjs": 0.01, "tests/starling.mjs": 0.01};
+const DEFAULT = 0.5;
 const file = (cmd) => cmd.replace(/^node\s+/, "");
 
 const list = process.argv.includes("--list");
