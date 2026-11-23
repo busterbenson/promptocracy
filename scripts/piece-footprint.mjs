@@ -83,21 +83,45 @@ export function silhouette(body, w, h) {
  * The band starts at CONTACT_BAND of the figure and grows to the ellipse's own half depth when that is deeper: the side of a
  * round base (a pawn, a belly) meets the floor at the ellipse's widest point, half its depth above the front, so a fixed band
  * would cut the base short. It stops growing at MAX_BAND.
- * Returns { cx, cy, rx, ry, left, right, front } in the mask's units.
+ * Returns { cx, cy, rx, ry, left, right, front } in the mask's units; kind is "feet", "long" or "legless" (below).
  */
 export const MAX_BAND = 0.3;
+// Two bodies the feet rule does not suit (a seal, a round spirit with no legs), found from the drawing itself. Neither fires on
+// any piece in the board set (the tests pin their footprints):
+// - LONG: a figure at least LONG_ASPECT as wide as it is tall whose feet-contact is under half its width is lying on the floor:
+//   the contact is its whole length, so a floor point is any column whose lowest pixel is within the ellipse's full depth of the
+//   front (a point at the back of the floor is drawn up to that much higher), capped at LONG_BAND of the figure.
+// - LEGLESS: a figure nearly as wide as it is tall whose contact has already grown to 80% of its width has no feet to stand on:
+//   its underside is the contact. The contact is its lowest visible band (LEGLESS_BAND of the figure), not the widest the
+//   body gets higher up, so the ellipse sits under the body instead of inside it.
+export const LONG_ASPECT = 1.05, LONG_BAND = 0.4, LEGLESS_ASPECT = 0.95, LEGLESS_BAND = 0.12;
 export function floorEllipse(mask, w, h, key = "") {
   const { low, top, bottom } = profile(mask, w, h), tall = bottom - top;
+  const cols = [...low.keys()].filter((x) => low[x] >= 0), span = cols[cols.length - 1] + 1 - cols[0];
+  const reach = (band) => { const touch = cols.filter((x) => low[x] + 1 >= bottom - band); return [touch[0], touch[touch.length - 1] + 1]; };
   let band = (BAND_FOR[key] || CONTACT_BAND) * tall, left = 0, right = 0;
   for (let i = 0; i < 20; i++) {
-    const touch = [...low.keys()].filter((x) => low[x] >= 0 && low[x] + 1 >= bottom - band);
-    left = touch[0]; right = touch[touch.length - 1] + 1;
+    [left, right] = reach(band);
     const want = Math.min((right - left) * FLOOR_RATIO / 2, MAX_BAND * tall);
     if (want <= band + 0.5) break;
     band = want;
   }
+  let kind = "feet";
+  if (span >= LONG_ASPECT * tall && right - left < 0.5 * span) {
+    kind = "long";
+    band = (BAND_FOR[key] || CONTACT_BAND) * tall;
+    for (let i = 0; i < 20; i++) {
+      [left, right] = reach(band);
+      const want = Math.min((right - left) * FLOOR_RATIO, LONG_BAND * tall);
+      if (want <= band + 0.5) break;
+      band = want;
+    }
+  } else if (span >= LEGLESS_ASPECT * tall && right - left >= 0.8 * span) {
+    kind = "legless";
+    [left, right] = reach(LEGLESS_BAND * tall);
+  }
   const rx = (right - left) / 2, ry = rx * FLOOR_RATIO;
-  return { cx: (left + right) / 2, cy: bottom - ry, rx, ry, left, right, front: bottom };
+  return { cx: (left + right) / 2, cy: bottom - ry, rx, ry, left, right, front: bottom, kind };
 }
 
 // Each column's lowest opaque pixel (-1 for an empty column), the figure's top row and the row below its bottom.
@@ -116,4 +140,40 @@ export function stance(mask, w, h, key = "") {
   const { low, top, bottom } = profile(mask, w, h), e = floorEllipse(mask, w, h, key);
   const cols = [...low.keys()].filter((x) => low[x] >= 0), left = cols[0], right = cols[cols.length - 1] + 1;
   return { x: e.cx, y: e.cy, left, right, top, bottom, ellipse: e };
+}
+
+// ---- staying on the tile ----------------------------------------------------------------------------------------------------------
+// The tile top is a diamond TILE.a wide and TILE.b deep either side of the tile centre (the clip in public/js/pieces.js, in board
+// units; pieces are drawn at BOARD_SCALE, so these are measured on the board). A piece stands with its foot point (the floor
+// ellipse's centre) on the tile centre and must not spill over a neighbour:
+// - its floor ellipse lies inside the diamond (an ellipse FLOOR_RATIO as deep as it is wide fits when its half width is at most
+//   TILE_ELLIPSE_RX, about 19 board units);
+// - everything on the near half of the floor (at or below the foot point) is inside the diamond;
+// - nothing reaches more than TILE.side to either side of the foot point (a long body off-centre over a neighbour).
+export const TILE = { a: 27.5, b: 17.8, side: 23.5 };
+export const TILE_ELLIPSE_RX = 1 / Math.sqrt(1 / TILE.a ** 2 + (FLOOR_RATIO / TILE.b) ** 2);
+
+/**
+ * How large a piece may be drawn and still stay on its tile: the largest FIT (a multiplier on the art's size) for which the three
+ * conditions above hold. `u` is board units per mask unit at FIT 1 (the piece's own size on the board); `foot` is the
+ * floor ellipse ({ cx, cy, rx }) in the mask's units. A piece that already fits gets a number of at least 1.
+ */
+export function tileFit(mask, w, h, foot, u) {
+  let front = 0, side = 0;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (mask[y * w + x]) {
+    const dx = Math.abs(x + 0.5 - foot.cx), dy = y + 0.5 - foot.cy;
+    if (dy >= 0) front = Math.max(front, dx / TILE.a + dy / TILE.b);
+    side = Math.max(side, dx);
+  }
+  return Math.min(front ? 1 / (front * u) : Infinity, side ? TILE.side / (side * u) : Infinity, foot.rx ? TILE_ELLIPSE_RX / (foot.rx * u) : Infinity);
+}
+
+/**
+ * The scale (at most 1) that brings a figure w wide and h tall, standing on (fx, fy) in its own mask, inside a canvas whose foot
+ * point is (canvas.x, canvas.y): the art is scaled about its foot point, never cropped. A wide or low-slung figure needs more room
+ * to one side of its foot point than the canvas gives it; the build draws it smaller on the canvas and gives it a larger FIT, so it
+ * is the same size on the board.
+ */
+export function canvasScale({ w, h, fx, fy }, canvas) {
+  return Math.min(1, canvas.x / fx, (canvas.w - canvas.x) / (w - fx), canvas.y / fy, (canvas.h - canvas.y) / (h - fy));
 }

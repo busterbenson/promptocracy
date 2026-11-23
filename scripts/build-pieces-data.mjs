@@ -1,5 +1,5 @@
 // Writes public/js/pieces-data.js from a board-piece art set: one traced SVG per shape (VTracer output) and its roles.json.
-//   node scripts/build-pieces-data.mjs <set dir>        the dir holds final/<key>.svg and roles.json
+//   node scripts/build-pieces-data.mjs <set dir> [out.js]   the dir holds final/<key>.svg and roles.json; out.js defaults to public/js/pieces-data.js
 // Each SVG is cropped to its art (measured: the tracer leaves a margin of about 10 units, less once its edge stubs are
 // cleaned off), scaled so the art is 400 units tall, and its path coordinates rounded to whole units (half a unit in 400
 // is invisible at board size, and it keeps the file small).
@@ -12,7 +12,7 @@
 // shadow.
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { silhouette, stance } from "./piece-footprint.mjs";
+import { silhouette, stance, tileFit, canvasScale } from "./piece-footprint.mjs";
 
 const ROOT = new URL("..", import.meta.url).pathname;
 const dir = process.argv[2];
@@ -22,7 +22,7 @@ const KEYS = [...PLAYER, "ghost", "blob"];
 
 const TOP = 400, MARGIN = 10;
 // The shared canvas, in art units (a figure is 400 tall): the foot point is centred across it, with room above for the
-// tallest figure and below for the front of the widest footprint; `tall` is how tall every figure is on it. A piece that does not fit stops the build: widen it.
+// tallest figure and below for the front of the widest footprint; `tall` is how tall every figure is on it. A figure that needs more room than that (a wide, low-slung body whose foot point is off to one side) is drawn smaller on the canvas, about its foot point, and gets a larger FIT: nothing is cropped and it is the same size on the board.
 const CANVAS = { w: 480, h: 480, x: 240, y: 375, tall: TOP };
 // How tall a figure stands, in board units, before FIT: the canvas's 400 units are HEIGHT board units.
 const HEIGHT = 37;
@@ -37,19 +37,26 @@ const num = /-?\d+(?:\.\d+)?/g;
 const J = JSON.stringify;
 const fmt = (v, dp) => { let s = v.toFixed(dp); if (s.includes(".")) s = s.replace(/\.?0+$/, ""); return s === "-0" ? "0" : s; };
 
-// The art cropped to [ox, oy] .. and scaled by s: its markup, in units where the figure is TOP tall.
-function convert(key) {
+// The art cropped to [ox, oy] .. and scaled by s: its markup, in units where the figure is TOP tall (TOP * shrink when it has to be drawn smaller to fit the canvas).
+function convert(key, shrink = 1, tries = 0) {
   const svg = readFileSync(join(dir, "final", key + ".svg"), "utf8");
   const vb = /viewBox="0 0 ([\d.]+) ([\d.]+)"/.exec(svg);
   if (!vb) throw new Error(`${key}: no viewBox`);
   // Draw the whole viewBox at about the final scale, find where the art really is, then crop and scale to that.
   const s0 = TOP / (Number(vb[2]) - 2 * MARGIN), w0 = Math.ceil(Number(vb[1]) * s0), h0 = Math.ceil(Number(vb[2]) * s0);
   const b = stance(silhouette(scaled(key, svg, s0, 0, 0), w0, h0), w0, h0, key);
-  const ox = b.left / s0, oy = b.top / s0, s = TOP / ((b.bottom - b.top) / s0), w = Math.round((b.right - b.left) / s0 * s);
-  const body = scaled(key, svg, s, ox, oy), mask = silhouette(body, w, TOP), c = stance(mask, w, TOP, key);
+  const T = TOP * shrink;
+  const ox = b.left / s0, oy = b.top / s0, s = T / ((b.bottom - b.top) / s0), w = Math.round((b.right - b.left) / s0 * s), h = Math.ceil(T);
+  const body = scaled(key, svg, s, ox, oy), mask = silhouette(body, w, h), c = stance(mask, w, h, key);
   AREA[key] = mask.reduce((n, v) => n + v, 0);
-  if (c.top > 1 || c.bottom < TOP - 1 || c.left > 1 || c.right < w - 1) throw new Error(`${key}: the crop missed the art (${J(c)})`);
-  const placed = place(key, w, body, [c.x, c.y], c), e = c.ellipse;
+  if (c.top > 1 || c.bottom < T - 1 || c.left > 1 || c.right < w - 1) throw new Error(`${key}: the crop missed the art (${J(c)})`);
+  const need = canvasScale({ w, h: T, fx: c.x, fy: c.y }, CANVAS);
+  if (need < 1) {
+    // Fitting the shrunk art again moves the foot point a pixel or two (the ellipse is fitted to pixels), so take a hair more each time.
+    if (tries >= 6) throw new Error(`${key}: does not fit the canvas even at ${shrink} (needs ${need} more)`);
+    return convert(key, Math.floor(shrink * need * 1000 - 2) / 1000, tries + 1);
+  }
+  const placed = place(key, w, T, body, mask, h, [c.x, c.y], c), e = c.ellipse;
   // The fitted ellipse on the canvas (its centre is the foot point, to the rounding of the shift), and its centre in the
   // source SVG's own units, so a change in the art or the fit shows in the tests.
   FOOTPRINT[key] = { cx: +(e.cx + placed.dx).toFixed(1), cy: +(e.cy + placed.dy).toFixed(1), rx: +e.rx.toFixed(1), ry: +e.ry.toFixed(1),
@@ -78,14 +85,15 @@ function scaled(key, svg, s, ox, oy) {
   return parts.join("");
 }
 
-// Move the art so the point it stands on is the canvas's foot point; shrink it if it is too wide for a tile.
+// Move the art so the point it stands on is the canvas's foot point; size it by the equal-area rule and the caps, and shrink it
+// until it stays on its tile (tileFit).
 const HALF_WIDTH = {}, FIT = {}, FOOTPRINT = {}, AREA = {};
-function place(key, w, body, [fx, fy], f) {
+function place(key, w, T, body, mask, h, [fx, fy], f) {
   const dx = Math.round((CANVAS.x - fx) * 10) / 10, dy = Math.round((CANVAS.y - fy) * 10) / 10;
-  if (dx < 0 || dy < 0 || dx + w > CANVAS.w || dy + TOP > CANVAS.h) throw new Error(`${key}: does not fit the canvas once its feet are on the foot point (shift ${dx}, ${dy}; art ${w} x ${TOP})`);
+  if (dx < -0.05 || dy < -0.05 || dx + w > CANVAS.w + 0.05 || dy + T > CANVAS.h + 0.05) throw new Error(`${key}: does not fit the canvas once its feet are on the foot point (shift ${dx}, ${dy}; art ${w} x ${T})`);
   HALF_WIDTH[key] = (f.right - f.left) / 2;
   const u = BOARD_SCALE * HEIGHT / TOP; // board units per canvas unit, before FIT
-  const fit = Math.min(Math.sqrt(SIZE.area / (AREA[key] * u * u)), SIZE.h / (BOARD_SCALE * HEIGHT), SIZE.w / ((f.right - f.left) * u));
+  const fit = Math.min(Math.sqrt(SIZE.area / (AREA[key] * u * u)), SIZE.h / (u * T), SIZE.w / ((f.right - f.left) * u), tileFit(mask, w, h, f.ellipse, u));
   FIT[key] = Math.floor(fit * 1000) / 1000;
   const shifted = body
     .replace(/transform="translate\(([-\d.]+),([-\d.]+)\)"/g, (m, x, y) => `transform="translate(${fmt(Number(x) + dx, 1)},${fmt(Number(y) + dy, 1)})"`)
@@ -122,5 +130,5 @@ export const SIZE = ${JSON.stringify({ ...SIZE, scale: BOARD_SCALE })};
 export const HALF_WIDTH = ${JSON.stringify(pick(HALF_WIDTH))};
 export const FOOTPRINT = ${JSON.stringify(pick(FOOTPRINT))};
 `;
-writeFileSync(join(ROOT, "public/js/pieces-data.js"), out);
+writeFileSync(process.argv[3] || join(ROOT, "public/js/pieces-data.js"), out);
 console.log(`pieces-data.js: ${KEYS.length} shapes, ${(out.length / 1024).toFixed(0)} KB`);

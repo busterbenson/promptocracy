@@ -1,6 +1,9 @@
 // The design port's pure parts, no server: the rulebook parser and its marks, the starter rules' numbering, the one
 // palette file and the traced pieces, and the theme's tokens. Run: node tests/design.mjs
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync, readdirSync, mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { tmpdir } from "node:os";
+import { pathToFileURL } from "node:url";
 import { join as pjoin } from "node:path";
 import { ROOT } from "./lib.mjs";
 import { DEADLINE_CLOCK, DEPLOY_CLOCK } from "../src/lib/votes.js";
@@ -8,7 +11,7 @@ import { parseRules, markOf, renderMarkdown, hl, linkCites } from "../public/js/
 import { createBallot } from "../public/js/ballot.js";
 import { TRACED, ROLES, FIXED, CANVAS, HEIGHT, FIT, HALF_WIDTH, FOOTPRINT, SIZE } from "../public/js/pieces-data.js";
 import { recolor, targets, creatureSVG, CREATURE_PIECES, pieceSVG, SHADOW, FOOT_DROP, HW, HH } from "../public/js/pieces.js";
-import { silhouette, stance, floorEllipse, FLOOR_RATIO } from "../scripts/piece-footprint.mjs";
+import { silhouette, stance, floorEllipse, tileFit, canvasScale, FLOOR_RATIO, TILE, TILE_ELLIPSE_RX } from "../scripts/piece-footprint.mjs";
 import { createProposer } from "../public/js/propose.js";
 
 let pass = 0, fail = 0;
@@ -208,6 +211,64 @@ check("two pieces only the game places: the Ghost (recolored, rule 604.2) and th
     for (let x = 20; x < 180; x++) { const d = (x + 0.5 - 100) / A, yb = CY + B * Math.sqrt(Math.max(0, 1 - d * d)); for (let y = 0; y < Math.ceil(yb); y++) r[y * W2 + x] = 1; }
     const p = floorEllipse(r, W2, H2);
     check("a round base: the ellipse is the base's own (its width, its depth, its centre)", Math.abs(p.rx - A) <= 1 && Math.abs(p.cx - 100) <= 0.5 && Math.abs(p.cy - CY) <= 1.5, J({ p, A, CY }));
+  }
+  {
+    // A round figure with no legs (a floating or round spirit): its contact is the lowest band of its underside, so the ellipse is
+    // narrower than the body and sits in its lower part, its front on the body's bottom; before, it was as wide as the body and
+    // centred high inside it.
+    const W3 = 260, H3 = 260, R = 100, c3 = new Uint8Array(W3 * H3);
+    for (let y = 0; y < H3; y++) for (let x = 0; x < W3; x++) if ((x + 0.5 - 130) ** 2 + (y + 0.5 - 130) ** 2 <= R * R) c3[y * W3 + x] = 1;
+    const l = floorEllipse(c3, W3, H3);
+    check("a legless round body: the ellipse is the lowest band of its underside, narrower than the body, in its lower half, its front on its bottom", l.kind === "legless" && l.rx < 0.75 * R && l.rx > 0.4 * R && l.cy > 130 && l.front === 230 && Math.abs(l.cx - 130) <= 1 && Math.abs(l.cy + l.ry - 230) <= 0.5, J(l));
+    // A long body lying on the floor (a seal): a thick body with one flipper reaching lower than the rest of its underside. The
+    // contact is its whole length, not the flipper alone (the ellipse was a tiny one under the flipper).
+    const W4 = 340, H4 = 140, l4 = new Uint8Array(W4 * H4);
+    for (let y = 30; y < 130; y++) for (let x = 20; x < 320; x++) if (y < 95 || x >= 250) l4[y * W4 + x] = 1;
+    const g = floorEllipse(l4, W4, H4);
+    check("a long body lying on the floor: the ellipse spans its whole length and is centred on it, not under its flipper", g.kind === "long" && g.right - g.left >= 0.9 * 300 && Math.abs(g.cx - 170) <= 15 && g.front === 130, J(g));
+    // An ordinary biped (two feet) and a figure on a round base are neither case.
+    const W6 = 120, H6 = 200, bp = new Uint8Array(W6 * H6);
+    for (let y = 0; y < 200; y++) for (let x = 20; x < 100; x++) if (y < 160 || (x < 45) || (x >= 75)) bp[y * W6 + x] = 1;
+    const feet = floorEllipse(bp, W6, H6);
+    check("a standing figure is still fitted by its feet (a biped with two feet is neither the long nor the legless case)", feet.kind === "feet" && feet.left === 20 && feet.right === 100, J(feet));
+    check("the ellipse's own kind is reported for every piece in the set, and it is 'feet' for all of them except none: the set keeps its footprints", every.every((k) => floorEllipse(silhouette(TRACED[k].body, TRACED[k].w, TRACED[k].h), TRACED[k].w, TRACED[k].h, k).kind === "feet"));
+    // The canvas: scaled about the foot point, never cropped.
+    const cv = { x: 240, y: 375, w: 480, h: 480 };
+    check("canvasScale: a figure that fits is left alone; one wide to the left of its foot point, or low-slung past the canvas floor, is scaled about the foot point to fit exactly", canvasScale({ w: 300, h: 400, fx: 150, fy: 300 }, cv) === 1 && Math.abs(canvasScale({ w: 700, h: 400, fx: 480, fy: 300 }, cv) - 0.5) < 1e-9 && Math.abs(canvasScale({ w: 300, h: 400, fx: 150, fy: 250 }, cv) - 0.7) < 1e-9);
+    // Staying on the tile: the rule on the figure, then on a build from drawings made to measure (a wide lying body, a legless
+    // round one) and on the set.
+    check("the tile diamond in tileFit is the clip pieces.js puts on the shadow", read("public/js/pieces.js").includes(`<polygon points="-${TILE.a},0 0,-${TILE.b} ${TILE.a},0 0,${TILE.b}"/>`) && TILE_ELLIPSE_RX > 18.5 && TILE_ELLIPSE_RX < 19.7, String(TILE_ELLIPSE_RX));
+    const u1 = 0.1;  // 10 mask units = 1 board unit
+    const Wn = 100, Hn = 120, wide = new Uint8Array(Wn * Hn); for (let y = 50; y < 100; y++) for (let x = 0; x < Wn; x++) wide[y * Wn + x] = 1;
+    const tf = tileFit(wide, Wn, Hn, { cx: 30, cy: 120, rx: 8 }, u1);
+    check("tileFit: a figure reaching 69.5 units from its foot point is brought to 23.5 on each side; a narrow one is left alone", Math.abs(tf - TILE.side / (69.5 * u1)) < 1e-9 && tileFit(wide, Wn, Hn, { cx: 40, cy: 90, rx: 8 }, 0.01) > 1);
+    const ring = (cx, cy, rx, ry, n = 48) => "M" + Array.from({ length: n }, (_, i) => `${(cx + rx * Math.cos(2 * Math.PI * i / n)).toFixed(1)} ${(cy + ry * Math.sin(2 * Math.PI * i / n)).toFixed(1)}`).join(" L") + " Z";
+    const svgOf = (vw, vh, parts) => `<svg version="1.1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${vw} ${vh}">${parts.map((d) => `<path d="${d}" fill="#C88528" transform="translate(0,0)"/>`).join("")}</svg>`;
+    const rect = (x0, y0, x1, y1) => `M${x0} ${y0} L${x1} ${y0} L${x1} ${y1} L${x0} ${y1} Z`;
+    const stand = svgOf(500, 700, [rect(130, 20, 370, 480), rect(150, 480, 230, 680), rect(270, 480, 350, 680)]);            // a person: body and two feet
+    const lying = svgOf(1400, 700, ["M20 40 L1300 40 L1380 400 L1380 600 L1200 680 L60 330 Z", rect(1250, 560, 1390, 690)]);  // long and low, its tail high at the left
+    const round = svgOf(800, 800, [ring(400, 400, 380, 380)]);                                                               // a ball with no legs
+    const tmp = mkdtempSync(pjoin(tmpdir(), "pieces-build-test-")), out = pjoin(tmp, "pieces-data.js");
+    try {
+      mkdirSync(pjoin(tmp, "final"));
+      const synth = { ...Object.fromEntries([...every].map((k) => [k, stand])), keeper: lying, frog: round };
+      for (const k of every) writeFileSync(pjoin(tmp, "final", k + ".svg"), synth[k]);
+      writeFileSync(pjoin(tmp, "roles.json"), J({ ROLES: Object.fromEntries(every.filter((k) => k !== "blob").map((k) => [k, { main: "#C88528" }])), glass_rule: { "tgt.glass": "mix(color.tint, '#FFFFFF', 0.68)" } }));
+      execFileSync(process.execPath, [pjoin(ROOT, "scripts/build-pieces-data.mjs"), tmp, out], { stdio: "pipe" });
+      const B = await import(pathToFileURL(out).href), ub = (k) => 1.1 * B.HEIGHT * (B.FIT[k] || 1) / B.CANVAS.tall;
+      const shifted = (k) => B.TRACED[k].body.replace(/translate\(([-\d.]+),([-\d.]+)\)/g, (mm, x, y) => `translate(${+x + 600},${+y + 600})`);
+      const ext = (k) => { const W5 = B.CANVAS.w + 1200, H5 = B.CANVAS.h + 1200; const e = stance(silhouette(shifted(k), W5, H5), W5, H5, k); return { left: e.left - 600, right: e.right - 600, top: e.top - 600, bottom: e.bottom - 600 }; };
+      const inside = (k) => { const e = ext(k); return e.left >= 0 && e.right <= B.CANVAS.w && e.top >= 0 && e.bottom <= B.CANVAS.h; };
+      check("the build takes a wide lying body and a legless round one on the same canvas: it does not throw, and nothing is cropped (every part of the art is inside the canvas)", ["keeper", "frog", "wizard"].every(inside), J(Object.fromEntries(["keeper", "frog", "wizard"].map((k) => [k, ext(k)]))));
+      check("the wide body is the long case, the ball the legless one, the person stands by its feet; the wide one is drawn smaller on the canvas (its art shorter than the other figures) and larger by its FIT", B.FOOTPRINT.keeper && ext("keeper").bottom - ext("keeper").top < ext("wizard").bottom - ext("wizard").top - 5 && B.FIT.keeper < B.FIT.wizard * 1.3, J({ keeper: ext("keeper"), wizard: ext("wizard"), FIT: B.FIT }));
+      const bad = every.filter((k) => { const t = B.TRACED[k], mk = silhouette(t.body, t.w, t.h), f = B.FOOTPRINT[k]; return tileFit(mk, t.w, t.h, f, 1.1 * B.HEIGHT / B.CANVAS.tall) < B.FIT[k] - 1e-9; });
+      check("every piece in a build stays on its tile at the size the build gives it: floor ellipse inside the diamond, the near half of its floor inside it, at most 23.5 board units to either side of the foot point", bad.length === 0, bad.join());
+      const wideBoard = { w: (ext("keeper").right - ext("keeper").left) * ub("keeper"), halfFoot: Math.max(Math.abs(ext("keeper").left - B.CANVAS.x), Math.abs(ext("keeper").right - B.CANVAS.x)) * ub("keeper") };
+      check("the wide body is within the side limit about its foot point, and an ordinary figure keeps equal area with the rest", wideBoard.halfFoot <= TILE.side + 0.3 && Math.abs(B.FIT.wizard - B.FIT.pawn) < 0.01, J(wideBoard));
+    } finally { if (tmp.startsWith(tmpdir()) && tmp.includes("pieces-build-test-")) rmSync(tmp, { recursive: true, force: true }); }
+    // The shipped set.
+    const offTile = every.filter((k) => { const t = TRACED[k]; return tileFit(silhouette(t.body, t.w, t.h), t.w, t.h, FOOTPRINT[k], 1.1 * HEIGHT / CANVAS.tall) < FIT[k] - 1e-9; });
+    check("every piece in the set stays on its tile: floor ellipse inside the diamond, the near half of its floor inside it, at most 23.5 board units to either side of the foot point", offTile.length === 0, offTile.join());
   }
   // and on the art itself: the foot point is under the figure, in its bottom quarter (a mark that missed the feet, or art
   // that moved without its mark, lands outside)
