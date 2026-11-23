@@ -10,6 +10,9 @@ export type Env = {
   DEV_MODE?: string;
   MAIL_FROM?: string;
   SITE_URL?: string;
+  // The deploy's id (wrangler.toml [version_metadata]); BUILD_ID overrides it (the tests). src/lib/build.js.
+  CF_VERSION_METADATA?: { id: string };
+  BUILD_ID?: string;
   ASSETS: { fetch(req: Request | string): Promise<Response> };
   // Where /<slug>/api/rules reads rules from. Unset = GitHub. Tests point it at a local stub.
   RULES_BASE_URL?: string;
