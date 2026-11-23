@@ -84,7 +84,7 @@ function place(key, w, body, [fx, fy], f) {
   const dx = Math.round((CANVAS.x - fx) * 10) / 10, dy = Math.round((CANVAS.y - fy) * 10) / 10;
   if (dx < 0 || dy < 0 || dx + w > CANVAS.w || dy + TOP > CANVAS.h) throw new Error(`${key}: does not fit the canvas once its feet are on the foot point (shift ${dx}, ${dy}; art ${w} x ${TOP})`);
   HALF_WIDTH[key] = (f.right - f.left) / 2;
-  MID[key] = dy + TOP / 2 - CANVAS.y;   // the art spans dy .. dy + TOP on the canvas (the crop is checked), so this is its vertical middle, from the foot point
+  MID[key] = Math.round((dy + TOP / 2 - CANVAS.y) * 2) / 2;   // the art spans dy .. dy + TOP on the canvas (the crop is checked), so this is its vertical middle, from the foot point
   const u = BOARD_SCALE * HEIGHT / TOP; // board units per canvas unit, before FIT
   const fit = Math.min(Math.sqrt(SIZE.area / (AREA[key] * u * u)), SIZE.h / (BOARD_SCALE * HEIGHT), SIZE.w / ((f.right - f.left) * u));
   FIT[key] = Math.floor(fit * 1000) / 1000;
