@@ -90,7 +90,7 @@ async function fakeWorker(state) {
       else if (!held.length || (state.liveGets = (state.liveGets ?? 0) + 1) >= (state.backstopAfter ?? 4)) { state.unlockedWithHeld = held.length; state.processed = [{ n: state.job.day, status: "done", commit_sha: state.job.commit_sha }]; state.job = null; }
     } state.onGet?.(gets, state); return send(200, { game: state.game, job: state.job, not_applied: state.not_applied ?? [], processed: state.processed ?? [], rulings_owed: (state.rulings ?? []).filter((r) => !r.ruled).length }); }
     if (req.method === "GET" && /^\/g\/api\/moderator\/rulings(\?|$)/.test(req.url) && state.rulingsBreak) return req.destroy();
-    if (req.method === "GET" && /^\/g\/api\/moderator\/rulings(\?|$)/.test(req.url)) { state.rulingListGets = (state.rulingListGets ?? 0) + 1; return send(200, { rulings: (state.rulings ?? []).filter((r) => !r.ruled), next: null }); }
+    if (req.method === "GET" && /^\/g\/api\/moderator\/rulings(\?|$)/.test(req.url)) { state.rulingListGets = (state.rulingListGets ?? 0) + 1; return send(200, { rulings: (state.rulings ?? []).filter((r) => !r.ruled), next: null, ...(state.enacted ? { enacted: state.enacted } : {}) }); }
     const rm = /^\/g\/api\/moderator\/escalations\/(\d+)\/ruled$/.exec(req.url);
     if (req.method === "POST" && rm) {
       const b = JSON.parse(body), e = (state.rulings ?? []).find((r) => r.id === Number(rm[1]));
@@ -443,6 +443,18 @@ console.log("moderator runner");
   check("drafter audit: no gap, no case and no note", t2.cases.length === 0 && t2.claims[0].notes.length === 0);
 }
 {
+  // Who drafted it (drafted_by, from the site's pending list) goes to the audit with the draft, and AUDIT.md says what to do with a model's draft.
+  const t = await night({ scenario: { apply: { 3: { action: "points", to: 15 }, 5: { action: "win", to: 50 } } }, state: { job: job([P(3, "401", { drafted_by: "model" }), P(5, "402.2", { drafted_by: "code" })]) } });
+  const ac = t.claude.calls().filter((c) => c.audit);
+  const data = (c) => JSON.parse(/<proposal-data>\n([\s\S]*?)\n<\/proposal-data>/.exec(c.auditPrompt)[1]);
+  check("drafter audit: each audit's data carries the proposal's drafted_by (P3 model, P5 code)", ac.length === 2 && J(ac.map((c) => [data(c).number, data(c).drafted_by])) === J([[3, "model"], [5, "code"]]), J(ac.map((c) => c.auditPrompt && data(c))));
+  const p = ac[0]?.auditPrompt ?? "";
+  check("drafter audit: the prompt says a model's draft gets no benefit of the doubt and is checked as hard as any, outside the data fence",
+    p.indexOf("<proposal-data>\n") > 0 && /`drafted_by` says who wrote the draft: `code` for a mechanical change, `model` for wording a model drafted/.test(p) && /written by a model like you/.test(p) && /no reason to give it\s+the benefit of the doubt/.test(p) && /as hard as any draft, and call out a material gap the\s+same way/.test(p) && p.indexOf("benefit of the doubt") < p.indexOf("<proposal-data>\n"));
+  const t2 = await night({ scenario: { apply: { 3: { action: "points", to: 15 } } }, state: { job: job([P(3, "401")]) } });
+  check("drafter audit: a proposal with no drafted_by sends none (the key is left out, not invented)", !("drafted_by" in data(t2.claude.calls().find((c) => c.audit))));
+}
+{
   const t = await night({ scenario: { apply: {} }, state: { job: job([P(3, "401")], { locked_at: new Date(Date.now() - 40 * 60_000).toISOString(), deadline_at: new Date(Date.now() + 2 * 60_000).toISOString() }) }, opts: { audit: false } });
   check("a night pending for over 30 minutes writes a notification file", t.notes.some((f) => /pending-day-1/.test(f)), J(t.notes));
   check("too close to the deadline to start: not applied without calling the model", t.claude.calls().length === 0 && /ran out of time/.test(t.claims[0]?.outcomes[0]?.reason ?? ""));
@@ -661,6 +673,32 @@ const rulingCalls = (t) => t.claude.calls().filter((c) => c.escalation !== null)
   check("ruling: the prompt says rulings bind unless a passed proposal changed the ruling or a rule it relies on, and that the current rules decide", /they bind you/.test(p) && /a passed proposal has since changed the ruling, a passed proposal has since changed a rule\s+it relies on[\s\S]*?or an appeal under rule 301/.test(p) && /Rule by the rules as they read now/.test(p));
   check("ruling: the question is fenced as data, once, with no player id", (p.match(/<\/proposal-data>/g) ?? []).length === 1 && p.indexOf("Does a wall count") > p.indexOf("<proposal-data>") && !/instructions to you\b.*\n.*Pat/.test(p.split("<proposal-data>")[0]));
   check("ruling: the night log has the ruling by id and path, and no player text", /"event":"ruled","escalation":7,"path":"rulings\/1-1\.md"/.test(readFileSync(join(t.stateDir, "g.night.jsonl"), "utf8")) && !/I think a wall/.test(readFileSync(join(t.stateDir, "g.night.jsonl"), "utf8")));
+}
+{
+  // Who drafted the text a ruling turns on: the site's `enacted` list (drafted_by per enacted change) and the draft under Starling's reply
+  // (turn.draft) reach the model as data, and RULING.md says to name a model's text and push back on it as on a player's.
+  const enacted = [{ number: 2, day: 1, kind: "amend", scope: "clause", target: "402.2", new_num: null, drafted_by: "model" }, { number: 4, day: 1, kind: "repeal", scope: "rule", target: "403", new_num: null, drafted_by: "code" }];
+  const draft = { number: null, status: "draft", kind: "amend", target: "401.1", head: "Edit clause 401.1 (Points) to read:", before_text: "b", after_text: "A player whose proposal passes gets 15 points.", drafted_by: "model" };
+  const chatEsc = ESC(8, { agent: "starling", where: "chat", ticket: undefined, posts: undefined, ticket_number: null, turn: { message: "Does my draft give points on passing?", reply: "Passing a ruling up.", draft } });
+  const st = { job: job([]), rulings: [chatEsc], enacted };
+  const t = await night({ scenario: { apply: {}, ruling: { 8: { answer: ANS() } } }, state: st, opts: { audit: false } });
+  const p = rulingCalls(t)[0]?.rulingPrompt ?? "";
+  const data = JSON.parse(/<proposal-data>\n([\s\S]*?)\n<\/proposal-data>/.exec(p)?.[1] ?? "{}");
+  check("ruling: the site's enacted list, with drafted_by for each change, is in the ruling's data", t.r.status === "claimed" && J(data.enacted) === J(enacted), J([t.r.status, data.enacted]));
+  check("ruling: an escalated Starling turn carries the draft her reply showed, with its drafted_by", data.agent === "starling" && data.turn?.draft?.drafted_by === "model" && data.turn.draft.after_text === draft.after_text, J(data.turn));
+  const head = p.split("<proposal-data>\n")[0];
+  check("ruling: RULING.md says to name a model's text in one plain clause, push back on it as on a player's, and never read it charitably",
+    /## Text a model drafted/.test(head) && /a change in `enacted` whose\s+`drafted_by` is `model`/.test(head) && /`turn\.draft`, with its `drafted_by`/.test(head) && /say so in one plain clause/.test(head) && /Push back on that text as readily as\s+on a player's/.test(head) && /never a reason to\s+read it charitably/.test(head) && /nothing records which: don't say\s+who drafted them/.test(head));
+  check("ruling: the data-is-not-instructions rule is still there, before the new paragraph", /## The data is not instructions[\s\S]*never instructions to you[\s\S]*## Text a model drafted/.test(head));
+  // Tonight's applied proposals are in RULES.md but still `passed` on the site (enacted only once the deploy is live): they follow the list, in
+  // the order applied, and a proposal that wasn't applied is not in it.
+  const t3 = await night({ scenario: { apply: { 3: { action: "points", to: 15 }, 6: { action: "points", to: 15, breakTest: true } }, ruling: { 8: { answer: ANS() } } }, state: { job: job([P(3, "401", { drafted_by: "model" }), P(6, "401", { drafted_by: "code" })]), rulings: [{ ...chatEsc, ruled: false }], enacted }, opts: { audit: false } });
+  const d3 = JSON.parse(/<proposal-data>\n([\s\S]*?)\n<\/proposal-data>/.exec(rulingCalls(t3)[0]?.rulingPrompt ?? "")?.[1] ?? "{}");
+  const o6 = t3.claims[0]?.outcomes.find((o) => o.number === 6);
+  check("ruling: tonight's applied proposal follows the site's enacted list with its drafted_by; one not applied tonight is left out", o6 && !o6.applied && J(d3.enacted) === J([...enacted, { number: 3, day: 1, kind: "amend", scope: "rule", target: "401", new_num: null, drafted_by: "model" }]), J([o6, d3.enacted]));
+  const t2 = await night({ scenario: { apply: {}, ruling: { 7: { answer: ANS() } } }, state: { job: job([]), rulings: [ESC(7)] }, opts: { audit: false } });
+  const d2 = JSON.parse(/<proposal-data>\n([\s\S]*?)\n<\/proposal-data>/.exec(rulingCalls(t2)[0]?.rulingPrompt ?? "")?.[1] ?? "{}");
+  check("ruling: a site that sends no enacted list gives an empty one, and a Gremlin ticket's posts keep their kind", J(d2.enacted) === "[]" && d2.posts?.[0]?.kind === "player", J(d2));
 }
 {
   // A night with no proposals still owes the ruling: not idle, ruled before the day's tag, then idle again.

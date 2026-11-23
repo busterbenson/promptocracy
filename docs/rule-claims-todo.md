@@ -224,8 +224,8 @@ under rule 101 or 102; a follow-up change claims them and moves `src/` into the 
 
 ## src/routes/api-moderator.ts (2)
 
-- line 50: `unauthorized`
-- line 254: `num`
+- line 53: `unauthorized`
+- line 264: `num`
 
 ## src/routes/api-notifications-read.ts (1)
 

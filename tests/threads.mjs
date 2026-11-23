@@ -235,7 +235,14 @@ try {
   const ins = (cols) => { d1(state, `INSERT INTO escalations (game_id, agent, player_id, ${cols.k}, category, reason, local_date, created_at) VALUES ('${gid}', '${cols.agent}', '${cols.player}', ${cols.v}, 'ruling', '${cols.reason}', '2026-11-10', '2026-11-10T19:00:00.000Z')`); return d1(state, "SELECT MAX(id) AS id FROM escalations")[0].id; };
   const tRul = ins({ k: "ticket_id", v: "'tk-16'", agent: "gremlin", player: id.Ana, reason: "RULING-T" });
   d1(state, `INSERT INTO chat_messages (game_id, player_id, agent, local_date, day, role, body, at) VALUES ('${gid}', '${id.Ana}', 'starling', '2026-11-10', 1, 'player', 'RULING-Q private question', '2026-11-10T19:00:00.000Z')`);
-  const cRul = ins({ k: "chat_message_id", v: String(d1(state, "SELECT MAX(id) AS id FROM chat_messages")[0].id), agent: "starling", player: id.Ana, reason: "RULING-C" });
+  const qMsg = d1(state, "SELECT MAX(id) AS id FROM chat_messages")[0].id;
+  const cRul = ins({ k: "chat_message_id", v: String(qMsg), agent: "starling", player: id.Ana, reason: "RULING-C" });
+  // Starling's reply to that turn showed a draft (the slip under it), and the rulebook has enacted changes, one model-drafted, one by code (and a failed one, and an action, that changed no text)
+  const PCOLS = "id, game_id, player_id, day_proposed, kind, scope, target, words, draft_head, before_text, after_text, drafted_by, base_sha, created_at";
+  d1(state, `INSERT INTO proposals (${PCOLS}) VALUES ('st-draft', '${gid}', '${id.Ana}', 1, 'amend', 'clause', '401.1', 'DRAFT-WORDS-PRIVATE', 'Edit clause 401.1 (Points) to read:', 'b', 'A player whose proposal passes gets 15 points.', 'model', 's', '2026-11-10T19:00:00.500Z')`);
+  d1(state, `INSERT INTO chat_messages (game_id, player_id, agent, local_date, day, role, body, proposal_id, meta, at) VALUES ('${gid}', '${id.Ana}', 'starling', '2026-11-10', 1, 'agent', 'Passing this up to Chalant.', 'st-draft', '{"turn":${qMsg}}', '2026-11-10T19:00:01.000Z')`);
+  const enx = (pid, num, kind, target, by, status, seq) => `INSERT INTO proposals (${PCOLS}, number, day_ballot, mark, status, confirmed_at, apply_seq${kind === "action" ? ", action" : ""}) VALUES ('${pid}', '${gid}', '${id.Bo}', 1, '${kind}', 'clause', '${target}', 'w', 'h', 'b', 'a', '${by}', 's', 'x', ${num}, 2, 'majority', '${status}', 'x', ${seq}${kind === "action" ? `, '{"type":"grant"}'` : ""})`;
+  d1(state, [enx("en-b", 902, "repeal", "403", "code", "enacted", 2), enx("en-a", 901, "amend", "402.2", "model", "enacted", 1), enx("en-f", 903, "amend", "401.1", "model", "failed", "NULL"), enx("en-act", 904, "action", "901", "code", "enacted", 3)].join("; "));
   const nPosts16 = posts(16).length, nChalantChat = d1(state, "SELECT COUNT(*) AS n FROM chat_messages WHERE role = 'chalant'")[0].n;
   check("ruling must be true or absent: 'yes' and false are 400, and nothing is posted", (await mod("POST", `escalations/${tRul}/answer`, { body: HOLD, ruling: "yes" })).status === 400 && (await mod("POST", `escalations/${tRul}/answer`, { body: HOLD, ruling: false })).status === 400 && posts(16).length === nPosts16);
   const hold = await mod("POST", `escalations/${tRul}/answer`, { body: HOLD, ruling: true });
@@ -249,6 +256,10 @@ try {
   const rl2 = (await mod("GET", "rulings")).data.rulings;
   const rc = rl2.find((x) => x.id === cRul);
   check("a chat ruling shows in /rulings as the escalated turn only, with no thread and no other chat line", hc.status === 200 && hc.data.where === "chat" && rc.where === "chat" && rc.turn.message === "RULING-Q private question" && !J(rl2).includes("PRIVATE-EARLIER-LINE") && !("posts" in rc));
+  check("a chat ruling's turn carries the draft Starling's reply showed, with drafted_by, and never the player's words for it", rc.turn.reply === "Passing this up to Chalant." && rc.turn.draft?.drafted_by === "model" && rc.turn.draft.target === "401.1" && rc.turn.draft.after_text === "A player whose proposal passes gets 15 points." && rc.turn.draft.number === null && !J(rl2).includes("DRAFT-WORDS-PRIVATE"), J(rc.turn));
+  const rlTop = (await mod("GET", "rulings")).data;
+  check("/rulings lists the enacted changes to the rulebook in the order applied, with drafted_by (no failed proposal, no action)", J(rlTop.enacted) === J([{ number: 901, day: 2, kind: "amend", scope: "clause", target: "402.2", new_num: null, drafted_by: "model" }, { number: 902, day: 2, kind: "repeal", scope: "clause", target: "403", new_num: null, drafted_by: "code" }]), J(rlTop.enacted));
+  check("/escalations carries no draft and no enacted list (only the night's rulings need them)", !("enacted" in (await mod("GET", "escalations")).data) && !J((await mod("GET", "escalations")).data).includes("drafted_by"));
   check("/rulings needs the token, and a bad ?after is 400", (await mod("GET", "rulings", null, "")).status === 401 && (await mod("GET", "rulings", null, "wrong-token-wrong-token-wrong")).status === 401 && (await mod("GET", "rulings?after=x")).status === 400 && (await mod("GET", "escalations?after=-1")).status === 400);
   const pend = (await mod("GET", "pending")).data;
   check("pending counts the rulings owed", pend.rulings_owed === 2, J(pend.rulings_owed));
