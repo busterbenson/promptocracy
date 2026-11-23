@@ -21,7 +21,7 @@ const MINUTES = { "tests/board.mjs": 9.1, "tests/workshop.mjs": 5.5, "tests/chat
   "tests/design.mjs": 0.3, "tests/catalog.mjs": 0.2, "tests/gremlin.mjs": 0.2, "scripts/check-rule-claims.mjs": 0.1, "moderator/schedule.test.mjs": 0.1, "moderator/escalations.test.mjs": 0.2,
   // estimates (see above)
   "tests/threads.mjs": 2.2, "tests/starling-chat.mjs": 2.2, "tests/starling.mjs": 0.3, "tests/threads-browser.mjs": 2.0, "tests/starling-browser.mjs": 2.0, "tests/propose-bar-browser.mjs": 3.0,
-  "tests/art.mjs": 2.2, "tests/art-sweep.mjs": 0.1, "tests/art-browser.mjs": 2.0 };
+  "tests/art.mjs": 2.2, "tests/art-sweep.mjs": 0.1, "tests/local-d1.mjs": 0.1, "tests/art-browser.mjs": 2.0 };
 const DEFAULT = 2.5;
 const file = (cmd) => cmd.replace(/^node\s+/, "");
 

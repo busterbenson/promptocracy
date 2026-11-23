@@ -38,12 +38,14 @@ export function splitSql(sql) {
     else { cur += c; i++; }
   }
   if (cur.trim()) out.push(cur.trim());
-  return out;
+  // a fragment that is only comments (`SELECT 1; -- done`) is no statement: wrangler ignored it, prepare() would throw
+  return out.filter((x) => x.replace(/--[^\n]*|\/\*[\s\S]*?\*\//g, "").trim());
 }
 
 export function localD1(state, sql) {
   const db = new DatabaseSync(d1File(state));
   try {
+    // 64-bit integers: read them exactly, then hand back a Number like the JSON from `wrangler d1 execute` did (exact up to 2^53)
     db.exec(`PRAGMA busy_timeout = ${BUSY_MS}`);
     db.exec("PRAGMA foreign_keys = ON"); // D1 enforces foreign keys; so did `wrangler d1 execute`
     const statements = splitSql(sql);
@@ -53,7 +55,8 @@ export function localD1(state, sql) {
     try {
       statements.forEach((s, n) => {
         const st = db.prepare(s);
-        const rows = st.columns().length > 0 ? st.all().map((r) => ({ ...r })) : (st.run(), []);
+        st.setReadBigInts(true);
+        const rows = st.all().map((r) => Object.fromEntries(Object.entries(r).map(([k, v]) => [k, typeof v === "bigint" ? Number(v) : v])));
         if (n === 0) first = rows;
       });
       if (many) db.exec("COMMIT");
