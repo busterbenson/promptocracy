@@ -239,21 +239,21 @@ const escalateSchema = () => ({
   properties: { category: { type: "string", enum: [...ESCALATION_CATEGORIES, ESCALATE_NONE] }, reason: { type: "string" } },
   required: ["category", "reason"], additionalProperties: false,
 });
-/** An object schema whose every property is required. */
-const allOf = (properties) => ({ type: "object", properties, required: Object.keys(properties), additionalProperties: false });
+/** An object schema whose every property is required. @rule 801.2 */
+const allRequired = (properties) => ({ type: "object", properties, required: Object.keys(properties), additionalProperties: false });
 /** The JSON schema the answer is constrained to (output_config.format). The platform still validates meaning. @rule 801.2 */
 export function answerSchema() {
   const str = { type: "string" }, strs = { type: "array", items: str };
-  const pair = { type: "array", items: allOf({ key: str, value: str }) };
-  const make = allOf({ kind: { type: "string", enum: ["entry", "rule"] }, name: str, catalogKind: str, attrs: pair, flavor: pair, needsBuild: strs, num: str, draft: str, art: str });
-  return allOf({
+  const pair = { type: "array", items: allRequired({ key: str, value: str }) };
+  const make = allRequired({ kind: { type: "string", enum: ["entry", "rule"] }, name: str, catalogKind: str, attrs: pair, flavor: pair, needsBuild: strs, num: str, draft: str, art: str });
+  return allRequired({
     say: str,
     refusal: str,
     escalate: escalateSchema(),
-    ticket: allOf({
+    ticket: allRequired({
       title: str, brief: str, estimate: { type: "integer" }, running_cost: str, tasks: strs,
       makes: { type: "array", items: make },
-      price: allOf({ points: { type: "integer" }, reason: str }),
+      price: allRequired({ points: { type: "integer" }, reason: str }),
     }),
   });
 }
@@ -475,7 +475,7 @@ export function threadRequest({ rulesMd, mood, localDate, ticket, posts, post })
 
 /** The thread answer's schema: {say, escalate}, both required, nothing else exists. @rule 804.1 */
 export function threadAnswerSchema() {
-  return allOf({ say: { type: "string" }, escalate: escalateSchema() });
+  return allRequired({ say: { type: "string" }, escalate: escalateSchema() });
 }
 
 /**

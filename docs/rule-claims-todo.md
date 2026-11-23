@@ -7,7 +7,7 @@ Every function that carries out the game should say which rule it implements, wi
 `src/` is only reported for now: these functions have no claim yet. Site plumbing such as sign-in and email goes
 under rule 101 or 102; a follow-up change claims them and moves `src/` into the strict set.
 
-165 of 489 functions outside `src/engine/` are unclaimed.
+164 of 489 functions outside `src/engine/` are unclaimed.
 
 ## src/index.ts (6)
 
@@ -93,9 +93,8 @@ under rule 101 or 102; a follow-up change claims them and moves `src/` into the 
 - line 64: `chartedAround`
 - line 69: `islandCoords`
 
-## src/lib/gremlin.js (4)
+## src/lib/gremlin.js (3)
 
-- line 243: `allOf`
 - line 301: `def`
 - line 344: `readGremlinAnswer`
 - line 470: `clip`

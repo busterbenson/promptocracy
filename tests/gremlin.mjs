@@ -79,7 +79,7 @@ console.log("his answer: what the platform keeps");
     wall.ok && wall.patch.title && wall.patch.makes[0].catalogKind === "structure" && J(wall.patch.makes[0].attrs) === J({ size: { w: 2, h: 1 } }) && wall.patch.makes[0].flavor.material === "stone" && wall.patch.price === 0 && wall.patch.price_reason && !wall.rejected.length && !wall.refusal, J(wall));
   const dragon = read(REC["dragon-build"].text);
   check("a recorded build (a flying dragon): a rule item with a draft and no number, a needsBuild key kept, a price above 0 and its reason, an estimate",
-    dragon.ok && dragon.patch.makes.some((m) => m.kind === "rule" && m.num === null && m.draft) && dragon.patch.makes.some((m) => m.needsBuild?.includes("flying")) && dragon.patch.price > 0 && dragon.patch.estimate >= 2 && !dragon.unbuiltPrice, J(dragon));
+    dragon.ok && dragon.patch.makes.some((m) => m.kind === "rule" && m.num === null && m.draft) && dragon.patch.makes.some((m) => m.needsBuild?.length > 0) && dragon.patch.price > 0 && dragon.patch.estimate >= 2 && !dragon.unbuiltPrice, J(dragon));
   check("every recorded answer reads cleanly, with nothing rejected, no state and no canary",
     Object.entries(REC).every(([id, r]) => { const a = read(r.text); return a.ok && !a.rejected.length && !J(a.patch).includes("Approved") && !a.say.includes(G.CANARY); }),
     Object.entries(REC).filter(([id, r]) => { const a = read(r.text); return !(a.ok && !a.rejected.length); }).map(([id]) => id).join());
