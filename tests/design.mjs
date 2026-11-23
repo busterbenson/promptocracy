@@ -186,7 +186,7 @@ check("two pieces only the game places: the Ghost (recolored, rule 604.2) and th
   // a piece stands: change it here too, on purpose.
   const FEET = { keeper: [253, 775], frog: [319, 657], robot: [390, 647], osprey: [438, 748], diver: [474, 684], wizard: [277, 704], crow: [446, 717], astronaut: [361, 642], pawn: [267, 653], ghost: [335, 608], blob: [346, 550] };
   check("each piece stands on the centre of the ellipse fitted to its art", every.every((k) => J(FOOTPRINT[k]?.at) === J(FEET[k])), J(Object.fromEntries(every.map((k) => [k, FOOTPRINT[k]?.at]))));
-  check("on a tile the foot point is 4 board units below the tile centre", FOOT_DROP === 4);
+  check("on a tile the foot point is the tile centre", FOOT_DROP === 0);
   {
     // The fit, on drawings made to measure (any piece without a hand override, a player's drawing included), 100 tall:
     // two feet in a 3/4 view, the near one 20 wide with its front at y 100, the far one 20 wide with its front at y 90. The

@@ -64,15 +64,14 @@ export function ensureDefs() {
 
 // One piece standing on (0, FOOT_DROP): a shadow under it (clipped to the tile top), then the art. Every shape is on the
 // same canvas standing on CANVAS.x, CANVAS.y (the centre of its floor ellipse, fitted to its art: FOOTPRINT) and is
-// HEIGHT times its FIT tall, so that point goes on the same spot for all of them. On a tile (`clip`) that spot is FOOT_DROP
-// board units below the tile centre, toward its front corner, so a piece rises less into the tile behind; off a tile (a
-// thumbnail, a pill) it is (0, 0). The shadow follows the figure's width: a soft one a little wider than the figure, and a
+// HEIGHT times its FIT tall, so that point goes on the same spot for all of them. On a tile (`clip`) that spot is the tile
+// centre (FOOT_DROP 0: the ellipse's centre is the tile's, Buster 11-22); off a tile (a thumbnail, a pill) it is (0, 0). The shadow follows the figure's width: a soft one a little wider than the figure, and a
 // dark core, both centred under its feet. `mirrored` turns the art to face the other way around that point.
 // `part`: "shadow" or "art" alone, for a board that draws every shadow first and every piece after, so no shadow ever
 // paints over a piece (its own, or a neighbour's feet that reach past its tile); both, shadow first, by default.
 // Not offered a shape that does not exist: it is a pawn.
 export const SHADOW = { soft: 1.25, core: .5 };   // each ellipse's half width, as a share of the figure's half width
-export const FOOT_DROP = 4;                       // board units; the tile's front corner is HH (18.7) below its centre
+export const FOOT_DROP = 0;                       // board units below the tile centre; 0 = the floor ellipse is centred on the tile
 export function pieceSVG({ shape, color, scale = 1.1, mirrored = false, clip = true, drop = clip ? FOOT_DROP : 0, part = "" }) {
   const key = TRACED[shape] ? shape : "pawn";
   const u = HEIGHT / CANVAS.tall * (FIT[key] || 1), half = (HALF_WIDTH[key] || 150) * u, k = HH / HW;
