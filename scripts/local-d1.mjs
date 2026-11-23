@@ -42,10 +42,16 @@ export function splitSql(sql) {
   return out.filter((x) => x.replace(/--[^\n]*|\/\*[\s\S]*?\*\//g, "").trim());
 }
 
+// A 64-bit integer that a Number cannot hold exactly is an error, not a silently rounded value.
+const safeInt = (v, col) => {
+  if (v > BigInt(Number.MAX_SAFE_INTEGER) || v < BigInt(Number.MIN_SAFE_INTEGER)) throw new Error(`local D1: column ${col} holds ${v}, beyond 2^53 (not exact as a JS number)`);
+  return Number(v);
+};
+
 export function localD1(state, sql) {
   const db = new DatabaseSync(d1File(state));
   try {
-    // 64-bit integers: read them exactly, then hand back a Number like the JSON from `wrangler d1 execute` did (exact up to 2^53)
+    // 64-bit integers: read them exactly, then hand back a Number (exact up to 2^53, an error beyond: wrangler's JSON rounded it silently)
     db.exec(`PRAGMA busy_timeout = ${BUSY_MS}`);
     db.exec("PRAGMA foreign_keys = ON"); // D1 enforces foreign keys; so did `wrangler d1 execute`
     const statements = splitSql(sql);
@@ -56,7 +62,7 @@ export function localD1(state, sql) {
       statements.forEach((s, n) => {
         const st = db.prepare(s);
         st.setReadBigInts(true);
-        const rows = st.all().map((r) => Object.fromEntries(Object.entries(r).map(([k, v]) => [k, typeof v === "bigint" ? Number(v) : v])));
+        const rows = st.all().map((r) => Object.fromEntries(Object.entries(r).map(([k, v]) => [k, typeof v === "bigint" ? safeInt(v, k) : v])));
         if (n === 0) first = rows;
       });
       if (many) db.exec("COMMIT");

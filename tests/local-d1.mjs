@@ -27,7 +27,13 @@ check("a multi-statement call is atomic: when the second statement fails the fir
 check("UNIQUE and CHECK refuse (a duplicate slug, a status outside the list)", throws(() => localD1(state, g("g3", "one"))) && throws(() => localD1(state, "UPDATE games SET status = 'bogus' WHERE id = 'g1'")));
 check("foreign keys are enforced, as D1 enforces them: a day of a game that does not exist is refused, one of a real game is not",
   throws(() => localD1(state, "INSERT INTO days (game_id, n, starts_at, ends_at) VALUES ('nogame', 1, 'a', 'b')")) && !throws(() => localD1(state, "INSERT INTO days (game_id, n, starts_at, ends_at) VALUES ('g1', 1, 'a', 'b')")));
-check("a 64-bit integer above 2^31 comes back as a number", localD1(state, "SELECT 4294967296 AS n, 9007199254740991 AS m")[0].n === 4294967296 && localD1(state, "SELECT 9007199254740991 AS m")[0].m === 9007199254740991);
+check("a 64-bit integer: one a Number holds exactly comes back as a number (including 2^53 - 1 and -(2^53 - 1)); one beyond 2^53 is an error, never a rounded value",
+  localD1(state, "SELECT 4294967296 AS n")[0].n === 4294967296 && localD1(state, "SELECT 9007199254740991 AS m")[0].m === 9007199254740991 && localD1(state, "SELECT -9007199254740991 AS m")[0].m === -9007199254740991 &&
+  throws(() => localD1(state, "SELECT 9007199254740993 AS m")) && throws(() => localD1(state, "SELECT 9223372036854775807 AS m")));
+check("comment-only fragments (leading, middle, whole input) are no statement and do not shift 'first'",
+  J(localD1(state, "-- c\n; SELECT 1 AS a")) === J([{ a: 1 }]) && J(localD1(state, "SELECT 1 AS a; -- c\n; SELECT 2 AS b")) === J([{ a: 1 }]) && J(localD1(state, "-- only a comment")) === "[]");
+check("a PRAGMA that writes, a write first and a failing statement after it: the PRAGMA returns [] and the write is rolled back",
+  J(localD1(state, "PRAGMA foreign_keys = ON")) === "[]" && throws(() => localD1(state, "UPDATE games SET name = 'gone' WHERE id = 'g1'; SELECT nope FROM games")) && localD1(state, "SELECT name FROM games WHERE id = 'g1'")[0].name === "three");
 check("the CLI prints the rows as JSON and exits 1 with the message on an error", (() => {
   const ok = spawnSync("node", ["scripts/local-d1.mjs", state, "SELECT slug FROM games"], { encoding: "utf8" });
   const bad = spawnSync("node", ["scripts/local-d1.mjs", state, "SELECT nope FROM games"], { encoding: "utf8" });
