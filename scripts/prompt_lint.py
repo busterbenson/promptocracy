@@ -72,10 +72,11 @@ JS_ESC = {"n": "\n", "t": " ", "r": "", "0": ""}
 
 
 def js_scan(src):
-    """-> (units, toks). toks: (kind, value, offset) for code tokens; kind in id, p, num, str."""
+    """-> (units, toks). toks: (kind, value, offset) for code tokens; kind in id, p, num, str, plus two template
+    boundaries: ("tpl", None, off) where a ${ opens and ("tplend", unit index, off) where a template that had one closes."""
     units, toks = [], []
     i, n, line = 0, len(src), 1
-    stack = []  # one entry per open ${: [unit, brace_depth]
+    stack = []  # one entry per open ${: [unit, brace_depth, unit index]
     prev = None  # last significant token (kind, value)
 
     def read_tpl(i, line, unit):
@@ -134,7 +135,8 @@ def js_scan(src):
             prev = ("str", None)
             i, line, closed = read_tpl(i + 1, line, u)
             if not closed:
-                stack.append([u, 0])
+                stack.append([u, 0, len(units) - 1])
+                toks.append(("tpl", None, i))
                 prev = ("p", "{")
             continue
         if c in "'\"":
@@ -210,11 +212,15 @@ def js_scan(src):
         elif c == "}":
             if stack:
                 if stack[-1][1] == 0:
-                    u, _ = stack.pop()
+                    u, _, ui = stack.pop()
                     i, line, closed = read_tpl(i + 1, line, u)
-                    if not closed:
-                        stack.append([u, 0])
-                    prev = ("str", None)
+                    if closed:
+                        toks.append(("tplend", ui, i - 1))
+                        prev = ("str", None)
+                    else:   # the same template's next ${
+                        stack.append([u, 0, ui])
+                        toks.append(("tpl", None, i))
+                        prev = ("p", "{")
                     continue
                 stack[-1][1] -= 1
         toks.append(("p", c, i))
@@ -222,7 +228,28 @@ def js_scan(src):
         i += 1
     if stack:
         raise ExtractError("unterminated ${ in a template literal")
-    return units, toks
+    return _join_concat(units, toks)
+
+
+def _join_concat(units, toks):
+    """"a" + "b" is one prompt split across literals: join the two units (keeping every character's source line) so a list or a
+    cue that crosses the boundary is still seen. Only literal + literal chains; an expression in between keeps them apart.
+    The left operand is the literal that ends right before the +: for a template with a ${ that is its "tplend" token, not
+    the last literal inside the interpolation, and a "tpl" token (a ${ opening) is never an operand."""
+    out, dead, into = [], set(), {}
+    for t in toks:
+        if t[0] == "str" and len(out) >= 2 and out[-1][:2] == ("p", "+") and out[-2][0] in ("str", "tplend"):
+            a, b = out[-2][1], t[1]
+            while a in into:   # the left literal was itself joined into an earlier one
+                a = into[a]
+            units[a].text += units[b].text
+            units[a].lines.extend(units[b].lines)
+            dead.add(b)
+            into[b] = a
+            out.pop()
+            continue
+        out.append(t)
+    return [u for i, u in enumerate(units) if i not in dead], out
 
 
 def js_symbol_range(toks, symbol, src):
@@ -353,7 +380,15 @@ def py_units(src, symbol, calls):
         tree = ast.parse(src)
     except SyntaxError as e:
         raise ExtractError(f"python syntax error: {e}")
-    lo, hi, scope = 1, src.count("\n") + 1, tree
+    src_lines = src.splitlines(keepends=True)
+
+    def span(node):
+        """((row, col), (row, col)) of a node, columns in characters as tokenize counts them (ast counts UTF-8 bytes)."""
+        def col(row, bcol):
+            return len(src_lines[row - 1].encode("utf-8")[:bcol].decode("utf-8", "ignore")) if row <= len(src_lines) else bcol
+        return (node.lineno, col(node.lineno, node.col_offset)), (node.end_lineno, col(node.end_lineno, node.end_col_offset))
+
+    ranges, scope = [((1, 0), (len(src_lines) + 2, 0))], tree
     if symbol:
         found = None
         for node in ast.walk(tree):
@@ -368,15 +403,12 @@ def py_units(src, symbol, calls):
                 break
         if found is None:
             raise ExtractError(f"symbol {symbol!r} not found")
-        lo, hi, scope = found.lineno, found.end_lineno, found
-    ranges = [(lo, hi)]
+        ranges, scope = [span(found)], found
     if calls:
-        ranges = [(c.lineno, c.end_lineno) for c in ast.walk(scope)
-                  if isinstance(c, ast.Call) and dotted(c.func) in calls]
+        ranges = [span(c) for c in ast.walk(scope) if isinstance(c, ast.Call) and dotted(c.func) in calls]
         if not ranges:
             raise ExtractError(f"no call to {calls} found" + (f" inside {symbol!r}" if symbol else ""))
-    in_range = lambda row: any(a <= row <= b for a, b in ranges)
-    src_lines = src.splitlines(keepends=True)
+    in_range = lambda pos: any(a <= pos < b for a, b in ranges)   # two statements can share a line: rows alone are not enough
     offs = [0]
     for l in src_lines:
         offs.append(offs[-1] + len(l))
@@ -399,7 +431,7 @@ def py_units(src, symbol, calls):
             spans.append((t.start, t.end, idx, idx))
     units, prev_last = [], None
     for start, end, first, last in spans:
-        if not in_range(start[0]):
+        if not in_range(start):
             prev_last = None
             continue
         text, lines = py_literal(src[abs_off(start):abs_off(end)], start[0])
@@ -644,10 +676,149 @@ def _concrete(items):
         keep.append(item)
     return keep
 
+# ---- specificity: is a list item a particular thing, or a general class? --------------------------------------------------
+# An item is specific when it carries a quoted or backticked string, a file name or path, a name-with-a-digit ("D1"), a capitalised name
+# that is not on the allowlist, or a concrete everyday noun (a body part, an object, an animal, a piece of clothing, a colour, a material).
+# A list is a patch when at least two of its items are specific: "(a Redash query, a Zendesk note)", "(beards, metal)", "the left ear,
+# the tail tip or the whiskers". General classes ("a reviewer, a helper", "PR bodies, commit messages", "which player, how many") are
+# rules that state scope, and so are the keys of a schema and the steps of a procedure.
+CONCRETE = set("""head face eye ear nose mouth lip tongue tooth teeth beak bill tail wing leg foot feet paw claw hand finger arm shoulder knee elbow
+hair beard moustache mustache whisker brow eyebrow lash horn hoof fin feather fur skin nail thumb toe neck chin cheek belly chest hip spine rib
+brain heart muscle musculature bone wrist ankle jaw forehead fist palm
+hat cap scarf glove boot shoe sock coat cape cloak robe dress shirt tie belt hem sleeve collar glasses spectacles monocle crown helmet mask badge
+ribbon bow satchel backpack purse wallet necklace bracelet earring umbrella cane sword shield spear axe arrow wand lantern jewel jewellery
+chair desk bed lamp door window wall floor ceiling roof stair plinth pedestal frame border shadow pillow cup mug bottle plate bowl fork knife
+spoon pot pan book pen pencil letter crate barrel bucket basket rope chain wheel car truck bike bus boat plane phone laptop keyboard router
+modem cable plug battery charger printer camera clock mirror candle torch toy doll ball kite
+tree flower leaf grass rock stone mountain river lake sea ocean beach cloud sun moon rain snow wind water ice mud sand
+metal wood glass leather cloth silk plastic iron steel brick concrete rubber wool cotton
+cat dog bird fish horse cow pig sheep goat rabbit rat fox wolf bear lion tiger owl crow duck goose hen chicken frog snake lizard turtle bee ant spider
+butterfly insect pony mule donkey deer squirrel hedgehog otter seal whale dolphin shark
+bread cheese milk egg apple banana cake coffee tea wine beer soup rice meat pizza cookie
+stripe spot dot logo emoji icon watermark smiley euro pound yen dollar cent coin banknote flag drum guitar piano violin bell
+eyelid cheekbone dimple wrinkle freckle tattoo scar piercing nostril pupil iris knuckle thigh calf heel sole lung stomach throat scalp temple
+football cricket tennis soccer baseball basketball golf rugby hockey boxing chess poker
+furlong cubit league mile inch yard ounce gallon pint fathom kilogram
+peacock parrot eagle hawk swan pigeon sparrow penguin zebra giraffe elephant monkey gorilla camel kangaroo panda koala
+person man woman child baby king queen knight wizard pirate robot dragon ghost""".split())
+CONCRETE |= COLORS
+PATHISH = re.compile(r"[A-Za-z_]/[A-Za-z_]|~/|_|[A-Za-z]\.[a-z]{1,4}\b|^-{1,2}[a-z]|[A-Za-z]\d|\d{4}-\d\d")
+SCHEMA = re.compile(r'"[^"\s]{1,40}"\s*:|\{\s*"|"\s*\|\s*"')   # a JSON key or an enum: the quoted words are the format, not cases
 
-def patch_hits(text):
-    """[(index, reason, snippet)] for a negation followed by a closed list of specifics, or a named colour."""
+
+POINTER = {"table", "section", "step", "steps", "line", "row", "column", "page", "heading", "fallback", "paragraph", "rule", "clause", "item"}   # cross-references locate; they do not illustrate
+LIST_SPLIT = re.compile(r",?\s+(?:or|and|nor)\s+|,\s*")
+
+
+def _spec_word(w, allow, exempt=False):
+    if re.fullmatch(r"P[0-4]", w):
+        return False   # a priority scale (P1, P2): a class of severity, not a named thing
+    if PATHISH.search(w):
+        return True
+    if w[:1].isupper() and not w.isupper() and len(w) > 1 and not exempt:
+        return True
+    lw = w.lower().strip("'’")
+    if lw.endswith(("'s", "’s")):
+        lw = lw[:-2]
+    for cand in (lw, lw[:-1] if lw.endswith("s") else lw, lw[:-2] if lw.endswith("es") else lw, lw[:-3] + "y" if lw.endswith("ies") else lw):
+        if cand in CONCRETE:
+            return True
+    return False
+
+
+def _item_specific(words, prot, deixis, allow, schema=False, exempt=False):
+    """words: the item's words (determiners already stripped). A deictic item ("its head", "these instructions") is the prompt talking about itself.
+    exempt: the item opens a sentence, so a capital letter on its first word proves nothing."""
+    if prot:
+        return not schema and not deixis
+    if words[-1].lower() in POINTER:
+        return False
+    return any(_spec_word(w, allow, exempt and i == 0) for i, w in enumerate(words))
+
+
+def _count_specific(items, allow, schema=False, exempt_first=False):
+    return sum(1 for n, (words, prot, deixis) in enumerate(items) if _item_specific(words, prot, deixis, allow, schema, exempt_first and n == 0))
+
+
+RUN_CUT = re.compile(r"[.;:!?()\[\]\n]| — | – | -- ")
+RUN_LEAD = re.compile(r"^\s*(?:e\.g\.?|i\.e\.?|such as|like|including|incl\.|for example|for instance)\s+", re.I)
+SUBORD = {"instead", "rather", "because", "which", "that", "where", "when", "while", "unless", "until", "if", "since", "whose"}
+LEAD_CONJ = {"so", "then", "and", "or", "but", "plus", "also", "nor"}
+CLAUSE_START = {"before", "after", "when", "while", "if", "once", "until", "unless", "because", "since", "as", "so", "then", "that", "which"}
+
+
+def list_hits(text, allow=frozenset()):
+    """[(index, end, snippet)]: a run of two or more short comma / "or" / "and" separated items, at least two of them specific, wherever it sits
+    (in parentheses, after a colon, after a negation or inline). Inside parentheses one named item is enough."""
     prot, _ = _protect(text.replace(PUA, " "))
+    schema = bool(SCHEMA.search(text))
+    hits = []
+    cuts = [m for m in RUN_CUT.finditer(prot)]
+    bounds = [(0, None)] + [(m.end(), m.group(0)) for m in cuts]
+    ends = [m.start() for m in cuts] + [len(prot)]
+    for (start, lead), end in zip(bounds, ends):
+        seg = prot[start:end]
+        in_paren = lead == "("
+        body = RUN_LEAD.sub("", seg)
+        if re.search(r"\bthen\b", body):
+            continue   # "A, then B": the steps of a procedure, not a list of cases
+        off = start + len(seg) - len(body)
+        parts = [x for x in LIST_SPLIT.split(body) if x is not None]
+        run, runs = [], []
+        for part in parts:
+            words = re.findall(r"[\x01\x02\ue100-\ue1ff]+|[\w'’./~$<>-]+", part)
+            while words and words[0].lower() in LEAD_CONJ:
+                words = words[1:]
+            if not run and len(words) > 1 and words[0].lower() in VERBS:
+                words = words[1:]   # "Remove the badge, the ribbon and ...": the lead-in verb is not part of the first item
+            if not words:
+                continue
+            tail_cut = next((k for k, w in enumerate(words) if k >= 1 and w.lower() in SUBORD), None)
+            if tail_cut:
+                words = words[:tail_cut]   # "`--max-warnings 0` instead of editing its config": the item, then the rest of the sentence
+            low = [w.lower() for w in words]
+            bad = FINITE - PREPS
+            core = [w for k, w in enumerate(low) if not (all(x in DETERMINERS or x in NEG_WORDS for x in low[:k + 1]))]   # the words after the determiners
+            ok = 0 < len(words) <= (8 if in_paren else 6) and not any(w in bad for w in core) and low[0] not in CLAUSE_START \
+                and not (len(words) > 1 and low[0] in VERBS)
+            if ok:
+                run.append(words)
+                if tail_cut:
+                    if len(run) >= 2:
+                        runs.append(run)
+                    run = []
+            else:
+                if len(run) >= 2:
+                    runs.append(run)
+                run = []
+        if len(run) >= 2:
+            runs.append(run)
+        for r in runs:
+            items = []
+            for words in r:
+                k = 0
+                while k < len(words) and (words[k].lower() in NEG_WORDS or words[k].lower() in DETERMINERS):
+                    k += 1
+                deixis = any(w.lower() in DEIXIS for w in words[:k])
+                rest = words[k:]
+                if rest:
+                    items.append((rest, any("\x01" in w for w in rest), deixis))
+            if len(items) < 2:
+                continue
+            before = (prot[max(0, off - 40):off] + body.split("\x01")[0]).lower()
+            keys = bool(re.search(r"\b(?:keys?|fields?|columns?|attributes?|properties|options?|values?|labels?|enum|one of)\b[^.;:]{0,20}$", before))
+            n = _count_specific(items, allow, schema or keys, not in_paren)
+            named = sum(1 for words, prot_, deixis in items if not deixis and not prot_ and words[-1].lower() not in POINTER and any(PATHISH.search(w) or (w[:1].isupper() and not w.isupper() and w not in allow and len(w) > 1) for w in words))
+            if n >= 2 or (in_paren and named >= 1 and len(items) <= 3):
+                snip = " ".join(body[:90].split())
+                snip = re.sub(r"[\x01\x02\ue100-\ue1ff]+", "…", snip)
+                hits.append((off, off + len(body), snip))
+    return hits
+
+
+def patch_hits(text, allow=frozenset()):
+    """[(index, reason, snippet)] for a negation followed by a closed list of specifics, or a named colour."""
+    prot, spans = _protect(text.replace(PUA, " "))
     hits, covered = [], -1
     for m in NEG_CUE.finditer(prot):
         if m.start() < covered:
@@ -681,12 +852,18 @@ def patch_hits(text):
             cands = []   # "never open, list, search or name its directory": verbs, not things
         for c in cands:
             c = _concrete(c)
-            if len(c) >= 2:
+            if len(c) >= 2 and (_count_specific(c, allow) >= 1):
                 ok = c
                 break
+        if ok is None and m.group("verb") and re.match(r"(?:don['’]t|do\s+not|never|avoid)$", m.group("verb"), re.I):
+            for pm in re.finditer(r"\x01([\ue100-\ue1ff]+)\x02", clause[:60]):   # "don't loop on "add a DEBUG line, rerun"": a quoted case of the thing to avoid
+                span = spans[ord(pm.group(1)[0]) - 0xE100] if ord(pm.group(1)[0]) - 0xE100 < len(spans) else ""
+                if span.startswith(('"', "“")) and len(span.split()) >= 3:
+                    ok = [(["quoted case"], True, False)]
+                    break
         if ok is None:
             low = [w.lower() for w in re.findall(r"[\w'’-]+", clause)][:3]
-            if (m.group("plain") or m.group("verb")) and low and low[0] in COLORS:
+            if (m.group("plain") or m.group("verb")) and low and any(w in COLORS for w in low[:2]):
                 ok = [(low[:1], False, False)]
             elif colon:
                 tail = prot[m.end() + len(clause) + 1:]
@@ -715,7 +892,9 @@ def lint_unit(unit, allow):
         quoted = re.search(r'"[^"]+"|“[^”]+”|`[^`]+`', tail)
         word = m.group(0).strip().lower()
         word = word if word.startswith("e.g") else word.rstrip(":.")
-        if quoted or len(items) >= 2:
+        isverb = lambda x: bool(x.split()) and (x.split()[0].strip(" .;:-").lower() in VERBS or x.split()[0].strip(" .;:-").lower().endswith("ing"))
+        verbs_only = not quoted and len(items) >= 2 and all(isverb(x) for x in items) and all(len(x.split()) == 1 for x in items[:2])
+        if (quoted or len(items) >= 2) and not verbs_only:   # "such as sending, deleting or paying": a list of kinds of action is the scope, not cases
             add(m.start(), "examples", f'"{word}" is followed by a {"quoted case" if quoted else "list of examples"}: state the general rule and keep the cases out of the prompt', text[m.start():m.end() + 60])
 
     for rx, why in PAST:
@@ -727,8 +906,15 @@ def lint_unit(unit, allow):
             continue   # "a tool used to build", "is used to size": not a past habit
         add(m.start(), "past", 'habitual "used to" refers to how things were', text[max(0, m.start() - 20):m.end() + 25])
 
-    for i, snip in patch_hits(text):
+    seen_patch = set()
+    for i, snip in patch_hits(text, allow):
+        seen_patch.add(i)
         add(i, "patch", "a negation followed by a closed list of specifics: name the property the rule is about, not the cases that broke it", snip)
+    taken = [(h[4], h[4] + 160) for h in hits]   # a list another flag already reports (an "e.g." tail, a negation clause) is one finding, not two
+    for i, end, snip in list_hits(text, allow):
+        if any(i - 4 <= lo <= end or lo - 4 <= i <= hi for lo, hi in taken):
+            continue
+        add(i, "patch", "a list of specific items (names, objects, body parts, commands, quoted strings): state the property or the class, not the cases", snip)
 
     code_blind = _strip_code(text)
     seen = set()
@@ -1016,14 +1202,12 @@ def main(argv=None):
         if not a.targets:
             ap.error("give --config, or one or more FILE[:SYMBOL]")
         rc = 0
+        unjudged = {}   # accumulated across every target, written once after the loop
         for t in a.targets:
             path, _, sym = t.partition(":")
             src = open(path, encoding="utf-8").read()
-            unjudged = {}
             hits, size, errs = lint_file(path, src, sym or None, a.calls or None, a.fenced, frozenset(a.allow), a.budget,
                                          judged=load_judged(a.judged) if a.judged else None, unjudged=unjudged)
-            if a.judge_export and unjudged:
-                print(f"exported {judge_export(unjudged, a.judge_export)} unjudged sentences to {a.judge_export}", file=sys.stderr)
             if a.sizes:
                 print(f"  {t}: {size} characters")
             for h in hits:
@@ -1033,6 +1217,8 @@ def main(argv=None):
             for e in errs:
                 print(e)
                 rc = 1
+        if a.judge_export and unjudged:
+            print(f"exported {judge_export(unjudged, a.judge_export)} unjudged sentences to {a.judge_export}", file=sys.stderr)
         return rc
     except (ExtractError, OSError) as e:
         print(f"prompt-lint: {e}", file=sys.stderr)

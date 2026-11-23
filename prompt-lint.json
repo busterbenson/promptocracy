@@ -111,16 +111,6 @@
       "reason": "the voice anchor: the quoted lines are the persona's voice spec, not a fix for a past failure; first candidate in the prune pass (tests/prompt-samples/starling.md)"
     },
     {
-      "file": "src/lib/gremlin.js",
-      "match": "no ticket field, no state, no price, no rule",
-      "reason": "the thread's capability set (what Gremlin may not change from a post), the role's definition, not a past case"
-    },
-    {
-      "file": "src/lib/proposals.js",
-      "match": "no ** marks, no [setting: key] tags",
-      "reason": "the drafter's output format: after_text is plain text, and the code strips nothing; tests/prompt-samples/drafter.md"
-    },
-    {
       "file": "src/lib/proposals.js",
       "match": "no flavor text, no asides",
       "reason": "rules-voice rule 7, part of the drafter's voice spec; first candidate in the prune pass (tests/prompt-samples/drafter.md)"
