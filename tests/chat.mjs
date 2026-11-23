@@ -95,8 +95,8 @@ try {
   check("the model was asked as designed: Sonnet 5.5 at low effort with the answer schema, the key in the header, a breakpoint on the day's block, and no thinking",
     first.model === "claude-sonnet-5-5" && first.key === "stub-key-not-real" && first.body.output_config.effort === "low" && first.body.output_config.format.type === "json_schema" && first.body.system[1].cache_control.type === "ephemeral" && !("thinking" in first.body) && first.body.max_tokens === 1500);
   check("her words reached the model fenced as data", first.lastText.includes(`<player_text author="Ana">${WALL}</player_text>`) && first.lastText.includes("W1"));
-  const c1 = acalls();
-  check("one agent_calls row: ok, tokens, a cost from usage, no prompt or player text in it", c1.length === 1 && c1[0].outcome === "ok" && c1[0].purpose === "chat" && c1[0].model === "claude-sonnet-5-5" && c1[0].cost_micro > 0 && c1[0].cache_write === 7305 && c1[0].input_tokens === 154 && !J(c1[0]).includes("stone"), J(c1));
+  const c1 = acalls("purpose = 'chat'");
+  check("one agent_calls row: ok, tokens, a cost from usage, no prompt or player text in it", c1.length === 1 && c1[0].outcome === "ok" && c1[0].purpose === "chat" && c1[0].model === "claude-sonnet-5-5" && c1[0].cost_micro > 0 && c1[0].cache_write === REC["wall-sizing"].usage.cache_creation_input_tokens && c1[0].input_tokens === REC["wall-sizing"].usage.input_tokens && !J(c1[0]).includes("stone"), J(c1));
   const ticketPage = (await Ana.get(`${T}/W1`)).data.ticket;
   check("the ticket page shows his price with its reason, and the player's own edit with price in it changes neither", ticketPage.price_reason === w.price_reason);
   await Ana.post(`${T}/W1/edit`, { price: 99, price_reason: "mine", paid: 5, state: "Approved", title: "Low stone garden wall" });

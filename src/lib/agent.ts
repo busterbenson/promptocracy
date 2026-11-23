@@ -27,15 +27,24 @@ const usageOf = (u: any): Usage => ({
 /** @rule 106.7 */
 export const agentsReady = (env: Env) => !!env.MODEL_API_KEY;
 
-/** One Messages API call. Never throws: a failure is a result with a short reason (no player text, no prompt). @rule 106.3 */
+/**
+ * A schema the API refused (a 400): skip the schema for a while, so the next turn asks without it at once (its shape is
+ * described in the prompt's text) instead of waiting out the same refusal. Per Worker instance; keyed by model and schema.
+ */
+const SCHEMA_OFF_MS = 10 * 60_000, FALLBACK_MIN_MS = 5_000;
+const schemaOff = new Map<string, number>();
+
+/** One Messages API call. Never throws: a failure is a result with a short reason (no player text, no prompt). The whole call, a retry included, ends by timeoutMs. @rule 106.3 */
 export async function callModel(env: Env, c: ModelCall): Promise<ModelResult> {
   const t0 = Date.now();
   if (!env.MODEL_API_KEY) return { ok: false, code: "unavailable", ms: 0, reason: "no key" };
   const base = (env.MODEL_BASE_URL || "https://api.anthropic.com").replace(/\/+$/, "");
+  const deadline = t0 + c.timeoutMs;
+  const offKey = c.schema ? `${c.model}|${JSON.stringify(c.schema)}` : "";
   /** @rule 106.3 */
   const send = (withSchema: boolean) => fetch(`${base}/v1/messages`, {
     method: "POST",
-    signal: AbortSignal.timeout(c.timeoutMs),
+    signal: AbortSignal.timeout(Math.max(1, deadline - Date.now())),
     headers: { "content-type": "application/json", "x-api-key": env.MODEL_API_KEY as string, "anthropic-version": "2023-06-01" },
     body: JSON.stringify({
       model: c.model, max_tokens: c.maxTokens,
@@ -46,9 +55,16 @@ export async function callModel(env: Env, c: ModelCall): Promise<ModelResult> {
   });
   let res: Response;
   try {
-    res = await send(true);
-    // the API refusing the schema (a 400) must not take the agents down: ask once more without it; the answer's reader checks either way
-    if (res.status === 400 && c.schema) { await res.body?.cancel().catch(() => {}); console.error("agent: the schema was refused (400), asking again without it"); res = await send(false); }
+    const useSchema = !!c.schema && !((schemaOff.get(offKey) ?? 0) > Date.now());
+    res = await send(useSchema);
+    // the API refusing the schema (a 400) must not take the agents down: ask once more without it, if there is time left for an answer; the answer's reader checks either way
+    if (res.status === 400 && useSchema) {
+      await res.body?.cancel().catch(() => {});
+      if (deadline - Date.now() < FALLBACK_MIN_MS) { console.error("agent: the schema was refused (400) with no time left to ask again"); return { ok: false, code: "failed", ms: Date.now() - t0, status: 400, reason: "schema refused" }; }
+      console.error("agent: the schema was refused (400), asking again without it");
+      res = await send(false);
+      if (res.ok) schemaOff.set(offKey, Date.now() + SCHEMA_OFF_MS);   // remembered only once the same ask without it was taken: a 400 that is not about the schema (too long, no credit) fails both ways and proves nothing
+    }
   } catch (e: any) {
     console.error("agent: request failed:", e?.name || "error");
     return { ok: false, code: "failed", ms: Date.now() - t0, reason: e?.name === "TimeoutError" ? "timeout" : "network" };

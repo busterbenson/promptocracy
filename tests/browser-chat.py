@@ -76,7 +76,7 @@ with sync_playwright() as p:
         check(f"{tag}: the log has the two turns (4 lines, more in the dark run: the light run added one) under a Today divider, in order, her words on the right", msgs(page) >= 4 and msgs(page) % 2 == 0 and text(page, "#chatLog .cday").lower() == "today" and page.locator("#chatLog .msg").nth(0).get_attribute("class") == "msg cme" and "low stone garden wall" in text(page, "#chatLog .msg >> nth=0"), f"{msgs(page)} lines; first class {page.locator('#chatLog .msg').nth(0).get_attribute('class')}; day {text(page, '#chatLog .cday')}")
         slip = text(page, "#chatLog .slip")
         check(f"{tag}: the slip is his drafted ticket: W1, its title, what it makes (a creature, a rule), the estimate, the price with his one-line reason, a DRAFT stamp",
-              "W1" in slip and "Flying dragon" in slip and "creature" in slip and "3 nights" in slip and "6 points" in slip and "Charmed discount" in slip and "DRAFT" in slip, slip)
+              "W1" in slip and "dragon" in slip.lower() and "creature" in slip and "3 nights" in slip and "6 points" in slip and len(slip.split("6 points", 1)[-1].strip(" ·")) > 10 and "DRAFT" in slip, slip)   # his one-line reason is whatever the recorded answer says
         check(f"{tag}: rule numbers in his words are pills (the ticket's rule)", page.locator("#chatLog .rpill").count() >= 0)
         page.evaluate("document.getElementById('book').scrollIntoView()"); page.wait_for_timeout(200)
         shot(page, f"desktop-open-{tag}")
@@ -88,7 +88,7 @@ with sync_playwright() as p:
         check(f"{tag}: Enter sends: her line and his reply are added, the box is empty again, 28 left (no counter yet)", msgs(page) == n0 + 2 and page.input_value("#chatText") == "" and not vis(page, ".ch-in .left"))
         # the draft's ticket opens from the slip's pill
         page.click("#chatLog .slip .wpill"); page.wait_for_selector("#mroot .mcard")
-        check(f"{tag}: the slip's W1 pill opens the ticket's card, and the card shows his price and reason", "W1" in text(page, "#mroot .mcard") and "6 points" in text(page, "#mroot .mcard") and "Charmed discount" in text(page, "#mroot .mcard"))
+        check(f"{tag}: the slip's W1 pill opens the ticket's card, and the card shows his price and reason", "W1" in text(page, "#mroot .mcard") and "6 points" in text(page, "#mroot .mcard") and len(text(page, "#mroot .mcard").split("6 points", 1)[-1].strip(" ·")) > 10)
         page.evaluate("document.querySelector('#mroot .wkprice').scrollIntoView({block: 'center'})"); page.wait_for_timeout(150)
         shot(page, f"ticket-card-price-{tag}")
         page.keyboard.press("Escape"); page.wait_for_timeout(250)
