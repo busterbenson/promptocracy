@@ -65,9 +65,14 @@ settings="$(node scripts/default-settings.mjs "$size" "$max")" || die "could not
 persist=()
 [ -n "${PROMPTOCRACY_PERSIST_TO:-}" ] && persist=(--persist-to "$PROMPTOCRACY_PERSIST_TO")
 
-out="$(npx wrangler d1 execute DB "$where" ${persist[@]+"${persist[@]}"} --command \
-  "INSERT INTO games (id, slug, name, repo, rules_path, rules_ref, join_code, status, winning_score, settings, created_at)
-   VALUES ('$id', '$slug', '$sqlname', '$repo', '$rpath', '$ref', '$code', 'setup', $win, '${settings//\'/\'\'}', strftime('%Y-%m-%dT%H:%M:%fZ','now'));" 2>&1)" || {
+insert="INSERT INTO games (id, slug, name, repo, rules_path, rules_ref, join_code, status, winning_score, settings, created_at)
+   VALUES ('$id', '$slug', '$sqlname', '$repo', '$rpath', '$ref', '$code', 'setup', $win, '${settings//\'/\'\'}', strftime('%Y-%m-%dT%H:%M:%fZ','now'));"
+if [ "$where" = "--local" ] && [ -n "${PROMPTOCRACY_PERSIST_TO:-}" ]; then
+  # The tests' state dir: run the insert in-process on the same local D1 file (scripts/local-d1.mjs), not through a ~1 s wrangler spawn.
+  out="$(node scripts/local-d1.mjs "$PROMPTOCRACY_PERSIST_TO" "$insert" 2>&1)"
+else
+  out="$(npx wrangler d1 execute DB "$where" ${persist[@]+"${persist[@]}"} --command "$insert" 2>&1)"
+fi || {
   if [[ "$out" == *UNIQUE* ]]; then die "a game with slug '$slug' already exists"; fi
   echo "$out" >&2; die "could not insert the game (has the schema been applied? npm run migrate:local)"
 }

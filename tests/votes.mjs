@@ -10,6 +10,7 @@ import { copyFileSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSyn
 import { tmpdir } from "node:os";
 import { join as pjoin } from "node:path";
 import { ROOT, client, connect, createGame, d1, join, migrate, newState, freePort, startRulesStub, startServer, tool } from "./lib.mjs";
+import { localD1 } from "../scripts/local-d1.mjs";
 import { dayOpenBinds, deadlineAfter } from "../src/lib/day-gate.js";
 import { neededOf } from "../src/lib/proposals.js";
 import { DEADLINE_REASON, VOTE_SQL, resultSentence, returnedBody, tally } from "../src/lib/votes.js";
@@ -64,7 +65,7 @@ console.log("migration 0007");
     const W = pjoin(ROOT, "node_modules/.bin/wrangler");
     const run = (args) => execFileSync(W, [...args, "--config", cfg, "--local", "--persist-to", st], { cwd: cfgDir, encoding: "utf8", timeout: 60000, env: { ...process.env, CI: "1", NO_COLOR: "1", WRANGLER_SEND_METRICS: "false" } });
     run(["d1", "migrations", "apply", "DB"]);
-    const sql = (s) => JSON.parse(run(["d1", "execute", "DB", "--json", "--command", s]).replace(/^[^[]*/, ""))[0].results;
+    const sql = (s) => localD1(st, s); // in-process on the same state dir (scripts/local-d1.mjs), not a wrangler spawn per statement
     // A game on day 2 (day 1 done with its count, day 2 open with no count yet) and a game in setup.
     sql(`INSERT INTO games (id, slug, name, repo, join_code, status, created_at, day) VALUES ('gp','old-play','Old','a/c','PLAY2222','playing','2026-01-01T00:00:00Z', 2), ('gs','setup','S','a/s','SETU2222','setup','2026-01-01T00:00:00Z', 0)`);
     sql(`INSERT INTO players (id, game_id, email, display_name, color, turn_order, joined_at, x, y) VALUES ('p0','gp','a@x.test','Ada','teal',0,'2026-01-01T00:00:00Z',0,0), ('p1','gp','b@x.test','Bo','cobalt',1,'2026-01-01T00:00:00Z',1,1), ('p2','gp','c@x.test','Cy','jade',2,'2026-01-01T00:00:00Z',2,2), ('s0','gs','s@x.test','Sol','teal',0,'2026-01-01T00:00:00Z',0,0)`);

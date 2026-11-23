@@ -7,6 +7,7 @@ import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync
 import { tmpdir } from "node:os";
 import { join as pjoin } from "node:path";
 import { ROOT, connect, createGame, d1, join, mcp, migrate, newState, startPlaying, freePort, startRulesStub, startServer, tool } from "./lib.mjs";
+import { localD1 } from "../scripts/local-d1.mjs";
 import { DEFAULT_SETTINGS, OPTIONAL_SETTINGS, getSettings, validateSettings } from "../src/lib/settings.js";
 import { CONFIRMED_TODAY_SQL, proposalLimitMessage } from "../src/lib/proposals.js";
 
@@ -181,7 +182,7 @@ console.log("migration 0009");
     const W = pjoin(ROOT, "node_modules/.bin/wrangler");
     const run = (args) => execFileSync(W, [...args, "--config", cfg, "--local", "--persist-to", st], { cwd: cfgDir, encoding: "utf8", timeout: 60000, env: { ...process.env, CI: "1", NO_COLOR: "1", WRANGLER_SEND_METRICS: "false" } });
     run(["d1", "migrations", "apply", "DB"]);
-    const sql = (s) => JSON.parse(run(["d1", "execute", "DB", "--json", "--command", s]).replace(/^[^[]*/, ""))[0].results;
+    const sql = (s) => localD1(st, s); // in-process on the same state dir (scripts/local-d1.mjs), not a wrangler spawn per statement
     sql(`INSERT INTO games (id, slug, name, repo, join_code, status, created_at, day) VALUES ('gp','old-play','Old','a/c','PLAY2222','playing','2026-01-01T00:00:00Z', 1)`);
     sql(`INSERT INTO players (id, game_id, email, display_name, color, turn_order, joined_at, x, y) VALUES ('p0','gp','a@x.test','Ada','teal',0,'2026-01-01T00:00:00Z',0,0), ('p1','gp','b@x.test','Bo','cobalt',1,'2026-01-01T00:00:00Z',1,1)`);
     const ins = (id, player, status, extra = "") => `INSERT INTO proposals (id, game_id, player_id, day_proposed, kind, scope, target, draft_head, drafted_by, base_sha, created_at, status${extra ? ", number, mark, day_ballot, confirmed_at" : ""}) VALUES ('${id}', 'gp', '${player}', 1, 'repeal', 'rule', '403', 'h', 'code', 's', 'x', '${status}'${extra})`;

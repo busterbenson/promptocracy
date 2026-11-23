@@ -8,6 +8,7 @@ import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join as pjoin } from "node:path";
 import { ROOT, client, connect, createGame, d1, join, migrate, newState, freePort, startRulesStub, startServer, tool } from "./lib.mjs";
+import { localD1 } from "../scripts/local-d1.mjs";
 import { CONFIRM_SQL } from "../src/lib/proposals.js";
 import { dayOpenBinds } from "../src/lib/day-gate.js";
 
@@ -30,7 +31,7 @@ console.log("migration 0005");
     const W = pjoin(ROOT, "node_modules/.bin/wrangler");
     const run = (args) => execFileSync(W, [...args, "--config", cfg, "--local", "--persist-to", st], { cwd: cfgDir, encoding: "utf8", timeout: 60000, env: { ...process.env, CI: "1", NO_COLOR: "1", WRANGLER_SEND_METRICS: "false" } });
     run(["d1", "migrations", "apply", "DB"]); // 0001-0004: today's schema
-    const sql = (s) => JSON.parse(run(["d1", "execute", "DB", "--json", "--command", s]).replace(/^[^[]*/, ""))[0].results;
+    const sql = (s) => localD1(st, s); // in-process on the same state dir (scripts/local-d1.mjs), not a wrangler spawn per statement
     // A game in setup (like Rickshaw: one player) and a game already playing on the old turn model, with history.
     sql(`INSERT INTO games (id, slug, name, repo, join_code, status, created_at) VALUES ('gs','setup-game','Setup','a/b','SETUP222','setup','2026-01-01T00:00:00Z'), ('gp','old-play','Old','a/c','PLAY2222','playing','2026-01-01T00:00:00Z')`);
     sql(`UPDATE games SET round = 3, turn = 1, last_move = '3:1' WHERE id = 'gp'`);

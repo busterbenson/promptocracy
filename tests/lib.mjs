@@ -8,6 +8,7 @@ import { mkdtempSync, existsSync, rmSync, readFileSync, writeFileSync } from "no
 import { tmpdir } from "node:os";
 import { join as pjoin, dirname, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { localD1 } from "../scripts/local-d1.mjs";
 
 export const ROOT = pjoin(dirname(fileURLToPath(import.meta.url)), "..");
 // The starter game's catalog as Gremlin's reader gets it from the bundle: no attribute is defined by a rule yet, and rule 704 lists what each kind
@@ -55,11 +56,10 @@ export function newState() {
   return d;
 }
 
+// In-process SQL on the state dir's local D1 file (scripts/local-d1.mjs): same signature and return shape as the old `wrangler d1 execute`
+// spawn (the rows of the first statement), a millisecond instead of ~0.8 s, and it no longer blocks the event loop for seconds at a time.
 export function d1(state, sql) {
-  const out = execFileSync(WRANGLER, ["d1", "execute", "DB", "--local", "--persist-to", state, "--json", "--command", sql],
-    { cwd: ROOT, env, encoding: "utf8", timeout: 60000 });
-  const parsed = JSON.parse(out.slice(out.indexOf("[")));
-  return parsed[0]?.results ?? [];
+  return localD1(state, sql);
 }
 
 // Put a game in play on day 1, an open day that ends far in the future, so a test running on the real clock near
