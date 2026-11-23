@@ -55,45 +55,41 @@ export function sizeFor(kind, attrs) {
 }
 
 /**
- * The house style, shared by every kind of entry so the board reads as one set: the camera, the palette, the outlines, the white page.
- * Its lines are joined by single spaces. SUBJECT is Gremlin's words; the blanks are filled by stylePrompt. It says nothing about what kind
- * of thing the subject is: that is the one block of KIND_BLOCKS the entry's kind picks.
+ * The house style, shared by every kind of entry so the board reads as one set: the camera, the palette, the outlines, the white page. It
+ * comes LAST and is short, following Black Forest Labs' FLUX.2 prompting guide (docs.bfl.ai/guides/prompting_guide_flux2): the model pays
+ * most attention to what comes first, so the prompt is the subject (Gremlin's words, then the description of how it looks), then the one
+ * block for its kind, then this, as flowing prose of roughly 50-120 words; a long style in front of a one-phrase subject drew the generic
+ * member of every class. It describes only what is wanted (the model has no negative prompt), and its one colour that is fixed, the
+ * outline, is tied to the part it colours by its hex value.
  */
-const HOUSE = [
-  "{SUBJECT}.",
-  "{DETAILS}",
-  "{KIND}",
-  "An isometric 3D vector illustration for a board game, like one piece from an isometric game asset pack.",
-  "The camera looks down on it from above at about 30 degrees, the game board's isometric angle, like a piece in an isometric game: its top surface is clearly visible, as well as two of its sides; it is turned 45 degrees, in three-quarter view, its front toward the lower right corner of the picture. {FOOTPRINT}",
-  "Muted, earthy palette of exactly two colors: its own true main colour, muted but still clearly that colour, and a muted secondary colour that suits it. Each colour is painted in three or four distinct flat tones (a light tint, a main tone, a shade and a deep shadow) as hard-edged flat bands, and each material reads by its tones: a shiny material carries a bright highlight band, a rough one stays matte. Beyond the two colors only white and neutral grey are used.",
-  "Crisp, even, dark navy blue outlines of the same medium weight around the whole subject and along every major edge and shape boundary.",
-  "It stands alone, centered, on a plain pure white background, the white running right up to its outline on every side, beneath it too."
-].join(" ");
+const HOUSE = "It is drawn as an isometric game asset, seen from above at a three-quarter angle with its front toward the lower right corner, in flat vector shapes of two muted colours true to it, each in a few hard-edged tone bands, with crisp dark navy outlines in hex #1F2A44, alone on a plain white background.";
 
 /**
- * What each kind of entry IS, in positive general words (rule 801.2): the one block the entry's catalog kind picks, joined to the house
- * style. The image model sees the house style and that one block, never another kind's. None of them names an example subject, and no block
- * but the creature's has a face, eyes or limbs in its words (naming one invites it; the model has no negative prompt, so faces are checked
- * after drawing, src/lib/art-check.ts). A creature's temper, when the entry has one, adds a line about its posture to its block.
+ * What each kind of entry IS, in a few positive general words (rule 801.2): the one block the entry's catalog kind picks, between the
+ * subject and the house style. The image model sees that one block, never another kind's. None of them names an example subject, and no
+ * block but the creature's has a face, eyes or limbs in its words (naming one invites it; the model has no negative prompt, so faces are
+ * checked after drawing, src/lib/art-check.ts). A creature's temper, when the entry has one, adds a line about its posture to its block.
  */
 export const KIND_BLOCKS = Object.freeze({
-  creature: "A folkloric spirit-world creature, cartoony but taken seriously, earnest, dignified and a little eerie, like a character in a hand-drawn storybook film. It is unmistakably the animal or being its words name: that animal's own body shape, proportions, outline and markings, simplified into smooth, rounded shapes like a small hand-made toy figure, its whole length shown, in a pose natural to that animal. A calm, content face: small simple dark eyes, a gentle closed mouth, relaxed and at ease. Small features such as a nose, ears or tongue are simple shapes in a light or deeper tone of its body color. Its own quiet personality, kept dignified and slightly mysterious, gently anthropomorphized. It may carry one small touch of clothing or a carried thing, kept modest and bold enough to read at board size, outlined like the rest of it.",
-  structure: "One solid thing standing on its own, made of its own materials (a building, a built object or a thing of the landscape), a single thing and not a scene, shown as its own distinctive, instantly readable silhouette.",
-  item: "One small object, sized like something a person can carry, made of its own materials, shown as its own distinctive, instantly readable silhouette.",
-  feature: "A landmark or fixture of the board, solid and made of its own materials, standing on its own, a single thing and not a scene, shown as its own distinctive, instantly readable silhouette with the parts that show what it is for.",
-  tile: "The ground surface itself: a single square tile of that terrain seen from above at the board's angle, an isometric diamond that fills the picture from corner to corner. The whole top of the diamond is that terrain's own surface, its characteristic colours, patches and surface pattern painted flat into the diamond so the kind of ground is clear from above, lying level with the top of the tile. The tile is a thin slab with straight, plain edges, so it sits flush against a neighbouring tile of the same size with no gap and no overlap.",
+  creature: "It is a folkloric storybook creature, earnest and a little eerie, shaped like a small rounded toy true to that animal's own body, proportions and markings, its whole length shown, with a calm, content face.",
+  structure: "It is one solid thing standing on its own, made of its own materials.",
+  item: "It is one small object on its own, sized for a person to carry.",
+  feature: "It is a landmark standing on its own, with the parts that show what it is for.",
+  tile: "It is only the ground: a square tile of that surface as an isometric diamond filling the picture from corner to corner, a thin slab with straight edges that sits flush against a neighbouring tile, its surface lying flat and level.",
 });
 /** A creature's temper, shown in how it stands (rule 602.1). An entry with no temper adds nothing. */
 const TEMPER = Object.freeze({
-  hostile: "Its posture shows a hostile temper: weight forward, head low, braced and ready to bite, while its face stays calm and serious.",
-  neutral: "Its posture shows a neutral temper: relaxed, unhurried and watchful.",
+  hostile: "Its posture shows a hostile temper: weight forward, head low, braced to bite, its face still calm.",
+  neutral: "Its posture shows a neutral temper: relaxed and watchful.",
 });
 /** The block an entry's kind picks; a kind not in the catalog (or none) gets the landmark block, the one that draws no one. @rule 801.2 */
 export const kindBlock = (kind) => (Object.hasOwn(KIND_BLOCKS, kind) ? kind : "feature");
 
 /**
- * What the platform adds to Gremlin's words (3.3 of the plan): the house style plus the one block for the entry's kind, and for a structure
- * the footprint it fits. He writes only what the thing is.
+ * What the platform makes of Gremlin's words (3.3 of the plan): his words, the description of how they look (describeFor, when there is
+ * one), the one block for the entry's kind, for a structure the footprint it fits, and the house style, in that order, as prose. He writes
+ * only what the thing is. (The guide's JSON form of the same parts was drawn side by side on 11-23 and passed no more often, so the
+ * prompt is prose.)
  * @rule 801.2
  */
 export function stylePrompt(kind, attrs, words, details = "") {
@@ -101,8 +97,9 @@ export function stylePrompt(kind, attrs, words, details = "") {
   const k = kindBlock(kind);
   const s = k === "structure" && attrs && typeof attrs.size === "object" && attrs.size ? attrs.size : null;
   const temper = k === "creature" && attrs && Object.hasOwn(TEMPER, attrs.temper) ? ` ${TEMPER[attrs.temper]}` : "";
-  const fill = { SUBJECT: what, DETAILS: shortDetails(details), KIND: KIND_BLOCKS[k] + temper, FOOTPRINT: s ? `It takes up a ${s.w} by ${s.h} square footprint of the board, seen from the same angle as the game board.` : "" };
-  return HOUSE.replace(/\{(SUBJECT|DETAILS|KIND|FOOTPRINT)\}/g, (m, key) => fill[key]).replace(/ {2,}/g, " ").trim() + " No people's likenesses.";
+  const footprint = s ? `It takes up a ${s.w} by ${s.h} square footprint of the board.` : "";
+  const d = shortDetails(details);
+  return [`${what}.`, d, KIND_BLOCKS[k] + temper, footprint, HOUSE].filter(Boolean).join(" ").replace(/ {2,}/g, " ").trim() + " No people's likenesses.";
 }
 
 // ---- the description before drawing (rule 801.2) -----------------------------------------------------------------------------------
@@ -125,7 +122,7 @@ export function describeAsk(kind, words) {
     creature: `how "${what}" looks, so an illustrator draws that exact animal or being and nothing similar: its body shape and proportions, the parts and markings that tell it apart from look-alikes, and its colours.`,
     tile: `how the ground surface of "${what}" looks seen from above, as a flat square of terrain: what the surface is made of, its colours, and how two or three large areas of it lie across the square like regions on a map. Describe only what lies flat in the surface itself, nothing that stands up from it.`,
   }[k] ?? `how "${what}" looks, so an illustrator draws that exact thing and nothing similar: its overall shape and true proportions, the parts that tell it apart from look-alikes, what it is made of and how that material catches the light, its colours, and its condition. Describe the thing alone, as an inanimate object.`;
-  return `Describe ${how} Write at most 35 words, present tense, the way an illustrator blocks in a small game piece: first its overall shape and proportions, then the two or three parts that tell it apart and where they sit, then its colours. Use only big shapes that show at small size. Describe it as one single thing on its own. Do not repeat its name and name nothing it might be confused with; say nothing about the background, the camera or the art style.`;
+  return `Describe ${how} Write at most 30 words, present tense, the way an illustrator blocks in a small game piece: first its overall shape and proportions, then the two or three parts that tell it apart and where they sit, then its colours. Use only big shapes that show at small size. Describe it as one single thing on its own. Do not repeat its name and name nothing it might be confused with; say nothing about the background, the camera or the art style.`;
 }
 
 // ---- the check after drawing (rule 801.2) ---------------------------------------------------------------------------------------------
