@@ -276,7 +276,7 @@ with sync_playwright() as p:
             check(f"{tag}: the menu says 'Starling can't be reached' on Rule change and Action, and on nothing else", items == ["Rule change Starling can't be reached 103.1", "Commission 801.1", "Action Starling can't be reached 103.5"], str(items))
             shot(page, f"menu-starling-down-{tag}")
             page.click('#pzone [data-p="bar-rule"]'); page.wait_for_selector("#mroot .pmenu")
-            check(f"{tag}: Rule change opens the direct way: the Rulebook's 'Which block?' picker", page.locator("#tab-rules").get_attribute("aria-selected") == "true" and "Which block?" in text(page, "#mroot .mcard") and count(page, "#mroot .pmi") == 8)
+            check(f"{tag}: Rule change opens the direct way: the Rulebook's 'Which block?' picker", page.locator("#tab-rules").get_attribute("aria-selected") == "true" and "Which block?" in text(page, "#mroot .mcard") and count(page, "#mroot .pmi") == 9)
             page.keyboard.press("Escape")
             page.locator('.bcard[data-card="401"]').click(); page.wait_for_selector("#mroot .mcard")
             check(f"{tag}: and a rule card's one button is the direct form's, not Starling's", page.locator('#mroot [data-p="open"][data-n="401"]').count() == 1 and count(page, '#mroot [data-p="starling"]') == 0 and count(page, "#mroot .proposeact button") == 1)
