@@ -184,6 +184,8 @@ console.log("the schema the live API accepts, and the fallback when it does not"
   check("a text answer in the prompt's shape reads fully: the entry, its flavor and art, the price (what the no-schema fallback must deliver)", tr.ok && tr.patch.makes?.length === 1 && tr.patch.makes[0].art.prompt === "a battered old copper teapot" && tr.patch.makes[0].flavor.look === "battered copper" && tr.patch.price === 0 && tr.patch.title === "Teapot" && tr.escalate === null);
   check("an escalate of category none is no escalation; a real one still is", read({ say: "ok", escalate: { category: "none", reason: "" } }).escalate === null && read({ say: "ok", escalate: { category: "ruling", reason: "r" } }).escalate?.category === "ruling");
   check("a price of 0 with no reason is 'no price this turn'; points with no reason is still refused", read(ALL_EMPTY).rejected.length === 0 && /say why/.test(read({ say: "ok", ticket: { price: { points: 4, reason: "" } } }).rejected.join(" ")));
+  check("a thread answer of category none with a reason is no escalation and adds no line of his own", (() => { const t = G.readThreadAnswer(J({ say: "", escalate: { category: "none", reason: "x" } }), {}); return t.ok && t.escalate === null && t.say === ""; })());
+  check("a price of 0 with no reason on a turn that is not about price leaves a ticket's price to the saved value (the patch has no price)", !("price" in read(ALL_EMPTY).patch) && !("price_reason" in read(ALL_EMPTY).patch));
   const lost = read({ say: "I've drafted it as an item.", title: "Teapot", makes: [{ kind: "entry", name: "Teapot" }] });
   check("ticket fields written outside 'ticket' are no answer (nothing would save while he says he drafted): malformed, not an ok with an empty patch", !lost.ok && lost.code === "malformed" && /outside ticket/.test(lost.reason));
 }
@@ -231,6 +233,9 @@ console.log("the caller (src/lib/agent.ts), with fetch captured");
   check("a 400 on the schema is asked once more without it", b.seen.length === 2 && "format" in b.seen[0].body.output_config && !("format" in b.seen[1].body.output_config) && b.result.ok);
   const b2 = await spy([{ body: okBody }], own("b"));
   check("a refused schema is not tried again for a while: the next call asks without it at once (its shape is in the prompt's text)", b2.seen.length === 1 && !("format" in b2.seen[0].body.output_config) && b2.result.ok);
+  const b6 = await spy([{ status: 400 }, { status: 400 }], own("b6"));
+  const b7 = await spy([{ body: okBody }], own("b6"));
+  check("a 400 that the retry without the schema gets too is not about the schema: it is a failed call and the schema stays on", !b6.result.ok && b6.result.status === 400 && b6.seen.length === 2 && "format" in b7.seen[0].body.output_config);
   const b3 = await spy([{ body: okBody }], own("b3"));
   check("another schema is unaffected", "format" in b3.seen[0].body.output_config);
   // the whole call, the retry included, ends by the call's own deadline: a 400 that arrives with no time left is a clear failure, not a retry that outlives the turn

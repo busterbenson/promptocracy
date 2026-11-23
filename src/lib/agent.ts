@@ -60,10 +60,10 @@ export async function callModel(env: Env, c: ModelCall): Promise<ModelResult> {
     // the API refusing the schema (a 400) must not take the agents down: ask once more without it, if there is time left for an answer; the answer's reader checks either way
     if (res.status === 400 && useSchema) {
       await res.body?.cancel().catch(() => {});
-      schemaOff.set(offKey, Date.now() + SCHEMA_OFF_MS);
       if (deadline - Date.now() < FALLBACK_MIN_MS) { console.error("agent: the schema was refused (400) with no time left to ask again"); return { ok: false, code: "failed", ms: Date.now() - t0, status: 400, reason: "schema refused" }; }
       console.error("agent: the schema was refused (400), asking again without it");
       res = await send(false);
+      if (res.ok) schemaOff.set(offKey, Date.now() + SCHEMA_OFF_MS);   // remembered only once the same ask without it was taken: a 400 that is not about the schema (too long, no credit) fails both ways and proves nothing
     }
   } catch (e: any) {
     console.error("agent: request failed:", e?.name || "error");
