@@ -184,7 +184,7 @@ check("two pieces only the game places: the Ghost (recolored, rule 604.2) and th
   check("refitting each piece on its canvas finds its ellipse where it stands (within 1.5 art units)", every.every((k) => refit[k].every((d) => Math.abs(d) <= 1.5)), J(refit));
   // The fitted centres (Buster, 2026-11-22: the ellipses strategy), in the source SVG's units. A centre that changes changes where
   // a piece stands: change it here too, on purpose.
-  const FEET = { keeper: [253, 775], frog: [319, 657], robot: [390, 647], osprey: [438, 748], diver: [474, 684], wizard: [277, 704], crow: [446, 717], astronaut: [361, 642], pawn: [267, 653], ghost: [335, 608], blob: [346, 550] };
+  const FEET = { keeper: [253, 775], frog: [319, 657], robot: [390, 647], osprey: [438, 748], diver: [474, 684], wizard: [277, 704], crow: [489, 732], astronaut: [361, 642], pawn: [267, 653], ghost: [335, 608], blob: [346, 550] };
   check("each piece stands on the centre of the ellipse fitted to its art", every.every((k) => J(FOOTPRINT[k]?.at) === J(FEET[k])), J(Object.fromEntries(every.map((k) => [k, FOOTPRINT[k]?.at]))));
   check("on a tile the foot point is the tile centre", FOOT_DROP === 0);
   {
