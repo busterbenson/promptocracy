@@ -38,7 +38,7 @@ export const settingsLine = (settings) => Object.entries(settings || {}).map(([k
 const LEFT_SHOWN = 10;   // "N left" appears in the last ten messages of the day
 
 export function createChat({ api, root, me, slug, agent = AGENTS.gremlin, rpill, wpill, onTicket, onProposals, onSlip, started = () => true }) {
-  const S = { msgs: [], next: null, state: null, ticket: null, scope: undefined, rule: null, intent: null, live: null, slips: {}, lockErr: {}, slip: null, busy: false, draft: "", err: "", sheet: false, open: true, loaded: false, loading: false, tab: "", note: "" };
+  const S = { msgs: [], next: null, state: null, ticket: null, scope: undefined, seq: 0, rule: null, intent: null, live: null, slips: {}, lockErr: {}, slip: null, busy: false, draft: "", err: "", sheet: false, open: true, loaded: false, loading: false, tab: "", note: "" };
   const col = root.querySelector("#chatcol"), fab = root.querySelector("#chatfab");
   const mine = () => ACTIVE === agent.key;
   if (!document.getElementById("chat-symbols")) { const d = document.createElement("div"); d.id = "chat-symbols"; d.innerHTML = SYMBOLS; document.body.appendChild(d); }
@@ -242,8 +242,9 @@ ${sl.kind !== "action" && (sl.after_text || sl.before_text) ? `<div class="tx cd
   }
   /** The window's state again (the cap, the lock, the day) without touching the log; the lines the server has since the last one are added. @rule 106.7, 107.1 */
   async function readState() {
-    const r = await api(historyPath(S.scope));
-    if (r.ok) {
+    const at = S.scope;
+    const r = await api(historyPath(at));
+    if (r.ok && S.scope === at) {   // an answer that comes back after the window moved to another ticket is that ticket's no longer (rule 801.6)
       S.state = r.data.state;
       if (r.data.slips) S.slips = { ...S.slips, ...r.data.slips };
       if (r.data.live !== undefined) S.live = r.data.live;
@@ -276,8 +277,10 @@ ${sl.kind !== "action" && (sl.after_text || sl.before_text) ? `<div class="tx cd
   }
   /** Shows one conversation: a ticket's (its number) or what was said outside any ticket (null). @rule 801.6 */
   async function showScope(scope) {
+    const mine = ++S.seq;
     const r = await api(historyPath(scope || null));
-    if (!r.ok) { S.err = (r.data && r.data.error) || "Something went wrong."; return; }
+    if (mine !== S.seq) return;   // a later switch is the one that counts
+    if (!r.ok) { S.err = (r.data && r.data.error) || "Something went wrong."; S.msgs = []; S.next = null; S.scope = scope || null; return; }   // never the old ticket's lines under the new ticket's box
     S.msgs = r.data.messages; S.next = r.data.next; S.state = r.data.state; S.scope = r.data.ticket || null; S.err = "";
   }
   /** The ticket on the slip: yours or nothing. `auto`: it was inferred from the history, so it is attached only if it can still be written. @rule 801.2 */
@@ -291,10 +294,10 @@ ${sl.kind !== "action" && (sl.after_text || sl.before_text) ? `<div class="tx cd
     const log = e.target;
     if (log.scrollTop > 40 || !S.next || S.loading) return;
     S.loading = true;
-    const before = log.scrollHeight;
-    const r = await api(historyPath(S.scope, S.next));
+    const before = log.scrollHeight, at = S.scope;
+    const r = await api(historyPath(at, S.next));
     S.loading = false;
-    if (!r.ok) return;
+    if (!r.ok || S.scope !== at) return;
     S.msgs = r.data.messages.concat(S.msgs); S.next = r.data.next; if (r.data.slips) S.slips = { ...S.slips, ...r.data.slips };
     draw();
     const l2 = col.querySelector(".ch-log"); if (l2) l2.scrollTop = l2.scrollHeight - before;

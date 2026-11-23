@@ -107,7 +107,7 @@ export const get = async (ctx: Ctx) => {
     ticket = await ticketOf(env, game, player, named);
     if (!ticket) return json({ error: "There is no such ticket of yours." }, 404);
   }
-  const h = await historyPage(env.DB, game.id, player.id, AGENT, before, { ticketId: ticket?.id ?? null });
+  const h = await historyPage(env.DB, game.id, player.id, AGENT, before, { ticketId: ticket?.id ?? null, date: localDate(timeZoneOf(game), nowMs) });
   return json({ messages: h.rows, next: h.next, ticket: ticket ? `W${ticket.number}` : null, state: await stateOf(ctx, game, day, player, nowMs) });
 };
 
@@ -228,7 +228,7 @@ export async function turn(ctx: Ctx, player: Player, body: any, nowMs: number): 
     return out({ ok: true, out: code, messages: [mine, await reply("agent", line, { canned: code }, outcome, reason)], state: await stateNow() });
   };
   if (!r.ok) return canned(r.code, r.code, r.reason);
-  const a = readGremlinAnswer(r.text, { ceiling, systemText: systemStatic({ ceiling }), catalog: catalogFor(game), makes: ticket ? JSON.parse(ticket.makes || "[]") : [] });
+  const a = readGremlinAnswer(r.text, { ceiling, systemText: systemStatic({ ceiling }), catalog: catalogFor(game), makes: ticket ? JSON.parse(ticket.makes || "[]") : [], price: ticket?.price ?? 0 });
   if (!a.ok) return canned(a.code === "invalid" ? "malformed" : a.code, a.code, a.reason);
 
   // The model can take 30 seconds: the write and its gate use the clock NOW, not the one this request began with, so an answer that lands

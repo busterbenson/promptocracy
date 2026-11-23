@@ -141,6 +141,14 @@ console.log("his answer: what the platform keeps");
   const plain = ["creature", "tile", "structure", "item", "feature"].map((k) => read({ say: "ok", ticket: { makes: [{ kind: "entry", name: "Plain", catalogKind: k }], price: { points: 1, reason: "Stuck wrench." } } }));
   check("a plain creature, tile, structure, item or feature priced 1 point 'for a stuck wrench' is saved at 0: the reason he gave is not kept", plain.every((r) => r.patch.price === 0 && r.patch.price_reason === G.NO_BUILD_REASON && r.unbuiltPrice) && !J(plain).includes("Stuck wrench"));
   check("and the ceiling does not matter: 500 points on a plain entry is 0, not 'clamped to 25'", (() => { const r = read({ say: "ok", ticket: { makes: [{ kind: "entry", name: "Pot", catalogKind: "item" }], price: { points: 500, reason: "Because." } } }); return r.patch.price === 0 && !r.clamped && !/ceiling/.test(r.notes.join()); })());
+  const dropBuild = (o, price) => G.readGremlinAnswer(ans(o), { ...ctx, price, makes: [{ kind: "rule", num: null, draft: "A dragon can cross walls." }, { kind: "entry", name: "Dragon", catalogKind: "creature" }] });
+  const dropped = dropBuild({ say: "ok", ticket: { makes: [{ kind: "entry", name: "Dragon", catalogKind: "creature" }] } }, 6);
+  check("a turn that leaves a priced ticket with nothing to build, and sends no price, sets the price to 0 with the platform's reason (and says so); with no price on it, or still a build, or a price sent, nothing is added",
+    dropped.patch.price === 0 && dropped.patch.price_reason === G.NO_BUILD_REASON && dropped.unbuiltPrice && /nothing on this ticket needs building any more/.test(dropped.notes.join(" ")) &&
+    !("price" in dropBuild({ say: "ok", ticket: { makes: [{ kind: "entry", name: "Dragon", catalogKind: "creature" }] } }, 0).patch) &&
+    !("price" in dropBuild({ say: "ok", ticket: { makes: [{ kind: "rule", draft: "x" }] } }, 6).patch) &&
+    dropBuild({ say: "ok", ticket: { makes: [{ kind: "entry", name: "Dragon", catalogKind: "creature" }], price: { points: 3, reason: "r" } } }, 6).patch.price === 0 &&
+    !("price" in dropBuild({ say: "ok", ticket: { title: "t" } }, 6).patch));
   const built = read({ say: "ok", ticket: { makes: [{ kind: "entry", name: "Dragon", catalogKind: "creature", attrs: [{ key: "flies", value: "yes" }], needsBuild: ["flies"] }, { kind: "rule", draft: "A dragon can cross walls." }], price: { points: 6, reason: "Two nights." } } });
   check("a price on a ticket that has something to build (a rule item or a needsBuild key) is kept as he set it", built.patch.price === 6 && built.patch.price_reason === "Two nights." && !built.unbuiltPrice);
   const gate = read({ say: "ok", state: "Approved", proposal: "P3", paid: 99, ticket: { title: "T", state: "Approved", proposal_id: "x", queue_pos: 1, paid: 5, number: 9, player_id: "p2", rule: "801 anew", tasks: ["a"] } });

@@ -164,6 +164,10 @@ try {
   const bigP = await say(Ana, "SYNTH-BUILT a wyrm that flies", P);
   check("a ticket that makes a rule (something to build) keeps the price he sets: 4 points, his reason", bigP.status === 200 && tk(Number(P.slice(1))).price === 4 && tk(Number(P.slice(1))).price_reason === "Two nights of wings.");
 
+  const dropped = await say(Ana, "SYNTH-UNBUILT take the flying off", P);
+  check("a turn that takes the last thing to build off a priced ticket, and sends no price, leaves it at 0 with the platform's reason, and he is told",
+    dropped.status === 200 && tk(Number(P.slice(1))).price === 0 && tk(Number(P.slice(1))).price_reason === NO_BUILD_REASON && /nothing on this ticket needs building any more/.test(J(JSON.parse(rows("Ana").at(-1).meta).notes)) && JSON.parse(tk(Number(P.slice(1))).makes).every((m) => m.kind !== "rule"), J(tk(Number(P.slice(1)))));
+
   console.log("each ticket has its own conversation (rule 801.6)");
   const sonnetLast = () => calls.filter((c) => c.model === "claude-sonnet-5-5").at(-1);
   const oQ = await Ana.post(T, {});
@@ -189,7 +193,7 @@ try {
   check("the day's limit still counts every message, whichever ticket: the window's count is all of them, more than any one ticket's", (await Ana.get(CH)).data.state.used === countedToday && countedToday > onFrog && onFrog === 2, `${countedToday} ${onFrog}`);
   const gQ = await Ana.get(`${CH}?ticket=${Q}`), gP = await Ana.get(`${CH}?ticket=${P}`), gW = await Ana.get(`${CH}?ticket=W1`), gN = await Ana.get(`${CH}?ticket=none`), gLast = await Ana.get(CH);
   const tix = (r) => [...new Set(r.data.messages.filter((m) => m.role !== "excuse").map((m) => m.ticket))].join();
-  check("the window's history is one ticket's: GET ?ticket=<its number> returns that ticket's lines and no other's", tix(gQ) === Q && tix(gP) === P && tix(gW) === "W1" && gQ.data.ticket === Q && gP.data.messages.length === 6 && gQ.data.messages.length === 4, J([tix(gQ), tix(gP), tix(gW)]));
+  check("the window's history is one ticket's: GET ?ticket=<its number> returns that ticket's lines and no other's", tix(gQ) === Q && tix(gP) === P && tix(gW) === "W1" && gQ.data.ticket === Q && gP.data.messages.length === 8 && gQ.data.messages.length === 4, J([tix(gQ), tix(gP), tix(gW)]));
   check("?ticket=none is what was said outside any ticket (null ticket on every line), and with no ticket named it is the conversation he was last in (the ticketless one: his last message had none)", gN.data.messages.length === 2 && gN.data.messages.every((m) => m.ticket === null) && gN.data.ticket === null && gLast.data.ticket === null && gLast.data.messages.length === 2);
   await say(Ana, "back on the frog", Q);
   check("with no ticket named it is the one of his last message: the frog's ticket after that", (await Ana.get(CH)).data.ticket === Q);

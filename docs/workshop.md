@@ -10,7 +10,7 @@ Spec for Buster's OK (2026-11-20). Nothing here is built. It replaces the larger
 - **The Catalog tab becomes the Workshop tab**, and the catalog lives inside it (the ticket list first, then the catalog groups). The list shows live work only (your own drafts, Proposed, Ready, Approved, Building) and the 5 most recently closed; "All tickets (N)" opens a dense list of every ticket, newest change first, filtered by state and paged 50 at a time.
 - A live helper, **Gremlin**, builds the brief with the player in real time and answers ticket discussions. He is clearly not Chalant, has a gremlin-y personality, and escalates what he isn't comfortable with to Chalant.
 - **Gremlin is an NPC who lives in the Workshop tab**, not a piece on the board (to start). His chat is a sidebar window on desktop and a sheet from a button on phones, with a portrait.
-- **Chat history** with Gremlin and Starling is saved per player, per day, private to that player, and scrolls back through past days. A ticket's discussion stays public on the ticket.
+- **Chat history** with Gremlin and Starling is saved per player, private to that player, and scrolls back through past days. Starling's is one stream. Gremlin's is one conversation per ticket (rule 801.6): he is sent, and the window shows, only the ticket being drafted; the daily cap (106.7) still counts every message. A ticket's discussion stays public on the ticket.
 - **Starling** (a starling bird) is the Rulebook tab's chat agent, with the same sidebar window, and **she is the way you draft rule proposals** (below).
 - Gremlin's limit excuses: a list, plus one improvised excuse at the limit (below).
 - Gremlin **can charge points for a commission or offer it free**, by a generous but sometimes inconsistent logic; 0 by default for simple requests with no rules or code.
@@ -54,7 +54,7 @@ One page per commission, opened from the Workshop list or any pill that names it
 
 ## Gremlin's prices
 
-- Gremlin sets every ticket's price while drafting, in points: 0 for simple things with no rules or code (a new item's art and properties), more for things that need building.
+- Gremlin sets every ticket's price while drafting, in points: 0 for anything with nothing to build, of any kind (rule 801.4: the Worker sets it to 0 whatever he asked), more for things that need building.
 - His logic is generous but a bit inconsistent on purpose. He prices by feel from a loose guide (a few points per night of work), and he can be charmed, grumpy or in a mood. He always gives a one-line reason on the ticket.
 - The guide, the mood and the range are in his prompt, with a hard ceiling (a setting) so a mood can't price a ticket out of reach of every player.
 

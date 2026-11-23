@@ -327,7 +327,7 @@ export function readMakeItem(m, i, cat = {}) {
 }
 
 /**
- * The model's answer text read into what the platform will save. `ctx`: {ceiling, systemText, catalog ({registry, required}: the game's), makes (the ticket's current list)}. Returns
+ * The model's answer text read into what the platform will save. `ctx`: {ceiling, systemText, catalog ({registry, required}: the game's), makes (the ticket's current list), price (its current price)}. Returns
  *   {ok: true, say, refusal, patch: {title?, brief?, estimate?, running_cost?, tasks?, makes?, price?, price_reason?},
  *    rejected: [reason...], notes: [...], clamped, unbuiltPrice (he priced a ticket with nothing to build: set to 0)}   the reasons are what he sees next turn; notes are saved-with-a-change
  *   {ok: false, code: "malformed" | "invalid", reason}              nothing is saved and the player gets a canned line
@@ -343,6 +343,8 @@ export function readEscalate(raw) {
   const reason = oneLine(raw.reason).slice(0, ESCALATE_REASON_MAX);
   return ESCALATION_CATEGORIES.includes(category) && reason ? { category, reason } : null;
 }
+/** Does a ticket's list of things to make hold something to build: a rule item, or an entry with a needsBuild key? @rule 801.4 */
+const hasBuild = (items) => (items || []).some((x) => x && (x.kind === "rule" || (x.needsBuild && x.needsBuild.length)));
 export function readGremlinAnswer(text, ctx) {
   let a;
   try {
@@ -406,14 +408,18 @@ export function readGremlinAnswer(text, ctx) {
         if (p < 0) { p = 0; clamped = true; }
         if (p > ctx.ceiling) { p = ctx.ceiling; clamped = true; }
         // Nothing to build (no rule item, no needsBuild key) costs 0 points (rule 801.4), whatever he asked for: the platform sets it, he is told.
-        const items = patch.makes || ctx.makes || [];
-        unbuiltPrice = p > 0 && !items.some((x) => x.kind === "rule" || (x.needsBuild && x.needsBuild.length));
+        unbuiltPrice = p > 0 && !hasBuild(patch.makes || ctx.makes || []);
         if (unbuiltPrice) { p = 0; clamped = false; notes.push("price: set to 0, because nothing on this ticket needs building (rule 801.4). If you add something to build, price it that turn."); }
         patch.price = p;
         patch.price_reason = unbuiltPrice ? NO_BUILD_REASON : why;
         if (clamped) notes.push(`price: kept, but at the ceiling of ${ctx.ceiling} points.`);
       }
     }
+  }
+  // A turn that takes the last thing to build off a priced ticket and sends no price leaves a price on nothing: it goes to 0 with it (rule 801.4).
+  if (!refusal && !("price" in patch) && patch.makes && !hasBuild(patch.makes) && Number(ctx.price) > 0) {
+    patch.price = 0; patch.price_reason = NO_BUILD_REASON; unbuiltPrice = true;
+    notes.push("price: set to 0, because nothing on this ticket needs building any more (rule 801.4). If you add something to build, price it that turn.");
   }
   return { ok: true, say, refusal, patch, rejected, notes, clamped, unbuiltPrice, escalate: readEscalate(a.escalate) };
 }
