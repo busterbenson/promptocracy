@@ -265,8 +265,16 @@ ${sl.kind !== "action" && (sl.after_text || sl.before_text) ? `<div class="tx cd
   async function load() {
     if (!live()) return;
     S.loading = true;
-    const r = await api(historyPath(S.ticket || undefined));
+    const asked = S.ticket;
+    const r = await api(historyPath(asked || undefined));
     S.loading = false;
+    // a ticket picked while this first read was out ("Commission something", "Talk to Gremlin"): its answer is the other conversation's, so only the window's state is kept and that ticket's own log is read (rule 801.6)
+    if (r.ok && !agent.proposals && (S.ticket || null) !== (asked || null)) {
+      S.state = r.data.state; S.slips = r.data.slips || {}; S.live = r.data.live || null; S.loaded = true; S.err = "";
+      await showScope(S.ticket);
+      draw();
+      return;
+    }
     if (r.ok) { S.msgs = r.data.messages; S.next = r.data.next; S.state = r.data.state; S.slips = r.data.slips || {}; S.live = r.data.live || null; S.loaded = true; S.err = ""; S.scope = agent.proposals ? null : (r.data.ticket || null); } else S.err = (r.data && r.data.error) || "Something went wrong.";
     // the ticket the last turns were about stays on the slip; the box is attached to it only while it is still a draft
     const lastTicket = S.ticket || S.scope || ([...S.msgs].reverse().find((m) => m.ticket) || {}).ticket;
