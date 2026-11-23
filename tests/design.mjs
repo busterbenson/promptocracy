@@ -1,13 +1,17 @@
 // The design port's pure parts, no server: the rulebook parser and its marks, the starter rules' numbering, the one
 // palette file and the traced pieces, and the theme's tokens. Run: node tests/design.mjs
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync, readdirSync, mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { tmpdir } from "node:os";
+import { pathToFileURL } from "node:url";
 import { join as pjoin } from "node:path";
 import { ROOT } from "./lib.mjs";
 import { DEADLINE_CLOCK, DEPLOY_CLOCK } from "../src/lib/votes.js";
 import { parseRules, markOf, renderMarkdown, hl, linkCites } from "../public/js/rulebook.js";
 import { createBallot } from "../public/js/ballot.js";
-import { TRACED, ROLES, FIXED, FOOT, HEIGHT } from "../public/js/pieces-data.js";
-import { recolor, targets, creatureSVG, CREATURE_PIECES } from "../public/js/pieces.js";
+import { TRACED, ROLES, FIXED, CANVAS, HEIGHT, FIT, HALF_WIDTH, FOOTPRINT, SIZE } from "../public/js/pieces-data.js";
+import { recolor, targets, creatureSVG, CREATURE_PIECES, pieceSVG, SHADOW, FOOT_DROP, HW, HH } from "../public/js/pieces.js";
+import { silhouette, stance, floorEllipse, tileFit, canvasScale, FLOOR_RATIO, TILE, TILE_ELLIPSE_RX } from "../scripts/piece-footprint.mjs";
 import { createProposer } from "../public/js/propose.js";
 
 let pass = 0, fail = 0;
@@ -163,8 +167,142 @@ check("the colors are one list: 16 players, each with a unique lowercase key, a 
 check("the monster-only colors are not in it (Bog, Wraith, Hex pink), nor the moderator's lavender", !PIECES.colors.some((c) => /^(bog|wraith|hex pink|lavender)$/i.test(c.name)) && !PIECES.colors.some((c) => ["#6E9A3C", "#471C47", "#AD1A6C", "#6B50A4", "#B7A3EF"].includes(c.main.toUpperCase())));
 check("the two neutrals beside Onyx and Chalk are there (Umber, Buff)", ["onyx", "chalk", "umber", "buff"].every((k) => PIECES.colors.some((c) => c.key === k)));
 check("a color's shade is darker than its main (Chalk and Buff included), so a piece reads as solid", PIECES.colors.every((c) => { const L = (h) => [1, 3, 5].reduce((a, i, n) => a + parseInt(h.slice(i, i + 2), 16) * [.2126, .7152, .0722][n], 0); return L(c.shade) < L(c.main); }));
-check("nine player shapes, the board-piece set with the Osprey in the Balloon's place, each with art, a footprint, a height and a source palette", PIECES.shapes.length === 9 && PIECES.shapes.map((s) => s.key).join() === "keeper,frog,robot,osprey,diver,wizard,crow,astronaut,pawn" && PIECES.shapes.every((s) => TRACED[s.key] && TRACED[s.key].body.includes("<path") && ROLES[s.key] && FOOT[s.key] && HEIGHT[s.key] && TRACED[s.key].w > 0 && TRACED[s.key].h > 0));
-check("two pieces only the game places: the Ghost (recolored, rule 604.2) and the Blob (a creature, its own colors); nothing else, and no Balloon", Object.keys(TRACED).length === 11 && ROLES.ghost && TRACED.ghost && TRACED.blob && !ROLES.blob && FOOT.blob && HEIGHT.blob && !TRACED.balloon && !PIECES.shapes.some((s) => ["ghost", "blob"].includes(s.key)) && CREATURE_PIECES.join() === "blob");
+check("nine player shapes, the board-piece set with the Osprey in the Balloon's place, each with art, a footprint and a source palette", PIECES.shapes.length === 9 && PIECES.shapes.map((s) => s.key).join() === "keeper,frog,robot,osprey,diver,wizard,crow,astronaut,pawn" && PIECES.shapes.every((s) => TRACED[s.key] && TRACED[s.key].body.includes("<path") && ROLES[s.key] && HALF_WIDTH[s.key] > 0 && TRACED[s.key].w > 0 && TRACED[s.key].h > 0));
+check("two pieces only the game places: the Ghost (recolored, rule 604.2) and the Blob (a creature, its own colors); nothing else, and no Balloon", Object.keys(TRACED).length === 11 && ROLES.ghost && TRACED.ghost && TRACED.blob && !ROLES.blob && HALF_WIDTH.blob && !TRACED.balloon && !PIECES.shapes.some((s) => ["ghost", "blob"].includes(s.key)) && CREATURE_PIECES.join() === "blob");
+{
+  // Where a piece stands: every shape is on one canvas, as tall as the others, with the centre of its floor ellipse (fitted to
+  // its art, scripts/piece-footprint.mjs) on the canvas's foot point. pieceSVG puts that point FOOT_DROP below the tile
+  // centre, mirrored or not; each piece covers the same area on the board within the height and width caps; its shadow
+  // follows its width.
+  const at = (k) => 1.1 * HEIGHT * (FIT[k] || 1) / CANVAS.tall; // board units per art unit, at the board's scale
+  const m = Object.fromEntries(Object.entries(TRACED).map(([k, t]) => [k, stance(silhouette(t.body, t.w, t.h), t.w, t.h, k)]));
+  check("one canvas for every shape", Object.values(TRACED).every((t) => t.w === CANVAS.w && t.h === CANVAS.h) && typeof HEIGHT === "number");
+  check("every figure is the same height on it", Object.values(m).every((f) => Math.abs(f.bottom - f.top - CANVAS.tall) <= 3), J(Object.fromEntries(Object.entries(m).map(([k, f]) => [k, f.bottom - f.top]))));
+  const every = [...PIECES.shapes.map((x) => x.key), "ghost", "blob"];
+  const miss = Object.fromEntries(every.map((k) => [k, FOOTPRINT[k] && [+((FOOTPRINT[k].cx - CANVAS.x) * at(k)).toFixed(2), +((FOOTPRINT[k].cy - CANVAS.y) * at(k)).toFixed(2)]]));
+  check("every piece has a floor ellipse, and its centre is on the canvas's foot point (within 0.1 board units)", every.every((k) => miss[k] && Math.hypot(...miss[k]) <= 0.1), J(miss));
+  check("the floor ellipse is drawn as the board draws a circle on its floor: HH / HW deep for its width", Math.abs(FLOOR_RATIO - HH / HW) < 1e-9 && every.every((k) => Math.abs(FOOTPRINT[k].ry - FOOTPRINT[k].rx * HH / HW) <= 0.06), J(FOOTPRINT));
+  // Fitting the art as it is on the canvas again finds the same ellipse: the art and the point it stands on moved together.
+  const refit = Object.fromEntries(every.map((k) => [k, [+(m[k].ellipse.cx - FOOTPRINT[k].cx).toFixed(1), +(m[k].ellipse.cy - FOOTPRINT[k].cy).toFixed(1), +(m[k].ellipse.rx - FOOTPRINT[k].rx).toFixed(1)]]));
+  check("refitting each piece on its canvas finds its ellipse where it stands (within 1.5 art units)", every.every((k) => refit[k].every((d) => Math.abs(d) <= 1.5)), J(refit));
+  // The fitted centres (Buster, 2026-11-22: the ellipses strategy), in the source SVG's units. A centre that changes changes where
+  // a piece stands: change it here too, on purpose.
+  const FEET = { keeper: [253, 775], frog: [319, 657], robot: [390, 647], osprey: [438, 748], diver: [474, 684], wizard: [277, 704], crow: [446, 717], astronaut: [361, 642], pawn: [267, 653], ghost: [335, 608], blob: [346, 550] };
+  check("each piece stands on the centre of the ellipse fitted to its art", every.every((k) => J(FOOTPRINT[k]?.at) === J(FEET[k])), J(Object.fromEntries(every.map((k) => [k, FOOTPRINT[k]?.at]))));
+  check("on a tile the foot point is the tile centre", FOOT_DROP === 0);
+  {
+    // The fit, on drawings made to measure (any piece without a hand override, a player's drawing included), 100 tall:
+    // two feet in a 3/4 view, the near one 20 wide with its front at y 100, the far one 20 wide with its front at y 90. The
+    // ellipse runs from the near foot's outer side to the far foot's: 60 wide, so 60 x FLOOR_RATIO deep, its front on the near
+    // toe and its centre half its depth above it.
+    const w = 80, h = 101, mask = new Uint8Array(w * h);
+    for (let y = 0; y < 100; y++) for (let x = 10; x < 70; x++) if (y < 80 || (x >= 10 && x < 30) || (x >= 50 && x < 70 && y < 90)) mask[y * w + x] = 1;
+    const e = floorEllipse(mask, w, h), s = stance(mask, w, h);
+    check("two feet: the ellipse spans both, its front on the near toe, its centre half its depth above", e.left === 10 && e.right === 70 && e.front === 100 && Math.abs(e.cy - (100 - 30 * FLOOR_RATIO)) < 0.01 && e.cx === 40 && s.x === e.cx && s.y === e.cy, J(e));
+    // One base, off-centre in its figure (a lantern held out to the right, off the floor): the ellipse is the base's, the
+    // lantern is not on the floor.
+    const b = new Uint8Array(w * h);
+    for (let y = 0; y < 100; y++) for (let x = 10; x < 80; x++) if ((x < 50 && y >= 20) || (x >= 50 && y >= 20 && y < 40)) b[y * w + x] = 1;
+    const o = floorEllipse(b, w, h);
+    check("one base with a lantern held out: the ellipse is the base's, as wide as it, at its middle", o.cx === 30 && o.rx === 20 && Math.abs(o.cy - (100 - 20 * FLOOR_RATIO)) < 0.01, J(o));
+    // A round base wider than the contact band can see (a pawn): its front edge is the front half of a floor ellipse, whose
+    // sides meet the floor half its depth up. The fit finds the whole base, not the part inside the starting band.
+    const W2 = 200, H2 = 220, r = new Uint8Array(W2 * H2), A = 80, B = A * FLOOR_RATIO, CY = 200 - B;
+    for (let x = 20; x < 180; x++) { const d = (x + 0.5 - 100) / A, yb = CY + B * Math.sqrt(Math.max(0, 1 - d * d)); for (let y = 0; y < Math.ceil(yb); y++) r[y * W2 + x] = 1; }
+    const p = floorEllipse(r, W2, H2);
+    check("a round base: the ellipse is the base's own (its width, its depth, its centre)", Math.abs(p.rx - A) <= 1 && Math.abs(p.cx - 100) <= 0.5 && Math.abs(p.cy - CY) <= 1.5, J({ p, A, CY }));
+  }
+  {
+    // A round figure with no legs (a floating or round spirit): its contact is the lowest band of its underside, so the ellipse is
+    // narrower than the body and sits in its lower part, its front on the body's bottom; before, it was as wide as the body and
+    // centred high inside it.
+    const W3 = 260, H3 = 260, R = 100, c3 = new Uint8Array(W3 * H3);
+    for (let y = 0; y < H3; y++) for (let x = 0; x < W3; x++) if ((x + 0.5 - 130) ** 2 + (y + 0.5 - 130) ** 2 <= R * R) c3[y * W3 + x] = 1;
+    const l = floorEllipse(c3, W3, H3);
+    check("a legless round body: the ellipse is the lowest band of its underside, narrower than the body, in its lower half, its front on its bottom", l.kind === "legless" && l.rx < 0.75 * R && l.rx > 0.4 * R && l.cy > 130 && l.front === 230 && Math.abs(l.cx - 130) <= 1 && Math.abs(l.cy + l.ry - 230) <= 0.5, J(l));
+    // A long body lying on the floor (a seal): a thick body with one flipper reaching lower than the rest of its underside. The
+    // contact is its whole length, not the flipper alone (the ellipse was a tiny one under the flipper).
+    const W4 = 340, H4 = 140, l4 = new Uint8Array(W4 * H4);
+    for (let y = 30; y < 130; y++) for (let x = 20; x < 320; x++) if (y < 95 || x >= 250) l4[y * W4 + x] = 1;
+    const g = floorEllipse(l4, W4, H4);
+    check("a long body lying on the floor: the ellipse spans its whole length and is centred on it, not under its flipper", g.kind === "long" && g.right - g.left >= 0.9 * 300 && Math.abs(g.cx - 170) <= 15 && g.front === 130, J(g));
+    // An ordinary biped (two feet) and a figure on a round base are neither case.
+    const W6 = 120, H6 = 200, bp = new Uint8Array(W6 * H6);
+    for (let y = 0; y < 200; y++) for (let x = 20; x < 100; x++) if (y < 160 || (x < 45) || (x >= 75)) bp[y * W6 + x] = 1;
+    const feet = floorEllipse(bp, W6, H6);
+    check("a standing figure is still fitted by its feet (a biped with two feet is neither the long nor the legless case)", feet.kind === "feet" && feet.left === 20 && feet.right === 100, J(feet));
+    check("every piece in the set is fitted by its feet: the long and legless cases leave the set's footprints alone", every.every((k) => floorEllipse(silhouette(TRACED[k].body, TRACED[k].w, TRACED[k].h), TRACED[k].w, TRACED[k].h, k).kind === "feet"));
+    // The canvas: scaled about the foot point, never cropped.
+    const cv = { x: 240, y: 375, w: 480, h: 480 };
+    check("canvasScale: a figure that fits is left alone; one wide to the left of its foot point, or low-slung past the canvas floor, is scaled about the foot point to fit exactly", canvasScale({ w: 300, h: 400, fx: 150, fy: 300 }, cv) === 1 && Math.abs(canvasScale({ w: 700, h: 400, fx: 480, fy: 300 }, cv) - 0.5) < 1e-9 && Math.abs(canvasScale({ w: 300, h: 400, fx: 150, fy: 250 }, cv) - 0.7) < 1e-9);
+    // Staying on the tile: the rule on the figure, then on a build from drawings made to measure (a wide lying body, a legless
+    // round one) and on the set.
+    check("the tile diamond in tileFit is the clip pieces.js puts on the shadow", read("public/js/pieces.js").includes(`<polygon points="-${TILE.a},0 0,-${TILE.b} ${TILE.a},0 0,${TILE.b}"/>`) && TILE_ELLIPSE_RX > 18.5 && TILE_ELLIPSE_RX < 19.7, String(TILE_ELLIPSE_RX));
+    const u1 = 0.1;  // 10 mask units = 1 board unit
+    const Wn = 100, Hn = 120, wide = new Uint8Array(Wn * Hn); for (let y = 50; y < 100; y++) for (let x = 0; x < Wn; x++) wide[y * Wn + x] = 1;
+    const tf = tileFit(wide, Wn, Hn, { cx: 30, cy: 120, rx: 8 }, u1);
+    check("tileFit: a figure reaching 69.5 units from its foot point is brought to 23.5 on each side; a narrow one is left alone", Math.abs(tf - TILE.side / (69.5 * u1)) < 1e-9 && tileFit(wide, Wn, Hn, { cx: 40, cy: 90, rx: 8 }, 0.01) > 1);
+    const ring = (cx, cy, rx, ry, n = 48) => "M" + Array.from({ length: n }, (_, i) => `${(cx + rx * Math.cos(2 * Math.PI * i / n)).toFixed(1)} ${(cy + ry * Math.sin(2 * Math.PI * i / n)).toFixed(1)}`).join(" L") + " Z";
+    const svgOf = (vw, vh, parts) => `<svg version="1.1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${vw} ${vh}">${parts.map((d) => `<path d="${d}" fill="#C88528" transform="translate(0,0)"/>`).join("")}</svg>`;
+    const rect = (x0, y0, x1, y1) => `M${x0} ${y0} L${x1} ${y0} L${x1} ${y1} L${x0} ${y1} Z`;
+    const stand = svgOf(500, 700, [rect(130, 20, 370, 480), rect(150, 480, 230, 680), rect(270, 480, 350, 680)]);            // a person: body and two feet
+    const lying = svgOf(1400, 700, ["M20 40 L1300 40 L1380 400 L1380 520 L1200 560 L60 330 Z", rect(1310, 520, 1390, 690)]);  // long and low, its tail high at the left
+    const round = svgOf(800, 800, [ring(400, 400, 380, 380)]);                                                               // a ball with no legs
+    const tmp = mkdtempSync(pjoin(tmpdir(), "pieces-build-test-")), out = pjoin(tmp, "pieces-data.js");
+    try {
+      mkdirSync(pjoin(tmp, "final"));
+      const synth = { ...Object.fromEntries([...every].map((k) => [k, stand])), keeper: lying, frog: round };
+      for (const k of every) writeFileSync(pjoin(tmp, "final", k + ".svg"), synth[k]);
+      writeFileSync(pjoin(tmp, "roles.json"), J({ ROLES: Object.fromEntries(every.filter((k) => k !== "blob").map((k) => [k, { main: "#C88528" }])), glass_rule: { "tgt.glass": "mix(color.tint, '#FFFFFF', 0.68)" } }));
+      execFileSync(process.execPath, [pjoin(ROOT, "scripts/build-pieces-data.mjs"), tmp, out], { stdio: "pipe" });
+      const B = await import(pathToFileURL(out).href), ub = (k) => 1.1 * B.HEIGHT * (B.FIT[k] || 1) / B.CANVAS.tall;
+      const shifted = (k) => B.TRACED[k].body.replace(/translate\(([-\d.]+),([-\d.]+)\)/g, (mm, x, y) => `translate(${+x + 600},${+y + 600})`);
+      const ext = (k) => { const W5 = B.CANVAS.w + 1200, H5 = B.CANVAS.h + 1200; const e = stance(silhouette(shifted(k), W5, H5), W5, H5, k); return { left: e.left - 600, right: e.right - 600, top: e.top - 600, bottom: e.bottom - 600 }; };
+      const inside = (k) => { const e = ext(k); return e.left >= 0 && e.right <= B.CANVAS.w && e.top >= 0 && e.bottom <= B.CANVAS.h; };
+      check("the build takes a wide lying body and a legless round one on the same canvas: it does not throw, and nothing is cropped (every part of the art is inside the canvas)", ["keeper", "frog", "wizard"].every(inside), J(Object.fromEntries(["keeper", "frog", "wizard"].map((k) => [k, ext(k)]))));
+      const kindOf = (k) => floorEllipse(silhouette(B.TRACED[k].body, B.TRACED[k].w, B.TRACED[k].h), B.TRACED[k].w, B.TRACED[k].h, k).kind;
+      check("the wide body is the long case, the ball the legless one, the person stands by its feet; the wide one is drawn smaller on the canvas (its art shorter than the other figures) and larger by its FIT", J([kindOf("keeper"), kindOf("frog"), kindOf("wizard")]) === '["long","legless","feet"]' && ext("keeper").bottom - ext("keeper").top < ext("wizard").bottom - ext("wizard").top - 5 && B.FIT.keeper < B.FIT.wizard * 1.3, J({ kinds: [kindOf("keeper"), kindOf("frog"), kindOf("wizard")], keeper: ext("keeper"), wizard: ext("wizard"), FIT: B.FIT }));
+      const bad = every.filter((k) => { const t = B.TRACED[k], mk = silhouette(t.body, t.w, t.h), f = B.FOOTPRINT[k]; return tileFit(mk, t.w, t.h, f, 1.1 * B.HEIGHT / B.CANVAS.tall) < B.FIT[k] - 1e-9; });
+      check("every piece in a build stays on its tile at the size the build gives it: floor ellipse inside the diamond, the near half of its floor inside it, at most 23.5 board units to either side of the foot point", bad.length === 0, bad.join());
+      const wideBoard = { w: (ext("keeper").right - ext("keeper").left) * ub("keeper"), halfFoot: Math.max(Math.abs(ext("keeper").left - B.CANVAS.x), Math.abs(ext("keeper").right - B.CANVAS.x)) * ub("keeper") };
+      check("the wide body is within the side limit about its foot point, and an ordinary figure keeps equal area with the rest", wideBoard.halfFoot <= TILE.side + 0.3 && Math.abs(B.FIT.wizard - B.FIT.pawn) < 0.01, J(wideBoard));
+    } finally { if (tmp.startsWith(tmpdir()) && tmp.includes("pieces-build-test-")) rmSync(tmp, { recursive: true, force: true }); }
+    // The shipped set.
+    const offTile = every.filter((k) => { const t = TRACED[k]; return tileFit(silhouette(t.body, t.w, t.h), t.w, t.h, FOOTPRINT[k], 1.1 * HEIGHT / CANVAS.tall) < FIT[k] - 1e-9; });
+    check("every piece in the set stays on its tile: floor ellipse inside the diamond, the near half of its floor inside it, at most 23.5 board units to either side of the foot point", offTile.length === 0, offTile.join());
+  }
+  // and on the art itself: the foot point is under the figure, in its bottom quarter (a mark that missed the feet, or art
+  // that moved without its mark, lands outside)
+  check("the foot point is under each figure, in its bottom quarter", every.every((k) => m[k].left < CANVAS.x && CANVAS.x < m[k].right && m[k].bottom - (m[k].bottom - m[k].top) / 4 < CANVAS.y && CANVAS.y < m[k].bottom), J(Object.fromEntries(every.map((k) => [k, [m[k].left, m[k].right, m[k].top, m[k].bottom]]))));
+  const size = Object.fromEntries(Object.entries(TRACED).map(([k, t]) => [k, {
+    h: +(1.1 * HEIGHT * (FIT[k] || 1)).toFixed(2), w: +((m[k].right - m[k].left) * at(k)).toFixed(2),
+    area: Math.round(silhouette(t.body, t.w, t.h).reduce((n, v) => n + v, 0) * at(k) ** 2) }]));
+  check("every piece is within the caps: at most SIZE.h tall and SIZE.w wide on the board (the tile is 56 wide)", SIZE.scale === 1.1 && Object.values(size).every((z) => z.h <= SIZE.h + 0.05 && z.w <= SIZE.w + 0.05), J(size));
+  check("every piece covers the same area on the board (within 2% of SIZE.area), unless a cap holds it smaller", Object.values(size).every((z) => Math.abs(z.area - SIZE.area) <= SIZE.area * 0.02 || ((z.h >= SIZE.h - 0.1 || z.w >= SIZE.w - 0.1) && z.area < SIZE.area)), J(size));
+  check("HALF_WIDTH is each figure's measured half width", Object.entries(m).every(([k, f]) => Math.abs(HALF_WIDTH[k] - (f.right - f.left) / 2) <= 1), J(HALF_WIDTH));
+  const placed = (svg) => { const a = /<svg x="([-\d.]+)" y="([-\d.]+)" width="([\d.]+)" height="([\d.]+)" viewBox="0 0 (\d+) (\d+)"/.exec(svg); return a && [+a[1] + CANVAS.x * a[3] / a[5], +a[2] + CANVAS.y * a[4] / a[6], a[4] * CANVAS.tall / a[6]]; };
+  const bad = [];
+  for (const k of Object.keys(TRACED)) for (const mirrored of [false, true]) {
+    const svg = pieceSVG({ shape: k, color: ROLES[k] ? targets(PIECES.colors[0]) : null, mirrored, scale: 1 }), p = placed(svg);
+    const shadows = [...svg.slice(0, svg.indexOf("<svg")).matchAll(/<ellipse cx="([-\d.]+)" cy="([-\d.]+)" rx="([\d.]+)"/g)].map((e) => [+e[1], +e[2], +e[3]]);
+    const half = HALF_WIDTH[k] * HEIGHT * (FIT[k] || 1) / CANVAS.tall;
+    const moved = [...svg.matchAll(/transform="translate\(0,([-\d.]+)\) scale\(1\)"/g)].map((t) => +t[1]), off = pieceSVG({ shape: k, color: null, mirrored, clip: false, scale: 1 });
+    const ok = p && Math.hypot(p[0], p[1]) <= 0.05 && Math.abs(p[2] - HEIGHT * (FIT[k] || 1)) <= 0.05 && mirrored === svg.includes("scale(-1,1)")
+      && (FOOT_DROP ? moved.length === 2 && moved.every((d) => d === FOOT_DROP) : !moved.length) && !/translate\(0,/.test(off)
+      && shadows.length === 2 && shadows.every(([x, y]) => x === 0 && y === 0)
+      && Math.abs(shadows[0][2] - half * SHADOW.soft) <= 0.05 && Math.abs(shadows[1][2] - half * SHADOW.core) <= 0.05 && SHADOW.soft >= 1;
+    if (!ok) bad.push(k + (mirrored ? " mirrored" : ""));
+  }
+  {
+    // The board draws every shadow first and every piece after (board.js), so no shadow paints over a piece: the two parts
+    // split cleanly, and together they are the whole piece, shadow first.
+    const o = { shape: "osprey", color: targets(PIECES.colors[0]) }, sh = pieceSVG({ ...o, part: "shadow" }), art = pieceSVG({ ...o, part: "art" });
+    check("pieceSVG's shadow part is only the shadow and its art part only the art; the whole piece is the shadow, then the art", sh.includes("<ellipse") && !sh.includes("<svg") && art.includes("<svg") && !art.includes("<ellipse") && pieceSVG(o) === sh + art);
+    const board = readFileSync(new URL("../public/js/board.js", import.meta.url), "utf8");
+    check("the board draws every piece's shadow before any piece", /part: "shadow"[\s\S]*part: "art"/.test(board) && !/pieceSVG\(\{(?![^}]*part:)/.test(board));
+  }
+  check("pieceSVG puts the standing point on (0, FOOT_DROP) on a tile and on (0, 0) off one, for every shape, mirrored too, at its height; its shadow is centred there, the soft one at least as wide as the figure and both in proportion to its width", !bad.length, bad.join());
+}
 const rgb = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
 const near = (a, b) => Math.hypot(...rgb(a).map((v, i) => v - rgb(b)[i])) <= 40;
 const fillsOf = (body) => [...body.matchAll(/fill="(#[0-9A-Fa-f]{6})"|style="fill:var\(--outline\)"/g)].map((m) => m[1] || "ink");

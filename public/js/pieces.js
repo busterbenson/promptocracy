@@ -5,7 +5,7 @@
 // shape's main / shade / tint / deep / glass family for the player color's matching step; a fill slightly off its family
 // keeps that offset, so the shading survives. A shape's FIXED fills (an eye's highlight) never change. Ink fills follow
 // the page's --outline.
-import { TRACED, ROLES, FIXED, FOOT, HEIGHT } from "./pieces-data.js";
+import { TRACED, ROLES, FIXED, CANVAS, HEIGHT, FIT, HALF_WIDTH } from "./pieces-data.js";
 
 export const HW = 28, HH = HW * Math.sin(42 * Math.PI / 180), DEPTH = 9;   // a tile: half width, half height, slab depth
 
@@ -55,23 +55,33 @@ export function ensureDefs() {
   d.id = "piece-defs";
   d.setAttribute("aria-hidden", "true");
   d.innerHTML = `<svg width="0" height="0" style="position:absolute" focusable="false"><defs>
-<radialGradient id="gContact"><stop offset="0" stop-color="#000" stop-opacity=".72"/><stop offset=".62" stop-color="#000" stop-opacity=".52"/><stop offset="1" stop-color="#000" stop-opacity="0"/></radialGradient>
-<radialGradient id="gAO"><stop offset="0" stop-color="#000" stop-opacity=".30"/><stop offset=".5" stop-color="#000" stop-opacity=".16"/><stop offset="1" stop-color="#000" stop-opacity="0"/></radialGradient>
+<radialGradient id="gContact"><stop offset="0" stop-color="#000" stop-opacity=".55"/><stop offset=".6" stop-color="#000" stop-opacity=".42"/><stop offset="1" stop-color="#000" stop-opacity="0"/></radialGradient>
+<radialGradient id="gAO"><stop offset="0" stop-color="#000" stop-opacity=".34"/><stop offset=".5" stop-color="#000" stop-opacity=".18"/><stop offset="1" stop-color="#000" stop-opacity="0"/></radialGradient>
 <clipPath id="tt" clipPathUnits="userSpaceOnUse"><polygon points="-27.5,0 0,-17.8 27.5,0 0,17.8"/></clipPath>
 </defs></svg>`;
   document.body.prepend(d);
 }
 
-// One piece with its feet centred on (0, 0): a contact shadow under it (clipped to the tile top), then the art.
-// `mirrored` turns the art to face the other way around the feet. Not offered a shape that does not exist: it is a pawn.
-export function pieceSVG({ shape, color, scale = 1.1, mirrored = false, clip = true }) {
+// One piece standing on (0, FOOT_DROP): a shadow under it (clipped to the tile top), then the art. Every shape is on the
+// same canvas standing on CANVAS.x, CANVAS.y (the centre of its floor ellipse, fitted to its art: FOOTPRINT) and is
+// HEIGHT times its FIT tall, so that point goes on the same spot for all of them. On a tile (`clip`) that spot is the tile
+// centre (FOOT_DROP 0: the ellipse's centre is the tile's, Buster 11-22); off a tile (a thumbnail, a pill) it is (0, 0). The shadow follows the figure's width: a soft one a little wider than the figure, and a
+// dark core, both centred under its feet. `mirrored` turns the art to face the other way around that point.
+// `part`: "shadow" or "art" alone, for a board that draws every shadow first and every piece after, so no shadow ever
+// paints over a piece (its own, or a neighbour's feet that reach past its tile); both, shadow first, by default.
+// Not offered a shape that does not exist: it is a pawn.
+export const SHADOW = { soft: 1.25, core: .5 };   // each ellipse's half width, as a share of the figure's half width
+export const FOOT_DROP = 0;                       // board units below the tile centre; 0 = the floor ellipse is centred on the tile
+export function pieceSVG({ shape, color, scale = 1.1, mirrored = false, clip = true, drop = clip ? FOOT_DROP : 0, part = "" }) {
   const key = TRACED[shape] ? shape : "pawn";
-  const t = TRACED[key], H = HEIGHT[key] || 36, W = H * t.w / t.h, f = FOOT[key] || [0, .33];
-  const rx = f[1] * W, ry = rx * .52;
-  const shadow = `<ellipse cx="0" cy="${(ry * .1).toFixed(2)}" rx="${(rx * 1.9).toFixed(2)}" ry="${(ry * 1.9).toFixed(2)}" fill="url(#gAO)"/><ellipse cx="${(rx * .42).toFixed(2)}" cy="${(ry * .12).toFixed(2)}" rx="${(rx * 1.45).toFixed(2)}" ry="${(ry * 1.4).toFixed(2)}" fill="url(#gContact)" opacity=".5"/><ellipse cx="0" cy="${(ry * .06).toFixed(2)}" rx="${(rx * 1.18).toFixed(2)}" ry="${(ry * 1.3).toFixed(2)}" fill="url(#gContact)"/>`;
-  const art = `<svg x="${(-W / 2 - f[0] * W).toFixed(2)}" y="${(-H + ry).toFixed(2)}" width="${W.toFixed(2)}" height="${H}" viewBox="0 0 ${t.w} ${t.h}" preserveAspectRatio="xMidYMax meet" overflow="visible">${recolor(key, color)}</svg>`;
+  const u = HEIGHT / CANVAS.tall * (FIT[key] || 1), half = (HALF_WIDTH[key] || 150) * u, k = HH / HW;
+  const e = (cy, w, fill) => `<ellipse cx="0" cy="${cy.toFixed(2)}" rx="${(half * w).toFixed(2)}" ry="${(half * w * k).toFixed(2)}" fill="url(#${fill})"/>`;
+  const shadow = e(0, SHADOW.soft, "gAO") + e(0, SHADOW.core, "gContact");
+  const art = `<svg x="${(-CANVAS.x * u).toFixed(2)}" y="${(-CANVAS.y * u).toFixed(2)}" width="${(CANVAS.w * u).toFixed(2)}" height="${(CANVAS.h * u).toFixed(2)}" viewBox="0 0 ${CANVAS.w} ${CANVAS.h}" overflow="visible">${recolor(key, color)}</svg>`;
   const flip = mirrored ? ' transform="scale(-1,1)"' : "";
-  return `<g${clip ? ' clip-path="url(#tt)"' : ""}><g transform="scale(${scale})">${shadow}</g></g><g transform="scale(${scale})"><g${flip}>${art}</g></g>`;
+  const at = `${drop ? `translate(0,${drop}) ` : ""}scale(${scale})`;
+  const under = `<g${clip ? ' clip-path="url(#tt)"' : ""}><g transform="${at}">${shadow}</g></g>`, over = `<g transform="${at}"><g${flip}>${art}</g></g>`;
+  return part === "shadow" ? under : part === "art" ? over : under + over;
 }
 
 // A creature on the board: the piece its catalog entry is named for (the Blob), in its own colors, standing like a player's

@@ -75,9 +75,14 @@ export function sceneSVG(board, { sel = null, me = null, id = "b", showFog = tru
   for (const t of reach) s += `<polygon class="reach" points="${inset(t.x, t.y, .86)}"/>`;
   if (sel) s += `<polygon class="selected" points="${inset(sel.x, sel.y, .94)}"/>`;
   s += `<polygon class="hover" id="${id}-hov" points=""/>`;
+  // every shadow first, then every piece back to front: a piece's shadow never paints over a piece, its own or a neighbour's
   for (const p of pieces) {
     const c = P(p.at.x + .5, p.at.y + .5);
-    s += `<g class="piece" data-piece="${esc(p.color.key)}" transform="translate(${f1(c[0])},${f1(c[1])})">${pieceSVG({ shape: p.shape, color: p.color, mirrored: !!p.mirrored })}</g>`;
+    s += `<g class="piece-shadow" transform="translate(${f1(c[0])},${f1(c[1])})">${pieceSVG({ shape: p.shape, color: p.color, mirrored: !!p.mirrored, part: "shadow" })}</g>`;
+  }
+  for (const p of pieces) {
+    const c = P(p.at.x + .5, p.at.y + .5);
+    s += `<g class="piece" data-piece="${esc(p.color.key)}" transform="translate(${f1(c[0])},${f1(c[1])})">${pieceSVG({ shape: p.shape, color: p.color, mirrored: !!p.mirrored, part: "art" })}</g>`;
   }
   return { markup: s, box: bbox(new Set([...charted, ...ring(charted, 1)])), tiles };
 }

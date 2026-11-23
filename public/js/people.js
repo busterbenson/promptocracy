@@ -7,11 +7,11 @@ export const hexOf = (c) => (c && /^#[0-9a-f]{6}$/i.test(c.hex) ? c.hex : "#888"
 
 /**
  * The piece, small: a player's traced shape in their color. The viewBox is centred on the piece's own height (its feet are at y 0, lifted 3 units for its shadow, and
- * it stands HEIGHT[shape] tall), so every shape's visual mass sits at the middle of the box and a pill's text lines up with it.
+ * every shape stands HEIGHT tall), so every shape's visual mass sits at the middle of the box and a pill's text lines up with it.
  */
 export function mini(p, cls = "") {
   ensureDefs();
-  return `<svg ${cls ? `class="${cls}" ` : ""}viewBox="-22 ${(-(HEIGHT[p.shape] || HEIGHT.pawn) / 2 - 22).toFixed(1)} 44 50" aria-hidden="true">${pieceSVG({ shape: p.shape, color: p.color, scale: 1, clip: false })}</svg>`;
+  return `<svg ${cls ? `class="${cls}" ` : ""}viewBox="-22 ${(-HEIGHT / 2 - 22).toFixed(1)} 44 50" aria-hidden="true">${pieceSVG({ shape: p.shape, color: p.color, scale: 1, clip: false })}</svg>`;
 }
 
 /**
