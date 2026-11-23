@@ -226,7 +226,8 @@ console.log("moderator runner");
   const t7 = await night({ scenario: { apply: { 4: { action: "ops", ops: [{ remove: "RULES.md" }, { dir: "RULES.md" }, { write: ["RULES.md/x", "y"] }] }, 5: { action: "win", to: 50 } } }, state: { job: job([P(4, "401"), P(5, "402.2")]) }, opts: { audit: false } });
   check("a change that turns RULES.md into a folder fails only that proposal", t7.r.status === "claimed" && t7.claims[0].outcomes[0].applied === false && t7.claims[0].outcomes[1].applied === true, J([t7.r.status, t7.claims[0]?.outcomes]));
   // Every kind of proposal, done right, applies; each done wrong is refused (pass 3).
-  const r403 = md.slice(md.indexOf("### 403 "), md.indexOf("## 500."));
+  const r403 = md.slice(md.indexOf("### 403 "), md.indexOf("### 404 "));
+  const rep502 = md.slice(md.indexOf("### 502 "), md.indexOf("### 503 ")).split("\n").slice(1).join("\n").trim();
   const body403 = r403.split("\n").slice(1).join("\n").trim(), body403m = body403.replace("**403.1**", "**302.1**");   // a move renumbers the clauses with the rule (rule 109.1)
   const kinds = [
     ["a move (403 to block 300 as 302, with its forwarder)", P(4, "403", { kind: "move", new_num: "302", to_block: "300", after_text: `302 Paradox\n\n${body403m}\n\n403 [Moved to 302]` }),
@@ -238,7 +239,7 @@ console.log("moderator runner");
     ["an add that lands in the core block", P(4, "400", { kind: "add", scope: "block", new_num: "405", after_text: "Every player starts the game with 5 points." }),
       [{ replace: ["RULES.md", "## 200.", "### 405 Head start [m]\n**405.1** Every player starts the game with 5 points.\n\n## 200."] }], /rule 405 is in block 100, not block 400/],
     ["a repeal of a clause in the middle of a rule (202.3): its number stays empty and nothing renumbers (rule 109.1)", P(4, "202.3", { kind: "repeal", scope: "clause", after_text: "" }), [{ replace: ["RULES.md", "**202.3** Every part of a turn is optional, and skipping one has no penalty.\n\n", ""] }], true],
-    ["a repeal (403)", P(4, "403", { kind: "repeal", after_text: "[Repealed]" }), [{ replace: ["RULES.md", body403, "[Repealed]"] }], true],
+    ["a repeal (502)", P(4, "502", { kind: "repeal", after_text: "[Repealed]" }), [{ replace: ["RULES.md", rep502, "[Repealed]"] }], true],   // 502: nothing cites it (403 is cited by 404.2 now)
     ["a mark on rule 401", P(4, "401", { kind: "mark", after_text: "[unanimous]" }), [{ replace: ["RULES.md", "### 401 Points [m]", "### 401 Points [u]"] }], true],
     ["a mark on rule 401 that also rewrites it", P(4, "401", { kind: "mark", after_text: "[unanimous]" }), [{ replace: ["RULES.md", "### 401 Points [m]", "### 401 Points [u]"] }, { replace: ["RULES.md", "gets 10 points when", "gets 1000 points when"] }], /mark proposal changed rule 401's text/],
     ["a mark on a block (blocks carry none, rule 105.1)", P(4, "401", { kind: "mark", after_text: "[unanimous]" }), [{ replace: ["RULES.md", "### 401 Points [m]", "### 401 Points [u]"] }, { replace: ["RULES.md", "## 400. Points and winning", "## 400. Points and winning [u]"] }], /mark proposal changed block 400's heading|order of the rules|heading changed/],
