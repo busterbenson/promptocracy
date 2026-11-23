@@ -6,6 +6,7 @@ import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, rmSync, readFileSy
 import { tmpdir } from "node:os";
 import { join as pjoin } from "node:path";
 import { ROOT, COLORS, authorizeQuery, client, connect, consent, createGame, d1, exchange, finish, form, join, mcp, migrate, newPkce, newState, registerClient, sha256Hex, freePort, startRulesStub, startServer, tool } from "./lib.mjs";
+import { localD1 } from "../scripts/local-d1.mjs";
 import { chartOffsets, chartedAround, coordLabel, diagonals, islandCoords, tileLabel, neighbors, parseLabel, validCoord, withinSteps, xLabel, yLabel, zLabel } from "../src/lib/geometry.js";
 import { DEFAULT_SETTINGS, getSettings, settingsForSize, spawnSpots, validateSettings } from "../src/lib/settings.js";
 import { DIAGONAL_MOVES, SHARED_TILES } from "../src/lib/board-rules.js";
@@ -70,7 +71,7 @@ console.log("migration 0002");
     const W = pjoin(ROOT, "node_modules/.bin/wrangler");
     const run = (args) => execFileSync(W, [...args, "--config", cfg, "--local", "--persist-to", st], { cwd: cfgDir, encoding: "utf8", timeout: 60000, env: { ...process.env, CI: "1", NO_COLOR: "1", WRANGLER_SEND_METRICS: "false" } });
     run(["d1", "migrations", "apply", "DB"]); // 0001 only
-    const sql = (s) => JSON.parse(run(["d1", "execute", "DB", "--json", "--command", s]).replace(/^[^[]*/, ""))[0].results;
+    const sql = (s) => localD1(st, s); // in-process on the same state dir (scripts/local-d1.mjs), not a wrangler spawn per statement
     sql(`INSERT INTO games (id, slug, name, repo, join_code, status, created_at) VALUES ('g1','old','Old','a/b','AAAA2222','playing','2026-01-01T00:00:00Z')`);
     for (const [i, n] of ["ada", "bo", "cy"].entries()) {
       sql(`INSERT INTO players (id, game_id, email, display_name, marker, color, score, turn_order, joined_at) VALUES ('p${i}','g1','${n}@x.test','${n}','m${i}','#abcdef',${i * 10},${i},'2026-01-01T00:00:00Z')`);
