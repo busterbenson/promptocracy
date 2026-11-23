@@ -298,11 +298,20 @@ def py_literal(raw, line0):
             if body.startswith("{{", i):
                 text.append("{"); lines.append(line); i += 2
                 continue
-            depth, j = 1, i + 1
+            depth, j, quote = 1, i + 1, None
             while j < len(body) and depth:
-                if body[j] == "{":
+                ch = body[j]
+                if quote:   # a string inside the expression: its braces don't nest
+                    if ch == "\\":
+                        j += 2
+                        continue
+                    if ch == quote:
+                        quote = None
+                elif ch in "'\"":
+                    quote = ch
+                elif ch == "{":
                     depth += 1
-                elif body[j] == "}":
+                elif ch == "}":
                     depth -= 1
                 j += 1
             text.append(PUA); lines.append(line)
@@ -352,6 +361,9 @@ def py_units(src, symbol, calls):
                 found = node
                 break
             if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == symbol for t in node.targets):
+                found = node
+                break
+            if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name) and node.target.id == symbol:
                 found = node
                 break
         if found is None:
