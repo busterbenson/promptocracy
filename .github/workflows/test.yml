@@ -30,6 +30,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: node scripts/ci-shard.mjs --verify 3
       - run: node scripts/ci-shard.mjs --fast
 
   test:

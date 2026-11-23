@@ -36,6 +36,16 @@ const MINUTES = {
 const DEFAULT = 0.5;
 const file = (cmd) => cmd.replace(/^node\s+/, "");
 
+// --verify <n>: the fast tier plus the n shards run every command of `npm test` exactly once (a suite added to package.json, or a split bug,
+// can't silently drop one). Runs nothing; CI's `fast` job calls it.
+if (process.argv[2] === "--verify") {
+  const n = Number(process.argv[3] || 3), seen = {};
+  const run = (a) => spawnSync("node", [ROOT + "scripts/ci-shard.mjs", ...a, "--list"], { encoding: "utf8" }).stdout.split("\n").filter((l) => l.startsWith("node "));
+  for (const c of [...run(["--fast"]), ...Array.from({ length: n }, (_, i) => run([String(i), String(n)])).flat()]) seen[c] = (seen[c] || 0) + 1;
+  const bad = chain.filter((c) => seen[c] !== 1).map((c) => `${c} x${seen[c] || 0}`).concat(Object.keys(seen).filter((c) => !chain.includes(c)).map((c) => `${c} (not in npm test)`));
+  if (bad.length) { console.log("shards do not cover the test chain exactly once: " + bad.join(", ")); process.exit(1); }
+  console.log(`fast + ${n} shards cover all ${chain.length} commands of npm test exactly once`); process.exit(0);
+}
 const list = process.argv.includes("--list");
 const withFast = process.argv.includes("--with-fast");
 const args = process.argv.slice(2).filter((a) => a !== "--list" && a !== "--with-fast");
