@@ -4,7 +4,8 @@
 // shows (the default). All of it is the player's own draft's: the same gate as their own edit (EDIT_GUARD), checked in the SQL.
 // Nothing here writes a ticket's `makes`: the page lays these rows over each entry on the way out (overlay), so a drawing that lands while
 // the player is typing can never be lost by, or lose, their edit.
-import { ART_COST_MICRO, MAX_SAVED, DRAWING_STALE_MS, DRAW_TIMEOUT_MS, IMAGE_MODEL, artKey, runImage, sha256Hex, sizeFor, stubImage, stylePrompt, tmpKey } from "./art.js";
+import { ART_COST_MICRO, MAX_SAVED, DRAWING_STALE_MS, DRAW_TIMEOUT_MS, IMAGE_MODEL, artKey, drawChecked, runImage, sha256Hex, sizeFor, stubImage, stylePrompt, tmpKey } from "./art.js";
+import { lookAt } from "./art-check";
 import { logCall, monthSpend } from "./agent";
 import { dayOpenBinds } from "./day";
 import { EDIT_GUARD } from "./tickets.js";
@@ -89,10 +90,14 @@ export async function queueNew(ctx: Ctx, game: any, player: any, ticket: any, ma
   return jobs.length;
 }
 
-/** One drawing: the model, the bytes' hash, the picture under tmp/, the rows. Never throws; a failure is a failed draw. @rule 801.2 */
+/**
+ * One drawing: the model, a look at the picture by its kind's question (src/lib/art-check.ts), the bytes' hash, the picture under tmp/, the rows.
+ * A drawing that fails its look is drawn once more when the Worker has the time (src/lib/art.js drawChecked); the one that is kept says on its
+ * draw row (reason, state stays done) whether it failed the look or was not looked at; a clear pass leaves reason empty. Never throws; a failure
+ * to draw is a failed draw. @rule 801.2
+ */
 export async function draw(env: Env, j: Draw): Promise<void> {
   const t0 = Date.now(), model = modelOf(env);
-  const seed = crypto.getRandomValues(new Uint32Array(1))[0] % 2147483647;
   const fail = async (reason: string) => {
     await env.DB.prepare("UPDATE art_draws SET state = 'failed', reason = ?, ended_at = ? WHERE id = ? AND state = 'pending'").bind(reason.slice(0, 120), nowIso(Date.now()), j.drawId).run().catch(() => {});
     await logCall(env, j.game, j.tz, Date.now(), { player_id: j.player.id, agent: "gremlin", purpose: "art", model, outcome: "failed", ms: Date.now() - t0, reason });
@@ -100,10 +105,18 @@ export async function draw(env: Env, j: Draw): Promise<void> {
   try {
     const size = sizeFor(j.kind, j.attrs);
     const prompt = stylePrompt(j.kind, j.attrs, j.prompt);
-    const made = await Promise.race([
-      env.ART_STUB ? stubImage(env.ART_STUB, { seed }) : runImage(env.AI, model, { prompt, ...size, seed }),
-      new Promise<never>((_, rej) => setTimeout(() => rej(new Error("timeout")), DRAW_TIMEOUT_MS)),
-    ]);
+    const make = (attempt: number, ms: number) => {
+      const seed = crypto.getRandomValues(new Uint32Array(1))[0] % 2147483647;
+      return Promise.race([
+        env.ART_STUB ? stubImage(env.ART_STUB, { seed }) : runImage(env.AI, model, { prompt, ...size, seed }),
+        new Promise<never>((_, rej) => setTimeout(() => rej(new Error("timeout")), Math.min(DRAW_TIMEOUT_MS, ms))),
+      ]);
+    };
+    // the tests' image stand-in is not looked at unless ART_CHECK_STUB says how
+    const check = env.ART_STUB && !env.ART_CHECK_STUB ? null : (made: any, attempt: number, ms: number) => lookAt(env, j.game, j.tz, j.player.id, j.kind, j.prompt, made, attempt, ms);
+    const out = await drawChecked({ make, check });
+    const made = out.made;
+    const note = out.verdict === "fail" ? `check failed: ${out.reason}` : out.verdict === "unchecked" ? `unchecked: ${out.reason}` : null;
     const hash = await sha256Hex(made.bytes);
     await env.ART.put(tmpKey(hash), made.bytes, { httpMetadata: { contentType: made.type } });
     const now = nowIso(Date.now());
@@ -111,9 +124,9 @@ export async function draw(env: Env, j: Draw): Promise<void> {
       env.DB.prepare("INSERT OR IGNORE INTO art_objects (hash, size_bytes, content_type, model, created_at) SELECT ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM tickets WHERE id = ? AND state = 'Draft')").bind(hash, made.bytes.length, made.type, env.ART_STUB ? `stub:${env.ART_STUB}` : model, now, j.ticket.id),
       // a drawing is the requester's while they draft: one that lands after the ticket has left Draft (confirmed, withdrawn into a ballot) is not tied to it
       env.DB.prepare("INSERT OR IGNORE INTO art_refs (hash, game_id, ticket_id, entry_name, prompt, saved, is_default, created_at) SELECT ?, ?, ?, ?, ?, 0, 0, ? WHERE EXISTS (SELECT 1 FROM tickets WHERE id = ? AND state = 'Draft')").bind(hash, j.game.id, j.ticket.id, j.name, j.prompt, now, j.ticket.id),
-      env.DB.prepare("UPDATE art_draws SET state = CASE WHEN EXISTS (SELECT 1 FROM tickets WHERE id = ? AND state = 'Draft') THEN 'done' ELSE 'failed' END, reason = CASE WHEN EXISTS (SELECT 1 FROM tickets WHERE id = ? AND state = 'Draft') THEN NULL ELSE 'ticket changed' END, ended_at = ? WHERE id = ? AND state = 'pending'").bind(j.ticket.id, j.ticket.id, now, j.drawId),
+      env.DB.prepare("UPDATE art_draws SET state = CASE WHEN EXISTS (SELECT 1 FROM tickets WHERE id = ? AND state = 'Draft') THEN 'done' ELSE 'failed' END, reason = CASE WHEN EXISTS (SELECT 1 FROM tickets WHERE id = ? AND state = 'Draft') THEN ? ELSE 'ticket changed' END, ended_at = ? WHERE id = ? AND state = 'pending'").bind(j.ticket.id, j.ticket.id, note ? note.slice(0, 120) : null, now, j.drawId),
     ]);
-    await logCall(env, j.game, j.tz, Date.now(), { player_id: j.player.id, agent: "gremlin", purpose: "art", model, outcome: "ok", ms: Date.now() - t0, cost_micro: ART_COST_MICRO });
+    await logCall(env, j.game, j.tz, Date.now(), { player_id: j.player.id, agent: "gremlin", purpose: "art", model, outcome: "ok", ms: Date.now() - t0, cost_micro: ART_COST_MICRO * out.attempts });
   } catch (e: any) {
     console.error("art: a drawing failed:", e?.message || "error");
     await fail(String(e?.message || "error"));

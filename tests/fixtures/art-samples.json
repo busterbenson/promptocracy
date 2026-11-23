@@ -1,0 +1,37 @@
+{
+  "note": "One sample entry per kind, for the live drawing run (a scratch worker that calls stylePrompt, runImage, drawChecked and lookAt on the real AI binding) and for the tests that prove no subject is ever written into a prompt. These words are Gremlin's side of the prompt: they are NEVER part of the house style or a kind's block.",
+  "samples": [
+    {
+      "kind": "structure",
+      "attrs": {
+        "size": {
+          "w": 1,
+          "h": 1
+        }
+      },
+      "words": "a ponderosa pine tree"
+    },
+    {
+      "kind": "tile",
+      "attrs": {},
+      "words": "a mossy swamp bog"
+    },
+    {
+      "kind": "item",
+      "attrs": {},
+      "words": "a battered old copper teapot"
+    },
+    {
+      "kind": "creature",
+      "attrs": {
+        "temper": "neutral"
+      },
+      "words": "a small peaceful river otter"
+    },
+    {
+      "kind": "feature",
+      "attrs": {},
+      "words": "a wooden notice board"
+    }
+  ]
+}

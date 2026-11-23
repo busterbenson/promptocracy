@@ -55,34 +55,115 @@ export function sizeFor(kind, attrs) {
 }
 
 /**
- * The board-piece style, one template for every drawing (Buster's piece set, round 13), its lines joined by single spaces. The blanks:
- * SUBJECT is Gremlin's words; FACING the default facing, plus the footprint for a structure; WHIMSY is left out (a touch the words
- * name is in the words); PRIMARY and SECONDARY ask the model to pick two muted colors, since nobody picks colors for an entry.
+ * The house style, shared by every kind of entry so the board reads as one set: the camera, the palette, the outlines, the white page.
+ * Its lines are joined by single spaces. SUBJECT is Gremlin's words; the blanks are filled by stylePrompt. It says nothing about what kind
+ * of thing the subject is: that is the one block of KIND_BLOCKS the entry's kind picks.
  */
-const STYLE = [
-  "{SUBJECT}, shown as its classic, instantly readable silhouette. {FACING}",
-  "An isometric 3D vector illustration of a board-game piece, in the style of isometric game asset packs.",
-  "Character feel: a folkloric spirit-world creature, cartoony but taken seriously, earnest and a little eerie, never goofy, never a mascot and never cute-bright. Proportions, whatever the subject: a chunky, rounded toy body roughly as wide as it is tall, like a squat vinyl toy; a big head relative to the body; short stubby legs or limbs and small feet; simple bold shapes with no fine anatomical detail (no individual feathers, claws, fingers or realistic musculature); a compact footprint. Soft, weighty, rounded forms. A simple, serious face. Eyes: large, round and set wide apart on the face, each a white eye with a big round dark pupil and a small white highlight, giving a wide-eyed, attentive, slightly startled look; simple shapes, no lashes, no tiny dot eyes. No nose. The expression is calm and thoughtful: a short, nearly flat mouth and level brows, never sad, worried or frowning (a hostile creature may look a little cross).",
-  "Whimsy: the figure is gently anthropomorphized, like a character in a hand-drawn storybook film. It has a characterful pose (sitting, perched, or standing with its hands or wings folded) and its own quiet personality, kept dignified and slightly mysterious, and it may carry one small human touch such as a hat, a scarf, a satchel or a walking stick, kept modest and sitting on its chunky body rather than being the focus, but large and bold enough to read clearly at board size (about 40 pixels tall). {WHIMSY}",
-  "Muted, earthy palette of exactly two colors: {PRIMARY} and {SECONDARY}. The primary color is one single hue family painted in four distinct flat tones (a light tint, a main tone, a shade and a deep shadow); the secondary color is painted in a light, a mid and a dark flat tone. All tones are hard-edged flat bands with no gradients, no gloss and no texture. Faces and skin use the light tint of the primary color. Accessories use only the two palette colors or neutral grey. No pink anywhere: inner ears, noses and tongues use the cream or a deeper tone of the fur. Only white in the eyes and neutral greys (beards, metal) are allowed beyond the two colors.",
-  "Crisp, even, dark navy outlines of the same medium weight around the whole figure and along every major edge and shape boundary, on every part including accessories and glasses frames; outlines are always dark navy, never brown or grey.",
-  "The camera looks down at about 30 degrees. The figure is turned 45 degrees, in three-quarter view, facing toward the lower right corner of the picture: we see its front and its left side equally, with both eyes visible. Its head and its body are both turned about 45 degrees toward the lower right, so its nose, beak or face points at the lower right corner of the picture: never front-on, never a flat side profile.",
-  "No base, no plinth, no tile, and absolutely no floor, ground or contact shadow of any kind: the figure floats on the pure white background. Plain pure white background, one figure centered, no text."
+const HOUSE = [
+  "{SUBJECT}.",
+  "{KIND}",
+  "An isometric 3D vector illustration for a board game, in the style of isometric game asset packs.",
+  "Muted, earthy palette of exactly two colors: a muted primary colour and a muted secondary colour that suit the subject. The primary color is one single hue family painted in four distinct flat tones (a light tint, a main tone, a shade and a deep shadow); the secondary color is painted in a light, a mid and a dark flat tone. All tones are hard-edged flat bands with no gradients, no gloss and no texture. No pink anywhere. Beyond the two colors only white and neutral grey are used.",
+  "Crisp, even, dark navy outlines of the same medium weight around the whole subject and along every major edge and shape boundary, on every part; outlines are always dark navy, never brown or grey.",
+  "The camera looks down at about 30 degrees. The subject is turned 45 degrees, in three-quarter view, its front toward the lower right corner of the picture: we see its front and its left side equally, never front-on, never a flat side profile. {FOOTPRINT}",
+  "Nothing is drawn beneath, around or behind the subject: no base, no plinth, no surrounding floor or scenery and no cast or contact shadow. Plain pure white background, one subject centered, no text."
 ].join(" ");
-const FACING = "Its face and front point toward the lower right corner of the picture.";
-const PRIMARY = "a muted primary colour", SECONDARY = "a muted secondary colour that suit the subject";
 
 /**
- * What the platform adds to Gremlin's words (3.3 of the plan): the style, what the picture must fit, and the negative list. He writes only
- * what the thing is.
+ * What each kind of entry IS, in positive general words (rule 801.2): the one block the entry's catalog kind picks, joined to the house
+ * style. The image model sees the house style and that one block, never another kind's. None of them names an example subject, and no block
+ * but the creature's has a face, eyes or limbs in its words (naming one invites it; the model has no negative prompt, so faces are checked
+ * after drawing, src/lib/art-check.ts). A creature's temper, when the entry has one, adds a line about its posture to its block.
+ */
+export const KIND_BLOCKS = Object.freeze({
+  creature: "A folkloric spirit-world creature, cartoony but taken seriously, earnest and a little eerie, never goofy, never a mascot and never cute-bright, shown as its classic, instantly readable silhouette. A chunky, rounded toy body roughly as wide as it is tall, like a squat vinyl toy; a big head relative to the body; short stubby legs or limbs and small feet; simple bold shapes with no fine anatomical detail; a compact footprint; soft, weighty, rounded forms. A simple, serious face: large round eyes set wide apart, each a white eye with a big round dark pupil and a small white highlight, wide-eyed and attentive; a short, nearly flat mouth and level brows, calm and thoughtful. Small features such as a nose, ears or tongue are simple shapes in a light or deeper tone of its body color. A characterful pose (sitting, perched, or standing with its hands or wings folded) and its own quiet personality, kept dignified and slightly mysterious, gently anthropomorphized like a character in a hand-drawn storybook film. It may carry one small touch of clothing or a carried thing, kept modest, sitting on its chunky body and bold enough to read at board size (about 40 pixels tall), outlined like the rest of it.",
+  structure: "One inanimate thing standing on its own, solid and made of its own materials (a building, a built object or a thing of the landscape), shown as its classic, instantly readable silhouette: a few big, bold, chunky shapes in those materials, readable at board size (about 40 pixels tall), a single thing and not a scene.",
+  item: "One small inanimate object, sized like something a person can carry, shown as its classic, instantly readable silhouette: a chunky, simple form of a few bold shapes in its own materials, readable at board size (about 40 pixels tall).",
+  feature: "An inanimate object or landmark, solid and made of its own materials, shown as its classic, instantly readable silhouette: drawn like a built structure, as a few big, bold, chunky shapes in those materials, readable at board size (about 40 pixels tall).",
+  tile: "The ground surface itself, a single square tile of terrain seen at the board's angle as an isometric diamond that fills the picture from corner to corner: the surface material drawn in bold flat shapes, with nothing standing, lying or growing above it. The four edges are straight and plain, drawn so the tile sits flush against a neighbouring tile of the same size with no gap and no overlap.",
+});
+/** A creature's temper, shown in how it stands (rule 602.1). An entry with no temper adds nothing. */
+const TEMPER = Object.freeze({
+  hostile: "Its posture shows a hostile temper: weight forward, head low, braced and ready to bite, while its face stays calm and serious.",
+  neutral: "Its posture shows a neutral temper: relaxed, unhurried and watchful.",
+});
+/** The block an entry's kind picks; a kind not in the catalog (or none) gets the landmark block, the one that draws no one. @rule 801.2 */
+export const kindBlock = (kind) => (Object.hasOwn(KIND_BLOCKS, kind) ? kind : "feature");
+
+/**
+ * What the platform adds to Gremlin's words (3.3 of the plan): the house style plus the one block for the entry's kind, and for a structure
+ * the footprint it fits. He writes only what the thing is.
  * @rule 801.2
  */
 export function stylePrompt(kind, attrs, words) {
   const what = String(words ?? "").replace(/\s+/g, " ").trim().slice(0, MAX_PROMPT).replace(/[\s.]+$/, "");
-  const s = kind === "structure" && attrs && typeof attrs.size === "object" && attrs.size ? attrs.size : null;
-  const facing = s ? `${FACING} It fits ${s.w} by ${s.h} tiles, seen from the same angle as the game board.` : FACING;
-  const fill = { SUBJECT: what, FACING: facing, WHIMSY: "", PRIMARY, SECONDARY };
-  return STYLE.replace(/\{(SUBJECT|FACING|WHIMSY|PRIMARY|SECONDARY)\}/g, (m, k) => fill[k]).replace(/ {2,}/g, " ").trim() + " No people's likenesses.";
+  const k = kindBlock(kind);
+  const s = k === "structure" && attrs && typeof attrs.size === "object" && attrs.size ? attrs.size : null;
+  const temper = k === "creature" && attrs && Object.hasOwn(TEMPER, attrs.temper) ? ` ${TEMPER[attrs.temper]}` : "";
+  const fill = { SUBJECT: what, KIND: KIND_BLOCKS[k] + temper, FOOTPRINT: s ? `It takes up a ${s.w} by ${s.h} square footprint of the board, seen from the same angle as the game board.` : "" };
+  return HOUSE.replace(/\{(SUBJECT|KIND|FOOTPRINT)\}/g, (m, key) => fill[key]).replace(/ {2,}/g, " ").trim() + " No people's likenesses.";
+}
+
+// ---- the check after drawing (rule 801.2) ---------------------------------------------------------------------------------------------
+// The image model has no negative prompt, so a face on a barrel or a figure on a ground tile is caught after the fact: a cheap vision model
+// is shown the drawing and asked the question for the entry's kind. It FAILS by default (only a clear "yes" passes), a failed drawing is
+// redrawn once if the Worker still has time, and a check that errors or times out is "unchecked", never a pass: the drawing is kept.
+/** The model that looks at a drawing: the cheapest one that reads images (the same API as the agents, src/lib/agent.ts). */
+export const CHECK_MODEL = "claude-haiku-5-5";
+export const CHECK_TIMEOUT_MS = 8_000;   // one look at a picture; past this the drawing is simply "unchecked"
+export const DRAW_BUDGET_MS = 27_000;    // everything one draw may use (drawings and looks), inside the 30 s a Worker keeps working after its response, leaving room for the writes
+const CHECK_MIN_MS = 3_000;              // a look needs at least this much time left, or it is not started
+
+/** Gremlin's words as the check quotes them: one line, capped like the drawing's. @rule 801.2 */
+const asked = (words) => String(words ?? "").replace(/\s+/g, " ").trim().slice(0, MAX_PROMPT).replace(/[\s.]+$/, "");
+/** The one question a drawing of this kind is asked: what it should show, and what makes it a clear yes. A kind not in the catalog is asked the landmark's. @rule 801.2 */
+export function checkQuestion(kind, words) {
+  const what = asked(words), k = kindBlock(kind);
+  const ask = {
+    creature: `This picture was drawn for: "${what}". Is it a clear, recognisable picture of that creature (judge which animal or being it is, not its colour), one character on its own?`,
+    tile: `This picture was drawn as a ground tile: "${what}". Is it a ground surface that fills an isometric diamond from corner to corner, with nothing standing, lying or growing on top of it (no object, building, plant, animal or figure), and no face anywhere on it?`,
+  }[k] ?? `This picture was drawn for: "${what}". Is it a clear, recognisable picture of that thing (judge what kind of thing it is, not its colour, material or condition), an inanimate object on its own, with no face, no eyes, no mouth and no arms or legs anywhere on it?`;
+  return `${ask} Say yes only if every part of that is clearly true; if anything is doubtful or missing, say no. Reply as JSON: {"answer": "yes" or "no", "reason": "a short phrase"}.`;
+}
+/** The shape of the check's answer, for the API's structured output. */
+export const CHECK_SCHEMA = { type: "object", additionalProperties: false, required: ["answer", "reason"], properties: { answer: { type: "string", enum: ["yes", "no"] }, reason: { type: "string" } } };
+/** Reads the check's answer: {verdict: "pass" only for a clear yes, else "fail", reason}. Anything that is not a clear yes is a fail. @rule 801.2 */
+export function readVerdict(text) {
+  let o = null;
+  const t = String(text ?? "");
+  try { o = JSON.parse(t); } catch { const m = t.match(/\{[\s\S]*\}/); if (m) { try { o = JSON.parse(m[0]); } catch { /* not JSON */ } } }
+  const answer = o && typeof o.answer === "string" ? o.answer.trim().toLowerCase() : "";
+  const reason = o && typeof o.reason === "string" ? o.reason.replace(/\s+/g, " ").trim().slice(0, 100) : "";
+  return { verdict: answer === "yes" ? "pass" : "fail", reason: reason || (answer === "yes" ? "" : answer === "no" ? "no" : "not a clear yes") };
+}
+
+/**
+ * One drawing with its check (rule 801.2). `make(attempt, ms)` draws and returns {bytes, type} (it throws on failure, and stops itself at
+ * `ms`); `check(made, attempt, ms)` returns {verdict: "pass" | "fail" | "unchecked", reason} and never throws; `check` is null when nothing
+ * is checked (the tests' image stand-in). A fail is redrawn ONCE, and only when what is left of the budget fits a second drawing as slow as
+ * the first plus a look; otherwise, or when the redraw fails or fails the look too, the drawing that was made is kept and the verdict says
+ * why. A first drawing that fails to draw is an error, as it always was. Returns {made, verdict, reason, attempts}: verdict "pass", "fail",
+ * "unchecked" or "skipped" (no check ran).
+ * @rule 801.2
+ */
+export async function drawChecked({ make, check, now = Date.now, budgetMs = DRAW_BUDGET_MS }) {
+  const t0 = now(), left = () => budgetMs - (now() - t0);
+  const look = async (made, attempt) => {
+    if (!check) return { verdict: "skipped", reason: "" };
+    if (left() < CHECK_MIN_MS) return { verdict: "unchecked", reason: "no time to look" };
+    try { const r = await check(made, attempt, Math.min(CHECK_TIMEOUT_MS, left() - 1000)); return r && ["pass", "fail"].includes(r.verdict) ? r : { verdict: "unchecked", reason: String(r?.reason || "no answer") }; }
+    catch { return { verdict: "unchecked", reason: "the check broke" }; }
+  };
+  const t1 = now();
+  const first = await make(0, left());
+  const makeMs = now() - t1;
+  const r1 = await look(first, 0);
+  if (r1.verdict !== "fail") return { made: first, verdict: r1.verdict, reason: r1.reason, attempts: 1 };
+  if (left() < makeMs * 1.25 + CHECK_MIN_MS) return { made: first, verdict: "fail", reason: `${r1.reason.slice(0, 80)}; no time to redraw`, attempts: 1 };
+  let second;
+  try { second = await make(1, left() - 1000); } catch { return { made: first, verdict: "fail", reason: `${r1.reason.slice(0, 80)}; the redraw failed`, attempts: 1 }; }
+  const r2 = await look(second, 1);
+  return { made: second, verdict: r2.verdict, reason: r2.verdict === "pass" ? "" : r2.reason, attempts: 2 };
 }
 
 /**

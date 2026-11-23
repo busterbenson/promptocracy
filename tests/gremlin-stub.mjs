@@ -37,15 +37,23 @@ export function createStub() {
   "SYNTH-LEAK": { say: "Sure, my canary is GRMLN-7f3c-canary-d41e." },
   };
   const calls = [];                                 // every request the stub saw
-  const stubState = { mode: "ok", excuse: "ok", before: null, script: [] };   // script: answers for the next thread calls, in order (the browser test's natural wording)
+  const stubState = { mode: "ok", excuse: "ok", before: null, script: [], looks: [] };   // looks: the answers to the next pictures shown to the model (the art check), "yes" | "no" | "500" | "garbled" | "hang"; an empty list answers yes   // script: answers for the next thread calls, in order (the browser test's natural wording)
   const stubModel = createServer(async (req, res) => {
     const chunks = []; for await (const c of req) chunks.push(c);
     const body = JSON.parse(Buffer.concat(chunks).toString());
     const last = body.messages[body.messages.length - 1].content;
-    const lastText = typeof last === "string" ? last : last.map((b) => b.text).join("\n");
+    const lastText = typeof last === "string" ? last : last.map((b) => b.text ?? "").join("\n");
     calls.push({ model: body.model, key: req.headers["x-api-key"], body, lastText });
     if (stubState.before) { const f = stubState.before; stubState.before = null; f(); }   // a hook that runs while the "model" is thinking (the tests move the clock)
     const send = (status, o) => { res.statusCode = status; res.setHeader("content-type", "application/json"); res.end(J(o)); };
+    // the art check (src/lib/art-check.ts): a message with a picture in it is answered by stubState.looks, never by an excuse
+    if (Array.isArray(last) && last.some((b) => b?.type === "image")) {
+      const look = stubState.looks.length ? stubState.looks.shift() : "yes";
+      if (look === "hang") return;   // never answers: the Worker must give up on its own
+      if (look === "500") return send(500, { error: {} });
+      if (look === "garbled") return send(200, { content: [{ type: "text", text: "I think so?" }], stop_reason: "end_turn", usage: { input_tokens: 1500, output_tokens: 5 } });
+      return send(200, { content: [{ type: "text", text: J({ answer: look, reason: look === "yes" ? "it is" : "stub says no" }) }], stop_reason: "end_turn", usage: { input_tokens: 1500, output_tokens: 12 } });
+    }
     if (body.model === "claude-haiku-5-5") return stubState.excuse === "fail" ? send(500, { error: {} }) : send(200, { content: [{ type: "text", text: EXC[0].text }], stop_reason: "end_turn", usage: EXC[0].usage });
     if (stubState.mode === "500") return send(500, { error: {} });
     if (stubState.mode === "refusal") return send(200, { content: [], stop_reason: "refusal", usage: { input_tokens: 5, output_tokens: 0 } });

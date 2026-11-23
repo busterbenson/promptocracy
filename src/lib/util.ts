@@ -31,6 +31,8 @@ export type Env = {
   AI?: { run(model: string, input: any): Promise<any> };
   IMAGE_MODEL?: string;
   ART_STUB?: string;
+  // The tests' stand-in for the vision check after a drawing (src/lib/art-check.ts): pass, fail, unchecked, once (fail, then pass), or model (the real call, to the stub API). Unset in production.
+  ART_CHECK_STUB?: string;
 };
 // The part of an R2 bucket the art code uses.
 export type R2Like = {

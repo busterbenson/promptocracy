@@ -7,7 +7,7 @@ Every function that carries out the game should say which rule it implements, wi
 `src/` is only reported for now: these functions have no claim yet. Site plumbing such as sign-in and email goes
 under rule 101 or 102; a follow-up change claims them and moves `src/` into the strict set.
 
-164 of 492 functions outside `src/engine/` are unclaimed.
+166 of 501 functions outside `src/engine/` are unclaimed.
 
 ## src/index.ts (6)
 
@@ -22,20 +22,22 @@ under rule 101 or 102; a follow-up change claims them and moves `src/` into the 
 
 - line 29: `wanted`
 
-## src/lib/art.js (6)
+## src/lib/art.js (7)
 
-- line 124: `crcTable`
-- line 125: `crc32`
-- line 126: `u32`
-- line 127: `chunk`
-- line 131: `px`
-- line 142: `concat`
+- line 151: `look`
+- line 205: `crcTable`
+- line 206: `crc32`
+- line 207: `u32`
+- line 208: `chunk`
+- line 212: `px`
+- line 223: `concat`
 
-## src/lib/art.ts (3)
+## src/lib/art.ts (4)
 
-- line 76: `queueNew`
-- line 96: `fail`
-- line 125: `gateOf`
+- line 77: `queueNew`
+- line 101: `fail`
+- line 108: `make`
+- line 138: `gateOf`
 
 ## src/lib/auth.ts (6)
 
@@ -172,33 +174,33 @@ under rule 101 or 102; a follow-up change claims them and moves `src/` into the 
 
 ## src/lib/util.ts (27)
 
-- line 60: `validShape`
-- line 72: `mixHex`
-- line 74: `legacyInfo`
-- line 78: `colorInfo`
-- line 79: `isOfferedColor`
-- line 82: `colorOf`
-- line 88: `who`
-- line 97: `json`
-- line 107: `readJson`
-- line 116: `base64url`
-- line 122: `randomToken`
-- line 124: `sha256Hex`
-- line 131: `normCode`
-- line 133: `validEmail`
-- line 136: `normEmail`
-- line 140: `cleanName`
-- line 147: `esc`
-- line 152: `siteUrl`
-- line 162: `validSlug`
-- line 168: `plain`
-- line 169: `validRepo`
-- line 171: `validRulesPath`
-- line 173: `validRef`
-- line 176: `gameBase`
-- line 178: `seatsTaken`
-- line 185: `playersLine`
-- line 191: `seatLimit`
+- line 62: `validShape`
+- line 74: `mixHex`
+- line 76: `legacyInfo`
+- line 80: `colorInfo`
+- line 81: `isOfferedColor`
+- line 84: `colorOf`
+- line 90: `who`
+- line 99: `json`
+- line 109: `readJson`
+- line 118: `base64url`
+- line 124: `randomToken`
+- line 126: `sha256Hex`
+- line 133: `normCode`
+- line 135: `validEmail`
+- line 138: `normEmail`
+- line 142: `cleanName`
+- line 149: `esc`
+- line 154: `siteUrl`
+- line 164: `validSlug`
+- line 170: `plain`
+- line 171: `validRepo`
+- line 173: `validRulesPath`
+- line 175: `validRef`
+- line 178: `gameBase`
+- line 180: `seatsTaken`
+- line 187: `playersLine`
+- line 193: `seatLimit`
 
 ## src/lib/votes.js (1)
 
