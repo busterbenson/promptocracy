@@ -4,7 +4,7 @@ import { spawn, execFile, execFileSync } from "node:child_process";
 import { createServer } from "node:http";
 import { promisify } from "node:util";
 const execFileP = promisify(execFile);
-import { mkdtempSync, existsSync, rmSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, existsSync, rmSync, readFileSync, writeFileSync, cpSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join as pjoin, dirname, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -71,7 +71,13 @@ export function startPlaying(state, slug) {
   ].join("; "));
 }
 
+// Every file used to run its own 19 migrations (about 3.5 s of wrangler each). scripts/ci-shard.mjs now applies them ONCE per job into a template
+// state dir and names it in PROMPTOCRACY_MIGRATED_TEMPLATE; a file's migrate(state) then copies that dir into its own fresh state (the files
+// are closed and checkpointed, so a copy is a database). A state that already holds data (v3/ exists), or a run with no template (one file by
+// hand), applies the migrations the old way.
 export function migrate(state) {
+  const template = process.env.PROMPTOCRACY_MIGRATED_TEMPLATE;
+  if (template && existsSync(pjoin(template, "v3")) && !existsSync(pjoin(state, "v3"))) { cpSync(template, state, { recursive: true }); return; }
   execFileSync(WRANGLER, ["d1", "migrations", "apply", "DB", "--local", "--persist-to", state],
     { cwd: ROOT, env, encoding: "utf8", timeout: 60000, stdio: "pipe" });
 }
