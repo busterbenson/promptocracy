@@ -4,14 +4,19 @@
 // shows (the default). All of it is the player's own draft's: the same gate as their own edit (EDIT_GUARD), checked in the SQL.
 // Nothing here writes a ticket's `makes`: the page lays these rows over each entry on the way out (overlay), so a drawing that lands while
 // the player is typing can never be lost by, or lose, their edit.
-import { ART_COST_MICRO, MAX_SAVED, DRAWING_STALE_MS, DRAW_TIMEOUT_MS, IMAGE_MODEL, artKey, drawChecked, runImage, sha256Hex, sizeFor, stubImage, stylePrompt, tmpKey } from "./art.js";
-import { lookAt } from "./art-check";
+import { ART_COST_MICRO, MAX_SAVED, DRAWING_STALE_MS, DRAW_BUDGET_MS, DRAW_TIMEOUT_MS, DESCRIBE_TIMEOUT_MS, IMAGE_MODEL, artKey, drawChecked, runImage, sha256Hex, sizeFor, stubImage, stylePrompt, tmpKey } from "./art.js";
+import { describeFor, lookAt } from "./art-check";
 import { logCall, monthSpend } from "./agent";
 import { dayOpenBinds } from "./day";
 import { EDIT_GUARD } from "./tickets.js";
 import { Ctx, Env, nowIso } from "./util";
 
-export type Draw = { game: any; player: any; ticket: any; name: string; prompt: string; kind: string | null; attrs: any; tz: string; drawId: number; mode: "new" | "redraw" };
+export type Draw = { game: any; player: any; ticket: any; name: string; prompt: string; kind: string | null; attrs: any; tz: string; drawId: number; mode: "new" | "redraw" | "recheck" };
+
+/** What a kept drawing that failed its look says on its draw row. Only a draw that says CHECK_FAILED is redrawn (redrawFailed); the redraw
+ * that fails too says RECHECK_FAILED, so a drawing is redrawn once and never twice. */
+export const CHECK_FAILED = "check failed: ";
+export const RECHECK_FAILED = "check failed again: ";
 
 /** The entries of a ticket's `makes` that a drawing can be asked for. @rule 801.2 */
 export const entriesOf = (makes: any[]) =>
@@ -104,19 +109,21 @@ export async function draw(env: Env, j: Draw): Promise<void> {
   };
   try {
     const size = sizeFor(j.kind, j.attrs);
-    const prompt = stylePrompt(j.kind, j.attrs, j.prompt);
-    const make = (attempt: number, ms: number) => {
-      const seed = crypto.getRandomValues(new Uint32Array(1))[0] % 2147483647;
+    // the tests' image stand-in ignores the prompt and is not looked at unless ART_CHECK_STUB says how: then nothing is described either
+    const looked = !(env.ART_STUB && !env.ART_CHECK_STUB);
+    const t1 = Date.now();
+    const details = looked ? await describeFor(env, j.game, j.tz, j.player.id, j.kind, j.prompt, DESCRIBE_TIMEOUT_MS) : "";
+    const make = (ms: number) => {
+      const seed = crypto.getRandomValues(new Uint32Array(1))[0] % 2147483647, prompt = stylePrompt(j.kind, j.attrs, j.prompt, details);
       return Promise.race([
         env.ART_STUB ? stubImage(env.ART_STUB, { seed }) : runImage(env.AI, model, { prompt, ...size, seed }),
         new Promise<never>((_, rej) => setTimeout(() => rej(new Error("timeout")), Math.min(DRAW_TIMEOUT_MS, ms))),
       ]);
     };
-    // the tests' image stand-in is not looked at unless ART_CHECK_STUB says how
-    const check = env.ART_STUB && !env.ART_CHECK_STUB ? null : (made: any, attempt: number, ms: number) => lookAt(env, j.game, j.tz, j.player.id, j.kind, j.prompt, made, attempt, ms);
-    const out = await drawChecked({ make, check });
+    const check = !looked ? null : (made: any, ms: number) => lookAt(env, j.game, j.tz, j.player.id, j.kind, j.prompt, made, j.mode === "recheck" ? 1 : 0, ms);
+    const out = await drawChecked({ make, check, budgetMs: DRAW_BUDGET_MS - (Date.now() - t1) });
     const made = out.made;
-    const note = out.verdict === "fail" ? `check failed: ${out.reason}` : out.verdict === "unchecked" ? `unchecked: ${out.reason}` : null;
+    const note = out.verdict === "fail" ? `${j.mode === "recheck" ? RECHECK_FAILED : CHECK_FAILED}${out.reason}` : out.verdict === "unchecked" ? `unchecked: ${out.reason}` : null;
     const hash = await sha256Hex(made.bytes);
     await env.ART.put(tmpKey(hash), made.bytes, { httpMetadata: { contentType: made.type } });
     const now = nowIso(Date.now());
@@ -126,10 +133,41 @@ export async function draw(env: Env, j: Draw): Promise<void> {
       env.DB.prepare("INSERT OR IGNORE INTO art_refs (hash, game_id, ticket_id, entry_name, prompt, saved, is_default, created_at) SELECT ?, ?, ?, ?, ?, 0, 0, ? WHERE EXISTS (SELECT 1 FROM tickets WHERE id = ? AND state = 'Draft')").bind(hash, j.game.id, j.ticket.id, j.name, j.prompt, now, j.ticket.id),
       env.DB.prepare("UPDATE art_draws SET state = CASE WHEN EXISTS (SELECT 1 FROM tickets WHERE id = ? AND state = 'Draft') THEN 'done' ELSE 'failed' END, reason = CASE WHEN EXISTS (SELECT 1 FROM tickets WHERE id = ? AND state = 'Draft') THEN ? ELSE 'ticket changed' END, ended_at = ? WHERE id = ? AND state = 'pending'").bind(j.ticket.id, j.ticket.id, note ? note.slice(0, 120) : null, now, j.drawId),
     ]);
-    await logCall(env, j.game, j.tz, Date.now(), { player_id: j.player.id, agent: "gremlin", purpose: "art", model, outcome: "ok", ms: Date.now() - t0, cost_micro: ART_COST_MICRO * out.attempts });
+    await logCall(env, j.game, j.tz, Date.now(), { player_id: j.player.id, agent: "gremlin", purpose: "art", model, outcome: "ok", ms: Date.now() - t0, cost_micro: ART_COST_MICRO });
   } catch (e: any) {
     console.error("art: a drawing failed:", e?.message || "error");
     await fail(String(e?.message || "error"));
+  }
+}
+
+/**
+ * The redraw after a failed look (rule 801.2). A drawing takes 10-16 s of the 30 s a Worker keeps working after its response, so a second
+ * drawing never fits in the Worker that made the first. It is made by the next request that reads the ticket for its requester (the card
+ * asks again every 2 s while a drawing is out, so that is seconds later), in that request's own waitUntil: each entry whose LAST draw was
+ * kept with a failed look (CHECK_FAILED, for the entry's current prompt) gets one more draw. The reservation is one statement that checks
+ * that condition itself, so two reads at once start one redraw. The redraw costs no message (it is the platform's, not the player's) and
+ * counts in the month's budget like any drawing; a redraw that fails too says RECHECK_FAILED and is not redrawn again. Only on the
+ * requester's own Draft. Returns how many were started. Never throws.
+ */
+export async function redrawFailed(ctx: Ctx, game: any, player: any, ticket: any, makes: any[], tz: string, nowMs: number): Promise<number> {
+  if (!player || ticket.player_id !== player.id || ticket.state !== "Draft") return 0;
+  try {
+    const failed = ((await ctx.env.DB.prepare(`SELECT d.entry_name, d.prompt FROM art_draws d WHERE d.ticket_id = ? AND d.state = 'done' AND d.reason LIKE '${CHECK_FAILED}%' AND d.id = (SELECT MAX(id) FROM art_draws x WHERE x.ticket_id = d.ticket_id AND lower(x.entry_name) = lower(d.entry_name))`).bind(ticket.id).all()).results ?? []) as any[];
+    if (!failed.length || (await overBudget(ctx.env, game, tz, nowMs))) return 0;
+    const jobs: Draw[] = [];
+    for (const e of entriesOf(makes)) {
+      const f = failed.find((x) => x.entry_name.toLowerCase() === e.name.toLowerCase() && x.prompt === e.prompt);
+      if (!f) continue;
+      // reserved only while the entry's last draw is still that failed one: a second read at the same moment inserts nothing
+      const r: any = await ctx.env.DB.prepare(`INSERT OR IGNORE INTO art_draws (game_id, ticket_id, entry_name, prompt, state, started_at) SELECT ?, ?, ?, ?, 'pending', ? WHERE (SELECT reason FROM art_draws WHERE ticket_id = ? AND lower(entry_name) = lower(?) ORDER BY id DESC LIMIT 1) LIKE '${CHECK_FAILED}%'`)
+        .bind(game.id, ticket.id, f.entry_name, e.prompt, nowIso(nowMs), ticket.id, e.name).run();
+      if (r?.meta?.changes > 0) jobs.push({ game, player, ticket, name: e.name, prompt: e.prompt, kind: e.kind, attrs: e.attrs, tz, drawId: Number(r.meta.last_row_id), mode: "recheck" });
+    }
+    if (jobs.length) ctx.waitUntil(Promise.all(jobs.map((j) => draw(ctx.env, j))).then(() => undefined));
+    return jobs.length;
+  } catch (e: any) {
+    console.error("art: the redraw after a failed look could not start:", e?.message || "error");
+    return 0;
   }
 }
 

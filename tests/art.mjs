@@ -11,7 +11,7 @@ import { client, createGame, d1, freePort, join, migrate, newState, r2Delete, r2
 import { readFileSync } from "node:fs";
 import { join as pjoin } from "node:path";
 import { ROOT } from "./lib.mjs";
-import { CHECK_MODEL, HASH, IMAGE_MODEL, KIND_BLOCKS, MAX_PROMPT, artKey, checkQuestion, drawChecked, kindBlock, readVerdict, runImage, sha256Hex, sizeFor, sniffType, stubPng, stylePrompt, tmpKey } from "../src/lib/art.js";
+import { CHECK_MODEL, HASH, IMAGE_MODEL, KIND_BLOCKS, MAX_DETAILS, MAX_PROMPT, artKey, checkQuestion, describeAsk, drawChecked, kindBlock, readVerdict, runImage, sha256Hex, shortDetails, sizeFor, sniffType, stubPng, stylePrompt, tmpKey } from "../src/lib/art.js";
 import { answerSchema, readMakeItem, systemStatic } from "../src/lib/gremlin.js";
 
 let pass = 0, fail = 0;
@@ -31,24 +31,31 @@ check("the stub picture is a PNG and nothing but png, jpeg and webp are pictures
 check("a structure's drawing is as wide as the footprint is: 2x1 is 1024 by 768, 1x2 is 768 by 1024, anything else is square", J(sizeFor("structure", { size: { w: 2, h: 1 } })) === J({ width: 1024, height: 768 }) && J(sizeFor("structure", { size: { w: 1, h: 2 } })) === J({ width: 768, height: 1024 }) && J(sizeFor("creature", { size: { w: 2, h: 1 } })) === J({ width: 1024, height: 1024 }) && J(sizeFor("structure", {})) === J({ width: 1024, height: 1024 }));
 {
   const sp = stylePrompt("structure", { size: { w: 2, h: 1 } }, "a low stone wall");
-  check("the platform adds the house style to Gremlin's words: his words first, then three-quarter view, dark navy outlines, the footprint, and the white page; his words are capped", sp.startsWith("a low stone wall. ") && /three-quarter view/.test(sp) && /dark navy outlines/.test(sp) && /takes up a 2 by 1 square footprint of the board/.test(sp) && /no text\./.test(sp) && /No people's likenesses/.test(sp) && stylePrompt("item", {}, "x".repeat(900)).indexOf(". ") === MAX_PROMPT);
+  check("the platform adds the house style to Gremlin's words: his words first, then three-quarter view, dark navy blue outlines, the footprint, and the white page; his words are capped", sp.startsWith("a low stone wall. ") && /three-quarter view/.test(sp) && /dark navy blue outlines/.test(sp) && /takes up a 2 by 1 square footprint of the board/.test(sp) && /plain pure white background/.test(sp) && /No people's likenesses/.test(sp) && stylePrompt("item", {}, "x".repeat(900)).indexOf(". ") === MAX_PROMPT);
   const SAMPLES = JSON.parse(readFileSync(pjoin(ROOT, "tests/fixtures/art-samples.json"), "utf8")).samples;
   const KINDS = Object.keys(KIND_BLOCKS), prompt = (k, attrs = {}) => stylePrompt(k, attrs, "a thing");
-  const HOUSE_PARTS = ["An isometric 3D vector illustration for a board game", "exactly two colors: a muted primary colour and a muted secondary colour that suit the subject", "four distinct flat tones", "hard-edged flat bands", "dark navy outlines", "about 30 degrees", "three-quarter view", "toward the lower right corner", "no cast or contact shadow", "Plain pure white background, one subject centered, no text."];
+  const HOUSE_PARTS = ["An isometric 3D vector illustration for a board game", "Muted, earthy palette of exactly two colors: its own true main colour", "three or four distinct flat tones", "hard-edged flat bands", "dark navy blue outlines", "about 30 degrees", "three-quarter view", "toward the lower right corner", "its top surface is clearly visible", "plain pure white background, the white running right up to its outline on every side, beneath it too."];
   check("the five kinds each have a block: creature, structure, item, feature, tile", J(KINDS.sort()) === J(["creature", "feature", "item", "structure", "tile"]));
   check("every kind's prompt carries the whole house style, with no blank left unfilled", KINDS.every((k) => HOUSE_PARTS.every((p) => prompt(k).includes(p)) && !/[{}]|  /.test(prompt(k))));
   check("each kind picks its own block, and its prompt carries no other kind's block (no block text leaks across)", KINDS.every((k) => prompt(k).includes(KIND_BLOCKS[k]) && KINDS.filter((o) => o !== k).every((o) => !prompt(k).includes(KIND_BLOCKS[o]))));
   check("a kind that is not in the catalog (or none) is drawn as a landmark, the block that draws no one", prompt(null) === prompt("feature") && prompt("weapon") === prompt("feature") && prompt(undefined) === prompt("feature") && kindBlock("constructor") === "feature" && kindBlock("__proto__") === "feature");
   const FACE = /\b(face|faces|facial|eye|eyes|mouth|nose|brow|brows|tongue|ear|ears|beak|limb|limbs|leg|legs|arm|arms|hand|hands|wing|wings|foot|feet|head|body|character|creature|personality|anthropomorph\w*|pose|posture|temper)\b/i;
   check("the prompt for a structure, an item, a feature and a tile has no face, eye, mouth, limb or character word in it, house style included (naming one invites it; faces are checked after drawing)", ["structure", "item", "feature", "tile"].every((k) => !FACE.test(prompt(k, { size: { w: 2, h: 1 }, temper: "hostile" }))), ["structure", "item", "feature", "tile"].map((k) => prompt(k).match(FACE)?.[0]).join());
-  check("the creature prompt still carries the character direction: folkloric, a chunky toy body, big round eyes, a simple serious face, one small touch, a characterful pose", ["folkloric spirit-world creature", "chunky, rounded toy body", "squat vinyl toy", "large round eyes set wide apart", "A simple, serious face", "one small touch", "characterful pose"].every((p) => prompt("creature").includes(p)));
+  check("the creature prompt carries the character direction: folkloric, the named animal's own body shape and markings as a small toy figure, its whole length, a calm content face, one small touch", ["folkloric spirit-world creature", "that animal's own body shape, proportions, outline and markings", "small hand-made toy figure", "its whole length shown", "A calm, content face", "one small touch"].every((p) => prompt("creature").includes(p)));
   check("a creature's temper shows in its posture when the entry has one, and only then; no other kind gets it", /hostile temper: weight forward/.test(prompt("creature", { temper: "hostile" })) && /neutral temper: relaxed/.test(prompt("creature", { temper: "neutral" })) && !/temper|posture/.test(prompt("creature", {})) && !/temper|posture/.test(prompt("creature", { temper: "furious" })) && ["structure", "item", "feature", "tile"].every((k) => !/temper|posture/.test(prompt(k, { temper: "hostile" }))));
   check("only a structure has a footprint: a creature, an item and a tile with a size in their attrs say nothing of a footprint", ["creature", "item", "feature", "tile"].every((k) => !/takes up a \d/.test(prompt(k, { size: { w: 2, h: 2 } }))) && /takes up a 3 by 2 square footprint/.test(prompt("structure", { size: { w: 3, h: 2 } })) && !/takes up a \d/.test(prompt("structure", {})));
-  check("a structure is one inanimate thing on its footprint, an item is sized like something carried, a feature is drawn like a structure, a tile is the ground filling the diamond with nothing on it and edges that sit flush", /inanimate thing standing on its own/.test(prompt("structure")) && /sized like something a person can carry/.test(prompt("item")) && /inanimate object or landmark/.test(prompt("feature")) && /fills the picture from corner to corner/.test(prompt("tile")) && /nothing standing, lying or growing above it/.test(prompt("tile")) && /flush against a neighbouring tile/.test(prompt("tile")));
+  check("a structure is one solid thing standing on its own, an item is sized like something carried, a feature is a landmark with the parts that show what it is for, a tile is the terrain's own surface filling the diamond, level with the tile, with edges that sit flush", /One solid thing standing on its own/.test(prompt("structure")) && /sized like something a person can carry/.test(prompt("item")) && /A landmark or fixture of the board/.test(prompt("feature")) && /the parts that show what it is for/.test(prompt("feature")) && /fills the picture from corner to corner/.test(prompt("tile")) && /lying level with the top of the tile/.test(prompt("tile")) && /flush against a neighbouring tile/.test(prompt("tile")));
   const everything = [...KINDS.map((k) => KIND_BLOCKS[k]), prompt("creature", { temper: "hostile" }), prompt("structure", { size: { w: 1, h: 1 } }), prompt("item"), prompt("feature"), prompt("tile")].join(" ");
   check("no past-round patch is left in any prompt: no inner ears or noses, no glasses frames, no beards, no round numbers, no studio or film", !/inner ears|glasses|beard|round \d|no nose|Ghibli|Pixar|Disney|Miyazaki|DreamWorks|Laika|Aardman|\bhat\b/i.test(everything));
-  check("no sample subject is ever written into a style: the five sample subjects' own words appear in no block or house line", SAMPLES.every((x) => x.words.split(/\s+/).filter((w) => w.length > 4 && !/^(small|battered|wooden|board)$/.test(w)).every((w) => !everything.toLowerCase().includes(w.toLowerCase()))));
+  const ALL_SAMPLES = [...SAMPLES, ...JSON.parse(readFileSync(pjoin(ROOT, "tests/fixtures/art-samples.json"), "utf8")).holdout];
+  const asks = KINDS.flatMap((k) => [checkQuestion(k, "a thing"), describeAsk(k, "a thing")]).join(" ");
+  check("no sample subject, TRAIN or HOLDOUT, is ever written into a style or a question: their own words appear in no block, house line, look or description question", ALL_SAMPLES.every((x) => x.words.split(/\s+/).filter((w) => w.length > 4 && !/^(small|battered|wooden|board)$/.test(w)).every((w) => !(everything + " " + asks).toLowerCase().includes(w.toLowerCase()))));
   check("each sample is drawn with its own kind's block: its words first, the kind's block, and no face word in a non-creature's prompt", SAMPLES.every((x) => { const p = stylePrompt(x.kind, x.attrs, x.words); return p.startsWith(x.words + ". ") && p.includes(KIND_BLOCKS[x.kind]) && (x.kind === "creature" || !FACE.test(p.slice(x.words.length))); }));
+  // the description before drawing (rule 801.2): the cheap model's words about how the thing looks go right after Gremlin's
+  const withD = stylePrompt("item", {}, "a thing", "A squat round shape, orange, with a curved handle");
+  check("a description goes right after Gremlin's words and before the kind's block; with none, nothing is left behind", withD.startsWith("a thing. A squat round shape, orange, with a curved handle. One small object") && !/[{}]|  /.test(withD) && stylePrompt("item", {}, "a thing").startsWith("a thing. One small object") && stylePrompt("item", {}, "a thing", "   ") === stylePrompt("item", {}, "a thing"));
+  check("a description is one plain line, capped at MAX_DETAILS on a word, ending in a full stop; markup and braces are dropped", shortDetails("  two\n\nlines ") === "two lines." && shortDetails("{KIND} `y` **z**") === "KIND y z." && shortDetails("word ".repeat(200)).length <= MAX_DETAILS + 1 && /word\.$/.test(shortDetails("word ".repeat(200))) && shortDetails("") === "" && shortDetails(null) === "");
+  check("the description question is per kind: a creature's asks for that animal's shape and markings, a tile's for the ground seen from above with only what lies flat, any other kind's for an inanimate thing alone; none repeats the name back", /that exact animal or being/.test(describeAsk("creature", "x")) && /ground surface of "x" looks seen from above/.test(describeAsk("tile", "x")) && /only what lies flat/.test(describeAsk("tile", "x")) && /as an inanimate object/.test(describeAsk("structure", "x")) && describeAsk(null, "x") === describeAsk("feature", "x") && ["creature", "tile", "item"].every((k) => /Do not repeat its name/.test(describeAsk(k, "x"))) && describeAsk("item", "y".repeat(900)).includes('"' + "y".repeat(MAX_PROMPT) + '"'));
 }
 
 console.log("the call to the image model (the Workers AI binding)");
@@ -60,41 +67,37 @@ console.log("the call to the image model (the Workers AI binding)");
   const calls1 = [];
   const flux1 = { async run(model, input) { calls1.push({ model, input }); return { image: Buffer.from(png).toString("base64") }; } };
   await runImage(flux1, "@cf/black-forest-labs/flux-1-schnell", { prompt: "a frog", width: 1024, height: 1024, seed: 7 });
-  check("the fallback model, FLUX.1 schnell, takes JSON (prompt, steps) and no multipart", calls1[0].input.prompt === "a frog" && calls1[0].input.steps === 4 && !("multipart" in calls1[0].input));
+  check("the fallback model, FLUX.1 schnell, takes JSON (prompt, steps), no multipart and NO seed (its API refuses the whole call when one is sent: found drawing live, 11-23)", calls1[0].input.prompt === "a frog" && calls1[0].input.steps === 4 && !("multipart" in calls1[0].input) && !("seed" in calls1[0].input), J(calls1[0].input));
   const bad = async (ai) => { try { await runImage(ai, IMAGE_MODEL, { prompt: "x", width: 8, height: 8 }); return "no error"; } catch (e) { return e.message; } };
   check("an answer that is not a picture, an empty one, a missing binding and a model that throws are all errors, never a stored object", /not a picture/.test(await bad({ run: async () => ({ image: btoa("hello there, not an image") }) })) && /empty/.test(await bad({ run: async () => ({ image: "" }) })) && /no image model/.test(await bad(undefined)) && /boom/.test(await bad({ run: async () => { throw new Error("boom"); } })) && /no image/.test(await bad({ run: async () => ({}) })));
 }
 console.log("the look at a drawing, and the redraw (rule 801.2)");
 {
-  const NAMED = /clear, recognisable picture of that thing \(judge what kind of thing it is, not its colour, material or condition\), an inanimate object on its own, with no face, no eyes, no mouth and no arms or legs/;
+  const NAMED = /name that exact thing or a plain synonym of it, including the material, colour or kind the words give it \(judge what it is and what it is made of\), an inanimate object on its own, with no face, no eyes, no mouth and no arms or legs/;
   check("structure, item and feature are asked: is this the named object, inanimate, with no face?; the question names the words and asks for yes only when every part is clearly true", ["structure", "item", "feature"].every((k) => NAMED.test(checkQuestion(k, "a thing."))) && /"a thing"/.test(checkQuestion("item", "a thing.")) && /Say yes only if every part of that is clearly true/.test(checkQuestion("item", "x")));
-  check("a tile is asked: a ground surface filling the diamond, nothing standing on it, no face; a creature is asked only whether it is the named creature", /ground surface that fills an isometric diamond from corner to corner, with nothing standing, lying or growing on top of it/.test(checkQuestion("tile", "x")) && /no face anywhere/.test(checkQuestion("tile", "x")) && /picture of that creature \(judge which animal or being it is, not its colour\), one character on its own/.test(checkQuestion("creature", "x")) && !/inanimate|diamond/.test(checkQuestion("creature", "x")) && !/inanimate/.test(checkQuestion("tile", "x")) && NAMED.test(checkQuestion(null, "x")));
+  check("a tile is asked whether a stranger would name THAT terrain from its surface (not just a coloured slab), filling the diamond, nothing standing on it, no face; a creature whether it is that exact animal, on its own, with a calm expression", /name that exact kind of terrain from its surface \(not just a coloured or patterned slab\)/.test(checkQuestion("tile", "x")) && /fill an isometric diamond from corner to corner, with nothing standing, lying or growing on top of it/.test(checkQuestion("tile", "x")) && /no face anywhere/.test(checkQuestion("tile", "x")) && /name that exact animal or being \(judge it by its body shape, proportions and markings, not its colour\), one character on its own, with a calm expression/.test(checkQuestion("creature", "x")) && !/inanimate|diamond/.test(checkQuestion("creature", "x")) && !/inanimate/.test(checkQuestion("tile", "x")) && NAMED.test(checkQuestion(null, "x")));
   check("the question's words are Gremlin's and capped like the drawing's", checkQuestion("item", "y".repeat(900)).includes('"' + "y".repeat(MAX_PROMPT) + '"'));
   check("only a clear yes passes: no, a maybe, garbage, an empty answer, a wrong type and a yes buried in text are all fails; a yes in JSON, fenced or not, passes", readVerdict('{"answer":"yes","reason":"it is"}').verdict === "pass" && readVerdict('```json\n{"answer": "Yes", "reason": "ok"}\n```').verdict === "pass" && ['{"answer":"no","reason":"a face"}', '{"answer":"maybe","reason":""}', "yes", "Yes, it is a pine.", "", "I think so", '{"answer":true}', '{"answer":["yes"]}', null, undefined, "{"].every((t) => readVerdict(t).verdict === "fail") && readVerdict('{"answer":"no","reason":"a face on the barrel"}').reason === "a face on the barrel");
   check("the check uses the cheapest vision model the agents use, with a hard timeout", CHECK_MODEL === "claude-haiku-5-5");
   // a clock the tests move: make() and check() cost what we say
   const clock = (costs) => { let t = 0; const now = () => t; return { now, tick: (n) => { t += n; } }; };
-  const run = async ({ looks, makeMs = 5000, checkMs = 1000, budgetMs, noCheck = false, failSecond = false, noCall = 0 }) => {
+  const run = async ({ looks, makeMs = 5000, checkMs = 1000, budgetMs, noCheck = false }) => {
     const c = clock(), log = [];
     const out = await drawChecked({
       now: c.now, budgetMs,
-      make: async (n, ms) => { log.push(`make${n}@${ms}`); c.tick(makeMs); if (n === 1 && failSecond) throw new Error("timeout"); return { bytes: new Uint8Array([n]), type: "image/png" }; },
-      check: noCheck ? null : async (made, n, ms) => { log.push(`look${n}@${ms}`); c.tick(checkMs); const v = looks[n]; if (v === "throw") throw new Error("boom"); return typeof v === "string" ? { verdict: v, reason: v === "pass" ? "" : `r${n}` } : v; },
+      make: async (ms) => { log.push(`make@${ms}`); c.tick(makeMs); return { bytes: new Uint8Array([log.length]), type: "image/png" }; },
+      check: noCheck ? null : async (made, ms) => { log.push(`look@${ms}`); c.tick(checkMs); const v = looks.shift(); if (v === "throw") throw new Error("boom"); return typeof v === "string" ? { verdict: v, reason: v === "pass" ? "" : "r" } : v; },
     });
     return { out, log };
   };
-  { const r = await run({ looks: ["pass"] }); check("a pass keeps the drawing: one drawing, one look, no redraw, nothing to record", r.out.verdict === "pass" && r.out.attempts === 1 && r.out.made.bytes[0] === 0 && J(r.log) === J(["make0@27000", "look0@8000"])); }
-  { const r = await run({ looks: ["fail", "pass"] }); check("a fail is redrawn once, and the redraw that passes is the one kept", r.out.verdict === "pass" && r.out.attempts === 2 && r.out.made.bytes[0] === 1 && r.log.length === 4); }
-  { const r = await run({ looks: ["fail", "fail"] }); check("a redraw that fails too is KEPT, with the failure recorded: never a third drawing", r.out.verdict === "fail" && r.out.attempts === 2 && r.out.made.bytes[0] === 1 && r.out.reason === "r1" && r.log.length === 4); }
-  { const r = await run({ looks: ["fail"], budgetMs: 12000 }); check("a fail with no time for a second drawing keeps the first and says so", r.out.verdict === "fail" && r.out.attempts === 1 && /no time to redraw/.test(r.out.reason) && r.out.made.bytes[0] === 0 && r.log.length === 2); }
-  { const r = await run({ looks: ["fail"], failSecond: true }); check("a redraw that errors or times out keeps the first drawing as a fail", r.out.verdict === "fail" && r.out.attempts === 1 && /the redraw failed/.test(r.out.reason) && r.out.made.bytes[0] === 0); }
-  { const r = await run({ looks: ["unchecked"] }); check("a look that could not be made (an error, a timeout) is unchecked, never a pass: the drawing is kept and not redrawn", r.out.verdict === "unchecked" && r.out.attempts === 1 && r.log.length === 2); }
-  { const r = await run({ looks: ["throw"] }); check("a look that throws is unchecked too", r.out.verdict === "unchecked" && r.out.attempts === 1); }
+  { const r = await run({ looks: ["pass"] }); check("a pass keeps the drawing: one drawing, one look, nothing to record", r.out.verdict === "pass" && r.out.reason === "" && J(r.log) === J(["make@27000", "look@8000"])); }
+  { const r = await run({ looks: ["fail", "pass"] }); check("a fail keeps the drawing and says why, and is NEVER redrawn in the same Worker (one drawing, one look: the next read redraws it)", r.out.verdict === "fail" && r.out.reason === "r" && J(r.log) === J(["make@27000", "look@8000"])); }
+  { const r = await run({ looks: ["unchecked"] }); check("a look that could not be made (an error, a timeout) is unchecked, never a pass: the drawing is kept", r.out.verdict === "unchecked" && r.log.length === 2); }
+  { const r = await run({ looks: ["throw"] }); check("a look that throws is unchecked too", r.out.verdict === "unchecked" && /the check broke/.test(r.out.reason)); }
   { const r = await run({ looks: [{ verdict: "maybe" }] }); check("a verdict that is not pass or fail is unchecked, never a pass", r.out.verdict === "unchecked"); }
-  { const r = await run({ looks: ["fail", "unchecked"] }); check("a redraw that cannot be looked at is kept as unchecked", r.out.verdict === "unchecked" && r.out.attempts === 2 && r.out.made.bytes[0] === 1); }
-  { const r = await run({ looks: [], noCheck: true }); check("with no check (the tests' stand-in picture) the drawing is kept as skipped and no look is made", r.out.verdict === "skipped" && r.out.attempts === 1 && r.log.length === 1); }
+  { const r = await run({ looks: [], noCheck: true }); check("with no check (the tests' stand-in picture) the drawing is kept as skipped and no look is made", r.out.verdict === "skipped" && r.log.length === 1); }
   { const r = await run({ looks: ["pass"], makeMs: 25000, budgetMs: 27000 }); check("a look that has under 3 s left is not started: the drawing is unchecked", r.out.verdict === "unchecked" && /no time to look/.test(r.out.reason) && r.log.length === 1); }
-  { const r = await run({ looks: ["fail", "pass"], makeMs: 5000, checkMs: 1000, budgetMs: 27000 }), r2 = await run({ looks: ["fail", "pass"], makeMs: 15000, checkMs: 3000, budgetMs: 27000 }); check("the redraw is made when what is left fits a drawing as slow as the first (5 s drawings: yes; 15 s drawings: no) and each call is told how long it may take", r.out.attempts === 2 && r.log[2] === "make1@20000" && r2.out.attempts === 1); }
+  { const r = await run({ looks: ["pass"], makeMs: 12000, budgetMs: 22000 }); check("the drawing gets what is left of the budget after the description, and the look what is left after the drawing (at most 8 s)", J(r.log) === J(["make@22000", "look@8000"]) && r.out.verdict === "pass"); }
 }
 console.log("what Gremlin may write (rule 801.2)");
 {
@@ -275,28 +278,47 @@ try {
     await until(() => draws(y.n).length === 1 && draws(y.n)[0].state !== "pending" && lookRows().length >= 1);
     const sent = looksOf()[L0];
     check("a clear yes keeps the drawing with nothing recorded on the draw, after one look", y.ok && draws(y.n)[0].state === "done" && draws(y.n)[0].reason === null && refs(y.n).length === 1 && looksOf().length === L0 + 1);
-    check("the look is one call to the cheap model with the picture (base64 PNG) and that kind's question, a hard timeout, no player text; its cost is counted in the month's budget", !!sent && sent.model === "claude-haiku-5-5" && sent.body.messages[0].content[0].source.media_type === "image/png" && /^[A-Za-z0-9+/=]+$/.test(sent.body.messages[0].content[0].source.data) && Buffer.from(sent.body.messages[0].content[0].source.data, "base64").length === r2Get(state, tmpKey(refs(y.n)[0].hash)).length && /picture of that creature \(judge which animal or being it is, not its colour\), one character on its own/.test(sent.body.messages[0].content[1].text) && lookRows()[0].outcome === "ok" && lookRows()[0].agent === "gremlin" && lookRows()[0].cost_micro > 0 && !/check yes/.test(J(lookRows())));
-    // 2) no, then no: the redraw is kept and the failure is recorded
+    check("the look is one call to the cheap model with the picture (base64 PNG) and that kind's question, a hard timeout, no player text; its cost is counted in the month's budget", !!sent && sent.model === "claude-haiku-5-5" && sent.body.messages[0].content[0].source.media_type === "image/png" && /^[A-Za-z0-9+/=]+$/.test(sent.body.messages[0].content[0].source.data) && Buffer.from(sent.body.messages[0].content[0].source.data, "base64").length === r2Get(state, tmpKey(refs(y.n)[0].hash)).length && /name that exact animal or being/.test(sent.body.messages[0].content[1].text) && lookRows()[0].outcome === "ok" && lookRows()[0].agent === "gremlin" && lookRows()[0].cost_micro > 0 && !/check yes/.test(J(lookRows())));
+    const describes = () => calls.filter((c) => /^You describe how things look/.test(String(c.body.system ?? "")));
+    check("before the drawing the cheap model is asked once how the entry looks (its kind's question, Gremlin's words), and that call is logged and counted too", describes().length >= 1 && /that exact animal or being/.test(describes()[0].lastText) && /a small green frog/.test(describes()[0].lastText) && d1(state, "SELECT * FROM agent_calls WHERE purpose = 'art_describe' AND outcome = 'ok'").length >= 1);
+    const get = async (n) => (await Bo.get(`${T}/W${n}`)).data.ticket.entry_views[0].art;
+    // 2) no, then no: the first drawing is kept with the failure; the NEXT read redraws it; the redraw's no is kept and recorded, and it stops there
     stubState.looks = ["no", "no"]; const L1 = looksOf().length, R1 = lookRows().length;
     const n2 = await commission("check no no");
-    await until(() => draws(n2.n).length === 1 && draws(n2.n)[0].state !== "pending" && lookRows().length >= R1 + 2);
-    check("a no is redrawn once; the redraw's no too keeps THE REDRAW (one drawing stored, the first is not kept), records the failure on the draw (state stays done), and counts both drawings in the budget", n2.ok && looksOf().length === L1 + 2 && draws(n2.n)[0].state === "done" && /^check failed: stub says no/.test(draws(n2.n)[0].reason) && refs(n2.n).length === 1 && d1(state, `SELECT cost_micro FROM agent_calls WHERE purpose = 'art' AND outcome = 'ok' ORDER BY id DESC LIMIT 1`)[0].cost_micro === 4000, J(draws(n2.n)));
-    check("the page still shows the drawing: a failed look is never shown to anybody as a failed drawing", (await Bo.get(`${T}/W${n2.n}`)).data.ticket.entry_views[0].art.state === "ready");
+    await until(() => draws(n2.n).length === 1 && draws(n2.n)[0].state !== "pending" && lookRows().length >= R1 + 1);
+    await new Promise((r) => setTimeout(r, 1500));
+    check("a no keeps the drawing with the failure on its draw (state done) and is NOT redrawn in the Worker that drew it: one draw, one drawing, one look", n2.ok && draws(n2.n).length === 1 && draws(n2.n)[0].state === "done" && /^check failed: stub says no/.test(draws(n2.n)[0].reason) && refs(n2.n).length === 1 && looksOf().length === L1 + 1, J(draws(n2.n)));
+    const boMsgs = () => d1(state, `SELECT COUNT(*) AS n FROM chat_messages WHERE player_id = '${id.Bo}' AND role = 'player'`)[0].n, msgs2 = boMsgs();
+    const g2 = await get(n2.n);
+    check("the requester's next read of the ticket starts the redraw: the card says Drawing, a second draw is out", g2.state === "drawing" && draws(n2.n).length === 2 && draws(n2.n)[1].state === "pending", J(g2));
+    check("a second read at once starts nothing more (the reservation checks the last draw is still the failed one)", (await Promise.all([get(n2.n), get(n2.n)])) && draws(n2.n).length === 2, J(draws(n2.n)));
+    await until(() => draws(n2.n)[1].state !== "pending" && lookRows().length >= R1 + 2);
+    check("the redraw is looked at too; its no is kept and recorded as 'check failed again', both drawings are the requester's to pick from, each counted in the budget", draws(n2.n)[1].state === "done" && /^check failed again: stub says no/.test(draws(n2.n)[1].reason) && refs(n2.n).length === 2 && looksOf().length === L1 + 2 && d1(state, `SELECT cost_micro FROM agent_calls WHERE purpose = 'art' AND outcome = 'ok' AND player_id = '${id.Bo}' ORDER BY id DESC LIMIT 2`).every((r) => r.cost_micro === 2000), J(draws(n2.n)));
+    const g2b = await get(n2.n);
+    check("a redraw that failed too is never redrawn again: the next read starts nothing, the card shows the latest drawing, ready", draws(n2.n).length === 2 && g2b.state === "ready" && g2b.shown === refs(n2.n)[1].hash, J(g2b));
+    check("the redraw cost the player no message: it is the platform's", boMsgs() === msgs2);
+    const visitorRead = await Ana.get(`${T}/W${n2.n}`);
+    check("nobody but the requester starts a redraw by reading (another player's read changes nothing)", draws(n2.n).length === 2 && visitorRead.status !== 500);
     // 3) no, then yes
     stubState.looks = ["no", "yes"]; const R2 = lookRows().length;
     const n3 = await commission("check no then yes");
-    await until(() => draws(n3.n).length === 1 && draws(n3.n)[0].state !== "pending" && lookRows().length >= R2 + 2);
-    check("a no and then a yes keeps the redraw with nothing recorded", n3.ok && draws(n3.n)[0].state === "done" && draws(n3.n)[0].reason === null && refs(n3.n).length === 1);
+    await until(() => draws(n3.n).length === 1 && draws(n3.n)[0].state !== "pending" && lookRows().length >= R2 + 1);
+    await get(n3.n);
+    await until(() => draws(n3.n).length === 2 && draws(n3.n)[1].state !== "pending" && lookRows().length >= R2 + 2);
+    check("a no and then a yes: the redraw passes with nothing recorded and is the one the card shows", n3.ok && draws(n3.n)[0].reason.startsWith("check failed: ") && draws(n3.n)[1].state === "done" && draws(n3.n)[1].reason === null && refs(n3.n).length === 2 && (await get(n3.n)).shown === refs(n3.n)[1].hash, J(draws(n3.n)));
     // 4) the check errors: not checked, kept, never a pass and never a redraw
     stubState.looks = ["500"]; const L4 = looksOf().length, R4 = lookRows().length;
     const n4 = await commission("check error");
     await until(() => draws(n4.n).length === 1 && draws(n4.n)[0].state !== "pending" && lookRows().length >= R4 + 1);
-    check("a look that errors is NOT checked: the drawing is kept, the draw says so, no redraw, and the failed look is logged", n4.ok && draws(n4.n)[0].state === "done" && /^unchecked: not checked: status 500/.test(draws(n4.n)[0].reason) && refs(n4.n).length === 1 && looksOf().length === L4 + 1 && lookRows().pop().outcome === "failed");
+    await get(n4.n);
+    check("a look that errors is NOT checked: the drawing is kept, the draw says so, no redraw (not even on the next read), and the failed look is logged", n4.ok && draws(n4.n).length === 1 && draws(n4.n)[0].state === "done" && /^unchecked: not checked: status 500/.test(draws(n4.n)[0].reason) && refs(n4.n).length === 1 && looksOf().length === L4 + 1 && lookRows().pop().outcome === "failed");
     // 5) an answer that is not a clear yes is a fail
     stubState.looks = ["garbled", "garbled"]; const R5 = lookRows().length;
     const n5 = await commission("check garbled");
-    await until(() => draws(n5.n).length === 1 && draws(n5.n)[0].state !== "pending" && lookRows().length >= R5 + 2);
-    check("an answer that is not a clear yes is a no: redrawn once, then kept and recorded", /^check failed: /.test(draws(n5.n)[0].reason || "") && refs(n5.n).length === 1);
+    await until(() => draws(n5.n).length === 1 && draws(n5.n)[0].state !== "pending" && lookRows().length >= R5 + 1);
+    await get(n5.n);
+    await until(() => draws(n5.n).length === 2 && draws(n5.n)[1].state !== "pending");
+    check("an answer that is not a clear yes is a no: kept, recorded, redrawn once on the next read, and that one recorded too", /^check failed: /.test(draws(n5.n)[0].reason || "") && /^check failed again: /.test(draws(n5.n)[1].reason || "") && refs(n5.n).length === 2);
     // 5b) a look that never answers: the Worker gives up at its own timeout, and the drawing is kept, not checked
     stubState.looks = ["hang"]; const R5b = lookRows().length, t5b = Date.now();
     const n5b = await commission("check hang");
@@ -314,7 +336,9 @@ try {
     srv = await startSrv("seeded", ["ART_CHECK_STUB=once"]);
     const n7 = await commission("check once");
     await until(() => draws(n7.n).length === 1 && draws(n7.n)[0].state !== "pending");
-    check("ART_CHECK_STUB=once fails the first drawing and passes the redraw: two drawings made, one kept, nothing recorded, no model call", draws(n7.n)[0].reason === null && refs(n7.n).length === 1 && looksOf().length === L6);
+    await get(n7.n);
+    await until(() => draws(n7.n).length === 2 && draws(n7.n)[1].state !== "pending");
+    check("ART_CHECK_STUB=once fails the first drawing and passes the redraw the next read starts: two drawings, the second with nothing recorded, no model call", /^check failed: stub fail/.test(draws(n7.n)[0].reason) && draws(n7.n)[1].reason === null && refs(n7.n).length === 2 && looksOf().length === L6, J(draws(n7.n)));
     await srv.stop();
     srv = await startSrv("seeded");
   }

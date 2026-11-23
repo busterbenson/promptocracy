@@ -16,7 +16,7 @@
 // and End turn (rule 202.4) also stops the ones that are your proposals (open, edit, confirm), not a post.
 // The price is 0 until Gremlin sets it (a later step).
 import { getPlayer } from "../lib/auth";
-import { clockNow, dayOpenBinds, dayOpenSql, isLocked, loadToday, lockMessage } from "../lib/day";
+import { clockNow, dayOpenBinds, dayOpenSql, isLocked, loadToday, lockMessage, timeZoneOf } from "../lib/day";
 import { lockOpenBinds, lockOpenSql } from "../lib/day-gate.js";
 import { CLOSED_STATES, COMMISSION_DRAFT_SQL, EDIT_GUARD, LIVE_STATES, OPEN_DRAFT_SQL, PAGE, RECENT_CLOSED, REOPEN_SQL, STATES, UNLINK_STRAY_SQL, WORKSHOP_RULE, canPost, confirmProblem, readCursor, readFields, readPost, ticketNumber } from "../lib/tickets.js";
 import { NO_BUILD_REASON, hasBuild } from "../lib/gremlin.js";
@@ -27,7 +27,7 @@ import { PENDING_SHOWN_MS, finishReply, reserveReply } from "../lib/thread";
 import { bookFor, confirm as confirmProposal } from "./api-proposals";
 import { catalogFor, viewContext } from "./api-catalog";
 import { entryView } from "../lib/catalog.js";
-import { overlay } from "../lib/art";
+import { overlay, redrawFailed } from "../lib/art";
 
 type Out = { status: number; body: any };
 const out = (body: any, status = 200): Out => ({ status, body });
@@ -146,6 +146,8 @@ async function page(ctx: Ctx, r: any, player: any, nowMs: number) {
   // each entry it makes comes with the view a card shows (rules 701.1, 704.2): its kind, attribute rows and flavor, in the order of the entries in `makes`
   const view = ticketView(r, player?.id);
   const cat = viewContext(catalogFor(game));
+  // a drawing kept with a failed look is redrawn by this read, the requester's own (rule 801.2; src/lib/art.ts redrawFailed says why not before)
+  await redrawFailed(ctx, game, player, r, view.makes, timeZoneOf(game), nowMs);
   return {
     ...view,
     reply_pending: replyPending,

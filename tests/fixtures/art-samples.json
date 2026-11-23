@@ -1,5 +1,5 @@
 {
-  "note": "One sample entry per kind, for the live drawing run (a scratch worker that calls stylePrompt, runImage, drawChecked and lookAt on the real AI binding) and for the tests that prove no subject is ever written into a prompt. These words are Gremlin's side of the prompt: they are NEVER part of the house style or a kind's block.",
+  "note": "One TRAIN sample entry per kind (the subjects the blocks were tuned on) and one HOLDOUT per kind (never tuned on, only drawn to confirm), for the live drawing run (a scratch worker that calls stylePrompt, describeFor, runImage and lookAt on the real AI binding) and for the tests that prove no subject is ever written into a prompt. These words are Gremlin's side of the prompt: they are NEVER part of the house style, a kind's block or a question.",
   "samples": [
     {
       "kind": "structure",
@@ -32,6 +32,38 @@
       "kind": "feature",
       "attrs": {},
       "words": "a wooden notice board"
+    }
+  ],
+  "holdout": [
+    {
+      "kind": "structure",
+      "attrs": {
+        "size": {
+          "w": 1,
+          "h": 1
+        }
+      },
+      "words": "a stone water well"
+    },
+    {
+      "kind": "tile",
+      "attrs": {},
+      "words": "a sandy beach"
+    },
+    {
+      "kind": "item",
+      "attrs": {},
+      "words": "an old iron key"
+    },
+    {
+      "kind": "creature",
+      "attrs": {},
+      "words": "a barn owl"
+    },
+    {
+      "kind": "feature",
+      "attrs": {},
+      "words": "a wooden signpost with two arrows"
     }
   ]
 }

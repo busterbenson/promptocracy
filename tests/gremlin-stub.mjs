@@ -54,6 +54,8 @@ export function createStub() {
       if (look === "garbled") return send(200, { content: [{ type: "text", text: "I think so?" }], stop_reason: "end_turn", usage: { input_tokens: 1500, output_tokens: 5 } });
       return send(200, { content: [{ type: "text", text: J({ answer: look, reason: look === "yes" ? "it is" : "stub says no" }) }], stop_reason: "end_turn", usage: { input_tokens: 1500, output_tokens: 12 } });
     }
+    // the description before a drawing (src/lib/art-check.ts describeFor): a fixed plain description, never an excuse
+    if (/^You describe how things look/.test(String(body.system ?? ""))) return send(200, { content: [{ type: "text", text: "STUB-DETAILS a round green shape with two dark spots" }], stop_reason: "end_turn", usage: { input_tokens: 120, output_tokens: 20 } });
     if (body.model === "claude-haiku-5-5") return stubState.excuse === "fail" ? send(500, { error: {} }) : send(200, { content: [{ type: "text", text: EXC[0].text }], stop_reason: "end_turn", usage: EXC[0].usage });
     if (stubState.mode === "500") return send(500, { error: {} });
     if (stubState.mode === "refusal") return send(200, { content: [], stop_reason: "refusal", usage: { input_tokens: 5, output_tokens: 0 } });
