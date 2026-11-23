@@ -72,24 +72,26 @@ export function ensureDefs() {
 // Not offered a shape that does not exist: it is a pawn.
 export const SHADOW = { soft: 1.25, core: .5 };   // each ellipse's half width, as a share of the figure's half width
 export const FOOT_DROP = 0;                       // board units below the tile centre; 0 = the floor ellipse is centred on the tile
-export function pieceSVG({ shape, color, scale = 1.1, mirrored = false, clip = true, drop = clip ? FOOT_DROP : 0, part = "" }) {
-  const key = TRACED[shape] ? shape : "pawn";
+// A Ghost (rule 604.2): the Ghost piece in the player's colour, in place of their own. The dead lie where they fell (rule 603.1):
+// the same piece, on its side. `state`: "living" (default), "dead" or "ghost".
+export function pieceSVG({ shape, color, scale = 1.1, mirrored = false, clip = true, drop = clip ? FOOT_DROP : 0, part = "", state = "living" }) {
+  const key = state === "ghost" ? "ghost" : TRACED[shape] ? shape : "pawn";
   const u = HEIGHT / CANVAS.tall * (FIT[key] || 1), half = (HALF_WIDTH[key] || 150) * u, k = HH / HW;
   const e = (cy, w, fill) => `<ellipse cx="0" cy="${cy.toFixed(2)}" rx="${(half * w).toFixed(2)}" ry="${(half * w * k).toFixed(2)}" fill="url(#${fill})"/>`;
   const shadow = e(0, SHADOW.soft, "gAO") + e(0, SHADOW.core, "gContact");
   const art = `<svg x="${(-CANVAS.x * u).toFixed(2)}" y="${(-CANVAS.y * u).toFixed(2)}" width="${(CANVAS.w * u).toFixed(2)}" height="${(CANVAS.h * u).toFixed(2)}" viewBox="0 0 ${CANVAS.w} ${CANVAS.h}" overflow="visible">${recolor(key, color)}</svg>`;
   const flip = mirrored ? ' transform="scale(-1,1)"' : "";
   const at = `${drop ? `translate(0,${drop}) ` : ""}scale(${scale})`;
-  const under = `<g${clip ? ' clip-path="url(#tt)"' : ""}><g transform="${at}">${shadow}</g></g>`, over = `<g transform="${at}"><g${flip}>${art}</g></g>`;
+  const under = `<g${clip ? ' clip-path="url(#tt)"' : ""}><g transform="${at}">${shadow}</g></g>`, over = state === "dead" ? `<g transform="${at}"><g transform="translate(0,-3) rotate(90)" opacity=".85"><g${flip}>${art}</g></g></g>` : `<g transform="${at}"><g${flip}>${art}</g></g>`;
   return part === "shadow" ? under : part === "art" ? over : under + over;
 }
 
 // A creature on the board: the piece its catalog entry is named for (the Blob), in its own colors, standing like a player's
 // piece. A creature with no piece of its own gets null, and the board draws it the way it already does.
 export const CREATURE_PIECES = Object.freeze(Object.keys(TRACED).filter((k) => !ROLES[k]));
-export function creatureSVG(c, { scale = 1.1 } = {}) {
+export function creatureSVG(c, { scale = 1.1, part = "" } = {}) {
   const key = String((c && c.name) || "").trim().toLowerCase();
-  return CREATURE_PIECES.includes(key) ? pieceSVG({ shape: key, color: null, scale }) : null;
+  return CREATURE_PIECES.includes(key) ? pieceSVG({ shape: key, color: null, scale, part }) : null;
 }
 
 // A flat tile (for the join picker and the landing page): a charted tile at the page's colors.

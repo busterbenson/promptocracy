@@ -10,7 +10,7 @@
 import { createSession } from "../lib/auth";
 import { clockNow } from "../lib/day";
 import { joinLock, joinOpenSql } from "../lib/invite";
-import { RuleError, chooseSpawn } from "../engine/host";
+import { RuleError, chooseSpawn, heartsStart } from "../engine/host";
 import { ensureTiles } from "../lib/board";
 import { notify } from "../lib/notify";
 import { isConsentPath } from "../lib/oauth";
@@ -118,15 +118,15 @@ export const post = async (ctx: Ctx) => {
       if (!spawn) { noRoom = true; break; }
       const { x, y, z } = spawn.tile;
       const r = await env.DB.prepare(
-        `INSERT INTO players (id, game_id, email, display_name, color, shape, score, turn_order, is_host, joined_at, x, y, z)
+        `INSERT INTO players (id, game_id, email, display_name, color, shape, score, turn_order, is_host, joined_at, x, y, z, hearts)
          SELECT ?, g.id, ?, ?, ?, ?, 0,
                 (SELECT COUNT(*) FROM players WHERE game_id = g.id),
-                (SELECT COUNT(*) = 0 FROM players WHERE game_id = g.id), ?, ?, ?, ?
+                (SELECT COUNT(*) = 0 FROM players WHERE game_id = g.id), ?, ?, ?, ?, ?
          FROM games g
          WHERE g.id = ? AND g.status IN ('setup', 'playing') AND ${joinOpenSql} AND (SELECT COUNT(*) FROM players WHERE game_id = g.id) < ?
            AND EXISTS (SELECT 1 FROM tiles t WHERE t.game_id = g.id AND t.x = ? AND t.y = ? AND t.z = ?)
            AND (SELECT COUNT(*) FROM players o WHERE o.game_id = g.id AND o.x = ? AND o.y = ? AND o.z = ?) = ?`,
-      ).bind(playerId, t.email, t.display_name, color, shape, now, x, y, z, game.id, nowIso(nowMs), seatLimit(game), x, y, z, x, y, z, spawn.occupants).run();
+      ).bind(playerId, t.email, t.display_name, color, shape, now, x, y, z, heartsStart(game), game.id, nowIso(nowMs), seatLimit(game), x, y, z, x, y, z, spawn.occupants).run();
       joined = (r.meta?.changes ?? 0) > 0;
       if (!joined) {
         // Ask again only if the seat is still there (the game is in setup and not full): a lost race for a tile.

@@ -80,8 +80,8 @@ export function registerTools(server: McpServer, ctx: Ctx, player: Player) {
     const d = day.data, you = d.you;
     // you.can comes from the day route, which runs the same turnBlock the move, propose and end-turn routes apply.
     return { content: [{ type: "text" as const, text: asJson({
-      you: { name: me.data.user.name, turn_order: player.turn_order, color: me.data.player.color.name, score: me.data.player.score, is_host: me.data.player.is_host, at: piece?.at ?? null },
-      game: { name: g.data.game.name, slug: g.data.game.slug, status: d.status, winning_score: g.data.game.winning_score },
+      you: { name: me.data.user.name, turn_order: player.turn_order, color: me.data.player.color.name, score: me.data.player.score, is_host: me.data.player.is_host, at: piece?.at ?? null, hearts: me.data.player.hearts, state: me.data.player.state },
+      game: { name: g.data.game.name, slug: g.data.game.slug, status: d.status, winning_score: g.data.game.winning_score, ending: g.data.game.ending ?? null },
       day: { number: d.day, ends_at: d.ends_at, timezone: d.timezone },
       lock: { locked: d.locked, processing_day: d.processing_day, message: d.message },
       today: { moved: you?.moved ?? false, proposed: you?.proposed ?? false, proposals: you?.proposals ?? null, ended: you?.ended ?? false, voted_on: you?.voted ?? 0, ballot_items: d.ballot ?? 0 },

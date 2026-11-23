@@ -4,7 +4,7 @@ JS = """(sel) => [...document.querySelectorAll(sel)].filter((el) => el.getClient
   const svg = el.querySelector("svg"), span = [...el.children].find((c) => c.tagName === "SPAN" && c.textContent.trim());
   const gs = svg ? svg.querySelectorAll(":scope > g") : [], art = gs[gs.length - 1];
   if (!art || !span) return null;
-  const a = art.getBoundingClientRect(), r = document.createRange(); r.selectNodeContents(span); const t = r.getBoundingClientRect();
+  const a = art.getBoundingClientRect(), r = document.createRange(); r.selectNodeContents(span); const t = span.querySelector(".hts") ? span.getBoundingClientRect() : r.getBoundingClientRect();   // a row with hearts under the name is centred on the whole block (the hearts are inside its box)
   return { label: el.textContent.trim().slice(0, 14), dy: (a.top + a.height / 2) - (t.top + t.height / 2), h: el.getBoundingClientRect().height };
 }).filter(Boolean)"""
 

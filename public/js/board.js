@@ -10,7 +10,7 @@
 //   b.setReach(tiles)         dashed highlight on the tiles you may move to ([{x, y}]); none clears
 //   b.screenPos(x, y)         page coordinates of a tile's centre (tests use this to click it)
 //   b.recenter(meKey)         back to the whole island, or onto the viewer's piece
-import { HW, HH, DEPTH, ensureDefs, pieceSVG } from "/js/pieces.js";
+import { HW, HH, DEPTH, ensureDefs, pieceSVG, creatureSVG } from "/js/pieces.js";
 
 export const LONG_PRESS_MS = 500;
 const f1 = (n) => n.toFixed(1);
@@ -75,14 +75,26 @@ export function sceneSVG(board, { sel = null, me = null, id = "b", showFog = tru
   for (const t of reach) s += `<polygon class="reach" points="${inset(t.x, t.y, .86)}"/>`;
   if (sel) s += `<polygon class="selected" points="${inset(sel.x, sel.y, .94)}"/>`;
   s += `<polygon class="hover" id="${id}-hov" points=""/>`;
-  // every shadow first, then every piece back to front: a piece's shadow never paints over a piece, its own or a neighbour's
-  for (const p of pieces) {
-    const c = P(p.at.x + .5, p.at.y + .5);
-    s += `<g class="piece-shadow" transform="translate(${f1(c[0])},${f1(c[1])})">${pieceSVG({ shape: p.shape, color: p.color, mirrored: !!p.mirrored, part: "shadow" })}</g>`;
+  // Pieces and creatures (rule 602) together, back to front, so the nearer one draws on top. A creature is its own piece
+  // (the Blob), or else a ring and the entry's kind letter; a resting one carries a z. Every shadow first, then every
+  // figure: a shadow never paints over a piece, its own or a neighbour's.
+  const creatures = (board.creatures || []).filter((c) => c.at.z === 0);
+  const standing = [...pieces.map((p) => ({ p })), ...creatures.map((c) => ({ c }))]
+    .sort((a, b) => ((b.p || b.c).at.x + (b.p || b.c).at.y) - ((a.p || a.c).at.x + (a.p || a.c).at.y));
+  for (const { p, c } of standing) {
+    const at = P((p || c).at.x + .5, (p || c).at.y + .5);
+    const art = p ? pieceSVG({ shape: p.shape, color: p.color, mirrored: !!p.mirrored, state: p.state, part: "shadow" }) : creatureSVG(c, { part: "shadow" });
+    if (art) s += `<g class="${p ? "piece-shadow" : "creature-shadow"}" transform="translate(${f1(at[0])},${f1(at[1])})">${art}</g>`;
   }
-  for (const p of pieces) {
-    const c = P(p.at.x + .5, p.at.y + .5);
-    s += `<g class="piece" data-piece="${esc(p.color.key)}" transform="translate(${f1(c[0])},${f1(c[1])})">${pieceSVG({ shape: p.shape, color: p.color, mirrored: !!p.mirrored, part: "art" })}</g>`;
+  for (const { p, c } of standing) {
+    if (p) {
+      const at = P(p.at.x + .5, p.at.y + .5);
+      s += `<g class="piece" data-piece="${esc(p.color.key)}" transform="translate(${f1(at[0])},${f1(at[1])})">${pieceSVG({ shape: p.shape, color: p.color, mirrored: !!p.mirrored, state: p.state, part: "art" })}</g>`;
+    } else {
+      const at = P(c.at.x + .5, c.at.y + .5);
+      const art = creatureSVG(c, { part: "art" }) || `<circle cy="-13" r="11" class="cring"/><text y="-8.5" text-anchor="middle" class="cletter">${esc(String(c.entry || c.kind || "C").charAt(0))}</text>`;
+      s += `<g class="creature" data-creature="${c.id}" transform="translate(${f1(at[0])},${f1(at[1])})">${art}${c.resting ? '<text x="12" y="-26" class="czz">z</text>' : ""}</g>`;
+    }
   }
   return { markup: s, box: bbox(new Set([...charted, ...ring(charted, 1)])), tiles };
 }
@@ -133,6 +145,7 @@ export async function createBoard(container, { onSelect } = {}) {
     // names show only on hover (mouse) or press-and-hold (touch): the tile's tip leads with whoever stands on it
     const named = new Map();
     for (const p of board.pieces) if (p.at.z === 0 && p.name) { const k = K(p.at.x, p.at.y); named.set(k, [...(named.get(k) || []), me && p.color.key === me ? `${p.name} (you)` : p.name]); }
+    for (const c of board.creatures || []) if (c.at.z === 0) { const k = K(c.at.x, c.at.y); named.set(k, [...(named.get(k) || []), `${c.name}${c.resting ? " (resting)" : ""}`]); }
     for (const [k, names] of named) labels.set(k, labels.get(k) ? `${names.join(", ")} · ${labels.get(k)}` : names.join(", "));
     if (!fitted) { fitted = true; if (container.clientWidth < 600 && me) centerOnMe(me); else fit(); }
     else if (!touched) fit();

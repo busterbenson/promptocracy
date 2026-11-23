@@ -333,11 +333,12 @@ ${S.ui.err ? `<p class="notice err" role="alert">${withPills(S.ui.err)}</p>` : "
     const full = !can().allowed;
     const off = fz || full;
     const ended = !!day().you.ended, label = (proposed && fz) || left === 0 ? "Proposed" : ended ? "No proposal" : "Propose";
-    const count = fz || left === null ? "" : `<b>${esc(left)}</b> of ${esc(limit)} left <span class="rpill">103.2</span>`;   // a plain pill: it sits inside the Propose button, and a button may not hold a button
+    const notLiving = !fz && full && day().you.state && day().you.state !== "living";   // a Ghost or the dead: the reason (202.5, 603.1) in place of the count
+    const count = notLiving ? esc(can().reason || "") : fz || left === null ? "" : `<b>${esc(left)}</b> of ${esc(limit)} left <span class="rpill">103.2</span>`;   // a plain pill: it sits inside the Propose button, and a button may not hold a button
     const marks = `<span class="tkmarks${limit > 4 ? " many" : ""}">${marksHTML(limit, items, draft, fz)}</span>`;
     const mb = canOpen ? `<button type="button" class="tkmb" data-p="bar-open" aria-expanded="${open}" aria-label="Your proposals">${marks}</button>` : `<span class="tkmb static">${marks}</span>`;
     const menu = S.bar.menu && !off;
-    const go = `<button type="button" class="tkgo" data-p="bar-menu" aria-haspopup="menu" aria-expanded="${menu}" aria-label="${esc(count ? `${label}, ${left} of ${limit} left` : label)}"${off ? " disabled" : ""}><span class="tktxt"><span class="tklab">${label}</span>${count ? `<span class="tkdet">${count}</span>` : ""}</span>${off ? "" : '<span class="go" aria-hidden="true">▾</span>'}</button>`;
+    const go = `<button type="button" class="tkgo" data-p="bar-menu" aria-haspopup="menu" aria-expanded="${menu}" aria-label="${esc(notLiving ? `${label}, ${can().reason || ""}` : count ? `${label}, ${left} of ${limit} left` : label)}"${off ? " disabled" : ""}><span class="tktxt"><span class="tklab">${label}</span>${count ? `<span class="tkdet">${count}</span>` : ""}</span>${off ? "" : '<span class="go" aria-hidden="true">▾</span>'}</button>`;
     return `<li class="tkstep pr${proposed ? " done" : ""}${fz ? " dim" : ""}${open ? " open" : ""}">${mb}${go}${menu ? menuBarHTML() : ""}</li>`;
   }
 

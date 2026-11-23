@@ -143,6 +143,14 @@ mark{background:color-mix(in srgb,var(--accent) 28%,transparent);color:inherit;b
 .prow b{font-family:var(--font-mono);font-size:.8rem}
 .players li.mine .prow{font-weight:700}
 .players .you{font-weight:400}
+.cring{fill:var(--land);stroke:#b3261e;stroke-width:2.2}
+.cletter{font-size:12px;font-weight:700;fill:var(--ink)}
+.czz{font-size:10px;font-weight:700;fill:var(--ink-muted)}
+.hts{display:inline-flex;gap:2px;vertical-align:-1px}
+.ht{width:10px;height:9px;fill:var(--accent)}
+.ht.off{fill:none;stroke:var(--ink-muted);stroke-width:1}
+.sth{margin-left:6px}
+.givebtn{margin-top:6px}
 .players .st{display:block;font-family:var(--font-mono);font-size:.58rem;color:var(--ink-muted);font-weight:400}
 
 /* the book: tabs, then one panel (Summary, Rulebook, Workshop, History) */

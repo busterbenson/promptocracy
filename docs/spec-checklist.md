@@ -108,7 +108,7 @@ How this was checked: every item below was confirmed against mockup-v32 in headl
 - [ ] S1-RUL-16 · The game page has no GitHub link and no "they live in the game's repo" line; the join/login pages say "Join the game", never "take a seat" · texted 07:44 · Join page, Rulebook footer
 
 ### 1I. Players list and player cards
-- [ ] S1-PLY-01 · Players list (aside on desktop, wrapped chips on phone), sorted by points high to low: player pill, hearts (Step 2), status text ("voted 1 of 4 · proposed", "turn ended", "dead · 3 days to revive", "became a Ghost"), points on the right; each row is a button (Enter opens the card) · v18 / v32 · Play > Players
+- [ ] S1-PLY-01 · Players list (aside on desktop, wrapped chips on phone), sorted by points high to low: player pill, hearts (Step 2), status text ("voted 1 of 4 · proposed", "turn ended", "dead · day N of 3 [superseded 2026-11-22: was 3 days to revive", "became a Ghost"), points on the right; each row is a button (Enter opens the card) · v18 / v32 · Play > Players
 - [ ] S1-PLY-02 · Player pill = their piece (traced piece or pawn) + name, used everywhere a player's name appears (logs, ballot, history); your own shows "(you)" · v32 (c520a874) · Play > any slip
 - [ ] S1-PLY-03 · Player card opens from clicking a piece on the board, a Players row, a player pill, a vote dot preview, or the account menu "Your player card" · v18 / v30 · Play > board piece / Players row
 - [ ] S1-PLY-04 · Card rows each carry rule chips that open the rule: Hearts (601.1, 601.5), Revive (601.2, 601.3, only if dead), Points (401, 402), Today (202, living players only), Piece (504, and 704 if the piece was changed), Pack (707, own card only), Craft (708, own card only) · v18 / v30 · Play > player card
@@ -146,16 +146,16 @@ How this was checked: every item below was confirmed against mockup-v32 in headl
 ## STEP 2: hearts, creatures (600 block), dead state, ghosts, crow, moon
 
 ### 2A. Hearts
-- [ ] S2-HRT-01 · Every player starts with 3 hearts, max 3; hearts are shapes (filled / hollow), never color alone, with `role=img` label "2 of 3 hearts" · rule 601.1 / v4 · Players list, your card
-- [ ] S2-HRT-02 · A player with 0 hearts at the end of a day is dead: cannot move, propose or vote, does not count for voting thresholds or rule 403, stays in the game · rule 601.2 · Play > Basil
-- [ ] S2-HRT-03 · Give a heart: any living player may give one of their own hearts within 3 days of a death; costs the giver 1 heart (giver must keep at least 1), the dead player returns with 1 heart where their piece stands; it is free of the day's move, once a day · rule 601.3 / Q2, Q3 · Play > Basil card
-- [ ] S2-HRT-04 · Give a heart lives on the dead player's card (Revive row, chips 601.2 / 601.3) and as the single move-bar shortcut when you are next to them. Filled when possible; ghost + disabled with plain reason when not ("Move next to Basil's piece..." / "You need at least 2 hearts...") · v30 / emphasis-rules.md · Play > Basil card, move bar
-- [ ] S2-HRT-05 · Cost stated beside the button: "Costs you 1 heart. Basil comes back with 1." No confirm dialog · v30 · Play > Basil card
-- [ ] S2-HRT-06 · After giving: toast "You gave Basil a heart. Basil is back, with 1 heart."; your hearts drop; Basil's Revive row disappears · v30 · Play > Give Basil a heart
-- [ ] S2-HRT-07 · Rule 601.5: on a full-moon day, every living player heals 1 heart at 6 pm in the game's time zone · rule 601.5 · (see OPEN-07)
+- [ ] S2-HRT-01 · Every player starts with 3 hearts, max 3; hearts are shapes (filled / hollow), never color alone, with `role=img` label "2 of 3 hearts" · rule 601.1 / v4 · Players list, your card **[superseded 2026-11-22: built as rule 601; hearts shapes in the Players list and card]**
+- [ ] S2-HRT-02 · A player with 0 hearts at the end of a day is dead: cannot move, propose or vote, does not count for voting thresholds or rule 403, stays in the game · rule 601.2 · Play > Basil **[superseded 2026-11-22: dead = no vote and no turn (603.1, 104.2, 202.1); stays in the game]**
+- [ ] S2-HRT-03 · Give a heart: any living player may give one of their own hearts within 3 days of a death; costs the giver 1 heart (giver must keep at least 1), the dead player returns with 1 heart where their piece stands; it is free of the day's move, once a day · rule 601.3 / Q2, Q3 · Play > Basil card **[superseded 2026-11-22: built as rule 603.4: next to the dead piece, giver keeps 1 heart, once a day, before the Ghost rises]**
+- [ ] S2-HRT-04 · Give a heart lives on the dead player's card (Revive row, chips 601.2 / 601.3) and as the single move-bar shortcut when you are next to them. Filled when possible; ghost + disabled with plain reason when not ("Move next to Basil's piece..." / "You need at least 2 hearts...") · v30 / emphasis-rules.md · Play > Basil card, move bar **[superseded 2026-11-22: the Give a heart button is on the dead card only; no move-bar shortcut]**
+- [ ] S2-HRT-05 · Cost stated beside the button: "Costs you 1 heart. Basil comes back with 1." No confirm dialog · v30 · Play > Basil card **[superseded 2026-11-22: no cost line: AGENTS.md rule 4]**
+- [ ] S2-HRT-06 · After giving: toast "You gave Basil a heart. Basil is back, with 1 heart."; your hearts drop; Basil's Revive row disappears · v30 · Play > Give Basil a heart **[superseded 2026-11-22: no toast text: AGENTS.md rule 4]**
+- [ ] S2-HRT-07 · Rule 601.5: on a full-moon day, every living player heals 1 heart at 6 pm in the game's time zone · rule 601.5 · (see OPEN-07) **[superseded 2026-11-22: no moons]**
 
 ### 2B. Creatures (catalog + rules)
-- [ ] S2-CRE-01 · "Creatures" (not "Monsters") is the catalog group: C1 Blob (hostile, speed 1, bite 1), C2 Ghost (hostile, "In the dead player's color"), C3 Crow (neutral, speed 2, flies); Bog is renamed Blob everywhere · v12 / v21 · Play > Catalog > Creatures
+- [ ] S2-CRE-01 · "Creatures" (not "Monsters") is the catalog group: C1 Blob (hostile, speed 1, bite 1), C2 Ghost (hostile, "In the dead player's color"), C3 Crow (neutral, speed 2, flies); Bog is renamed Blob everywhere · v12 / v21 · Play > Catalog > Creatures **[superseded 2026-11-22: the Ghost is the player's own piece, not a catalog creature (604); the catalog's hostile entry is C1 Blob, drawn from its bundled piece]**
 - [ ] S2-CRE-02 · Creature card (tap a creature on the board or in the catalog): tile art, C-number, name, "Hostile creature · 4N 2W (· was Pip)", pill "Resting today / Hunting / Keeping away / Not on the board yet"; stat rows Hearts None (601.1), Speed, Bite ("1 ×2 today" on a new moon), After a bite Rests (603.2), Where from (602 or 601.4), Properties, each with rule chips · v15 / v18 / v29 · Play > Catalog > C1; board > Blob
 - [ ] S2-CRE-03 · Neutral creature card: Bite None (606.1), Speed with 606.2 / 606.3, Where from "Not placed yet" (705), no "After a bite" row · v21 / v22 · Play > Catalog > C3
 - [ ] S2-CRE-04 · 602: at the end of a day whose ballot passed nothing (including an empty ballot) one hostile creature appears on a random unoccupied charted tile more than 2 tiles from every living player; none if no tile qualifies; night log: "Nothing passed: a Blob appeared at 3N 2E." / "No new monster: P5 and P6 passed." · rule 602 · Play > History > Day 10, Day 11
@@ -170,8 +170,8 @@ How this was checked: every item below was confirmed against mockup-v32 in headl
 ### 2C. Dead state and ghosts
 - [ ] S2-DED-01 · A dead player's piece is drawn tipped over in their own color (no fade or grayscale) with 3 red pips = days left to revive; empty hearts on the Players row; dead players keep their color everywhere · v21 / v23 · Play > board > Basil; Players list
 - [ ] S2-DED-02 · Players list shows "dead · 3 days to revive" (counts down); player card shows Revive row "3 days left" and "Died at 0 hearts at the end of day 11, so can't move, propose or vote. A living player next to Basil's piece can give one of their hearts until midnight on day 14." · v18 · Play > Basil card
-- [ ] S2-DED-03 · After 3 dead days (601.4) the player becomes a Ghost where the piece stood, in their own color; the Ghost is hostile; log "Pip had been dead 3 days and became a Ghost at 1S 2E." · v21 / v22 · Play > recap NIGHT
-- [ ] S2-DED-04 · Ghost drawn with green eyes, trimmed in the dead player's color, named "Pip's Ghost" ("was Pip" on its card); catalog art shows 8 ghosts with note "In the dead player's color" · v21 / v22 · Play > Catalog > C2; board
+- [ ] S2-DED-03 · After 3 dead days (601.4) the player becomes a Ghost where the piece stood, in their own color; the Ghost is hostile; log "Pip had been dead 3 days and became a Ghost at 1S 2E." · v21 / v22 · Play > recap NIGHT **[superseded 2026-11-22: the Ghost is not hostile: same turn checklist, Move and End turn, no Vote or Propose (604.1); rises after death.ghost_days (603.3)]**
+- [ ] S2-DED-04 · Ghost drawn with green eyes, trimmed in the dead player's color, named "Pip's Ghost" ("was Pip" on its card); catalog art shows 8 ghosts with note "In the dead player's color" · v21 / v22 · Play > Catalog > C2; board **[superseded 2026-11-22: the Ghost piece replaces the player's piece and can't be changed (604.2); no C2 entry, no catalog art]**
 - [ ] S2-DED-05 · A ghosted player's status in the Players list reads "became a Ghost", no hearts · v32 · Play > Players
 
 ### 2D. Crow and neutral creatures
@@ -179,9 +179,9 @@ How this was checked: every item below was confirmed against mockup-v32 in headl
 - [ ] S2-CRW-02 · Crow is catalog-only until a rule places it ("Not placed yet", rule 705); no crow appears on the board in step 2 · v21 / OPEN-03 · Play > C3 card
 
 ### 2E. Moon
-- [ ] S2-MON-01 · Day header moon shows the phase emoji + name and days to next full moon / new moon; computed from the real date (not hard-coded) · v32 · Play > Summary > day strip
-- [ ] S2-MON-02 · Full moon heals 1 (601.5); new moon doubles bites (604); creature card Bite shows "1 ×2 today" on a new-moon day · rules 601.5 / 604 / v15 · Play > C1 card
-- [ ] S2-MON-03 · The Night column of a day slip is tinted by that night's moon phase · v16 · Play > recap slip
+- [ ] S2-MON-01 · Day header moon shows the phase emoji + name and days to next full moon / new moon; computed from the real date (not hard-coded) · v32 · Play > Summary > day strip **[superseded 2026-11-22: no moons]**
+- [ ] S2-MON-02 · Full moon heals 1 (601.5); new moon doubles bites (604); creature card Bite shows "1 ×2 today" on a new-moon day · rules 601.5 / 604 / v15 · Play > C1 card **[superseded 2026-11-22: no moons]**
+- [ ] S2-MON-03 · The Night column of a day slip is tinted by that night's moon phase · v16 · Play > recap slip **[superseded 2026-11-22: no moons]**
 
 ---
 

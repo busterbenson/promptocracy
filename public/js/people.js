@@ -12,7 +12,7 @@ export const hexOf = (c) => (c && /^#[0-9a-f]{6}$/i.test(c.hex) ? c.hex : "#888"
 export function mini(p, cls = "") {
   ensureDefs();
   const mid = (MID[p.shape] ?? MID.pawn) * HEIGHT / CANVAS.tall * (FIT[p.shape] || FIT.pawn);
-  return `<svg ${cls ? `class="${cls}" ` : ""}viewBox="-22 ${(mid - 25).toFixed(1)} 44 50" aria-hidden="true">${pieceSVG({ shape: p.shape, color: p.color, scale: 1, clip: false })}</svg>`;
+  return `<svg ${cls ? `class="${cls}" ` : ""}viewBox="-22 ${(mid - 25).toFixed(1)} 44 50" aria-hidden="true">${pieceSVG({ shape: p.shape, color: p.color, scale: 1, clip: false, state: p.state })}</svg>`;
 }
 
 /**

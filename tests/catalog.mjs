@@ -101,6 +101,11 @@ check("the catalog is capped (500 entries)", readCatalog(Array.from({ length: 50
 console.log("the registry the modules export (rules 703.1, 703.3, 704.1)");
 const mod = (rule, attributes, req) => ({ rule, attributes, required: req });
 check("one rule's attributes become one registry, each with the rule that defines it; the required list comes from rule 704's module", (() => { const r = buildRegistry([mod(602, [{ key: "speed", type: "number", kinds: ["creature"], meaning: "How far it moves." }]), mod(704, undefined, required)]); return r.registry.speed.rule === 602 && r.registry.speed.meaning === "How far it moves." && J(r.required) === J(required); })());
+check("a number may be whole with a min (a creature's hearts, 601.2): the registry keeps both, a fraction or a value under the min is refused, a whole one at or over it reads; whole and min only go on a number", (() => {
+  const r = buildRegistry([mod(601, [{ key: "hearts", type: "number", whole: true, min: 0, kinds: ["creature"] }])]), d = r.registry.hearts;
+  return d.whole === true && d.min === 0 && readValue("number", 3, d).value === 3 && readValue("number", 0, d).value === 0 && /whole number/.test(readValue("number", 1.5, d).error) && /0 or more/.test(readValue("number", -1, d).error) && readValue("number", -1).value === -1
+    && buildRegistry([mod(602, [{ key: "k", type: "text", whole: true, kinds: ["creature"] }])]).errors.length === 1 && buildRegistry([mod(602, [{ key: "k", type: "number", min: "0", kinds: ["creature"] }])]).errors.length === 1;
+})());
 check("two rules defining one key fail, naming the rule that has it (703.3)", /rule 602 already defines speed; only one rule can \(703\.3\)/.test(buildRegistry([mod(602, [{ key: "speed", type: "number", kinds: ["creature"] }]), mod(603, [{ key: "speed", type: "number", kinds: ["creature"] }])]).errors[0]));
 check("a bad definition fails: a key with capitals, an unknown type, no kinds, a choice with no choices, a default that is not its type", [
   [{ key: "Speed", type: "number", kinds: ["creature"] }], [{ key: "speed", type: "float", kinds: ["creature"] }], [{ key: "speed", type: "number", kinds: [] }], [{ key: "t", type: "choice", kinds: ["creature"] }], [{ key: "speed", type: "number", kinds: ["creature"], default: "fast" }],
