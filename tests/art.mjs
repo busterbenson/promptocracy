@@ -11,7 +11,7 @@ import { client, createGame, d1, freePort, join, migrate, newState, r2Delete, r2
 import { readFileSync } from "node:fs";
 import { join as pjoin } from "node:path";
 import { ROOT } from "./lib.mjs";
-import { HASH, IMAGE_MODEL, MAX_PROMPT, artKey, runImage, sha256Hex, sizeFor, sniffType, stubPng, stylePrompt, tmpKey } from "../src/lib/art.js";
+import { HASH, IMAGE_MODEL, MAX_PROMPT, artKey, runImage, sha256Hex, sizeFor, sniffType, stubImage, stubPng, stylePrompt, tmpKey } from "../src/lib/art.js";
 import { answerSchema, readMakeItem, systemStatic } from "../src/lib/gremlin.js";
 
 let pass = 0, fail = 0;
@@ -23,6 +23,15 @@ const sha = (b) => createHash("sha256").update(b).digest("hex");
 console.log("the key is the bytes' hash (rule 801.2)");
 const png = stubPng(3);
 check("sha256Hex is the SHA-256 of the bytes, 64 lowercase hex characters, and a different picture has a different key", await sha256Hex(png) === sha(png) && HASH.test(await sha256Hex(png)) && await sha256Hex(stubPng(4)) !== await sha256Hex(png));
+// The stub's colour is its seed's hue, 360 of them, so a drawing made with a random seed has the same bytes (the same key) as a fixture
+// drawn with stubPng(n) about once in 360. The sweep section below seeds art_refs/art_objects for stubPng(0) (the catalog's hash) and
+// stubPng(100..105) and expects nothing else to name them; a seeded draw earlier in the same run that landed on one of those hues made its
+// "rows are gone" check fail, about 1 run in 20. The model stand-in therefore draws a size no fixture uses.
+check("a seeded stub draw never has the bytes of a fixture picture (stubPng(0) and stubPng(100..105)), whatever its seed", await (async () => {
+  const fixtures = new Set([0, 100, 101, 102, 103, 104, 105].map((n) => sha(stubPng(n))));
+  for (const n of [0, 100, 101, 102, 103, 104, 105]) for (const seed of [n, n + 360, n + 720]) if (fixtures.has(sha((await stubImage("seeded", { seed })).bytes))) return false;   // seed and seed + 360 share a hue (47 and 360 are coprime)
+  return true;
+})());
 check("only a 64-hex hash makes a key: a path, an uppercase hash, a short one and traversal are refused; the two key spaces are tmp/ and art/", (() => {
   const h = sha(png), refused = (f, v) => { try { f(v); return false; } catch { return true; } };
   return tmpKey(h) === `tmp/${h}` && artKey(h) === `art/${h}` && ["../x", "tmp/" + h, h.toUpperCase(), h.slice(1), h + "0", "", "a/b"].every((v) => refused(tmpKey, v) && refused(artKey, v));
