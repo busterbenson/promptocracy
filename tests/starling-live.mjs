@@ -103,14 +103,14 @@ for (const c of cases) {
   const failures = grade(c, a, r.text);
   const cost = costMicro(USE_MODEL, r.usage);
   spent += cost; cacheReads += r.usage.cache_read_input_tokens;
-  rows.push({ id: c.id, group: c.group, pass: !failures.length, failures, usage: r.usage, ms: r.ms, cost_micro: cost, text: r.text });
+  rows.push({ id: c.id, group: c.group, message: c.message, pass: !failures.length, failures, usage: r.usage, ms: r.ms, cost_micro: cost, text: r.text });
   if (USE_MODEL === MODEL) recorded[c.id] = { message: c.message, text: r.text, usage: r.usage, recorded_at: new Date().toISOString().slice(0, 10) };
   console.log(`${failures.length ? "FAIL" : "PASS"}  ${c.id.padEnd(16)} ${r.ms} ms  ${r.usage.input_tokens} in + ${r.usage.cache_read_input_tokens} cached + ${r.usage.cache_creation_input_tokens} written / ${r.usage.output_tokens} out  $${(cost / 1e6).toFixed(4)}`);
   for (const x of failures) console.log(`        - ${x}`);
 }
 const passed = rows.filter((r) => r.pass).length;
 console.log(`\n${USE_MODEL}: ${passed}/${rows.length} cases pass. This run: $${(spent / 1e6).toFixed(4)} (${rows.length ? `$${(spent / rows.length / 1e6).toFixed(4)}` : "-"} a turn), ${cacheReads} cache-read tokens${cacheReads === 0 ? " (ZERO: an invalidator in the prefix, or one call only)" : ""}. Calls so far: ${ledger.calls} of ${MAX_CALLS}.`);
-writeFileSync(OUT, JSON.stringify({ at: new Date().toISOString(), model: USE_MODEL, rows: rows.map(({ text, ...r }) => r) }, null, 2));
+writeFileSync(OUT, JSON.stringify({ at: new Date().toISOString(), model: USE_MODEL, rows }, null, 2)); // answer text kept so a run can be reviewed (Buster, 2026-11-24)
 if (RECORD && USE_MODEL === MODEL) { writeFileSync(RECORD, JSON.stringify(recorded, null, 2) + "\n"); console.log(`recorded answers: ${RECORD}`); }
 console.log(`results: ${OUT}`);
 process.exit(passed === rows.length ? 0 : 1);
