@@ -1,0 +1,635 @@
+{
+ "note": "Round 2 of the art-check study (artifacts/2026-11-23-art-check2): 35 FRESH drawings of six subjects chosen before any draw (windmill, pagoda, trident, candelabra, unicorn, three-headed dog), judged by a person (board size, fail by default, borderline = fail) BEFORE any check ran on them. `check` is the current look's answer (src/lib/art.js checkQuestion, CHECK_MODEL) to the question whose SHA-256 is `question_sha256`, from one run. other_finalists are the verdicts of the two levers tried (Sonnet on the same question; must-show facts with haiku): neither beat it, so no check changed. The drawings are not stored here.",
+ "rows": [
+  {
+   "id": "windmill-dev-1",
+   "subject": "windmill",
+   "kind": "structure",
+   "words": "a windmill with four sails",
+   "model": "flux-2-dev",
+   "human": "P",
+   "human_reason": "four plain planks in an X on a white tower, a windmill",
+   "check": {
+    "answer": "yes",
+    "reason": ""
+   },
+   "question_sha256": "83b9ea8f98b5d586c97b8c427d71e146860edf94a0ec40773ea7d22a161fd50a",
+   "other_finalists": {
+    "A_sonnet_same_question": "pass",
+    "Bh_facts_haiku": "fail"
+   }
+  },
+  {
+   "id": "windmill-nano-1",
+   "subject": "windmill",
+   "kind": "structure",
+   "words": "a windmill with four sails",
+   "model": "nano-banana",
+   "human": "P",
+   "human_reason": "four lattice sails, a windmill",
+   "check": {
+    "answer": "yes",
+    "reason": ""
+   },
+   "question_sha256": "83b9ea8f98b5d586c97b8c427d71e146860edf94a0ec40773ea7d22a161fd50a",
+   "other_finalists": {
+    "A_sonnet_same_question": "pass",
+    "Bh_facts_haiku": "pass"
+   }
+  },
+  {
+   "id": "pagoda-dev-1",
+   "subject": "pagoda",
+   "kind": "structure",
+   "words": "a pagoda with five roofs",
+   "model": "flux-2-dev",
+   "human": "F",
+   "human_reason": "a white diamond plinth under it that is not part of the pagoda",
+   "check": {
+    "answer": "yes",
+    "reason": ""
+   },
+   "question_sha256": "484258d3e85ed813052349a6df992284c5d6941bf012629551989ac553ba4e74",
+   "other_finalists": {
+    "A_sonnet_same_question": "pass",
+    "Bh_facts_haiku": "pass"
+   }
+  },
+  {
+   "id": "pagoda-nano-1",
+   "subject": "pagoda",
+   "kind": "structure",
+   "words": "a pagoda with five roofs",
+   "model": "nano-banana",
+   "human": "P",
+   "human_reason": "five stacked green roofs on a red tower",
+   "check": {
+    "answer": "yes",
+    "reason": ""
+   },
+   "question_sha256": "484258d3e85ed813052349a6df992284c5d6941bf012629551989ac553ba4e74",
+   "other_finalists": {
+    "A_sonnet_same_question": "pass",
+    "Bh_facts_haiku": "pass"
+   }
+  },
+  {
+   "id": "trident-dev-1",
+   "subject": "trident",
+   "kind": "item",
+   "words": "a trident",
+   "model": "flux-2-dev",
+   "human": "P",
+   "human_reason": "copper fork with three tines on a long shaft",
+   "check": {
+    "answer": "yes",
+    "reason": ""
+   },
+   "question_sha256": "0bd92d6f1ceb0fb9325886f0325e29359a71065ac860644caff56501dc5eb3ca",
+   "other_finalists": {
+    "A_sonnet_same_question": "pass",
+    "Bh_facts_haiku": "pass"
+   }
+  },
+  {
+   "id": "trident-nano-1",
+   "subject": "trident",
+   "kind": "item",
+   "words": "a trident",
+   "model": "nano-banana",
+   "human": "F",
+   "human_reason": "head too thin at board size to count three tines: borderline",
+   "check": {
+    "answer": "yes",
+    "reason": ""
+   },
+   "question_sha256": "0bd92d6f1ceb0fb9325886f0325e29359a71065ac860644caff56501dc5eb3ca",
+   "other_finalists": {
+    "A_sonnet_same_question": "pass",
+    "Bh_facts_haiku": "pass"
+   }
+  },
+  {
+   "id": "candelabra-dev-1",
+   "subject": "candelabra",
+   "kind": "item",
+   "words": "a candelabra with five candles",
+   "model": "flux-2-dev",
+   "human": "P",
+   "human_reason": "five candles on a gold stand",
+   "check": {
+    "answer": "yes",
+    "reason": ""
+   },
+   "question_sha256": "3ee36ab390e734162d2b4a990ce4f59554e5d12ad7ac01d703de0acf92d549c4",
+   "other_finalists": {
+    "A_sonnet_same_question": "pass",
+    "Bh_facts_haiku": "pass"
+   }
+  },
+  {
+   "id": "candelabra-nano-1",
+   "subject": "candelabra",
+   "kind": "item",
+   "words": "a candelabra with five candles",
+   "model": "nano-banana",
+   "human": "P",
+   "human_reason": "five candles on a branched gold stand",
+   "check": {
+    "answer": "yes",
+    "reason": ""
+   },
+   "question_sha256": "3ee36ab390e734162d2b4a990ce4f59554e5d12ad7ac01d703de0acf92d549c4",
+   "other_finalists": {
+    "A_sonnet_same_question": "pass",
+    "Bh_facts_haiku": "pass"
+   }
+  },
+  {
+   "id": "unicorn-dev-1",
+   "subject": "unicorn",
+   "kind": "creature",
+   "words": "a unicorn",
+   "model": "flux-2-dev",
+   "human": "P",
+   "human_reason": "white horse, one spiral horn",
+   "check": {
+    "answer": "yes",
+    "reason": ""
+   },
+   "question_sha256": "d703aa4813da4fd923e8ce478a9d71ae84ac67b45c2440fb2cbfcc5604e6f389",
+   "other_finalists": {
+    "A_sonnet_same_question": "pass",
+    "Bh_facts_haiku": "pass"
+   }
+  },
+  {
+   "id": "unicorn-nano-1",
+   "subject": "unicorn",
+   "kind": "creature",
+   "words": "a unicorn",
+   "model": "nano-banana",
+   "human": "P",
+   "human_reason": "white horse, one horn (realistic style)",
+   "check": {
+    "answer": "yes",
+    "reason": ""
+   },
+   "question_sha256": "d703aa4813da4fd923e8ce478a9d71ae84ac67b45c2440fb2cbfcc5604e6f389",
+   "other_finalists": {
+    "A_sonnet_same_question": "pass",
+    "Bh_facts_haiku": "pass"
+   }
+  },
+  {
+   "id": "hound-dev-1",
+   "subject": "hound",
+   "kind": "creature",
+   "words": "a three-headed dog",
+   "model": "flux-2-dev",
+   "human": "F",
+   "human_reason": "three heads but snarling with bared fangs: not calm",
+   "check": {
+    "answer": "no",
+    "reason": "Identifiable as a three-headed dog and free of writing, but all three heads have open, fanged snarli"
+   },
+   "question_sha256": "750beaac42e93e5b3c63a0bd5aab28219936e5d0cfd97649102b2f819456dad9",
+   "other_finalists": {
+    "A_sonnet_same_question": "fail",
+    "Bh_facts_haiku": "fail"
+   }
+  },
+  {
+   "id": "hound-nano-1",
+   "subject": "hound",
+   "kind": "creature",
+   "words": "a three-headed dog",
+   "model": "nano-banana",
+   "human": "F",
+   "human_reason": "TWO heads, not three",
+   "check": {
+    "answer": "no",
+    "reason": "Three heads are clearly shown and there is no writing, but the open, teeth-bared mouths read as snar"
+   },
+   "question_sha256": "750beaac42e93e5b3c63a0bd5aab28219936e5d0cfd97649102b2f819456dad9",
+   "other_finalists": {
+    "A_sonnet_same_question": "fail",
+    "Bh_facts_haiku": "fail"
+   }
+  },
+  {
+   "id": "windmill-dev-2",
+   "subject": "windmill",
+   "kind": "structure",
+   "words": "a windmill with four sails",
+   "model": "flux-2-dev",
+   "human": "P",
+   "human_reason": "four dark lattice sails, a windmill",
+   "check": {
+    "answer": "yes",
+    "reason": ""
+   },
+   "question_sha256": "83b9ea8f98b5d586c97b8c427d71e146860edf94a0ec40773ea7d22a161fd50a",
+   "other_finalists": {
+    "A_sonnet_same_question": "pass",
+    "Bh_facts_haiku": "pass"
+   }
+  },
+  {
+   "id": "windmill-nano-2",
+   "subject": "windmill",
+   "kind": "structure",
+   "words": "a windmill with four sails",
+   "model": "nano-banana",
+   "human": "P",
+   "human_reason": "four lattice sails of uneven length, a windmill",
+   "check": {
+    "answer": "yes",
+    "reason": ""
+   },
+   "question_sha256": "83b9ea8f98b5d586c97b8c427d71e146860edf94a0ec40773ea7d22a161fd50a",
+   "other_finalists": {
+    "A_sonnet_same_question": "pass",
+    "Bh_facts_haiku": "pass"
+   }
+  },
+  {
+   "id": "pagoda-dev-2",
+   "subject": "pagoda",
+   "kind": "structure",
+   "words": "a pagoda with five roofs",
+   "model": "flux-2-dev",
+   "human": "F",
+   "human_reason": "a white diamond plinth under it that is not part of the pagoda",
+   "check": {
+    "answer": "yes",
+    "reason": ""
+   },
+   "question_sha256": "484258d3e85ed813052349a6df992284c5d6941bf012629551989ac553ba4e74",
+   "other_finalists": {
+    "A_sonnet_same_question": "pass",
+    "Bh_facts_haiku": "pass"
+   }
+  },
+  {
+   "id": "pagoda-nano-2",
+   "subject": "pagoda",
+   "kind": "structure",
+   "words": "a pagoda with five roofs",
+   "model": "nano-banana",
+   "human": "P",
+   "human_reason": "five stacked blue-grey roofs",
+   "check": {
+    "answer": "yes",
+    "reason": ""
+   },
+   "question_sha256": "484258d3e85ed813052349a6df992284c5d6941bf012629551989ac553ba4e74",
+   "other_finalists": {
+    "A_sonnet_same_question": "pass",
+    "Bh_facts_haiku": "pass"
+   }
+  },
+  {
+   "id": "trident-dev-2",
+   "subject": "trident",
+   "kind": "item",
+   "words": "a trident",
+   "model": "flux-2-dev",
+   "human": "P",
+   "human_reason": "pale three-tine head on a long shaft",
+   "check": {
+    "answer": "yes",
+    "reason": ""
+   },
+   "question_sha256": "0bd92d6f1ceb0fb9325886f0325e29359a71065ac860644caff56501dc5eb3ca",
+   "other_finalists": {
+    "A_sonnet_same_question": "pass",
+    "Bh_facts_haiku": "pass"
+   }
+  },
+  {
+   "id": "trident-nano-2",
+   "subject": "trident",
+   "kind": "item",
+   "words": "a trident",
+   "model": "nano-banana",
+   "human": "P",
+   "human_reason": "golden three-tine head, clear",
+   "check": {
+    "answer": "yes",
+    "reason": ""
+   },
+   "question_sha256": "0bd92d6f1ceb0fb9325886f0325e29359a71065ac860644caff56501dc5eb3ca",
+   "other_finalists": {
+    "A_sonnet_same_question": "pass",
+    "Bh_facts_haiku": "pass"
+   }
+  },
+  {
+   "id": "candelabra-dev-2",
+   "subject": "candelabra",
+   "kind": "item",
+   "words": "a candelabra with five candles",
+   "model": "flux-2-dev",
+   "human": "P",
+   "human_reason": "five candles on a gold stand",
+   "check": {
+    "answer": "yes",
+    "reason": ""
+   },
+   "question_sha256": "3ee36ab390e734162d2b4a990ce4f59554e5d12ad7ac01d703de0acf92d549c4",
+   "other_finalists": {
+    "A_sonnet_same_question": "pass",
+    "Bh_facts_haiku": "pass"
+   }
+  },
+  {
+   "id": "candelabra-nano-2",
+   "subject": "candelabra",
+   "kind": "item",
+   "words": "a candelabra with five candles",
+   "model": "nano-banana",
+   "human": "F",
+   "human_reason": "FOUR candles, not five",
+   "check": {
+    "answer": "no",
+    "reason": "The gold candelabra is clearly drawn, but it has four candles rather than the five the prompt asks f"
+   },
+   "question_sha256": "3ee36ab390e734162d2b4a990ce4f59554e5d12ad7ac01d703de0acf92d549c4",
+   "other_finalists": {
+    "A_sonnet_same_question": "fail",
+    "Bh_facts_haiku": "fail"
+   }
+  },
+  {
+   "id": "unicorn-dev-2",
+   "subject": "unicorn",
+   "kind": "creature",
+   "words": "a unicorn",
+   "model": "flux-2-dev",
+   "human": "P",
+   "human_reason": "white horse, one spiral horn",
+   "check": {
+    "answer": "yes",
+    "reason": ""
+   },
+   "question_sha256": "d703aa4813da4fd923e8ce478a9d71ae84ac67b45c2440fb2cbfcc5604e6f389",
+   "other_finalists": {
+    "A_sonnet_same_question": "pass",
+    "Bh_facts_haiku": "pass"
+   }
+  },
+  {
+   "id": "unicorn-nano-2",
+   "subject": "unicorn",
+   "kind": "creature",
+   "words": "a unicorn",
+   "model": "nano-banana",
+   "human": "P",
+   "human_reason": "white horse, one horn",
+   "check": {
+    "answer": "yes",
+    "reason": ""
+   },
+   "question_sha256": "d703aa4813da4fd923e8ce478a9d71ae84ac67b45c2440fb2cbfcc5604e6f389",
+   "other_finalists": {
+    "A_sonnet_same_question": "pass",
+    "Bh_facts_haiku": "pass"
+   }
+  },
+  {
+   "id": "hound-dev-2",
+   "subject": "hound",
+   "kind": "creature",
+   "words": "a three-headed dog",
+   "model": "flux-2-dev",
+   "human": "F",
+   "human_reason": "three heads but snarling with bared fangs: not calm",
+   "check": {
+    "answer": "no",
+    "reason": "the three heads are snarling with bared fangs and glowing eyes, so the expression is not calm"
+   },
+   "question_sha256": "750beaac42e93e5b3c63a0bd5aab28219936e5d0cfd97649102b2f819456dad9",
+   "other_finalists": {
+    "A_sonnet_same_question": "fail",
+    "Bh_facts_haiku": "fail"
+   }
+  },
+  {
+   "id": "hound-nano-2",
+   "subject": "hound",
+   "kind": "creature",
+   "words": "a three-headed dog",
+   "model": "nano-banana",
+   "human": "P",
+   "human_reason": "three calm heads on one body",
+   "check": {
+    "answer": "yes",
+    "reason": ""
+   },
+   "question_sha256": "750beaac42e93e5b3c63a0bd5aab28219936e5d0cfd97649102b2f819456dad9",
+   "other_finalists": {
+    "A_sonnet_same_question": "pass",
+    "Bh_facts_haiku": "pass"
+   }
+  },
+  {
+   "id": "windmill-dev-3",
+   "subject": "windmill",
+   "kind": "structure",
+   "words": "a windmill with four sails",
+   "model": "flux-2-dev",
+   "human": "P",
+   "human_reason": "four lattice sails, a windmill",
+   "check": {
+    "answer": "yes",
+    "reason": ""
+   },
+   "question_sha256": "83b9ea8f98b5d586c97b8c427d71e146860edf94a0ec40773ea7d22a161fd50a",
+   "other_finalists": {
+    "A_sonnet_same_question": "pass",
+    "Bh_facts_haiku": "pass"
+   }
+  },
+  {
+   "id": "windmill-nano-3",
+   "subject": "windmill",
+   "kind": "structure",
+   "words": "a windmill with four sails",
+   "model": "nano-banana",
+   "human": "P",
+   "human_reason": "four lattice sails, a windmill",
+   "check": {
+    "answer": "yes",
+    "reason": ""
+   },
+   "question_sha256": "83b9ea8f98b5d586c97b8c427d71e146860edf94a0ec40773ea7d22a161fd50a",
+   "other_finalists": {
+    "A_sonnet_same_question": "pass",
+    "Bh_facts_haiku": "pass"
+   }
+  },
+  {
+   "id": "pagoda-dev-3",
+   "subject": "pagoda",
+   "kind": "structure",
+   "words": "a pagoda with five roofs",
+   "model": "flux-2-dev",
+   "human": "F",
+   "human_reason": "FOUR roofs, not five, and a ghost plinth",
+   "check": {
+    "answer": "no",
+    "reason": "The pagoda shows four roof tiers, not the five the prompt asks for, so it doesn't match the exact de"
+   },
+   "question_sha256": "484258d3e85ed813052349a6df992284c5d6941bf012629551989ac553ba4e74",
+   "other_finalists": {
+    "A_sonnet_same_question": "fail",
+    "Bh_facts_haiku": "fail"
+   }
+  },
+  {
+   "id": "pagoda-nano-3",
+   "subject": "pagoda",
+   "kind": "structure",
+   "words": "a pagoda with five roofs",
+   "model": "nano-banana",
+   "human": "P",
+   "human_reason": "five stacked roofs on a stone base",
+   "check": {
+    "answer": "yes",
+    "reason": ""
+   },
+   "question_sha256": "484258d3e85ed813052349a6df992284c5d6941bf012629551989ac553ba4e74",
+   "other_finalists": {
+    "A_sonnet_same_question": "pass",
+    "Bh_facts_haiku": "pass"
+   }
+  },
+  {
+   "id": "trident-dev-3",
+   "subject": "trident",
+   "kind": "item",
+   "words": "a trident",
+   "model": "flux-2-dev",
+   "human": "P",
+   "human_reason": "pale three-tine head on a long shaft",
+   "check": {
+    "answer": "yes",
+    "reason": ""
+   },
+   "question_sha256": "0bd92d6f1ceb0fb9325886f0325e29359a71065ac860644caff56501dc5eb3ca",
+   "other_finalists": {
+    "A_sonnet_same_question": "pass",
+    "Bh_facts_haiku": "pass"
+   }
+  },
+  {
+   "id": "trident-nano-3",
+   "subject": "trident",
+   "kind": "item",
+   "words": "a trident",
+   "model": "nano-banana",
+   "human": "P",
+   "human_reason": "three-tine head on a long shaft, drawn slanting",
+   "check": {
+    "answer": "yes",
+    "reason": ""
+   },
+   "question_sha256": "0bd92d6f1ceb0fb9325886f0325e29359a71065ac860644caff56501dc5eb3ca",
+   "other_finalists": {
+    "A_sonnet_same_question": "pass",
+    "Bh_facts_haiku": "pass"
+   }
+  },
+  {
+   "id": "candelabra-nano-3",
+   "subject": "candelabra",
+   "kind": "item",
+   "words": "a candelabra with five candles",
+   "model": "nano-banana",
+   "human": "P",
+   "human_reason": "five candles on a gold stand",
+   "check": {
+    "answer": "yes",
+    "reason": ""
+   },
+   "question_sha256": "3ee36ab390e734162d2b4a990ce4f59554e5d12ad7ac01d703de0acf92d549c4",
+   "other_finalists": {
+    "A_sonnet_same_question": "pass",
+    "Bh_facts_haiku": "fail"
+   }
+  },
+  {
+   "id": "unicorn-dev-3",
+   "subject": "unicorn",
+   "kind": "creature",
+   "words": "a unicorn",
+   "model": "flux-2-dev",
+   "human": "P",
+   "human_reason": "white horse, one spiral horn",
+   "check": {
+    "answer": "yes",
+    "reason": ""
+   },
+   "question_sha256": "d703aa4813da4fd923e8ce478a9d71ae84ac67b45c2440fb2cbfcc5604e6f389",
+   "other_finalists": {
+    "A_sonnet_same_question": "pass",
+    "Bh_facts_haiku": "pass"
+   }
+  },
+  {
+   "id": "unicorn-nano-3",
+   "subject": "unicorn",
+   "kind": "creature",
+   "words": "a unicorn",
+   "model": "nano-banana",
+   "human": "P",
+   "human_reason": "white horse, one horn",
+   "check": {
+    "answer": "yes",
+    "reason": ""
+   },
+   "question_sha256": "d703aa4813da4fd923e8ce478a9d71ae84ac67b45c2440fb2cbfcc5604e6f389",
+   "other_finalists": {
+    "A_sonnet_same_question": "pass",
+    "Bh_facts_haiku": "pass"
+   }
+  },
+  {
+   "id": "hound-dev-3",
+   "subject": "hound",
+   "kind": "creature",
+   "words": "a three-headed dog",
+   "model": "flux-2-dev",
+   "human": "P",
+   "human_reason": "three heads, mouths closed, one black body",
+   "check": {
+    "answer": "yes",
+    "reason": ""
+   },
+   "question_sha256": "750beaac42e93e5b3c63a0bd5aab28219936e5d0cfd97649102b2f819456dad9",
+   "other_finalists": {
+    "A_sonnet_same_question": "pass",
+    "Bh_facts_haiku": "pass"
+   }
+  },
+  {
+   "id": "hound-nano-3",
+   "subject": "hound",
+   "kind": "creature",
+   "words": "a three-headed dog",
+   "model": "nano-banana",
+   "human": "P",
+   "human_reason": "three calm heads on one body",
+   "check": {
+    "answer": "no",
+    "reason": "three heads are clear, but the fangs and stern half-lidded faces make the calm-expression requiremen"
+   },
+   "question_sha256": "750beaac42e93e5b3c63a0bd5aab28219936e5d0cfd97649102b2f819456dad9",
+   "other_finalists": {
+    "A_sonnet_same_question": "fail",
+    "Bh_facts_haiku": "fail"
+   }
+  }
+ ]
+}

@@ -1,0 +1,45 @@
+{
+ "candidates": [
+  {
+   "content": {
+    "parts": [
+     {
+      "inlineData": {
+       "mimeType": "image/jpeg",
+       "data": "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"
+      },
+      "thoughtSignature": "<elided: the real signature was ~2 KB of base64>"
+     }
+    ],
+    "role": "model"
+   },
+   "finishReason": "STOP",
+   "index": 0
+  }
+ ],
+ "usageMetadata": {
+  "promptTokenCount": 142,
+  "candidatesTokenCount": 1399,
+  "totalTokenCount": 2264,
+  "promptTokensDetails": [
+   {
+    "modality": "TEXT",
+    "tokenCount": 142
+   }
+  ],
+  "candidatesTokensDetails": [
+   {
+    "modality": "IMAGE",
+    "tokenCount": 1120
+   }
+  ],
+  "thoughtsTokenCount": 723,
+  "serviceTier": "standard"
+ },
+ "modelVersion": "gemini-nano-banana-2.1",
+ "responseId": "EtoEa4noGvuYur8PjsrM2Q4",
+ "_recorded": {
+  "note": "Real response from Google, 2026-11-23, through the branch's own nanoRequest (1024x1024, \"a stone water well\"). The picture is replaced by a 64x64 JPEG of it; the signature is shortened; usageMetadata, modelVersion, finishReason and the shape are as received.",
+  "real_ms": 12754
+ }
+}

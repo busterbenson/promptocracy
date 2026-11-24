@@ -1,0 +1,985 @@
+{
+ "note": "Recorded answers of the look (src/lib/art.js checkQuestion, CHECK_MODEL) on 70 labelled drawings, replayed 2026-11-23 for the art-check study (artifacts/2026-11-23-art-check). `human` is the verdict of a person looking at board size, fail by default, borderline = fail (P pass, F fail). `check` is the model's answer to the question whose SHA-256 is `question_sha256`; a pass records no reason. DEV rows are from the replay over DEV, HOLDOUT rows from the one holdout run. The drawings themselves are not stored here. If checkQuestion changes, tests/art.mjs fails until these are re-recorded: that is the point.",
+ "rows": [
+  {
+   "id": "h2h-pine-nano-1",
+   "split": "DEV",
+   "source": "primary",
+   "subject": "pine",
+   "kind": "structure",
+   "words": "a pine tree",
+   "human": "P",
+   "check": {
+    "answer": "yes",
+    "reason": ""
+   },
+   "question_sha256": "58c46d3b76be6a1b8a21f2b09754578e907000d7b374f2795c1363990b537746"
+  },
+  {
+   "id": "h2h-pine-nano-2",
+   "split": "DEV",
+   "source": "primary",
+   "subject": "pine",
+   "kind": "structure",
+   "words": "a pine tree",
+   "human": "P",
+   "check": {
+    "answer": "yes",
+    "reason": ""
+   },
+   "question_sha256": "58c46d3b76be6a1b8a21f2b09754578e907000d7b374f2795c1363990b537746"
+  },
+  {
+   "id": "h2h-pine-dev-1",
+   "split": "DEV",
+   "source": "primary",
+   "subject": "pine",
+   "kind": "structure",
+   "words": "a pine tree",
+   "human": "P",
+   "check": {
+    "answer": "yes",
+    "reason": ""
+   },
+   "question_sha256": "58c46d3b76be6a1b8a21f2b09754578e907000d7b374f2795c1363990b537746"
+  },
+  {
+   "id": "h2h-pine-dev-2",
+   "split": "DEV",
+   "source": "primary",
+   "subject": "pine",
+   "kind": "structure",
+   "words": "a pine tree",
+   "human": "F",
+   "check": {
+    "answer": "yes",
+    "reason": ""
+   },
+   "question_sha256": "58c46d3b76be6a1b8a21f2b09754578e907000d7b374f2795c1363990b537746"
+  },
+  {
+   "id": "h2h-pine-dev-3",
+   "split": "DEV",
+   "source": "primary",
+   "subject": "pine",
+   "kind": "structure",
+   "words": "a pine tree",
+   "human": "P",
+   "check": {
+    "answer": "yes",
+    "reason": ""
+   },
+   "question_sha256": "58c46d3b76be6a1b8a21f2b09754578e907000d7b374f2795c1363990b537746"
+  },
+  {
+   "id": "h2h-pine-nano-3",
+   "split": "DEV",
+   "source": "primary",
+   "subject": "pine",
+   "kind": "structure",
+   "words": "a pine tree",
+   "human": "P",
+   "check": {
+    "answer": "yes",
+    "reason": ""
+   },
+   "question_sha256": "58c46d3b76be6a1b8a21f2b09754578e907000d7b374f2795c1363990b537746"
+  },
+  {
+   "id": "h2h-well-nano-1",
+   "split": "DEV",
+   "source": "primary",
+   "subject": "well",
+   "kind": "structure",
+   "words": "a stone water well",
+   "human": "P",
+   "check": {
+    "answer": "yes",
+    "reason": ""
+   },
+   "question_sha256": "06cf672a7e621cc66f502f815b3b7c4357a5e6be9adf5169016b69c65b2a3e74"
+  },
+  {
+   "id": "h2h-well-dev-1",
+   "split": "DEV",
+   "source": "primary",
+   "subject": "well",
+   "kind": "structure",
+   "words": "a stone water well",
+   "human": "P",
+   "check": {
+    "answer": "yes",
+    "reason": ""
+   },
+   "question_sha256": "06cf672a7e621cc66f502f815b3b7c4357a5e6be9adf5169016b69c65b2a3e74"
+  },
+  {
+   "id": "h2h-well-dev-2",
+   "split": "DEV",
+   "source": "primary",
+   "subject": "well",
+   "kind": "structure",
+   "words": "a stone water well",
+   "human": "F",
+   "check": {
+    "answer": "yes",
+    "reason": ""
+   },
+   "question_sha256": "06cf672a7e621cc66f502f815b3b7c4357a5e6be9adf5169016b69c65b2a3e74"
+  },
+  {
+   "id": "h2h-well-nano-2",
+   "split": "DEV",
+   "source": "primary",
+   "subject": "well",
+   "kind": "structure",
+   "words": "a stone water well",
+   "human": "P",
+   "check": {
+    "answer": "yes",
+    "reason": ""
+   },
+   "question_sha256": "06cf672a7e621cc66f502f815b3b7c4357a5e6be9adf5169016b69c65b2a3e74"
+  },
+  {
+   "id": "h2h-well-dev-3",
+   "split": "DEV",
+   "source": "primary",
+   "subject": "well",
+   "kind": "structure",
+   "words": "a stone water well",
+   "human": "P",
+   "check": {
+    "answer": "yes",
+    "reason": ""
+   },
+   "question_sha256": "06cf672a7e621cc66f502f815b3b7c4357a5e6be9adf5169016b69c65b2a3e74"
+  },
+  {
+   "id": "h2h-well-nano-3",
+   "split": "DEV",
+   "source": "primary",
+   "subject": "well",
+   "kind": "structure",
+   "words": "a stone water well",
+   "human": "P",
+   "check": {
+    "answer": "yes",
+    "reason": ""
+   },
+   "question_sha256": "06cf672a7e621cc66f502f815b3b7c4357a5e6be9adf5169016b69c65b2a3e74"
+  },
+  {
+   "id": "h2h-owl-nano-1",
+   "split": "DEV",
+   "source": "primary",
+   "subject": "owl",
+   "kind": "creature",
+   "words": "a barn owl",
+   "human": "P",
+   "check": {
+    "answer": "yes",
+    "reason": ""
+   },
+   "question_sha256": "9a89dc3c048e20f10f97e003ffb67b8d885b3bb5b7357f7ba4a6526541f03596"
+  },
+  {
+   "id": "h2h-owl-dev-1",
+   "split": "DEV",
+   "source": "primary",
+   "subject": "owl",
+   "kind": "creature",
+   "words": "a barn owl",
+   "human": "P",
+   "check": {
+    "answer": "yes",
+    "reason": ""
+   },
+   "question_sha256": "9a89dc3c048e20f10f97e003ffb67b8d885b3bb5b7357f7ba4a6526541f03596"
+  },
+  {
+   "id": "h2h-owl-dev-2",
+   "split": "DEV",
+   "source": "primary",
+   "subject": "owl",
+   "kind": "creature",
+   "words": "a barn owl",
+   "human": "P",
+   "check": {
+    "answer": "yes",
+    "reason": ""
+   },
+   "question_sha256": "9a89dc3c048e20f10f97e003ffb67b8d885b3bb5b7357f7ba4a6526541f03596"
+  },
+  {
+   "id": "h2h-owl-dev-3",
+   "split": "DEV",
+   "source": "primary",
+   "subject": "owl",
+   "kind": "creature",
+   "words": "a barn owl",
+   "human": "P",
+   "check": {
+    "answer": "yes",
+    "reason": ""
+   },
+   "question_sha256": "9a89dc3c048e20f10f97e003ffb67b8d885b3bb5b7357f7ba4a6526541f03596"
+  },
+  {
+   "id": "h2h-owl-nano-2",
+   "split": "DEV",
+   "source": "primary",
+   "subject": "owl",
+   "kind": "creature",
+   "words": "a barn owl",
+   "human": "P",
+   "check": {
+    "answer": "yes",
+    "reason": ""
+   },
+   "question_sha256": "9a89dc3c048e20f10f97e003ffb67b8d885b3bb5b7357f7ba4a6526541f03596"
+  },
+  {
+   "id": "h2h-owl-nano-3",
+   "split": "DEV",
+   "source": "primary",
+   "subject": "owl",
+   "kind": "creature",
+   "words": "a barn owl",
+   "human": "P",
+   "check": {
+    "answer": "yes",
+    "reason": ""
+   },
+   "question_sha256": "9a89dc3c048e20f10f97e003ffb67b8d885b3bb5b7357f7ba4a6526541f03596"
+  },
+  {
+   "id": "h2h-retime-well-dev-1",
+   "split": "DEV",
+   "source": "primary",
+   "subject": "well",
+   "kind": "structure",
+   "words": "a stone water well",
+   "human": "P",
+   "check": {
+    "answer": "yes",
+    "reason": ""
+   },
+   "question_sha256": "06cf672a7e621cc66f502f815b3b7c4357a5e6be9adf5169016b69c65b2a3e74"
+  },
+  {
+   "id": "tile-base-bog-9b",
+   "split": "DEV",
+   "source": "primary",
+   "subject": "bog",
+   "kind": "tile",
+   "words": "a mossy swamp bog",
+   "human": "F",
+   "check": {
+    "answer": "no",
+    "reason": "It is an isometric tile with a large dark pond and a dirt path, not an evenly spread, repeatable bog"
+   },
+   "question_sha256": "e354c5375e082c62fe906c2d0186c52287adf0523d9d5e2106767a89a945b045"
+  },
+  {
+   "id": "tile-base-bog-nano",
+   "split": "DEV",
+   "source": "primary",
+   "subject": "bog",
+   "kind": "tile",
+   "words": "a mossy swamp bog",
+   "human": "F",
+   "check": {
+    "answer": "no",
+    "reason": "It is an isometric slab with a large dark pool and a brown path, not a flat top-down tile with evenl"
+   },
+   "question_sha256": "e354c5375e082c62fe906c2d0186c52287adf0523d9d5e2106767a89a945b045"
+  },
+  {
+   "id": "tile-base-beach-9b",
+   "split": "DEV",
+   "source": "primary",
+   "subject": "beach",
+   "kind": "tile",
+   "words": "a sandy beach",
+   "human": "F",
+   "check": {
+    "answer": "no",
+    "reason": "It is an oblique tile on a white background, not a top-down square filling the frame, and the surf l"
+   },
+   "question_sha256": "87afbbb17aa9e31b2e30f9c9ced3b7de7812b0b9965d77e8aba1884ff1b49296"
+  },
+  {
+   "id": "tile-base-beach-nano",
+   "split": "DEV",
+   "source": "primary",
+   "subject": "beach",
+   "kind": "tile",
+   "words": "a sandy beach",
+   "human": "F",
+   "check": {
+    "answer": "no",
+    "reason": "It is an isometric 3D slab on a white background, not a flat top-down square filling the frame, and "
+   },
+   "question_sha256": "87afbbb17aa9e31b2e30f9c9ced3b7de7812b0b9965d77e8aba1884ff1b49296"
+  },
+  {
+   "id": "tile-r1-beach-9b",
+   "split": "DEV",
+   "source": "primary",
+   "subject": "beach",
+   "kind": "tile",
+   "words": "a sandy beach",
+   "human": "F",
+   "check": {
+    "answer": "no",
+    "reason": "Light cream base with dark brown pebbles and pale shells is not a close-valued mid-tone texture, and"
+   },
+   "question_sha256": "87afbbb17aa9e31b2e30f9c9ced3b7de7812b0b9965d77e8aba1884ff1b49296"
+  },
+  {
+   "id": "tile-r1-bog-9b",
+   "split": "DEV",
+   "source": "primary",
+   "subject": "bog",
+   "kind": "tile",
+   "words": "a mossy swamp bog",
+   "human": "F",
+   "check": {
+    "answer": "no",
+    "reason": "Large blue stones and dark mud clumps stand out unevenly, and the surface reads more like mossy gras"
+   },
+   "question_sha256": "e354c5375e082c62fe906c2d0186c52287adf0523d9d5e2106767a89a945b045"
+  },
+  {
+   "id": "tile-r1-bog-nano",
+   "split": "DEV",
+   "source": "primary",
+   "subject": "bog",
+   "kind": "tile",
+   "words": "a mossy swamp bog",
+   "human": "F",
+   "check": {
+    "answer": "no",
+    "reason": "Reads as generic mossy ground with puddles; a cold viewer might not name it a swamp bog specifically"
+   },
+   "question_sha256": "e354c5375e082c62fe906c2d0186c52287adf0523d9d5e2106767a89a945b045"
+  },
+  {
+   "id": "tile-r1-beach-nano",
+   "split": "DEV",
+   "source": "primary",
+   "subject": "beach",
+   "kind": "tile",
+   "words": "a sandy beach",
+   "human": "P",
+   "check": {
+    "answer": "no",
+    "reason": "Reads more as desert sand with scattered pebbles and wind streaks than a clearly identifiable sandy "
+   },
+   "question_sha256": "87afbbb17aa9e31b2e30f9c9ced3b7de7812b0b9965d77e8aba1884ff1b49296"
+  },
+  {
+   "id": "tile-r2-bog-9b",
+   "split": "DEV",
+   "source": "primary",
+   "subject": "bog",
+   "kind": "tile",
+   "words": "a mossy swamp bog",
+   "human": "F",
+   "check": {
+    "answer": "no",
+    "reason": "Large dark puddles and separate shrub clumps stand out as distinct features, so the marks are not ev"
+   },
+   "question_sha256": "e354c5375e082c62fe906c2d0186c52287adf0523d9d5e2106767a89a945b045"
+  },
+  {
+   "id": "tile-r2-bog-nano",
+   "split": "DEV",
+   "source": "primary",
+   "subject": "bog",
+   "kind": "tile",
+   "words": "a mossy swamp bog",
+   "human": "F",
+   "check": {
+    "answer": "no",
+    "reason": "The bright green moss clumps and very dark mud puddles contrast strongly in value, so the tones are "
+   },
+   "question_sha256": "e354c5375e082c62fe906c2d0186c52287adf0523d9d5e2106767a89a945b045"
+  },
+  {
+   "id": "tile-r2-beach-9b",
+   "split": "DEV",
+   "source": "primary",
+   "subject": "beach",
+   "kind": "tile",
+   "words": "a sandy beach",
+   "human": "F",
+   "check": {
+    "answer": "no",
+    "reason": "Scattered pebbles and shells lie on the sand, and the bright glow at top left is a single feature th"
+   },
+   "question_sha256": "87afbbb17aa9e31b2e30f9c9ced3b7de7812b0b9965d77e8aba1884ff1b49296"
+  },
+  {
+   "id": "tile-r2-beach-nano",
+   "split": "DEV",
+   "source": "primary",
+   "subject": "beach",
+   "kind": "tile",
+   "words": "a sandy beach",
+   "human": "P",
+   "check": {
+    "answer": "no",
+    "reason": "The tan surface with pebbles and streaks could also read as a cracker or biscuit, so the sandy beach"
+   },
+   "question_sha256": "87afbbb17aa9e31b2e30f9c9ced3b7de7812b0b9965d77e8aba1884ff1b49296"
+  },
+  {
+   "id": "tile-r3-bog-9b",
+   "split": "DEV",
+   "source": "primary",
+   "subject": "bog",
+   "kind": "tile",
+   "words": "a mossy swamp bog",
+   "human": "F",
+   "check": {
+    "answer": "no",
+    "reason": "Shrubs and grass tufts stand up with drop shadows, and dark teal puddles add strong value contrast, "
+   },
+   "question_sha256": "e354c5375e082c62fe906c2d0186c52287adf0523d9d5e2106767a89a945b045"
+  },
+  {
+   "id": "tile-r3-bog-nano",
+   "split": "DEV",
+   "source": "primary",
+   "subject": "bog",
+   "kind": "tile",
+   "words": "a mossy swamp bog",
+   "human": "F",
+   "check": {
+    "answer": "no",
+    "reason": "Dark brown ground with bright green clumps and dark teal pools spans a wide value range, not close m"
+   },
+   "question_sha256": "e354c5375e082c62fe906c2d0186c52287adf0523d9d5e2106767a89a945b045"
+  },
+  {
+   "id": "tile-r3-beach-9b",
+   "split": "DEV",
+   "source": "primary",
+   "subject": "beach",
+   "kind": "tile",
+   "words": "a sandy beach",
+   "human": "F",
+   "check": {
+    "answer": "no",
+    "reason": "Sand texture reads as beach, but the larger pebbles and darker ridge bands are not evenly spread, so"
+   },
+   "question_sha256": "87afbbb17aa9e31b2e30f9c9ced3b7de7812b0b9965d77e8aba1884ff1b49296"
+  },
+  {
+   "id": "tile-r3-beach-nano",
+   "split": "DEV",
+   "source": "primary",
+   "subject": "beach",
+   "kind": "tile",
+   "words": "a sandy beach",
+   "human": "P",
+   "check": {
+    "answer": "no",
+    "reason": "It reads more like desert or dune sand with wind streaks and scattered pebbles than a clearly identi"
+   },
+   "question_sha256": "87afbbb17aa9e31b2e30f9c9ced3b7de7812b0b9965d77e8aba1884ff1b49296"
+  },
+  {
+   "id": "tile-r4-bog-9b",
+   "split": "DEV",
+   "source": "primary",
+   "subject": "bog",
+   "kind": "tile",
+   "words": "a mossy swamp bog",
+   "human": "F",
+   "check": {
+    "answer": "no",
+    "reason": "Bright green moss against near-black stones is not close in value, and the surface reads as a mossy "
+   },
+   "question_sha256": "e354c5375e082c62fe906c2d0186c52287adf0523d9d5e2106767a89a945b045"
+  },
+  {
+   "id": "tile-r4-bog-nano",
+   "split": "DEV",
+   "source": "primary",
+   "subject": "bog",
+   "kind": "tile",
+   "words": "a mossy swamp bog",
+   "human": "F",
+   "check": {
+    "answer": "no",
+    "reason": "The value range is not close: bright lime blobs contrast sharply with near-black ones, and the raise"
+   },
+   "question_sha256": "e354c5375e082c62fe906c2d0186c52287adf0523d9d5e2106767a89a945b045"
+  },
+  {
+   "id": "tile-r4-beach-nano",
+   "split": "DEV",
+   "source": "primary",
+   "subject": "beach",
+   "kind": "tile",
+   "words": "a sandy beach",
+   "human": "F",
+   "check": {
+    "answer": "no",
+    "reason": "The dark brown mud-like blobs make it read as muddy ground with puddles rather than clearly a sandy "
+   },
+   "question_sha256": "87afbbb17aa9e31b2e30f9c9ced3b7de7812b0b9965d77e8aba1884ff1b49296"
+  },
+  {
+   "id": "tile-r4-beach-9b",
+   "split": "DEV",
+   "source": "primary",
+   "subject": "beach",
+   "kind": "tile",
+   "words": "a sandy beach",
+   "human": "F",
+   "check": {
+    "answer": "no",
+    "reason": "Large brown clumps and wavy lines stand out from the rest, so the marks are not evenly spread, and t"
+   },
+   "question_sha256": "87afbbb17aa9e31b2e30f9c9ced3b7de7812b0b9965d77e8aba1884ff1b49296"
+  },
+  {
+   "id": "extra-climb5-l123-pine-1",
+   "split": "DEV",
+   "source": "extra",
+   "subject": "pine",
+   "kind": "structure",
+   "words": "a ponderosa pine tree",
+   "human": "F",
+   "check": {
+    "answer": "no",
+    "reason": "It reads as a generic or redwood-like tree with drooping yellow-green clumps, not clearly a ponderos"
+   },
+   "question_sha256": "bc37842d66dc23c8e2b4aa6ddd28f3428c265ada0f4e895eb4b505c1367fe358"
+  },
+  {
+   "id": "tile-r1-beach-dev",
+   "split": "DEV",
+   "source": "primary",
+   "subject": "beach",
+   "kind": "tile",
+   "words": "a sandy beach",
+   "human": "F",
+   "check": {
+    "answer": "no",
+    "reason": "The speckled cream surface with pebble-like flecks reads more like terrazzo or speckled stone than c"
+   },
+   "question_sha256": "87afbbb17aa9e31b2e30f9c9ced3b7de7812b0b9965d77e8aba1884ff1b49296"
+  },
+  {
+   "id": "tile-r1-bog-dev",
+   "split": "DEV",
+   "source": "primary",
+   "subject": "bog",
+   "kind": "tile",
+   "words": "a mossy swamp bog",
+   "human": "F",
+   "check": {
+    "answer": "no",
+    "reason": "Edge-to-edge top-down moss texture with no text or figures, but the grey-blue puddles and dark brown"
+   },
+   "question_sha256": "e354c5375e082c62fe906c2d0186c52287adf0523d9d5e2106767a89a945b045"
+  },
+  {
+   "id": "extra-climb5-l123-pine-1-redraw",
+   "split": "DEV",
+   "source": "extra",
+   "subject": "pine",
+   "kind": "structure",
+   "words": "a ponderosa pine tree",
+   "human": "F",
+   "check": {
+    "answer": "no",
+    "reason": "The stylized tree has a bright yellow crown that doesn't clearly read as a ponderosa pine, so the ex"
+   },
+   "question_sha256": "bc37842d66dc23c8e2b4aa6ddd28f3428c265ada0f4e895eb4b505c1367fe358"
+  },
+  {
+   "id": "extra-climb5-l123-pine-2",
+   "split": "DEV",
+   "source": "extra",
+   "subject": "pine",
+   "kind": "structure",
+   "words": "a ponderosa pine tree",
+   "human": "F",
+   "check": {
+    "answer": "no",
+    "reason": "the tree reads as a giant sequoia or redwood, with its broad dense crown and reddish trunk, not a cl"
+   },
+   "question_sha256": "bc37842d66dc23c8e2b4aa6ddd28f3428c265ada0f4e895eb4b505c1367fe358"
+  },
+  {
+   "id": "extra-climb5-l123-pine-2-redraw",
+   "split": "DEV",
+   "source": "extra",
+   "subject": "pine",
+   "kind": "structure",
+   "words": "a ponderosa pine tree",
+   "human": "F",
+   "check": {
+    "answer": "no",
+    "reason": "The drawing looks more like a generic or palm-like tree than a clearly identifiable ponderosa pine, "
+   },
+   "question_sha256": "bc37842d66dc23c8e2b4aa6ddd28f3428c265ada0f4e895eb4b505c1367fe358"
+  },
+  {
+   "id": "extra-climb5-l123-pine-3",
+   "split": "DEV",
+   "source": "extra",
+   "subject": "pine",
+   "kind": "structure",
+   "words": "a ponderosa pine tree",
+   "human": "F",
+   "check": {
+    "answer": "no",
+    "reason": "The tree reads more like a giant sequoia or redwood, with a tall orange trunk and clumped foliage, t"
+   },
+   "question_sha256": "bc37842d66dc23c8e2b4aa6ddd28f3428c265ada0f4e895eb4b505c1367fe358"
+  },
+  {
+   "id": "extra-climb5-l123-pine-3-redraw",
+   "split": "DEV",
+   "source": "extra",
+   "subject": "pine",
+   "kind": "structure",
+   "words": "a ponderosa pine tree",
+   "human": "F",
+   "check": {
+    "answer": "no",
+    "reason": "The tree looks more like a sequoia or redwood, with a tall tapering trunk and tufted foliage, so som"
+   },
+   "question_sha256": "bc37842d66dc23c8e2b4aa6ddd28f3428c265ada0f4e895eb4b505c1367fe358"
+  },
+  {
+   "id": "h2h-teapot-dev-1",
+   "split": "HOLDOUT",
+   "source": "primary",
+   "subject": "teapot",
+   "kind": "item",
+   "words": "a copper teapot",
+   "human": "P",
+   "check": {
+    "answer": "yes",
+    "reason": ""
+   },
+   "question_sha256": "c296d7f3302b7757d4cbe5ba572c97592ac4ee0f0bcffccde9a36ef6c529007a"
+  },
+  {
+   "id": "h2h-teapot-dev-2",
+   "split": "HOLDOUT",
+   "source": "primary",
+   "subject": "teapot",
+   "kind": "item",
+   "words": "a copper teapot",
+   "human": "P",
+   "check": {
+    "answer": "yes",
+    "reason": ""
+   },
+   "question_sha256": "c296d7f3302b7757d4cbe5ba572c97592ac4ee0f0bcffccde9a36ef6c529007a"
+  },
+  {
+   "id": "h2h-teapot-nano-2",
+   "split": "HOLDOUT",
+   "source": "primary",
+   "subject": "teapot",
+   "kind": "item",
+   "words": "a copper teapot",
+   "human": "F",
+   "check": {
+    "answer": "no",
+    "reason": "The teapot is orange-brown and looks more like glazed clay or terracotta than copper, so someone see"
+   },
+   "question_sha256": "c296d7f3302b7757d4cbe5ba572c97592ac4ee0f0bcffccde9a36ef6c529007a"
+  },
+  {
+   "id": "h2h-teapot-nano-3",
+   "split": "HOLDOUT",
+   "source": "primary",
+   "subject": "teapot",
+   "kind": "item",
+   "words": "a copper teapot",
+   "human": "F",
+   "check": {
+    "answer": "yes",
+    "reason": ""
+   },
+   "question_sha256": "c296d7f3302b7757d4cbe5ba572c97592ac4ee0f0bcffccde9a36ef6c529007a"
+  },
+  {
+   "id": "h2h-teapot-dev-3",
+   "split": "HOLDOUT",
+   "source": "primary",
+   "subject": "teapot",
+   "kind": "item",
+   "words": "a copper teapot",
+   "human": "F",
+   "check": {
+    "answer": "yes",
+    "reason": ""
+   },
+   "question_sha256": "c296d7f3302b7757d4cbe5ba572c97592ac4ee0f0bcffccde9a36ef6c529007a"
+  },
+  {
+   "id": "h2h-sign-dev-1",
+   "split": "HOLDOUT",
+   "source": "primary",
+   "subject": "sign",
+   "kind": "feature",
+   "words": "a wooden signpost with two arrows",
+   "human": "F",
+   "check": {
+    "answer": "yes",
+    "reason": ""
+   },
+   "question_sha256": "05a5febbbb2b2a37109f254ccb27449a0c2f15bcc6aa15658a553f92d5c81773"
+  },
+  {
+   "id": "h2h-teapot-nano-1",
+   "split": "HOLDOUT",
+   "source": "primary",
+   "subject": "teapot",
+   "kind": "item",
+   "words": "a copper teapot",
+   "human": "F",
+   "check": {
+    "answer": "no",
+    "reason": "It reads as a brown clay or terracotta teapot with a matte finish; the copper material isn't clearly"
+   },
+   "question_sha256": "c296d7f3302b7757d4cbe5ba572c97592ac4ee0f0bcffccde9a36ef6c529007a"
+  },
+  {
+   "id": "h2h-sign-nano-1",
+   "split": "HOLDOUT",
+   "source": "primary",
+   "subject": "sign",
+   "kind": "feature",
+   "words": "a wooden signpost with two arrows",
+   "human": "P",
+   "check": {
+    "answer": "yes",
+    "reason": ""
+   },
+   "question_sha256": "05a5febbbb2b2a37109f254ccb27449a0c2f15bcc6aa15658a553f92d5c81773"
+  },
+  {
+   "id": "h2h-sign-dev-2",
+   "split": "HOLDOUT",
+   "source": "primary",
+   "subject": "sign",
+   "kind": "feature",
+   "words": "a wooden signpost with two arrows",
+   "human": "F",
+   "check": {
+    "answer": "yes",
+    "reason": ""
+   },
+   "question_sha256": "05a5febbbb2b2a37109f254ccb27449a0c2f15bcc6aa15658a553f92d5c81773"
+  },
+  {
+   "id": "h2h-sign-dev-3",
+   "split": "HOLDOUT",
+   "source": "primary",
+   "subject": "sign",
+   "kind": "feature",
+   "words": "a wooden signpost with two arrows",
+   "human": "P",
+   "check": {
+    "answer": "yes",
+    "reason": ""
+   },
+   "question_sha256": "05a5febbbb2b2a37109f254ccb27449a0c2f15bcc6aa15658a553f92d5c81773"
+  },
+  {
+   "id": "h2h-sign-nano-3",
+   "split": "HOLDOUT",
+   "source": "primary",
+   "subject": "sign",
+   "kind": "feature",
+   "words": "a wooden signpost with two arrows",
+   "human": "P",
+   "check": {
+    "answer": "yes",
+    "reason": ""
+   },
+   "question_sha256": "05a5febbbb2b2a37109f254ccb27449a0c2f15bcc6aa15658a553f92d5c81773"
+  },
+  {
+   "id": "h2h-sign-nano-2",
+   "split": "HOLDOUT",
+   "source": "primary",
+   "subject": "sign",
+   "kind": "feature",
+   "words": "a wooden signpost with two arrows",
+   "human": "P",
+   "check": {
+    "answer": "yes",
+    "reason": ""
+   },
+   "question_sha256": "05a5febbbb2b2a37109f254ccb27449a0c2f15bcc6aa15658a553f92d5c81773"
+  },
+  {
+   "id": "h2h-retime-teapot-dev-1",
+   "split": "HOLDOUT",
+   "source": "primary",
+   "subject": "teapot",
+   "kind": "item",
+   "words": "a copper teapot",
+   "human": "P",
+   "check": {
+    "answer": "yes",
+    "reason": ""
+   },
+   "question_sha256": "c296d7f3302b7757d4cbe5ba572c97592ac4ee0f0bcffccde9a36ef6c529007a"
+  },
+  {
+   "id": "h2h-retime-sign-nano-1",
+   "split": "HOLDOUT",
+   "source": "primary",
+   "subject": "sign",
+   "kind": "feature",
+   "words": "a wooden signpost with two arrows",
+   "human": "P",
+   "check": {
+    "answer": "yes",
+    "reason": ""
+   },
+   "question_sha256": "05a5febbbb2b2a37109f254ccb27449a0c2f15bcc6aa15658a553f92d5c81773"
+  },
+  {
+   "id": "h2h-retime-sign-dev-1",
+   "split": "HOLDOUT",
+   "source": "primary",
+   "subject": "sign",
+   "kind": "feature",
+   "words": "a wooden signpost with two arrows",
+   "human": "F",
+   "check": {
+    "answer": "no",
+    "reason": "The sign has legible characters '1F2A4' painted on it, so it is not free of writing."
+   },
+   "question_sha256": "05a5febbbb2b2a37109f254ccb27449a0c2f15bcc6aa15658a553f92d5c81773"
+  },
+  {
+   "id": "h2h-retime-teapot-nano-1-redraw",
+   "split": "HOLDOUT",
+   "source": "primary",
+   "subject": "teapot",
+   "kind": "item",
+   "words": "a copper teapot",
+   "human": "F",
+   "check": {
+    "answer": "no",
+    "reason": "It clearly shows a teapot with no face, limbs, or writing, but its reddish-brown glossy look reads m"
+   },
+   "question_sha256": "c296d7f3302b7757d4cbe5ba572c97592ac4ee0f0bcffccde9a36ef6c529007a"
+  },
+  {
+   "id": "h2h-retime-teapot-nano-2-redraw",
+   "split": "HOLDOUT",
+   "source": "primary",
+   "subject": "teapot",
+   "kind": "item",
+   "words": "a copper teapot",
+   "human": "F",
+   "check": {
+    "answer": "no",
+    "reason": "It is clearly a teapot with no face, limbs, or writing, but its orange-brown finish reads as clay or"
+   },
+   "question_sha256": "c296d7f3302b7757d4cbe5ba572c97592ac4ee0f0bcffccde9a36ef6c529007a"
+  },
+  {
+   "id": "tile-holdout-snow-9b",
+   "split": "HOLDOUT",
+   "source": "primary",
+   "subject": "snow",
+   "kind": "tile",
+   "words": "a snowy field",
+   "human": "F",
+   "check": {
+    "answer": "no",
+    "reason": "The palette is very pale, not mid-tone, and the twig-like plants and blue patches read as objects si"
+   },
+   "question_sha256": "25012a2a4cf56ff6bb4b9820ce94f6730f54424b7a12066a6309ed7b50fbb9e2"
+  },
+  {
+   "id": "tile-holdout-meadow-nano",
+   "split": "HOLDOUT",
+   "source": "primary",
+   "subject": "meadow",
+   "kind": "tile",
+   "words": "a grassy meadow",
+   "human": "P",
+   "check": {
+    "answer": "yes",
+    "reason": ""
+   },
+   "question_sha256": "882769f93603b12029c504d2c7e8dfb8f2f1a98818c51b3d351e37a0c292b8d5"
+  },
+  {
+   "id": "tile-holdout-meadow-9b",
+   "split": "HOLDOUT",
+   "source": "primary",
+   "subject": "meadow",
+   "kind": "tile",
+   "words": "a grassy meadow",
+   "human": "F",
+   "check": {
+    "answer": "no",
+    "reason": "Flat top-down grass pattern with no text or faces, but the dark clovers and cream flowers differ too"
+   },
+   "question_sha256": "882769f93603b12029c504d2c7e8dfb8f2f1a98818c51b3d351e37a0c292b8d5"
+  },
+  {
+   "id": "tile-holdout-snow-nano",
+   "split": "HOLDOUT",
+   "source": "primary",
+   "subject": "snow",
+   "kind": "tile",
+   "words": "a snowy field",
+   "human": "F",
+   "check": {
+    "answer": "no",
+    "reason": "The pattern is very pale pastel blue rather than mid-tone, and its blue circles and twig marks read "
+   },
+   "question_sha256": "25012a2a4cf56ff6bb4b9820ce94f6730f54424b7a12066a6309ed7b50fbb9e2"
+  },
+  {
+   "id": "tile-holdout-meadow-dev",
+   "split": "HOLDOUT",
+   "source": "primary",
+   "subject": "meadow",
+   "kind": "tile",
+   "words": "a grassy meadow",
+   "human": "F",
+   "check": {
+    "answer": "no",
+    "reason": "The grass is clearly a meadow, but the square sits inside a white border with a dark drop shadow, so"
+   },
+   "question_sha256": "882769f93603b12029c504d2c7e8dfb8f2f1a98818c51b3d351e37a0c292b8d5"
+  },
+  {
+   "id": "tile-holdout-snow-dev",
+   "split": "HOLDOUT",
+   "source": "primary",
+   "subject": "snow",
+   "kind": "tile",
+   "words": "a snowy field",
+   "human": "P",
+   "check": {
+    "answer": "no",
+    "reason": "The surface is very pale, not mid-toned, and a lilac border frames it rather than letting it fill ed"
+   },
+   "question_sha256": "25012a2a4cf56ff6bb4b9820ce94f6730f54424b7a12066a6309ed7b50fbb9e2"
+  }
+ ]
+}

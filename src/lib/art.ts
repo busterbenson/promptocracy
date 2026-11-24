@@ -4,21 +4,32 @@
 // shows (the default). All of it is the player's own draft's: the same gate as their own edit (EDIT_GUARD), checked in the SQL.
 // Nothing here writes a ticket's `makes`: the page lays these rows over each entry on the way out (overlay), so a drawing that lands while
 // the player is typing can never be lost by, or lose, their edit.
-import { ART_COST_MICRO, MAX_SAVED, DRAWING_STALE_MS, DRAW_TIMEOUT_MS, IMAGE_MODEL, artKey, runImage, sha256Hex, sizeFor, stubImage, stylePrompt, tmpKey } from "./art.js";
+import { MAX_SAVED, artCostMicro, DRAWING_STALE_MS, DRAW_BUDGET_MS, DRAW_TIMEOUT_MS, DESCRIBE_TIMEOUT_MS, IMAGE_MODEL, NANO_MODEL, artKey, drawChecked, isNano, runImage, runNano, sha256Hex, sizeFor, stubImage, stylePrompt, tmpKey } from "./art.js";
+import { describeFor, lookAt } from "./art-check";
 import { logCall, monthSpend } from "./agent";
 import { dayOpenBinds } from "./day";
 import { EDIT_GUARD } from "./tickets.js";
 import { Ctx, Env, nowIso } from "./util";
 
-export type Draw = { game: any; player: any; ticket: any; name: string; prompt: string; kind: string | null; attrs: any; tz: string; drawId: number; mode: "new" | "redraw" };
+export type Draw = { game: any; player: any; ticket: any; name: string; prompt: string; kind: string | null; attrs: any; tz: string; drawId: number; mode: "new" | "redraw" | "recheck" };
+
+/** What a kept drawing that failed its look says on its draw row. Only a draw that says CHECK_FAILED is redrawn (redrawFailed); the redraw
+ * that fails too says RECHECK_FAILED, so a drawing is redrawn once and never twice. */
+export const CHECK_FAILED = "check failed: ";
+export const RECHECK_FAILED = "check failed again: ";
 
 /** The entries of a ticket's `makes` that a drawing can be asked for. @rule 801.2 */
 export const entriesOf = (makes: any[]) =>
   (Array.isArray(makes) ? makes : []).filter((m) => m && m.kind === "entry" && typeof m.name === "string")
     .map((m) => ({ name: m.name as string, kind: (m.catalogKind ?? null) as string | null, attrs: m.attrs ?? {}, prompt: String(m.art?.prompt ?? "") }));
 
-/** The model's id: IMAGE_MODEL when set, else the default. @rule 801.2 */
-export const modelOf = (env: Env) => (env.IMAGE_MODEL && /^@cf\/[\w./-]+$/.test(env.IMAGE_MODEL) ? env.IMAGE_MODEL : IMAGE_MODEL);
+/** The model's id: IMAGE_MODEL when set to a Workers AI model or to Nano Banana (exactly NANO_MODEL), else the default. @rule 801.2 */
+export const modelOf = (env: Env) => {
+  const m = env.IMAGE_MODEL;
+  if (m === NANO_MODEL || (m && /^@cf\/[\w./-]+$/.test(m))) return m!;
+  if (m) console.error("art: IMAGE_MODEL is not a model this Worker knows; drawing with the default");   // a typo draws with the default and says so
+  return IMAGE_MODEL;
+};
 
 // ---- what the page shows ------------------------------------------------------------------------------------------------------------
 /**
@@ -64,7 +75,7 @@ export async function reserve(env: Env, game: any, ticket: any, name: string, pr
 /** Gives a reservation back (the Redraw's message was refused). @rule 106.7 */
 export async function release(env: Env, drawId: number) { await env.DB.prepare("DELETE FROM art_draws WHERE id = ? AND state = 'pending'").bind(drawId).run(); }
 
-/** Is the game over its month's model budget? Drawings count in it (ART_COST_MICRO each), so they stop with the agents' words. @rule 106.7 */
+/** Is the game over its month's model budget? Drawings count in it (artCostMicro of the model each), so they stop with the agents' words. @rule 106.7 */
 export async function overBudget(env: Env, game: any, tz: string, nowMs: number) { return (await monthSpend(env, game, tz, nowMs)).over; }
 
 /** The most first drawings one turn queues; the next turn draws the entries still undrawn. */
@@ -89,21 +100,39 @@ export async function queueNew(ctx: Ctx, game: any, player: any, ticket: any, ma
   return jobs.length;
 }
 
-/** One drawing: the model, the bytes' hash, the picture under tmp/, the rows. Never throws; a failure is a failed draw. @rule 801.2 */
+/**
+ * One drawing: a description of how Gremlin's words look (describeFor), the model, a look at the picture by its kind's question
+ * (src/lib/art-check.ts), the bytes' hash, the picture under tmp/, the rows. The drawing is always kept; its draw row says (reason, state
+ * stays done) whether it failed the look (CHECK_FAILED, or RECHECK_FAILED for the redraw redrawFailed made) or was not looked at; a clear
+ * pass leaves reason empty. Never throws; a failure to draw is a failed draw. @rule 801.2
+ */
 export async function draw(env: Env, j: Draw): Promise<void> {
   const t0 = Date.now(), model = modelOf(env);
-  const seed = crypto.getRandomValues(new Uint32Array(1))[0] % 2147483647;
-  const fail = async (reason: string) => {
+  // Nano is billed by Google for a call that answered or was still working when it was given up (a block, a bad picture, a timeout, or a later
+  // storage error), so such a failure is counted in the budget like a drawing (over-counted, never under); every other model's failure costs nothing, as before
+  let drew = false;
+  const fail = async (reason: string, billed = false) => {
     await env.DB.prepare("UPDATE art_draws SET state = 'failed', reason = ?, ended_at = ? WHERE id = ? AND state = 'pending'").bind(reason.slice(0, 120), nowIso(Date.now()), j.drawId).run().catch(() => {});
-    await logCall(env, j.game, j.tz, Date.now(), { player_id: j.player.id, agent: "gremlin", purpose: "art", model, outcome: "failed", ms: Date.now() - t0, reason });
+    await logCall(env, j.game, j.tz, Date.now(), { player_id: j.player.id, agent: "gremlin", purpose: "art", model, outcome: "failed", ms: Date.now() - t0, reason, ...(isNano(model) && (billed || drew) ? { cost_micro: artCostMicro(model) } : {}) });
   };
   try {
     const size = sizeFor(j.kind, j.attrs);
-    const prompt = stylePrompt(j.kind, j.attrs, j.prompt);
-    const made = await Promise.race([
-      env.ART_STUB ? stubImage(env.ART_STUB, { seed }) : runImage(env.AI, model, { prompt, ...size, seed }),
-      new Promise<never>((_, rej) => setTimeout(() => rej(new Error("timeout")), DRAW_TIMEOUT_MS)),
-    ]);
+    // the tests' image stand-in ignores the prompt and is not looked at unless ART_CHECK_STUB says how: then nothing is described either
+    const looked = !(env.ART_STUB && !env.ART_CHECK_STUB);
+    const t1 = Date.now();
+    const details = looked ? await describeFor(env, j.game, j.tz, j.player.id, j.kind, j.prompt, DESCRIBE_TIMEOUT_MS) : "";
+    const make = (ms: number): Promise<{ bytes: Uint8Array; type: string; usage?: any }> => {
+      const seed = crypto.getRandomValues(new Uint32Array(1))[0] % 2147483647, prompt = stylePrompt(j.kind, j.attrs, j.prompt, details);
+      return Promise.race([
+        env.ART_STUB ? stubImage(env.ART_STUB, { seed }) : isNano(model) ? runNano(env, { prompt, ...size }, Math.min(DRAW_TIMEOUT_MS, ms)) : runImage(env.AI, model, { prompt, ...size, seed }),
+        new Promise<never>((_, rej) => setTimeout(() => rej(Object.assign(new Error("timeout"), { billed: true })), Math.min(DRAW_TIMEOUT_MS, ms))),
+      ]);
+    };
+    const check = !looked ? null : (made: any, ms: number) => lookAt(env, j.game, j.tz, j.player.id, j.kind, j.prompt, made, j.mode === "recheck" ? 1 : 0, ms);
+    const out = await drawChecked({ make, check, budgetMs: DRAW_BUDGET_MS - (Date.now() - t1) });
+    const made = out.made;
+    drew = true;
+    const note = out.verdict === "fail" ? `${j.mode === "recheck" ? RECHECK_FAILED : CHECK_FAILED}${out.reason}` : out.verdict === "unchecked" ? `unchecked: ${out.reason}` : null;
     const hash = await sha256Hex(made.bytes);
     await env.ART.put(tmpKey(hash), made.bytes, { httpMetadata: { contentType: made.type } });
     const now = nowIso(Date.now());
@@ -111,12 +140,45 @@ export async function draw(env: Env, j: Draw): Promise<void> {
       env.DB.prepare("INSERT OR IGNORE INTO art_objects (hash, size_bytes, content_type, model, created_at) SELECT ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM tickets WHERE id = ? AND state = 'Draft')").bind(hash, made.bytes.length, made.type, env.ART_STUB ? `stub:${env.ART_STUB}` : model, now, j.ticket.id),
       // a drawing is the requester's while they draft: one that lands after the ticket has left Draft (confirmed, withdrawn into a ballot) is not tied to it
       env.DB.prepare("INSERT OR IGNORE INTO art_refs (hash, game_id, ticket_id, entry_name, prompt, saved, is_default, created_at) SELECT ?, ?, ?, ?, ?, 0, 0, ? WHERE EXISTS (SELECT 1 FROM tickets WHERE id = ? AND state = 'Draft')").bind(hash, j.game.id, j.ticket.id, j.name, j.prompt, now, j.ticket.id),
-      env.DB.prepare("UPDATE art_draws SET state = CASE WHEN EXISTS (SELECT 1 FROM tickets WHERE id = ? AND state = 'Draft') THEN 'done' ELSE 'failed' END, reason = CASE WHEN EXISTS (SELECT 1 FROM tickets WHERE id = ? AND state = 'Draft') THEN NULL ELSE 'ticket changed' END, ended_at = ? WHERE id = ? AND state = 'pending'").bind(j.ticket.id, j.ticket.id, now, j.drawId),
+      env.DB.prepare("UPDATE art_draws SET state = CASE WHEN EXISTS (SELECT 1 FROM tickets WHERE id = ? AND state = 'Draft') THEN 'done' ELSE 'failed' END, reason = CASE WHEN EXISTS (SELECT 1 FROM tickets WHERE id = ? AND state = 'Draft') THEN ? ELSE 'ticket changed' END, ended_at = ? WHERE id = ? AND state = 'pending'").bind(j.ticket.id, j.ticket.id, note ? note.slice(0, 120) : null, now, j.drawId),
     ]);
-    await logCall(env, j.game, j.tz, Date.now(), { player_id: j.player.id, agent: "gremlin", purpose: "art", model, outcome: "ok", ms: Date.now() - t0, cost_micro: ART_COST_MICRO });
+    await logCall(env, j.game, j.tz, Date.now(), { player_id: j.player.id, agent: "gremlin", purpose: "art", model, outcome: "ok", ms: Date.now() - t0, cost_micro: artCostMicro(model), usage: (made as any).usage });
   } catch (e: any) {
     console.error("art: a drawing failed:", e?.message || "error");
-    await fail(String(e?.message || "error"));
+    await fail(String(e?.message || "error"), e?.billed === true);
+  }
+}
+
+/**
+ * The redraw after a failed look (rule 801.2). A drawing takes 10-16 s of the 30 s a Worker keeps working after its response, so a second
+ * drawing never fits in the Worker that made the first. It is made by the next request that reads the ticket for its requester (the card
+ * asks again every 2 s while a drawing is out, so that is seconds later), in that request's own waitUntil: each entry whose LAST draw was
+ * kept with a failed look (CHECK_FAILED, for the entry's current prompt) gets one more draw. The reservation is one statement that checks
+ * that condition itself, so two reads at once start one redraw. The redraw costs no message (it is the platform's, not the player's) and
+ * counts in the month's budget like any drawing; a redraw that fails too says RECHECK_FAILED and is not redrawn again. Only on the
+ * requester's own Draft, and only while they could edit it (the day gate, checked in the reservation: no redraw in the midnight lock,
+ * after their End turn or once the game is over). Returns how many were started. Never throws.
+ */
+export async function redrawFailed(ctx: Ctx, game: any, player: any, ticket: any, makes: any[], tz: string, nowMs: number): Promise<number> {
+  if (!player || ticket.player_id !== player.id || ticket.state !== "Draft") return 0;
+  try {
+    const failed = ((await ctx.env.DB.prepare(`SELECT d.entry_name, d.prompt FROM art_draws d WHERE d.ticket_id = ? AND d.state = 'done' AND d.reason LIKE '${CHECK_FAILED}%' AND d.id = (SELECT MAX(id) FROM art_draws x WHERE x.ticket_id = d.ticket_id AND lower(x.entry_name) = lower(d.entry_name))`).bind(ticket.id).all()).results ?? []) as any[];
+    if (!failed.length || (await overBudget(ctx.env, game, tz, nowMs))) return 0;
+    const jobs: Draw[] = [];
+    for (const e of entriesOf(makes)) {
+      const f = failed.find((x) => x.entry_name.toLowerCase() === e.name.toLowerCase() && x.prompt === e.prompt);
+      if (!f) continue;
+      // reserved only while the entry's last draw is still that failed one: a second read at the same moment inserts nothing
+      // ... and only while the requester could edit the draft themselves (EDIT_GUARD: the day open, their turn not ended, the game playing)
+      const r: any = await ctx.env.DB.prepare(`INSERT OR IGNORE INTO art_draws (game_id, ticket_id, entry_name, prompt, state, started_at) SELECT ?, ?, ?, ?, 'pending', ? WHERE (SELECT reason FROM art_draws WHERE ticket_id = ? AND lower(entry_name) = lower(?) ORDER BY id DESC LIMIT 1) LIKE '${CHECK_FAILED}%' AND EXISTS (SELECT 1 FROM tickets WHERE ${EDIT_GUARD})`)
+        .bind(game.id, ticket.id, f.entry_name, e.prompt, nowIso(nowMs), ticket.id, e.name, ticket.id, player.id, ...dayOpenBinds(game.day, nowMs, player.id)).run();
+      if (r?.meta?.changes > 0) jobs.push({ game, player, ticket, name: e.name, prompt: e.prompt, kind: e.kind, attrs: e.attrs, tz, drawId: Number(r.meta.last_row_id), mode: "recheck" });
+    }
+    if (jobs.length) ctx.waitUntil(Promise.all(jobs.map((j) => draw(ctx.env, j))).then(() => undefined));
+    return jobs.length;
+  } catch (e: any) {
+    console.error("art: the redraw after a failed look could not start:", e?.message || "error");
+    return 0;
   }
 }
 
