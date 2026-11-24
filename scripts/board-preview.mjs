@@ -21,6 +21,7 @@
 //   --footprint <FxF>      the structure's footprint in tiles, east x north (default 1x1)
 //   --tile-span <n>        one square tile drawing is spread across n x n tiles (default 1, one drawing per tile); groups are aligned to the board grid
 //                          (x mod n, y mod n) and repeat; needs --tile-fit square
+//   --tile-mirror          with --tile-span 2+: flip every other group (by group column east-west, by group row north-south), so neighbours meet along a mirrored edge (default off)
 //   --no-seams --no-fog --no-shadow   leave out the tile outline over the art / the fog ring / the structure's contact shadow
 //   --json                 print the measurements as JSON
 // Config file: {"defaults": {...options in camelCase...}, "scenes": [{"layout": "patch", "tile": "a.png", "name": "x"}, ...]}; paths are
@@ -64,7 +65,7 @@ function python() {
 }
 
 const stem = (p) => basename(p, extname(p));
-export const DEFAULTS = { viewport: "1010x420", scheme: "light", tileFit: "slab", tileSpan: 1, structureWidth: 0.8, maxPieces: 2, footprint: "1x1", seams: true, fog: true, shadow: true };
+export const DEFAULTS = { viewport: "1010x420", scheme: "light", tileFit: "slab", tileSpan: 1, tileMirror: false, structureWidth: 0.8, maxPieces: 2, footprint: "1x1", seams: true, fog: true, shadow: true };
 const parseFootprint = (f) => { const m = Array.isArray(f) ? f.map(Number) : String(f).split("x").map(Number); if (m.length !== 2 || !m.every((n) => Number.isInteger(n) && n >= 1)) throw new Error("bad footprint " + f + " (whole tiles, like 2x1)"); return m; };
 const PIECE_SET = [["keeper", "teal", false], ["frog", "vermilion", true], ["robot", "jade", false]];
 
@@ -78,7 +79,9 @@ export function buildScene(spec, base = ".") {
   const maxPieces = Number(o.maxPieces), share = Number(o.structureWidth);
   if (!(maxPieces >= 0)) throw new Error("bad --max-pieces " + o.maxPieces);
   if (!(share > 0)) throw new Error("bad --structure-width " + o.structureWidth);
-  const fit = o.tileFit, tileArt = (p) => ({ src: abs(p), fit, span });
+  const mirror = o.tileMirror === true || o.tileMirror === "true";
+  if (mirror && span < 2) throw new Error("--tile-mirror needs --tile-span 2 or more");
+  const fit = o.tileFit, tileArt = (p) => ({ src: abs(p), fit, span, ...(mirror ? { mirror: true } : {}) });
   const structure = (x, y, src, extra = {}) => { const [fx, fy] = parseFootprint(extra.footprint ?? o.footprint); return { x, y, fx, fy, src: abs(src), width: share, maxPieces, shadow: o.shadow, ...extra, footprint: undefined }; };
   const tiles = [], structures = [], pieces = [];
   const piece = (i, x, y) => { const [shape, color, mirrored] = PIECE_SET[i]; pieces.push({ x, y, shape, color: colorOf(color), mirrored }); };
@@ -143,13 +146,13 @@ function serve(scenes) {
 export async function main(argv) {
   const { values: v, positionals } = parseArgs({ args: argv, allowPositionals: true, options: {
     out: { type: "string" }, name: { type: "string" }, caption: { type: "string" }, viewport: { type: "string" }, "px-per-unit": { type: "string" }, scheme: { type: "string" },
-    tile: { type: "string", multiple: true }, structure: { type: "string" }, ground: { type: "string" }, config: { type: "string" }, "tile-fit": { type: "string" }, "structure-width": { type: "string" }, "max-pieces": { type: "string" }, footprint: { type: "string" }, "tile-span": { type: "string" },
+    tile: { type: "string", multiple: true }, structure: { type: "string" }, ground: { type: "string" }, config: { type: "string" }, "tile-fit": { type: "string" }, "structure-width": { type: "string" }, "max-pieces": { type: "string" }, footprint: { type: "string" }, "tile-span": { type: "string" }, "tile-mirror": { type: "boolean" },
     "no-seams": { type: "boolean" }, "no-fog": { type: "boolean" }, "no-shadow": { type: "boolean" }, json: { type: "boolean" }, help: { type: "boolean" } } });
   const layout = positionals[0];
-  if (v.help || !layout) { console.log(readFileSync(fileURLToPath(import.meta.url), "utf8").split("\n").filter((l) => l.startsWith("//")).slice(0, 33).map((l) => l.slice(3)).join("\n")); return v.help ? 0 : 2; }
+  if (v.help || !layout) { console.log(readFileSync(fileURLToPath(import.meta.url), "utf8").split("\n").filter((l) => l.startsWith("//")).slice(0, 35).map((l) => l.slice(3)).join("\n")); return v.help ? 0 : 2; }
   const opts = {};
   for (const [k, key] of [["name", "name"], ["caption", "caption"], ["viewport", "viewport"], ["px-per-unit", "pxPerUnit"], ["scheme", "scheme"], ["structure", "structure"], ["ground", "ground"], ["tile-fit", "tileFit"], ["tile-span", "tileSpan"], ["structure-width", "structureWidth"], ["max-pieces", "maxPieces"], ["footprint", "footprint"]]) if (v[k] !== undefined) opts[key] = v[k];
-  if (v["no-seams"]) opts.seams = false; if (v["no-fog"]) opts.fog = false; if (v["no-shadow"]) opts.shadow = false;
+  if (v["tile-mirror"]) opts.tileMirror = true; if (v["no-seams"]) opts.seams = false; if (v["no-fog"]) opts.fog = false; if (v["no-shadow"]) opts.shadow = false;
   if (v.tile) opts.tile = layout === "mixed" ? v.tile : v.tile[0];
   const specs = [];
   if (layout === "config") {

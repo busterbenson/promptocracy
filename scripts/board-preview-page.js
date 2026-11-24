@@ -6,7 +6,7 @@
 import { sceneSVG } from "/js/board.js";
 import { ensureDefs, HW, HH, DEPTH } from "/js/pieces.js";
 import { HEIGHT } from "/js/pieces-data.js";
-import { structureScale, spanCell } from "/__preview/rules.js";
+import { structureScale, spanCell, mirrorFlags } from "/__preview/rules.js";
 
 const S = window.SCENE;
 const f2 = (n) => n.toFixed(2);
@@ -113,7 +113,14 @@ try {
     if (t.art.fit === "square") {
       // a flat texture: the square is span x span tiles of ground, its top edge the north edge; this tile shows its (x mod span, y mod span) part
       const span = t.art.span || 1, cell = spanCell(t.x, t.y, span), o = P(cell.ox, cell.oy);
-      tf = `matrix(${f6(span * HW / k.w)} ${f6(-span * HH / k.w)} ${f6(span * HW / k.h)} ${f6(span * HH / k.h)} ${f2(o[0])} ${f2(o[1])})`;
+      let a = span * HW / k.w, b = -span * HH / k.w, cc = span * HW / k.h, d = span * HH / k.h, org = o;
+      if (t.art.mirror && span > 1) {   // every other group flipped: the picture runs east to west from the group's east edge, and/or south to north from its south edge
+        const fl = mirrorFlags(t.x, t.y, span);
+        if (fl.flipX) { a = -a; b = -b; org = P(cell.ox + span, cell.oy); }
+        if (fl.flipY) { cc = -cc; d = -d; org = P(fl.flipX ? cell.ox + span : cell.ox, cell.oy - span); }
+        info.mirror = true;
+      }
+      tf = `matrix(${f6(a)} ${f6(b)} ${f6(cc)} ${f6(d)} ${f2(org[0])} ${f2(org[1])})`;
       info.span = span;
     } else {
       const g = slabDiamond(k);

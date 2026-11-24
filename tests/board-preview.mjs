@@ -9,7 +9,7 @@ import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join, sep } from "node:path";
 import { buildScene, main, DEFAULTS } from "../scripts/board-preview.mjs";
-import { structureScale, footprintWidth, spanCell } from "../scripts/board-preview-rules.js";
+import { structureScale, footprintWidth, spanCell, mirrorFlags } from "../scripts/board-preview-rules.js";
 
 let pass = 0, fail = 0;
 const check = (name, ok, detail = "") => { if (ok) { pass++; console.log("  ok    " + name); } else { fail++; console.log("  FAIL  " + name + (detail ? "  -> " + detail : "")); } };
@@ -134,7 +134,7 @@ try {
   const quad = join(dir, "quad.png"); writeFileSync(quad, png(128, 128, (x, y) => (y < 64 ? (x < 64 ? [220, 40, 40] : [40, 180, 40]) : (x < 64 ? [40, 60, 220] : [230, 210, 30]))));
   const grid = []; for (let x = 0; x < 4; x++) for (let y = 0; y < 4; y++) grid.push({ x, y, art: quad });
   const cfg3 = join(dir, "c3.json");
-  writeFileSync(cfg3, JSON.stringify({ defaults: { tileFit: "square", seams: false, fog: false }, scenes: [{ layout: "custom", tiles: grid, name: "span2", tileSpan: 2 }, { layout: "custom", tiles: grid, name: "span1", tileSpan: 1 }] }));
+  writeFileSync(cfg3, JSON.stringify({ defaults: { tileFit: "square", seams: false, fog: false }, scenes: [{ layout: "custom", tiles: grid, name: "span2", tileSpan: 2 }, { layout: "custom", tiles: grid, name: "span1", tileSpan: 1 }, { layout: "custom", tiles: grid, name: "span2m", tileSpan: 2, tileMirror: true }, { layout: "custom", tiles: grid, name: "span2off", tileSpan: 2, tileMirror: false }] }));
   let code3; console.log = (m) => lines.push(m); try { code3 = await main(["config", "--config", cfg3, "--out", out]); } finally { console.log = log; }
   const m3 = JSON.parse(readFileSync(join(out, "board-preview-measurements.json"), "utf8")), s2 = decode(join(out, "span2.png")), s1 = decode(join(out, "span1.png"));
   check("spread scenes rendered, exit 0, and the measurements say span 2", code3 === 0 && m3[0].tiles[0].span === 2, lines.join("\n"));
@@ -146,6 +146,17 @@ try {
   check("span 2: each tile of a group shows its own quarter of the drawing (NW red, NE green, SW blue, SE yellow) all over, and the next group repeats it", g2.every(([x, y, want]) => four(s2, m3[0], x, y).every((c) => near(c, want))), JSON.stringify(g2.map(([x, y]) => four(s2, m3[0], x, y))));
   const f1 = four(s1, m3[1], 1, 1);
   check("span 1: every tile shows the whole drawing (left red, up green, right yellow, down blue), the same on every tile", [RED, GRN, YEL, BLU].every((want, i) => near(f1[i], want)) && [[0, 0], [3, 3], [2, 1]].every(([x, y]) => four(s1, m3[1], x, y).every((c, i) => near(c, [RED, GRN, YEL, BLU][i]))), JSON.stringify(f1));
+
+
+  // mirror: every other group flipped, so groups meet along a mirrored edge; off (omitted or false) is the same picture, byte for byte
+  const s2m = decode(join(out, "span2m.png"));
+  const mm = (x, y, want) => four(s2m, m3[2], x, y).every((c) => near(c, want));
+  check("mirror on, span 2: groups meet along a mirrored edge (east neighbours: SE|SE yellow, NE|NE green; north neighbours: NW|NW red, NE|NE green), the diagonal group is turned half way round",
+    mm(1, 0, YEL) && mm(2, 0, YEL) && mm(1, 1, GRN) && mm(2, 1, GRN) && mm(0, 1, RED) && mm(0, 2, RED) && mm(1, 1, GRN) && mm(1, 2, GRN) && mm(2, 2, GRN) && mm(3, 3, BLU) && mm(0, 0, BLU) && mm(3, 0, BLU),
+    JSON.stringify([[1, 0], [2, 0], [0, 1], [0, 2], [2, 2], [3, 3]].map(([x, y]) => four(s2m, m3[2], x, y))));
+  check("mirror on is recorded in the measurements and changes the picture; off (false) is byte-identical to leaving it out", m3[2].tiles[0].mirror === true && m3[3].tiles[0].mirror === undefined && !readFileSync(join(out, "span2m.png")).equals(readFileSync(join(out, "span2.png"))) && readFileSync(join(out, "span2off.png")).equals(readFileSync(join(out, "span2.png"))));
+  check("mirror flags: group (0,0) is not flipped, every other group column flips east-west and every other group row north-south, also below zero", (() => { const f = (x, y, n) => JSON.stringify(mirrorFlags(x, y, n)); return f(0, 0, 2) === '{"flipX":false,"flipY":false}' && f(1, 1, 2) === f(0, 0, 2) && f(2, 0, 2) === '{"flipX":true,"flipY":false}' && f(0, 3, 2) === '{"flipX":false,"flipY":true}' && f(0, 5, 2) === f(0, 0, 2) && f(-1, -1, 2) === '{"flipX":true,"flipY":true}' && f(3, 3, 3) === '{"flipX":true,"flipY":true}' && f(5, 2, 3) === '{"flipX":true,"flipY":false}'; })());
+  check("mirror needs a span of 2 or more", bad({ tileFit: "square", tileSpan: 1, tileMirror: true }) && !bad({ tileFit: "square", tileSpan: 2, tileMirror: true }));
 
   // a full-size (1024 px) noisy texture spread over 2x2 and 3x3 tiles leaves no tile unpainted (found 11-23: strips of blank cream along group edges with the picture at 1024 px)
   let seed = 12345; const rnd = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;

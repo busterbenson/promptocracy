@@ -24,3 +24,11 @@ export function spanCell(x, y, span) {
   const m = (n) => ((n % span) + span) % span, i = m(x), j = m(y);
   return { i, j, ox: x - i, oy: y - j + span };
 }
+
+// Mirror option for a spread: every other group is flipped, by group column (east-west) and by group row (north-south), so two neighbouring groups
+// meet along an edge where each shows the same picture mirrored, which is continuous across the cut. Group (0, 0) is never flipped.
+export function mirrorFlags(x, y, span) {
+  if (!Number.isInteger(span) || span < 1) throw new Error("tile span must be a whole number from 1");
+  const odd = (n) => (((Math.floor(n / span)) % 2) + 2) % 2 === 1;
+  return { flipX: odd(x), flipY: odd(y) };
+}
