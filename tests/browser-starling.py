@@ -39,6 +39,40 @@ def sideways(page, w, name):
     sw = page.evaluate("document.documentElement.scrollWidth")
     check(f"{name}: no sideways scroll (scrollWidth {sw} <= {w})", sw <= w)
 
+# Pinned to the bottom of the browser window (Buster, day 1): the open window's header (name, Minimize or Close) is always inside the viewport and its
+# bottom edge is the viewport's bottom, whether the page behind is scrolled to its end or its top; the log scrolls inside it and the composer stays under it.
+def pinned(page, w, h, name, phone):
+    for where in ["bottom", "top"]:
+        if phone:
+            if sheet(page) == "open": page.click('#chatcol [data-c="close"]'); page.wait_for_timeout(150)
+            page.evaluate("window.scrollTo(0, " + ("document.documentElement.scrollHeight" if where == "bottom" else "0") + ")"); page.wait_for_timeout(100)
+            page.click("#chatfab"); page.wait_for_selector("#chatcol .chat"); page.wait_for_timeout(250)
+        else:
+            page.evaluate("window.scrollTo(0, " + ("document.documentElement.scrollHeight" if where == "bottom" else "0") + ")"); page.wait_for_timeout(150)
+        tall = page.evaluate("document.documentElement.scrollHeight") > h
+        hb = page.locator("#chatcol .ch-h").bounding_box(); cb = page.locator("#chatcol .chat").bounding_box(); ib = page.locator("#chatcol .ch-in").bounding_box()
+        btn = page.locator('#chatcol [data-c="close"]' if phone else '#chatcol [data-c="min"]').bounding_box()
+        check(f"{name}, page at its {where}: the window's header and its {'Close' if phone else 'Minimize'} button are inside the viewport", hb["y"] >= -0.5 and hb["y"] + hb["height"] <= h + 0.5 and btn["y"] >= -0.5 and btn["y"] + btn["height"] <= h + 0.5, f"header {hb} button {btn}")
+        check(f"{name}, page at its {where}: the window is as tall as the viewport allows (not taller: {cb['height']:.0f} <= {h}) and its bottom edge is the viewport's bottom (within 8px: {cb['y'] + cb['height']:.0f} vs {h})", cb["height"] <= h and abs(cb["y"] + cb["height"] - h) <= 8, f"{cb}")
+        check(f"{name}, page at its {where}: the composer is inside the viewport, under the log", ib["y"] + ib["height"] <= h + 0.5 and ib["y"] >= hb["y"] + hb["height"] - 1, f"{ib}")
+        if not phone:
+            # nothing interactive sits under the open window: the day panel's Propose control and End turn, wherever the page is scrolled, are left of it and hit-test as themselves
+            wl = cb["x"]
+            for sel, what in [('.tkgo[data-p="bar-menu"]', "the Propose control"), (".tbend", "End turn")]:
+                if not page.locator(sel).count(): check(f"{name}, page at its {where}: {what} exists to test", False, sel); continue
+                page.evaluate("(s) => document.querySelector(s).scrollIntoView({block: 'center'})", sel); page.wait_for_timeout(100)
+                bb = page.locator(sel).first.bounding_box(); cb3 = page.locator("#chatcol .chat").bounding_box()
+                hit = page.evaluate("([s, x, y]) => { const e = document.elementFromPoint(x, y), t = document.querySelector(s); return !!e && (e === t || t.contains(e)); }", [sel, bb["x"] + bb["width"] / 2, bb["y"] + bb["height"] / 2])
+                check(f"{name}, page at its {where}: {what} is fully visible, left of the window (right edge {bb['x'] + bb['width']:.0f} <= window {cb3['x']:.0f}) and nothing covers its centre", bb["x"] >= 0 and bb["x"] + bb["width"] <= cb3["x"] + 0.5 and bb["y"] >= 0 and bb["y"] + bb["height"] <= h and hit, f"{bb} {cb3} hit={hit}")
+        if where == "bottom": check(f"{name}: the page behind is taller than the screen (so scrolling it was real)", phone or tall, str(page.evaluate("document.documentElement.scrollHeight")))
+        if phone:
+            page.evaluate("window.scrollBy(0, 400)"); page.wait_for_timeout(100)
+            cb2 = page.locator("#chatcol .chat").bounding_box()
+            check(f"{name}, page at its {where}: scrolling the page behind does not move the sheet", abs(cb2["y"] - cb["y"]) < 1 and abs(cb2["y"] + cb2["height"] - h) <= 8, f"{cb} {cb2}")
+        if where == "bottom":
+            m = page.evaluate("() => { const l = document.getElementById('chatLog'); l.scrollTop = 0; const a = l.scrollTop; l.scrollTop = 60; return [l.scrollHeight, l.clientHeight, a, l.scrollTop]; }")
+            check(f"{name}: the log scrolls inside the window (scrollHeight {m[0]} > clientHeight {m[1]}, and scrolling moved it {m[2]} -> {m[3]})", m[0] > m[1] and m[3] > m[2], str(m))
+
 def text(page, sel): return " ".join(page.inner_text(sel).split())
 def mode(page): return page.get_attribute("#bwrap", "data-chat")
 def sheet(page): return page.get_attribute("#bwrap", "data-sheet")
@@ -163,6 +197,14 @@ with sync_playwright() as p:
         shot(page, f"empty-greeting-{tag}")
         check(f"{tag}: no console errors", not errors, "; ".join(errors[:3]))
         c.close()
+    # ---------------- pinned to the bottom of the window, with a long conversation (Bo), on desktop and phone, tall and short
+    for scheme in ["light", "dark"]:
+        for w, h in [(1280, 900), (1280, 700), (1024, 768), (390, 844), (390, 667), (390, 400)]:
+            c, page, errors = new_page(b, w, h, scheme, bo_cookie, tab="rules")
+            page.wait_for_selector("#chatcol .chat" if w > 900 else "#chatfab"); page.wait_for_timeout(300)
+            pinned(page, w, h, f"{w}x{h}-{scheme} Starling", w < 900)
+            shot(page, f"pinned-{w}x{h}-{scheme}")
+            check(f"{w}x{h}-{scheme} Starling pinned: no console errors", not errors, str(errors)); c.close()
     b.close()
 
 print(f"\n{'FAILED: ' + str(len(failed)) if failed else 'all ok'}")

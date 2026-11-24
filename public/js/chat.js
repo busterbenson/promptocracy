@@ -258,6 +258,7 @@ ${sl.kind !== "action" && (sl.after_text || sl.before_text) ? `<div class="tx cd
     if (col) col.hidden = !on;
     if (on) drawFab();
     document.body.classList.toggle("chat-sheet", !!(on && S.sheet && !desktop()));
+    document.body.classList.toggle("chat-docked", !!(on && S.open && desktop()));   // the page makes room for the open column (site.css)
   }
   /** Called when the tab or the player changes. @rule 106.3 */
   async function sync(tab, reread) {
@@ -400,6 +401,14 @@ ${sl.kind !== "action" && (sl.after_text || sl.before_text) ? `<div class="tx cd
     if (e.target.id === "chatText" && e.key === "Enter" && !e.shiftKey && desktop()) { e.preventDefault(); send(); }
     if (e.key === "Escape" && S.sheet) { S.sheet = false; place(); }
   });
+  // The phone's keyboard shrinks the visual viewport, not the layout one: keep the sheet on the visible bottom so its header stays in view and the composer above the keys.
+  const vv = window.visualViewport;
+  function fitSheet() {
+    if (!vv) return;
+    root.style.setProperty("--vv-h", vv.height + "px");
+    root.style.setProperty("--vv-b", Math.max(0, window.innerHeight - vv.height - vv.offsetTop) + "px");
+  }
+  if (vv) { vv.addEventListener("resize", fitSheet); vv.addEventListener("scroll", fitSheet); fitSheet(); }
   if (window.matchMedia) matchMedia("(min-width: 900px)").addEventListener?.("change", () => { S.sheet = false; place(); });
 
   /** Lock it in = confirm (103.2), Unlock = withdraw (103.3): the player's own click on the proposal routes, costing no message. @rule 103.2, 103.3 */
