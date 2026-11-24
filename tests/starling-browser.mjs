@@ -29,6 +29,7 @@ try {
   const bo = await join(srv.base, "shop", g.code, { email: "bo@example.com", name: "Bo", color: "vermilion" });
   const cy = await join(srv.base, "shop", g.code, { email: "cy@example.com", name: "Cy", color: "cobalt" });
   const dee = await join(srv.base, "shop", g.code, { email: "dee@example.com", name: "Dee", color: "jade" });
+  const eve = await join(srv.base, "shop", g.code, { email: "eve@example.com", name: "Eve", color: "marigold" });   // no messages: her greeting
   startPlaying(state, "shop");
   const gid = d1(state, "SELECT id FROM games WHERE slug = 'shop'")[0].id;
   const pid = (n) => d1(state, `SELECT id FROM players WHERE game_id = '${gid}' AND display_name = '${n}'`)[0].id;
@@ -55,7 +56,7 @@ try {
   const r61 = ok(await again(() => bo.post(CH, { body: "one more" })), "bo 61st");
   if (r61.data.out !== "cap") throw new Error("Bo is not at the cap: " + r61.text);
   const cookie = (c) => [...c.jar].find(([k]) => k === "s|/shop")[1];
-  const r = await promisify(execFile)(PYTHON, [ROOT + "/tests/browser-starling.py", srv.base, shots || "-", cookie(ada), cookie(bo), cookie(cy), cookie(dee)], { timeout: 280000, maxBuffer: 1 << 22 });
+  const r = await promisify(execFile)(PYTHON, [ROOT + "/tests/browser-starling.py", srv.base, shots || "-", cookie(ada), cookie(bo), cookie(cy), cookie(dee), cookie(eve)], { timeout: 280000, maxBuffer: 1 << 22 });
   process.stdout.write(r.stdout);
 } catch (e) {
   failed = true;

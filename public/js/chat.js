@@ -23,7 +23,9 @@ const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&
 // Chalant has no window of his own: his portrait sits on his escalation answers only.
 export const AGENTS = {
   gremlin: { key: "gremlin", name: "Gremlin", path: "gremlin", tab: "workshop", cls: "gr", placeholder: "Message Gremlin", portrait: "gremlin" },
-  starling: { key: "starling", name: "Starling", path: "starling", tab: "rules", cls: "st", placeholder: "Message Starling", portrait: "starling", proposals: true },
+  starling: { key: "starling", name: "Starling", path: "starling", tab: "rules", cls: "st", placeholder: "Message Starling", portrait: "starling", proposals: true,
+    // Her first line in an empty window (Buster, 2026-11-24, on day 1): an agent line, not a caption. It is never stored or sent to the model.
+    greeting: "Talk to me about how you'd like to change a rule, add a new rule, or propose an action, and we'll get it submitted to be voted on tomorrow." },
 };
 const CHALANT = { cls: "ch", portrait: "chalant" };
 const SYMBOLS = `<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false"><defs>
@@ -164,6 +166,7 @@ ${sl.kind !== "action" && (sl.after_text || sl.before_text) ? `<div class="tx cd
       out.push(lineHTML(m, prev));
       prev = m;
     }
+    if (!S.msgs.length && agent.greeting) out.push(`<div class="msg cher greet">${portrait(true)}<div class="bub">${esc(agent.greeting)}</div></div>`);
     if (S.busy) out.push(`<div class="msg cher">${portrait(true)}<div class="bub"><span class="typing" aria-label="${esc(agent.name)} is typing"><i></i><i></i><i></i></span></div></div>`);
     out.push(agent.proposals ? proposalSlipHTML() : slipHTML());
     return out.join("");

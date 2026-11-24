@@ -4,12 +4,13 @@
 # Checks her column on the Rulebook tab at 1280 (open, the quote, the slip, Lock it in -> LOCKED with Unlock -> UNLOCKED, a rule card's "Draft with
 # Starling" attaches the rule, minimize and back, remembered per agent), Gremlin still being his on the Workshop tab, the corner pill and the bottom
 # sheet at 390, 3 of 3 with the reason, the cap's closed composer, light and dark, no sideways scroll and no console errors.
-# Usage: browser-starling.py <base> <screenshot dir or -> <Ada's session cookie> <Bo's> <Cy's> <Dee's>
+# Eve has said nothing: her window opens on Starling's greeting (an agent line, never stored).
+# Usage: browser-starling.py <base> <screenshot dir or -> <Ada's session cookie> <Bo's> <Cy's> <Dee's> <Eve's>
 import re, sys
 from urllib.parse import urlparse
 from playwright.sync_api import sync_playwright
 
-base, out, ada_cookie, bo_cookie, cy_cookie, dee_cookie = sys.argv[1:7]
+base, out, ada_cookie, bo_cookie, cy_cookie, dee_cookie, eve_cookie = sys.argv[1:8]
 host = urlparse(base).hostname
 failed = []
 SLUG = "shop"
@@ -150,6 +151,15 @@ with sync_playwright() as p:
         if w >= 900: to_book(page)
         shot(page, f"limit-{tag}"); sideways(page, w, f"{tag} limit")
         check(f"{tag} (3 of 3): no console errors", not errors, str(errors)); c.close()
+    for scheme in ["light", "dark"]:
+        tag = f"390-{scheme}-empty"
+        c, page, errors = new_page(b, 390, 844, scheme, eve_cookie)
+        page.wait_for_selector("#chatfab"); page.click("#chatfab"); page.wait_for_selector("#chatcol .chat"); page.wait_for_selector("#chatLog .greet")
+        g = text(page, "#chatLog .greet")
+        check(f"{tag}: an empty window opens on her greeting, as her own line", "change a rule, add a new rule, or propose an action" in g and "voted on tomorrow" in g and page.locator("#chatLog .greet .por, #chatLog .greet svg").count() >= 1, g)
+        shot(page, f"empty-greeting-{tag}")
+        check(f"{tag}: no console errors", not errors, "; ".join(errors[:3]))
+        c.close()
     b.close()
 
 print(f"\n{'FAILED: ' + str(len(failed)) if failed else 'all ok'}")
