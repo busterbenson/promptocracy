@@ -5,7 +5,7 @@
 // shape's main / shade / tint / deep / glass family for the player color's matching step; a fill slightly off its family
 // keeps that offset, so the shading survives. A shape's FIXED fills (an eye's highlight) never change. Ink fills follow
 // the page's --outline.
-import { TRACED, ROLES, FIXED, CANVAS, HEIGHT, FIT, HALF_WIDTH } from "./pieces-data.js";
+import { TRACED, ROLES, FIXED, CANVAS, HEIGHT, FIT, HALF_WIDTH, MID } from "./pieces-data.js";
 
 export const HW = 28, HH = HW * Math.sin(42 * Math.PI / 180), DEPTH = 9;   // a tile: half width, half height, slab depth
 
@@ -101,8 +101,11 @@ export function creatureThumb(name) {
   const key = String(name || "").trim().toLowerCase();
   if (!CREATURE_PIECES.includes(key)) return null;
   ensureDefs();
-  const u = HEIGHT / CANVAS.tall * (FIT[key] || 1), half = (HALF_WIDTH[key] || 150) * u * SHADOW.soft, top = HEIGHT * (FIT[key] || 1) * 1.05;
-  return `<svg class="piecethumb" viewBox="${(-half).toFixed(2)} ${(-top).toFixed(2)} ${(half * 2).toFixed(2)} ${(top + half * HH / HW).toFixed(2)}" role="img" aria-label="${key.charAt(0).toUpperCase() + key.slice(1)}" focusable="false">${pieceSVG({ shape: key, color: null, scale: 1, clip: false })}</svg>`;
+  // A square box centred on the figure as painted: its half width (HALF_WIDTH) and height (HEIGHT x FIT) are the board's own numbers, and MID is the
+  // middle of its painted height, in canvas units from the foot point. The figure reaches below its foot point, so the box is centred on MID, not anchored on the feet.
+  const u = HEIGHT / CANVAS.tall * (FIT[key] || 1), hw = (HALF_WIDTH[key] || 150) * u, hh = HEIGHT * (FIT[key] || 1) / 2, mid = (MID[key] || -hh / u) * u;
+  const side = 2 * Math.max(hw, hh) / 0.8;   // 10% of room round the figure on each side
+  return `<svg class="piecethumb" viewBox="${(-side / 2).toFixed(2)} ${(mid - side / 2).toFixed(2)} ${side.toFixed(2)} ${side.toFixed(2)}" role="img" aria-label="${key.charAt(0).toUpperCase() + key.slice(1)}" focusable="false">${pieceSVG({ shape: key, color: null, scale: 1, clip: false })}</svg>`;
 }
 
 // A flat tile (for the join picker and the landing page): a charted tile at the page's colors.

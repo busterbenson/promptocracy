@@ -20,6 +20,17 @@ def check(name, ok, detail=""):
 def shot(page, name, **kw):
     if out != "-": page.screenshot(path=f"{out}/{name}.png", **kw)
 
+# The piece as drawn, not its svg box: the union of its painted paths' boxes must sit inside the tile with room round it (the board-piece fallback was
+# low and to the left, over the tile's bottom and left edges), centred on the tile (within 12% of its side), at every place it appears.
+def piece_inside(page, sel, name):
+    m = page.evaluate("""(sel) => { const t = document.querySelector(sel); const r = t.getBoundingClientRect(); let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+      for (const el of t.querySelectorAll('svg.piecethumb path')) { const b = el.getBoundingClientRect(); if (!b.width && !b.height) continue; x0 = Math.min(x0, b.left); y0 = Math.min(y0, b.top); x1 = Math.max(x1, b.right); y1 = Math.max(y1, b.bottom); }
+      return { tile: [r.left, r.top, r.right, r.bottom], art: [x0, y0, x1, y1] }; }""", sel)
+    (tl, tt, tr, tb), (al, at, ar, ab) = m["tile"], m["art"]; side = tr - tl; pad = side * 0.05
+    inside = al >= tl + pad and at >= tt + pad and ar <= tr - pad and ab <= tb - pad
+    cx, cy = (al + ar) / 2 - (tl + tr) / 2, (at + ab) / 2 - (tt + tb) / 2
+    check(f"{name}: the piece's drawn box is inside its tile with padding ({al-tl:.1f},{at-tt:.1f} to {tr-ar:.1f},{tb-ab:.1f} px to the edges of a {side:.0f}px tile) and centred (off by {cx:.1f},{cy:.1f}px)", inside and abs(cx) <= side * 0.12 and abs(cy) <= side * 0.12, str(m))
+
 def new_page(b, w, h, scheme):
     c = b.new_context(viewport={"width": w, "height": h}, device_scale_factor=1, color_scheme=scheme, has_touch=w < 500)
     c.add_cookies([{"name": "s", "value": cookie, "domain": host, "path": "/" + SLUG}])
@@ -64,12 +75,14 @@ with sync_playwright() as p:
         check(f"{tag}: the Crow (a creature with no piece of its own as a creature) and the hat keep the kind's letter tile", crow.inner_text().strip() == "C" and crow.locator("svg").count() == 0 and page.locator("#p-workshop .ccard:has-text('Lantern') .arttile").inner_text().strip() == "I")
         box = blob.locator(".arttile").bounding_box(); fig = blob.locator(".arttile svg.piecethumb").bounding_box()
         check(f"{tag}: the piece sits inside its tile ({box['width']:.0f}px) and is drawn at a size you can see", fig["width"] > box["width"] * 0.6 and fig["height"] > box["height"] * 0.6 and fig["x"] >= box["x"] - 1 and fig["x"] + fig["width"] <= box["x"] + box["width"] + 1, f"{box} {fig}")
+        piece_inside(page, "#p-workshop .ccard:has(svg.piecethumb) .arttile", f"{tag}: the Blob's catalog card")
         shot(page, f"catalog-groups-{tag}", full_page=True); sideways(page, w, f"{tag} catalog groups")
         # ---- an entry's page and the flavor expander
         page.click("#p-workshop [data-entry='C1']"); page.wait_for_selector("#mroot .mcard")
         card = text(page, "#mroot .mcard")
         check(f"{tag}: the entry's page: id, name, kind, its rows, the first 3 flavor rows, and a button to show all 4", all(x in card for x in ["C1", "Blob", "Creature", "Hearts 3 No rule yet", "Speed 2 602", "Colour green", "Show all 4"]) and "Smell" not in card, card)
         check(f"{tag}: the Blob's own page shows the piece too, big", page.locator('#mroot .cart .arttile.piece.big svg.piecethumb').count() == 1)
+        piece_inside(page, "#mroot .cart .arttile.piece.big", f"{tag}: the Blob's own page")
         shot(page, f"entry-blob-{tag}")
         page.click('#mroot [data-w="flavor"]'); page.wait_for_function("document.querySelectorAll('#mroot .flv .er').length === 4")
         check(f"{tag}: the expander shows all four flavor rows, and offers to show fewer", "Smell of old tar" in text(page, "#mroot .mcard") and "Show fewer" in text(page, "#mroot .mcard"))
@@ -79,6 +92,7 @@ with sync_playwright() as p:
         # ---- the ticket's Makes cards
         page.click(f"#p-workshop [data-ticket='{blob_ticket}']"); page.wait_for_selector("#mroot .mkc")
         check(f"{tag}: a ticket's Makes card for the Blob shows the piece as well", page.locator("#mroot .mkc .arttile.piece svg.piecethumb").count() == 1)
+        piece_inside(page, "#mroot .mkc .arttile.piece", f"{tag}: the Blob's Makes card")
         shot(page, f"makes-blob-{tag}")
         page.click("#mroot .mx")
         page.click("#p-workshop [data-ticket='W1']"); page.wait_for_selector("#mroot .mkc")
