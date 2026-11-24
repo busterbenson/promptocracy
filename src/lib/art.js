@@ -146,5 +146,7 @@ export async function stubImage(mode, { seed }) {
   if (mode === "text") return runImage({ run: async () => ({ image: btoa("this is not a picture at all") }) }, IMAGE_MODEL, { prompt: "x", width: 8, height: 8 });
   if (mode === "slow") await new Promise((r) => setTimeout(r, DRAW_TIMEOUT_MS + 5000));
   if (mode === "delay") await new Promise((r) => setTimeout(r, 6000));
-  return { bytes: stubPng(mode === "seeded" || mode === "delay" ? seed : 0), type: "image/png" };
+  // A seeded draw is 97 px, not stubPng's default 96: the colour is only the seed's hue (360 of them), so at 96 a random seed drew the same bytes (the
+  // same key) as a test fixture made with stubPng(n) about once in 360 draws (tests/art.mjs, "never has the bytes of a fixture picture").
+  return mode === "seeded" || mode === "delay" ? { bytes: stubPng(seed, 97), type: "image/png" } : { bytes: stubPng(0), type: "image/png" };
 }

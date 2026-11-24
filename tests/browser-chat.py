@@ -87,7 +87,7 @@ with sync_playwright() as p:
         page.wait_for_function(f"document.querySelectorAll('#chatLog .msg').length === {n0 + 2}")
         check(f"{tag}: Enter sends: her line and his reply are added, the box is empty again, 28 left (no counter yet)", msgs(page) == n0 + 2 and page.input_value("#chatText") == "" and not vis(page, ".ch-in .left"))
         # the draft's ticket opens from the slip's pill
-        page.click("#chatLog .slip .wpill"); page.wait_for_selector("#mroot .mcard")
+        page.click("#chatLog .slip .wpill"); page.wait_for_selector("#mroot .mcard .wkprice")   # the card opens at once with only its name; the ticket arrives after (public/js/workshop.js open()), and .wkprice is part of what arrives
         check(f"{tag}: the slip's W1 pill opens the ticket's card, and the card shows his price and reason", "W1" in text(page, "#mroot .mcard") and "6 points" in text(page, "#mroot .mcard") and len(text(page, "#mroot .mcard").split("6 points", 1)[-1].strip(" ·")) > 10)
         page.evaluate("document.querySelector('#mroot .wkprice').scrollIntoView({block: 'center'})"); page.wait_for_timeout(150)
         shot(page, f"ticket-card-price-{tag}")
