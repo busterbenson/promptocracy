@@ -7,7 +7,7 @@ Every function that carries out the game should say which rule it implements, wi
 `src/` is only reported for now: these functions have no claim yet. Site plumbing such as sign-in and email goes
 under rule 101 or 102; a follow-up change claims them and moves `src/` into the strict set.
 
-171 of 515 functions outside `src/engine/` are unclaimed.
+173 of 520 functions outside `src/engine/` are unclaimed.
 
 ## src/index.ts (6)
 
@@ -22,19 +22,20 @@ under rule 101 or 102; a follow-up change claims them and moves `src/` into the 
 
 - line 29: `wanted`
 
-## src/lib/art.js (11)
+## src/lib/art.js (12)
 
-- line 305: `nanoRequest`
-- line 326: `scrub`
-- line 328: `fail`
-- line 330: `timedOut`
-- line 341: `n`
-- line 351: `crcTable`
-- line 352: `crc32`
-- line 353: `u32`
-- line 354: `chunk`
-- line 358: `px`
-- line 371: `concat`
+- line 50: `tmpKey`
+- line 308: `nanoRequest`
+- line 329: `scrub`
+- line 331: `fail`
+- line 333: `timedOut`
+- line 344: `n`
+- line 354: `crcTable`
+- line 355: `crc32`
+- line 356: `u32`
+- line 357: `chunk`
+- line 361: `px`
+- line 374: `concat`
 
 ## src/lib/art.ts (5)
 
@@ -102,9 +103,9 @@ under rule 101 or 102; a follow-up change claims them and moves `src/` into the 
 
 ## src/lib/gremlin.js (3)
 
-- line 303: `def`
-- line 348: `readGremlinAnswer`
-- line 480: `clip`
+- line 309: `def`
+- line 354: `readGremlinAnswer`
+- line 489: `clip`
 
 ## src/lib/links.ts (2)
 
@@ -175,7 +176,7 @@ under rule 101 or 102; a follow-up change claims them and moves `src/` into the 
 
 ## src/lib/tickets.js (1)
 
-- line 180: `pts`
+- line 208: `pts`
 
 ## src/lib/util.ts (27)
 
@@ -262,11 +263,12 @@ under rule 101 or 102; a follow-up change claims them and moves `src/` into the 
 - line 34: `no`
 - line 173: `stateNow`
 
-## src/routes/api-tickets.ts (3)
+## src/routes/api-tickets.ts (4)
 
-- line 33: `out`
-- line 302: `undo`
-- line 374: `need`
+- line 34: `out`
+- line 46: `visible`
+- line 319: `undo`
+- line 410: `need`
 
 ## src/routes/landing.ts (2)
 

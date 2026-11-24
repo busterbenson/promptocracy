@@ -8,7 +8,7 @@ import json, re, sys
 from urllib.parse import urlparse
 from playwright.sync_api import sync_playwright
 
-base, out, cookie, keep_ticket = sys.argv[1:5]
+base, out, cookie, keep_ticket, blob_ticket = sys.argv[1:6]
 host = urlparse(base).hostname
 failed = []
 SLUG = "catalogued"
@@ -58,17 +58,29 @@ with sync_playwright() as p:
         wall = page.locator("#p-workshop .ccard:has-text('Garden wall')")
         check(f"{tag}: the structure shows 2×1 tiles with its footprint (two diamonds)", "2×1 tiles" in wall.inner_text() and wall.locator("svg.foot polygon").count() == 2)
         check(f"{tag}: the art slot is a neutral tile with the kind's letter, not a caption", page.locator("#p-workshop .ccard .arttile").first.inner_text() in "ICTSF" and page.locator("#p-workshop .ccard figcaption, #p-workshop .ccard .caption").count() == 0)
+        # the Blob has no commissioned drawing, so its card shows its board piece (the traced art the board draws); a creature with no piece (the Crow) and the other kinds keep the letter tile
+        check(f"{tag}: the Blob's catalog card shows its board piece, not a letter tile: an svg with the traced art, a name for screen readers, no letter", blob.locator(".arttile.piece svg.piecethumb").count() == 1 and blob.locator(".arttile.piece svg path, .arttile.piece svg g").count() > 3 and blob.locator(".arttile.piece svg.piecethumb").get_attribute("aria-label") == "Blob" and blob.locator(".arttile").inner_text().strip() == "")
+        crow = page.locator("#p-workshop .ccard:has-text('Crow') .arttile")
+        check(f"{tag}: the Crow (a creature with no piece of its own as a creature) and the hat keep the kind's letter tile", crow.inner_text().strip() == "C" and crow.locator("svg").count() == 0 and page.locator("#p-workshop .ccard:has-text('Lantern') .arttile").inner_text().strip() == "I")
+        box = blob.locator(".arttile").bounding_box(); fig = blob.locator(".arttile svg.piecethumb").bounding_box()
+        check(f"{tag}: the piece sits inside its tile ({box['width']:.0f}px) and is drawn at a size you can see", fig["width"] > box["width"] * 0.6 and fig["height"] > box["height"] * 0.6 and fig["x"] >= box["x"] - 1 and fig["x"] + fig["width"] <= box["x"] + box["width"] + 1, f"{box} {fig}")
         shot(page, f"catalog-groups-{tag}", full_page=True); sideways(page, w, f"{tag} catalog groups")
         # ---- an entry's page and the flavor expander
         page.click("#p-workshop [data-entry='C1']"); page.wait_for_selector("#mroot .mcard")
         card = text(page, "#mroot .mcard")
         check(f"{tag}: the entry's page: id, name, kind, its rows, the first 3 flavor rows, and a button to show all 4", all(x in card for x in ["C1", "Blob", "Creature", "Hearts 3 No rule yet", "Speed 2 602", "Colour green", "Show all 4"]) and "Smell" not in card, card)
+        check(f"{tag}: the Blob's own page shows the piece too, big", page.locator('#mroot .cart .arttile.piece.big svg.piecethumb').count() == 1)
+        shot(page, f"entry-blob-{tag}")
         page.click('#mroot [data-w="flavor"]'); page.wait_for_function("document.querySelectorAll('#mroot .flv .er').length === 4")
         check(f"{tag}: the expander shows all four flavor rows, and offers to show fewer", "Smell of old tar" in text(page, "#mroot .mcard") and "Show fewer" in text(page, "#mroot .mcard"))
         shot(page, f"entry-flavor-open-{tag}"); sideways(page, w, f"{tag} entry page")
         page.click('#mroot [data-w="flavor"]'); page.wait_for_function("document.querySelectorAll('#mroot .flv .er').length === 3")
         page.click("#mroot .mx")
         # ---- the ticket's Makes cards
+        page.click(f"#p-workshop [data-ticket='{blob_ticket}']"); page.wait_for_selector("#mroot .mkc")
+        check(f"{tag}: a ticket's Makes card for the Blob shows the piece as well", page.locator("#mroot .mkc .arttile.piece svg.piecethumb").count() == 1)
+        shot(page, f"makes-blob-{tag}")
+        page.click("#mroot .mx")
         page.click("#p-workshop [data-ticket='W1']"); page.wait_for_selector("#mroot .mkc")
         cards = page.locator("#mroot .mkc")
         check(f"{tag}: the ticket's Makes: three cards, in order: item, structure, creature; each with its kind chip", cards.count() == 3 and [x.locator(".kchip").inner_text().upper() for x in cards.all()] == ["ITEM", "STRUCTURE", "CREATURE"])
@@ -86,15 +98,14 @@ with sync_playwright() as p:
     mk = lambda: page.evaluate("(n) => fetch('/catalogued/api/tickets/' + n).then(r => r.json()).then(j => JSON.stringify(j.ticket.makes))", keep_ticket)
     before = mk()
     page.click("#tab-workshop"); page.click(f"#p-workshop [data-ticket='{keep_ticket}']"); page.wait_for_selector("#wfTitle")
-    check("the draft's form lists a draft-only rule with a Remove button, and no field for the creature's size (a structure's attribute)", "A creature that flies can cross walls." in text(page, "#mroot .wkdraft") and page.locator('#mroot [data-w="rmdraft"]').count() == 1 and page.locator("#wfEa0-size").count() == 0)
+    check("the draft's form shows a draft-only rule as read-only data (no Remove button, no Rules field), and no field for the creature's size (a structure's attribute)", "A creature that flies can cross walls." in text(page, "#mroot .wkset") and page.locator('#mroot [data-w="rmdraft"]').count() == 0 and page.locator("#wfRules").count() == 0 and page.locator("#wfEa0-size").count() == 0)
     page.click('[data-w="save"]'); page.wait_for_selector("#mroot .vmsg")
     check("Save by hand changes nothing it does not edit: the stored makes hold the same data before and after (the order of an entry's keys may differ)", json.loads(mk()) == json.loads(before), before + " -> " + mk())
     page.select_option("#wfEk1", "creature"); page.wait_for_selector("#wfEa1-hearts")
     check("giving the kind-less entry a kind brings its held attribute into the kind's field: Hearts 3", page.input_value("#wfEa1-hearts") == "3")
-    page.click('[data-w="rmdraft"]'); page.wait_for_function("document.querySelectorAll('#mroot .wkdraft').length === 0")
     page.click('[data-w="save"]'); page.wait_for_selector("#mroot .vmsg")
     after = mk()
-    check("removing the draft rule and saving takes the rule out and keeps the rest", "A creature that flies" not in after and '"needsBuild":["size"]' in after and '"copiedFrom":"C2"' in after and '"catalogKind":"creature","attrs":{"hearts":3}' in after.replace(" ", ""), after)
+    check("saving after the kind change keeps both of Gremlin's rules and the rest", "A creature that flies" in after and '"num":"801.2"' in after.replace(" ", "") and '"needsBuild":["size"]' in after and '"copiedFrom":"C2"' in after and '"catalogKind":"creature","attrs":{"hearts":3}' in after.replace(" ", ""), after)
     check("no console errors", not errors, str(errors)); c.close()
     # ---- the draft form: a kind picker and the kind's required fields
     for w, h, scheme in [(1280, 900, "light"), (390, 844, "dark")]:

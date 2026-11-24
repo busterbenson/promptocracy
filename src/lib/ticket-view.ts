@@ -7,7 +7,7 @@ export const FROM = `FROM tickets t JOIN players p ON p.game_id = t.game_id AND 
 export const COLS = `t.*, p.display_name AS name, p.color, q.number AS pnumber, q.status AS pstatus, EXISTS (SELECT 1 FROM escalations e WHERE e.ticket_id = t.id AND e.answered_at IS NULL) AS escalated`;
 
 // A ticket as the list and the ballot row show it. A whitelist: no row id, no player id.
-/** @rule 801.2, 801.4, 803.1 */
+/** @rule 801.2, 801.4, 801.7, 803.1 */
 export function ticketView(r: any, viewerId?: string | null) {
   return {
     n: `W${r.number}`, number: r.number,
@@ -15,6 +15,7 @@ export function ticketView(r: any, viewerId?: string | null) {
     estimate: r.estimate, running_cost: r.running_cost,
     price: r.price, price_reason: r.price_reason, paid: r.paid ?? null,
     state: r.state,
+    drafted: !!r.drafted || r.state !== "Draft",   // Gremlin has drafted it (rule 801.7); a ticket past Draft always has
     escalated: !!r.escalated,
     proposal: r.pnumber ? `P${r.pnumber}` : null,
     queue: r.queue_pos ?? null,

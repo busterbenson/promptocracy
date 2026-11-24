@@ -13,6 +13,7 @@ import { readFileSync } from "node:fs";
 import { join as pjoin } from "node:path";
 import { ROOT } from "./lib.mjs";
 import { ART_COST_BY_MODEL, ART_COST_MICRO, CHECK_MODEL, artCostMicro, DESCRIBE_MODEL, HASH, IMAGE_MODEL, KIND_BLOCKS, NANO_COST_MICRO, NANO_MODEL, GEMINI_ORIGIN, isNano, nanoAspect, nanoRequest, runNano, MAX_DETAILS, MAX_PROMPT, artKey, checkQuestion, describeAsk, drawChecked, kindBlock, loosePalette, readVerdict, runImage, sha256Hex, shortDetails, sizeFor, sniffType, stubPng, stylePrompt, tmpKey , stubImage } from "../src/lib/art.js";
+import * as A from "../src/lib/art.js";
 import { answerSchema, readMakeItem, systemStatic } from "../src/lib/gremlin.js";
 
 let pass = 0, fail = 0;
@@ -34,6 +35,7 @@ check("a seeded stub draw never has the bytes of a fixture picture (stubPng(0) a
   for (const n of [0, 100, 101, 102, 103, 104, 105]) for (const seed of [n, n + 360, n + 720]) if (fixtures.has(sha((await stubImage("seeded", { seed })).bytes))) return false;   // seed and seed + 360 share a hue (47 and 360 are coprime)
   return true;
 })());
+check("a drawing stays private while its ticket is a draft, and after a discard of a draft never confirmed (801.8); a shelved ticket that was once proposed, and every later state, is public", A.draftPrivate({ state: "Draft" }) && A.draftPrivate({ state: "Shelved", proposed_at: null }) && !A.draftPrivate({ state: "Shelved", proposed_at: "2026-11-24T10:00:00Z" }) && !A.draftPrivate({ state: "Proposed", proposed_at: "x" }) && !A.draftPrivate({ state: "Approved" }));
 check("only a 64-hex hash makes a key: a path, an uppercase hash, a short one and traversal are refused; the two key spaces are tmp/ and art/", (() => {
   const h = sha(png), refused = (f, v) => { try { f(v); return false; } catch { return true; } };
   return tmpKey(h) === `tmp/${h}` && artKey(h) === `art/${h}` && ["../x", "tmp/" + h, h.toUpperCase(), h.slice(1), h + "0", "", "a/b"].every((v) => refused(tmpKey, v) && refused(artKey, v));

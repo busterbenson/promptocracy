@@ -93,6 +93,7 @@ try {
   check("the draft ticket holds what he wrote: title, brief, a structure entry with its size, a price of 0 and his reason; state still Draft, no proposal",
     w.state === "Draft" && w.proposal_id === null && w.brief.length > 10 && w.price === 0 && w.price_reason.length > 3 && JSON.parse(w.makes)[0].catalogKind === "structure" && J(JSON.parse(w.makes)[0].attrs) === J({ size: { w: 2, h: 1 } }) && w.paid === null && w.queue_pos === null, J(w));
   check("both lines are stored, private to Ana, with the ticket and the day; the history says which fields he wrote", rows("Ana").length === 2 && rows("Ana").every((r) => r.agent === "gremlin" && r.local_date === "2026-11-10" && r.day === 1 && r.ticket_id === w.id) && J(JSON.parse(rows("Ana")[1].meta).patch).includes("makes") && mm[1].patch.includes("price"));
+  check("his priced draft marks the ticket drafted (rule 801.7): Lock it in opens, and the page says so", w.drafted === 1 && t1.data.ticket.drafted === true && t1.data.ticket.can.confirm.allowed === true, J([w.drafted, t1.data.ticket?.can]));
   const first = calls.find((c) => isChatCall(c));
   check("the model was asked as designed: Sonnet 5.5 at low effort with the answer schema, the key in the header, a breakpoint on the day's block, and no thinking",
     first.model === "claude-sonnet-5-5" && first.key === "stub-key-not-real" && first.body.output_config.effort === "low" && first.body.output_config.format.type === "json_schema" && first.body.system[1].cache_control.type === "ephemeral" && !("thinking" in first.body) && first.body.max_tokens === 1500);
@@ -101,8 +102,8 @@ try {
   check("one agent_calls row: ok, tokens, a cost from usage, no prompt or player text in it", c1.length === 1 && c1[0].outcome === "ok" && c1[0].purpose === "chat" && c1[0].model === "claude-sonnet-5-5" && c1[0].cost_micro > 0 && c1[0].cache_write === REC["wall-sizing"].usage.cache_creation_input_tokens && c1[0].input_tokens === REC["wall-sizing"].usage.input_tokens && !J(c1[0]).includes("stone"), J(c1));
   const ticketPage = (await Ana.get(`${T}/W1`)).data.ticket;
   check("the ticket page shows his price with its reason, and the player's own edit with price in it changes neither", ticketPage.price_reason === w.price_reason);
-  await Ana.post(`${T}/W1/edit`, { price: 99, price_reason: "mine", paid: 5, state: "Approved", title: "Low stone garden wall" });
-  check("a player's own edit body with price, its reason, paid or state in it changes none of them", tk(1).price === 0 && tk(1).price_reason === w.price_reason && tk(1).paid === null && tk(1).state === "Draft");
+  const priceEdit = await Ana.post(`${T}/W1/edit`, { price: 99, price_reason: "mine", paid: 5, state: "Approved", title: "Low stone garden wall" });
+  check("a player's own edit body with price, its reason, paid or state in it is refused (403, rule 801.7) and changes none of them", priceEdit.status === 403 && /rule 801\.7/.test(priceEdit.data.error) && tk(1).price === 0 && tk(1).price_reason === w.price_reason && tk(1).paid === null && tk(1).state === "Draft");
 
   console.log("history is private (rule 106.7)");
   const h1 = await Ana.get(CH);
@@ -165,8 +166,19 @@ try {
   check("the call's row says the price was set to 0 for want of a build (no player text in it)", acalls("reason LIKE '%price set to 0: nothing to build%'").length === 1 && !J(acalls("reason LIKE '%price set to 0%'")).includes("pine"));
   const bigP = await say(Ana, "SYNTH-BUILT a wyrm that flies", P);
   check("a ticket that makes a rule (something to build) keeps the price he sets: 4 points, his reason", bigP.status === 200 && tk(Number(P.slice(1))).price === 4 && tk(Number(P.slice(1))).price_reason === "Two nights of wings.");
+  {
+    const n = Number(P.slice(1)), costs = () => ({ c: tk(n).running_cost, t: d1(state, `SELECT text FROM ticket_tasks WHERE ticket_id = '${tk(n).id}' ORDER BY pos`).map((r) => r.text) });
+    await say(Ana, "SYNTH-COST keep it going", P);
+    const set = costs();
+    check("he can write a running cost and tasks (they are his: the requester's edit refuses them)", set.c === "1 heart a night" && set.t.join("|") === "Draw it|Give it wings", J(set));
+    const cl = await say(Ana, "SYNTH-CLEARED nothing to keep", P);
+    check("and he can clear them with CLEAR (rule 801.7): the running cost is empty and the tasks gone, the rest of the ticket untouched; the word itself is never stored",
+      cl.status === 200 && J(costs()) === J({ c: "", t: [] }) && tk(n).price === 4 && !J(costs()).includes("CLEAR") && cl.data.ticket.running_cost === "" && cl.data.ticket.tasks.length === 0, J(costs()));
+  }
 
   const pn = Number(P.slice(1));
+  // (the rule item is Gremlin's, and the requester's own edit can't take it out: 801.2; the build left is an entry waiting for its rule)
+  d1(state, `UPDATE tickets SET makes = '${J([{ kind: "entry", name: "Wyrm", catalogKind: "creature", attrs: { hearts: 4 }, needsBuild: ["flies"] }])}' WHERE id = '${tk(pn).id}'`);
   const handEdit = await Ana.post(`${T}/${P}/edit`, { makes: [{ kind: "entry", name: "Wyrm", catalogKind: "creature", attrs: { hearts: 4 } }] });
   check("the player's own edit that takes the last thing to build off a priced ticket leaves it free too (rule 801.4): price 0 with the platform's reason", handEdit.status === 200 && tk(pn).price === 0 && tk(pn).price_reason === NO_BUILD_REASON && handEdit.data.ticket.price === 0, J([handEdit.status, tk(pn).price, tk(pn).price_reason]));
   const handTitle = await Ana.post(`${T}/${P}/edit`, { title: "A wyrm by hand" });
@@ -204,7 +216,7 @@ try {
   check("the day's limit still counts every message, whichever ticket: the window's count is all of them, more than any one ticket's", (await Ana.get(CH)).data.state.used === countedToday && countedToday > onFrog && onFrog === 2, `${countedToday} ${onFrog}`);
   const gQ = await Ana.get(`${CH}?ticket=${Q}`), gP = await Ana.get(`${CH}?ticket=${P}`), gW = await Ana.get(`${CH}?ticket=W1`), gN = await Ana.get(`${CH}?ticket=none`), gLast = await Ana.get(CH);
   const tix = (r) => [...new Set(r.data.messages.filter((m) => m.role !== "excuse").map((m) => m.ticket))].join();
-  check("the window's history is one ticket's: GET ?ticket=<its number> returns that ticket's lines and no other's", tix(gQ) === Q && tix(gP) === P && tix(gW) === "W1" && gQ.data.ticket === Q && gP.data.messages.length === 10 && gQ.data.messages.length === 4, J([tix(gQ), tix(gP), tix(gW)]));
+  check("the window's history is one ticket's: GET ?ticket=<its number> returns that ticket's lines and no other's", tix(gQ) === Q && tix(gP) === P && tix(gW) === "W1" && gQ.data.ticket === Q && gP.data.messages.length === 14 && gQ.data.messages.length === 4, J([tix(gQ), tix(gP), tix(gW)]));
   check("?ticket=none is what was said outside any ticket (null ticket on every line), and with no ticket named it is the conversation he was last in (the ticketless one: his last message had none)", gN.data.messages.length === 2 && gN.data.messages.every((m) => m.ticket === null) && gN.data.ticket === null && gLast.data.ticket === null && gLast.data.messages.length === 2);
   // the day's excuse shows in whichever conversation is open, an older day's does not (the excuse belongs to no ticket)
   const ins = (date, body) => d1(state, `INSERT INTO chat_messages (game_id, player_id, agent, local_date, day, role, body, at) VALUES ('${gid}', '${id.Ana}', 'gremlin', '${date}', 1, 'excuse', '${body}', '2026-11-10T19:00:00.000Z')`);
