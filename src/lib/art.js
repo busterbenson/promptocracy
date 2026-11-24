@@ -44,6 +44,9 @@ export const artCostMicro = (model) => ART_COST_BY_MODEL[model] ?? Math.max(...O
 export const MAX_SAVED = 20;            // the most drawings one entry keeps (the same limit catalog.json reads, LIMITS.saved)
 
 /** The key of a drawing as made. Refuses anything that is not 64 lowercase hex characters, so a key can never name another path. @rule 801.2 */
+/** Is a drawing's ticket still private to its requester: a draft, or a draft discarded before it was ever confirmed (rule 801.8: it
+ *  goes to Shelved without having been public). Codex P2 on #103: a discard must not publish the drawings. @rule 801.2, 801.8 */
+export function draftPrivate(row) { return row.state === "Draft" || (row.state === "Shelved" && !row.proposed_at); }
 export function tmpKey(hash) { if (!HASH.test(hash)) throw new Error("not a drawing's hash"); return `tmp/${hash}`; }
 /** The key of a saved drawing. @rule 801.2 */
 export function artKey(hash) { if (!HASH.test(hash)) throw new Error("not a drawing's hash"); return `art/${hash}`; }

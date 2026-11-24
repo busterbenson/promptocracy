@@ -6,7 +6,7 @@
 //   POST /<slug>/api/tickets/<W3>/art          {entry, action: "save" | "default" | "redraw", hash?}: your draft's drawings. Save keeps one; default
 //                                              picks which saved one the entry shows; redraw asks again, and counts as one of Gremlin's messages.
 import { getPlayer } from "../lib/auth";
-import { HASH, artKey, tmpKey } from "../lib/art.js";
+import { HASH, artKey, draftPrivate, tmpKey } from "../lib/art.js";
 import { draw, entriesOf, overBudget, release, reserve, save, setDefault } from "../lib/art";
 import { PLAYER_MESSAGE_SQL, usedToday } from "../lib/chat.js";
 import { clockNow, isLocked, loadToday, lockMessage, settingsOf, timeZoneOf } from "../lib/day";
@@ -28,8 +28,8 @@ export const get = async (ctx: Ctx) => {
   const named = catalogFor(game).entries.some((e: any) => (e.art?.saved ?? []).some((d: any) => d.key === hash));
   let access: string | null = named ? FOREVER : null, savedAnywhere = named;
   if (!named) {
-    const rows = ((await env.DB.prepare("SELECT t.state AS state, t.player_id AS player_id, r.saved AS saved FROM art_refs r JOIN tickets t ON t.id = r.ticket_id WHERE r.hash = ? AND r.game_id = ?").bind(hash, game.id).all()).results ?? []) as any[];
-    if (rows.some((r) => r.state !== "Draft")) access = FOREVER;
+    const rows = ((await env.DB.prepare("SELECT t.state AS state, t.proposed_at AS proposed_at, t.player_id AS player_id, r.saved AS saved FROM art_refs r JOIN tickets t ON t.id = r.ticket_id WHERE r.hash = ? AND r.game_id = ?").bind(hash, game.id).all()).results ?? []) as any[];
+    if (rows.some((r) => !draftPrivate(r))) access = FOREVER;
     else if (rows.length) { const p = await getPlayer(env, request, game); if (p && rows.some((r) => r.player_id === p.id)) access = NO_STORE; }
     savedAnywhere = rows.some((r) => r.saved);
   }
