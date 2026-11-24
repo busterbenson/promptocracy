@@ -632,7 +632,7 @@ button.pill[aria-pressed="true"]{background:color-mix(in srgb,var(--accent) 16%,
   body.chat-docked{padding-right:408px}
   body.chat-docked .tklist{grid-template-columns:repeat(2,minmax(0,1fr))}   /* the day panel is 408px narrower: two by two, so no step is squeezed */
   .bwrap[data-chat="open"] .chatcol{display:block}
-  .bwrap[data-chat="open"] .chat{position:fixed;right:16px;bottom:6px;z-index:30;width:384px;height:min(820px,calc(100vh - 78px));height:min(820px,calc(100dvh - 78px))}
+  .bwrap[data-chat="open"] .chat{position:fixed;right:16px;bottom:6px;z-index:15;width:384px;height:min(820px,calc(100vh - 78px));height:min(820px,calc(100dvh - 78px))}
   .bwrap[data-chat="min"] .chatfab{display:inline-flex}
 }
 @media (max-width:899.98px){
