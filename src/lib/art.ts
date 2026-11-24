@@ -24,7 +24,12 @@ export const entriesOf = (makes: any[]) =>
     .map((m) => ({ name: m.name as string, kind: (m.catalogKind ?? null) as string | null, attrs: m.attrs ?? {}, prompt: String(m.art?.prompt ?? "") }));
 
 /** The model's id: IMAGE_MODEL when set to a Workers AI model or to Nano Banana (exactly NANO_MODEL), else the default. @rule 801.2 */
-export const modelOf = (env: Env) => (env.IMAGE_MODEL === NANO_MODEL || (env.IMAGE_MODEL && /^@cf\/[\w./-]+$/.test(env.IMAGE_MODEL)) ? env.IMAGE_MODEL! : IMAGE_MODEL);
+export const modelOf = (env: Env) => {
+  const m = env.IMAGE_MODEL;
+  if (m === NANO_MODEL || (m && /^@cf\/[\w./-]+$/.test(m))) return m!;
+  if (m) console.error("art: IMAGE_MODEL is not a model this Worker knows; drawing with the default");   // a typo draws with the default and says so
+  return IMAGE_MODEL;
+};
 
 // ---- what the page shows ------------------------------------------------------------------------------------------------------------
 /**
@@ -103,9 +108,12 @@ export async function queueNew(ctx: Ctx, game: any, player: any, ticket: any, ma
  */
 export async function draw(env: Env, j: Draw): Promise<void> {
   const t0 = Date.now(), model = modelOf(env);
-  const fail = async (reason: string) => {
+  // Nano is billed by Google for a call that answered or was still working when it was given up (a block, a bad picture, a timeout, or a later
+  // storage error), so such a failure is counted in the budget like a drawing (over-counted, never under); every other model's failure costs nothing, as before
+  let drew = false;
+  const fail = async (reason: string, billed = false) => {
     await env.DB.prepare("UPDATE art_draws SET state = 'failed', reason = ?, ended_at = ? WHERE id = ? AND state = 'pending'").bind(reason.slice(0, 120), nowIso(Date.now()), j.drawId).run().catch(() => {});
-    await logCall(env, j.game, j.tz, Date.now(), { player_id: j.player.id, agent: "gremlin", purpose: "art", model, outcome: "failed", ms: Date.now() - t0, reason });
+    await logCall(env, j.game, j.tz, Date.now(), { player_id: j.player.id, agent: "gremlin", purpose: "art", model, outcome: "failed", ms: Date.now() - t0, reason, ...(isNano(model) && (billed || drew) ? { cost_micro: artCostMicro(model) } : {}) });
   };
   try {
     const size = sizeFor(j.kind, j.attrs);
@@ -117,12 +125,13 @@ export async function draw(env: Env, j: Draw): Promise<void> {
       const seed = crypto.getRandomValues(new Uint32Array(1))[0] % 2147483647, prompt = stylePrompt(j.kind, j.attrs, j.prompt, details);
       return Promise.race([
         env.ART_STUB ? stubImage(env.ART_STUB, { seed }) : isNano(model) ? runNano(env, { prompt, ...size }, Math.min(DRAW_TIMEOUT_MS, ms)) : runImage(env.AI, model, { prompt, ...size, seed }),
-        new Promise<never>((_, rej) => setTimeout(() => rej(new Error("timeout")), Math.min(DRAW_TIMEOUT_MS, ms))),
+        new Promise<never>((_, rej) => setTimeout(() => rej(Object.assign(new Error("timeout"), { billed: true })), Math.min(DRAW_TIMEOUT_MS, ms))),
       ]);
     };
     const check = !looked ? null : (made: any, ms: number) => lookAt(env, j.game, j.tz, j.player.id, j.kind, j.prompt, made, j.mode === "recheck" ? 1 : 0, ms);
     const out = await drawChecked({ make, check, budgetMs: DRAW_BUDGET_MS - (Date.now() - t1) });
     const made = out.made;
+    drew = true;
     const note = out.verdict === "fail" ? `${j.mode === "recheck" ? RECHECK_FAILED : CHECK_FAILED}${out.reason}` : out.verdict === "unchecked" ? `unchecked: ${out.reason}` : null;
     const hash = await sha256Hex(made.bytes);
     await env.ART.put(tmpKey(hash), made.bytes, { httpMetadata: { contentType: made.type } });
@@ -136,7 +145,7 @@ export async function draw(env: Env, j: Draw): Promise<void> {
     await logCall(env, j.game, j.tz, Date.now(), { player_id: j.player.id, agent: "gremlin", purpose: "art", model, outcome: "ok", ms: Date.now() - t0, cost_micro: artCostMicro(model), usage: (made as any).usage });
   } catch (e: any) {
     console.error("art: a drawing failed:", e?.message || "error");
-    await fail(String(e?.message || "error"));
+    await fail(String(e?.message || "error"), e?.billed === true);
   }
 }
 

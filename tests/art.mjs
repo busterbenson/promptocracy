@@ -81,6 +81,7 @@ console.log("the call to the image model (the Workers AI binding)");
   check("an answer that is not a picture, an empty one, a missing binding and a model that throws are all errors, never a stored object", /not a picture/.test(await bad({ run: async () => ({ image: btoa("hello there, not an image") }) })) && /empty/.test(await bad({ run: async () => ({ image: "" }) })) && /no image model/.test(await bad(undefined)) && /boom/.test(await bad({ run: async () => { throw new Error("boom"); } })) && /no image/.test(await bad({ run: async () => ({}) })));
 }
 console.log("Nano Banana, Google's image model (rules 801.2, 106.7)");
+const fromBase64Node = (b) => new Uint8Array(Buffer.from(b, "base64"));
 const NANO_REC = JSON.parse(readFileSync(pjoin(ROOT, "tests/fixtures/nano-response.json"), "utf8"));   // recorded from Google, 11-23
 {
   // every field that may leave the building, as a path through the request body: the drawing's prompt and image settings, nothing else
@@ -113,6 +114,15 @@ const NANO_REC = JSON.parse(readFileSync(pjoin(ROOT, "tests/fixtures/nano-respon
     && /could not be reached/.test(await fails(async () => { throw new TypeError("fetch failed"); }))
     && /timed out/.test(await fails(async () => { const e = new Error("t"); e.name = "TimeoutError"; throw e; })));
   check("the call carries its own timeout (a signal), so a Google that never answers is cut off, not left running", sent.init.signal instanceof AbortSignal);
+  const jpg = fromBase64Node(NANO_REC.candidates[0].content.parts.find((p) => p.inlineData).inlineData.data);
+  const withParts = (parts) => ({ ...NANO_REC, candidates: [{ ...NANO_REC.candidates[0], content: { parts } }] });
+  const thought = await runNano(env, { prompt: "x", width: 8, height: 8 }, 20000, google(withParts([{ thought: true, inlineData: { mimeType: "image/png", data: Buffer.from(png).toString("base64") } }, { inlineData: { mimeType: "image/jpeg", data: Buffer.from(jpg).toString("base64") } }])));
+  check("an interim 'thought' picture is never the drawing: the last picture that is not a thought is", thought.type === "image/jpeg" && sha(thought.bytes) === sha(jpg));
+  const snake = await runNano(env, { prompt: "x", width: 8, height: 8 }, 20000, google(withParts([{ inline_data: { mime_type: "image/jpeg", data: Buffer.from(jpg).toString("base64") } }])));
+  check("Google's snake_case form of the picture is read too", sha(snake.bytes) === sha(jpg));
+  const billedOf = async (f) => { try { await runNano(env, { prompt: "x", width: 8, height: 8 }, 20000, f); return "no error"; } catch (x) { return `${x.message} | billed=${x.billed}`; } };
+  check("a failure says whether Google may have billed for it: a block, a bad or oversized picture and a timeout are billed; a missing key, an HTTP error and an unreachable Google are not", /billed=true/.test(await billedOf(google({ candidates: [{ finishReason: "SAFETY" }] }))) && /billed=true/.test(await billedOf(google(withParts([{ inlineData: { data: btoa("not a picture at all") } }])))) && /too large/.test(await billedOf(google(withParts([{ inlineData: { data: Buffer.from(new Uint8Array([0xff, 0xd8, 0xff, ...new Uint8Array(4 * 1024 * 1024 + 8)])).toString("base64") } }])))) && /billed=true/.test(await billedOf(async () => { const e = new Error("t"); e.name = "TimeoutError"; throw e; })) && /billed=false/.test(await billedOf(google({ error: { status: "INTERNAL" } }, 500))) && /billed=false/.test(await billedOf(async () => { throw new TypeError("fetch failed"); })));
+  check("a Google answer that is not JSON is an error, and a key echoed back in Google's error text, plain or URL-encoded, is never in the reason", /sent no picture/.test(await fails(async () => new Response("<html>hi</html>", { status: 200 }))) && /^Google 502: error$/.test(await fails(async () => new Response("<html>bad gateway</html>", { status: 502 }))) && !(await fails(google({ error: { message: `key ${encodeURIComponent("AIza/te+st") } ok` } }, 400), { GEMINI_API_KEY: "AIza/te+st" })).includes(encodeURIComponent("AIza/te+st")));
   check("Nano is a model of its own: isNano is true for it and for nothing else, the default does not change (klein 9B), and a drawing by it is counted at its own price in the budget, an ESTIMATE of $0.05 (over Google's $0.041 computed from usage), under the dearest listed price so no model is counted lower than before", isNano(NANO_MODEL) && !isNano(IMAGE_MODEL) && !isNano("@cf/black-forest-labs/flux-2-dev") && !isNano("gemini-nano-banana-2.1 ") && IMAGE_MODEL === "@cf/black-forest-labs/flux-2-klein-9b" && artCostMicro(NANO_MODEL) === NANO_COST_MICRO && NANO_COST_MICRO === 50000 && NANO_COST_MICRO > 41330 && artCostMicro("@cf/black-forest-labs/flux-2-dev") === 85000 && artCostMicro("@cf/black-forest-labs/flux-1-schnell") === 85000);
 }
 console.log("the look at a drawing, and the redraw (rule 801.2)");
@@ -476,9 +486,15 @@ try {
     gState.mode = "refuse";
     const dRef = await failReason();
     check("Google answers with no picture (a safety block): failed, the finish reason is the reason", dRef && dRef.state === "failed" && /^Google sent no picture: IMAGE_SAFETY$/.test(dRef.reason), J(dRef));
-    check("a failed Nano draw costs the budget nothing it did not already: its row is outcome failed with no cost", d1(state, "SELECT COALESCE(SUM(cost_micro), 0) AS c FROM agent_calls WHERE purpose = 'art' AND outcome = 'failed' AND model = 'gemini-nano-banana-2.1'")[0].c === 0);
+    check("a Google error that billed nothing (a 500, a missing key) costs the budget nothing; one Google may have billed (a block) is counted at the Nano estimate, over, never under", d1(state, "SELECT COALESCE(SUM(cost_micro), 0) AS c FROM agent_calls WHERE purpose = 'art' AND outcome = 'failed' AND reason = 'Google 500: INTERNAL'")[0].c === 0 && d1(state, "SELECT cost_micro AS c FROM agent_calls WHERE purpose = 'art' AND outcome = 'failed' AND reason = 'Google sent no picture: IMAGE_SAFETY'")[0].c === NANO_COST_MICRO);
 
     console.log("a Nano setting with no key is a failed drawing, not a crash");
+    // a Google that never answers, through the Worker's own draw(): cut off at the 25 s deadline, a failed draw, counted as billed
+    gState.mode = "hang";
+    const kH = draws(1).length, tH = Date.now();
+    await act(1, { entry: "Frog", action: "redraw" });
+    const dH = (await until(() => draws(1).length === kH + 1 && draws(1)[kH].state !== "pending", 45000)) && draws(1)[kH];
+    check("a Google that never answers ends the draw as failed by the 25 s deadline (not before 20 s, not after 35 s), with a timeout reason, nothing stored, and the call counted at the Nano estimate", dH && dH.state === "failed" && /timeout|timed out/i.test(dH.reason) && Date.now() - tH > 20000 && Date.now() - tH < 35000 && refs(1).length === nr0 + 1 && d1(state, `SELECT cost_micro AS c FROM agent_calls WHERE purpose = 'art' AND outcome = 'failed' AND reason LIKE '%time%' ORDER BY id DESC LIMIT 1`)[0].c === NANO_COST_MICRO, J(dH) + ` ${Date.now() - tH}ms`);
     gState.mode = "ok";
     await srv.stop();
     srv = await nanoSrv([]);

@@ -317,25 +317,31 @@ export function nanoRequest({ prompt, width, height }, base) {
 
 /**
  * One drawing by Nano Banana over HTTPS. Returns {bytes, type, usage} (usage: Google's own token counts as {input_tokens, output_tokens},
- * thinking tokens counted in the output because Google bills them as output) or throws with a short reason: no key, a timeout at `ms`, a
+ * thinking tokens counted in the output because Google bills them as output) or throws with a short reason (and `billed`, true when Google may have charged for it): no key, a timeout at `ms`, a
  * Google error, a refusal (no picture), a picture that is not one. The key is never in a reason. `fetchFn` is the tests' stand-in. @rule 801.2
  */
 export async function runNano(env, { prompt, width, height }, ms = DRAW_TIMEOUT_MS, fetchFn = fetch) {
   const key = env?.GEMINI_API_KEY;
   if (!key || typeof key !== "string") throw new Error("no Gemini key");
-  const scrub = (t) => String(t).split(key).join("[key]").replace(/\s+/g, " ").slice(0, 100);
+  const scrub = (t) => String(t).split(key).join("[key]").split(encodeURIComponent(key)).join("[key]").replace(/\s+/g, " ").slice(0, 100);
+  // `billed`: Google may have charged for this call (it answered, or it was still working when we gave up); the budget counts it (src/lib/art.ts)
+  const fail = (reason, billed) => Object.assign(new Error(reason), { billed });
   const q = nanoRequest({ prompt, width, height }, env.GEMINI_BASE_URL);
+  const timedOut = (e) => e?.name === "TimeoutError" || e?.name === "AbortError";
   let res;
   try { res = await fetchFn(q.url, { method: "POST", headers: { ...q.headers, "x-goog-api-key": key }, body: JSON.stringify(q.body), signal: AbortSignal.timeout(Math.max(1000, ms)) }); }
-  catch (e) { throw new Error(e?.name === "TimeoutError" || e?.name === "AbortError" ? "Google timed out" : "Google could not be reached"); }
+  catch (e) { throw fail(timedOut(e) ? "Google timed out" : "Google could not be reached", timedOut(e)); }
   let j = null;
-  try { j = await res.json(); } catch { /* not JSON */ }
-  if (!res.ok) throw new Error(scrub(`Google ${res.status}: ${j?.error?.status || j?.error?.message || "error"}`));
-  const part = (j?.candidates?.[0]?.content?.parts ?? []).find((p) => (p.inlineData || p.inline_data)?.data);
-  if (!part) throw new Error(scrub(`Google sent no picture: ${j?.promptFeedback?.blockReason || j?.candidates?.[0]?.finishReason || "empty answer"}`));
+  try { j = await res.json(); } catch (e) { if (timedOut(e)) throw fail("Google timed out", true); }
+  if (!res.ok) throw fail(scrub(`Google ${res.status}: ${j?.error?.status || j?.error?.message || "error"}`), false);
+  // the last picture that is not a "thought" (an interim image the model may draw while it works)
+  const part = (j?.candidates?.[0]?.content?.parts ?? []).filter((p) => !p.thought && (p.inlineData || p.inline_data)?.data).pop();
+  if (!part) throw fail(scrub(`Google sent no picture: ${j?.promptFeedback?.blockReason || j?.candidates?.[0]?.finishReason || "empty answer"}`), true);
   const u = j.usageMetadata ?? {};
   const n = (v) => (Number.isFinite(v) ? v : 0);
-  return { ...pictureOf(fromBase64((part.inlineData || part.inline_data).data)), usage: { input_tokens: n(u.promptTokenCount), output_tokens: n(u.candidatesTokenCount) + n(u.thoughtsTokenCount), cache_creation_input_tokens: 0, cache_read_input_tokens: 0 } };
+  let made;
+  try { made = pictureOf(fromBase64((part.inlineData || part.inline_data).data)); } catch (e) { throw fail(e.message, true); }
+  return { ...made, usage: { input_tokens: n(u.promptTokenCount), output_tokens: n(u.candidatesTokenCount) + n(u.thoughtsTokenCount), cache_creation_input_tokens: 0, cache_read_input_tokens: 0 } };
 }
 
 // ---- the test stand-in for the model ----------------------------------------------------------------------------------------------
