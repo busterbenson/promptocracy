@@ -119,9 +119,12 @@ with sync_playwright() as p:
         sideways(page, 390, f"{tag} sheet")
         shot(page, f"phone-sheet-{tag}")
         lg = page.locator("#chatLog").bounding_box()
+        last = page.locator("#chatLog > *").last.bounding_box()
+        check(f"{tag}: the sheet opens scrolled to the end: the newest line is inside the log's visible area", last["y"] + last["height"] <= lg["y"] + lg["height"] + 1, f"log {lg}, last {last}")
         if page.locator("#chatLog .slip:not(.past)").count():
-            sl = page.locator("#chatLog .slip:not(.past)").bounding_box()
-            check(f"{tag}: the sheet opens scrolled to the end: the slip is inside the log's visible area", sl["y"] >= lg["y"] - 1 and sl["y"] + sl["height"] <= lg["y"] + lg["height"] + 1, f"log {lg}, slip {sl}")
+            # the live draft sits right after the line that made it, not pinned at the end (Buster, day 1): here Chalant's later line follows it
+            after = page.evaluate("(() => { const s = document.querySelector('#chatLog .slip:not(.past)'); const n = s.nextElementSibling; return n ? n.className : ''; })()")
+            check(f"{tag}: her draft stays inline where it was made; the conversation continues below it", "chalant" in after, after)
         page.click('#chatcol [data-c="close"]'); page.wait_for_timeout(200)
         check(f"{tag}: Close puts the sheet away and the pill back", sheet(page) == "closed" and vis(page, "#chatfab") and not vis(page, "#chatcol .chat"))
         check(f"{tag}: no console errors", not errors, str(errors)); c.close()

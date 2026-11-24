@@ -161,14 +161,20 @@ ${sl.kind !== "action" && (sl.after_text || sl.before_text) ? `<div class="tx cd
   function logHTML() {
     const out = [];
     let prev = null, day = null;
-    for (const m of S.msgs) {
+    // Her live draft sits right after the line that made it (Buster, day 1: pinned to the bottom, the talk that follows
+    // landed above it). Only a draft no loaded line points at goes at the end.
+    const live = agent.proposals ? liveId() : null;
+    let at = -1;
+    if (live) S.msgs.forEach((m, i) => { if (m.proposal === live) at = i; });
+    S.msgs.forEach((m, i) => {
       if (m.date && m.date !== day) { day = m.date; out.push(`<div class="cday">${esc(dayLabel(m.date))}</div>`); prev = null; }
       out.push(lineHTML(m, prev));
-      prev = m;
-    }
+      if (i === at) { out.push(proposalSlipHTML()); prev = null; }
+      else prev = m;
+    });
     if (!S.msgs.length && agent.greeting) out.push(`<div class="msg cher greet">${portrait(true)}<div class="bub">${esc(agent.greeting)}</div></div>`);
     if (S.busy) out.push(`<div class="msg cher">${portrait(true)}<div class="bub"><span class="typing" aria-label="${esc(agent.name)} is typing"><i></i><i></i><i></i></span></div></div>`);
-    out.push(agent.proposals ? proposalSlipHTML() : slipHTML());
+    out.push(agent.proposals ? (at < 0 ? proposalSlipHTML() : "") : slipHTML());
     return out.join("");
   }
 
