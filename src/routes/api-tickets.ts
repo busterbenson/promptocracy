@@ -137,6 +137,16 @@ async function page(ctx: Ctx, r: any, player: any, nowMs: number) {
     const b = turnBlock(g, day, turn, player, "propose", nowMs);
     reopen = b ? { allowed: false, reason: b.error } : { allowed: true };
   }
+  // Unlock: a commission you locked in can be withdrawn until it goes on the ballot (rule 103.3), from its ticket too, not only from the
+  // Propose row (Buster, day 1: "I can't unlock a commission ticket"). The proposal route does the withdrawing and its own checks.
+  let unlock: { allowed: boolean; reason?: string } = { allowed: false };
+  let unlockId: string | null = null;
+  if (player && r.player_id === player.id && r.pstatus === "confirmed" && r.proposal_id) {
+    const { game: g, day, turn } = await loadToday(env, game, nowMs, player.id);
+    const b = turnBlock(g, day, turn, player, "end_turn", nowMs);   // the day's gates only, as the withdraw route uses
+    unlock = b ? { allowed: false, reason: b.error } : { allowed: true };
+    unlockId = String(r.proposal_id);
+  }
   // Posting is stopped by the lock alone (rule 107.1), not by End turn.
   let post: { allowed: boolean; reason?: string; locked?: boolean } = canPost(player);
   if (post.allowed && r.state === "Draft") post = { allowed: false, reason: `W${r.number} is a draft: its discussion opens when it is confirmed.` };   // a draft is talked through with Gremlin in the chat (rule 801.6)
@@ -166,7 +176,8 @@ async function page(ctx: Ctx, r: any, player: any, nowMs: number) {
       id: x.id, at: x.at, body: x.body, author: x.author_kind, reply_to: x.reply_to ?? null,
       by: x.author_kind === "player" && x.name ? { name: x.name, color: colorOf(x.color) } : undefined,
     })),
-    can: { edit, confirm, discard, post, reopen },
+    can: { edit, confirm, discard, post, reopen, unlock },
+    ...(unlockId ? { unlock_id: unlockId } : {}),   // the requester's own proposal, for Unlock only
   };
 }
 

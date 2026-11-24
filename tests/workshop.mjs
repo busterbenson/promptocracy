@@ -235,7 +235,11 @@ try {
   const ordinary = await Ana.post("/wk/api/proposals", { kind: "repeal", target: "403" });
   check("and an ordinary proposal the same day is refused too: a commission counts as the day's proposal", ordinary.status === 409 && /the most a day/.test(ordinary.data.error), ordinary.text);
   console.log("withdrawing a commission");
-  const wd = await Ana.post(`/wk/api/proposals/${d1(state, "SELECT id FROM proposals WHERE number = 1")[0].id}/withdraw`, {});
+  {
+    const mine = (await Ana.get(`${T}/W3`)).data.ticket, theirs = (await Bo.get(`${T}/W3`)).data.ticket;
+    check("her locked-in ticket offers Unlock from the ticket itself, with the proposal to withdraw (rule 103.3); Bo's view has neither", mine.can.unlock.allowed === true && mine.unlock_id === d1(state, "SELECT id FROM proposals WHERE number = 1")[0].id && !(theirs.can && theirs.can.unlock && theirs.can.unlock.allowed) && !theirs.unlock_id, JSON.stringify(mine.can));
+  }
+  const wd = await Ana.post(`/wk/api/proposals/${(await Ana.get(`${T}/W3`)).data.ticket.unlock_id}/withdraw`, {});
   check("withdrawing it sends the ticket back to a draft, unlinked, with a log line", wd.status === 200 && tk(3).state === "Draft" && tk(3).proposal_id === null && d1(state, `SELECT kind FROM ticket_log WHERE ticket_id = '${tk(3).id}' ORDER BY id`).map((r) => r.kind).join() === "proposed,withdrawn", wd.text);
   check("her draft W4 and W3 are both drafts now, so confirming W3 again is P2 (P1 keeps its number, withdrawn)", (await Ana.post(`${T}/W3/confirm`, {})).data?.ticket?.proposal === "P2" && prop(1).status === "withdrawn");
 

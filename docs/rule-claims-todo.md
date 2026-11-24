@@ -266,8 +266,8 @@ under rule 101 or 102; a follow-up change claims them and moves `src/` into the 
 
 - line 34: `out`
 - line 46: `visible`
-- line 308: `undo`
-- line 399: `need`
+- line 319: `undo`
+- line 410: `need`
 
 ## src/routes/landing.ts (2)
 

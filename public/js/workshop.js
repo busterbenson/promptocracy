@@ -370,6 +370,12 @@ ${row("Price", `${esc(pointsOf(t))}${t.price_reason ? `<span class="mnote"> · $
     return `<section class="tsec"><h3>Discussion ${escalatedChip(t)}</h3>${posts}${wait}${form}</section>`;
   }
   /** A refused or failed ticket of yours can be reopened as a draft (rule 801.5); the lock turns the button off with its sentence. @rule 801.5 */
+  /** Your locked-in commission can be unlocked from its ticket until it goes on the ballot (rule 103.3). @rule 103.3 */
+  function unlockHTML(t) {
+    const c = t.can && t.can.unlock;
+    if (!c || (!c.allowed && !c.reason) || !t.unlock_id) return "";
+    return `<div class="row wkreopen"><button class="btn ghost small" type="button" data-w="unlock"${S.busy || !c.allowed ? " disabled" : ""}>Unlock</button>${c.allowed ? "" : `<span class="mnote">${esc(c.reason || "")}</span>`}</div>`;
+  }
   function reopenHTML(t) {
     if (!t.mine || !(t.state === "Refused" || t.state === "Failed")) return "";
     const c = t.can.reopen, off = S.busy || !c.allowed;
@@ -386,7 +392,7 @@ ${row("Price", `${esc(pointsOf(t))}${t.price_reason ? `<span class="mnote"> · $
     if (editing && (!S.form || S.form.n !== n)) S.form = formFrom(t);
     return { cls: "crit tk", label: `${t.n} ${t.title || "Untitled"}`, backLabel: t.n,
       html: `<div class="mtop"><div class="cart"><span class="wpill big">${esc(t.n)}</span></div><h2>${esc(t.title || "Untitled")}</h2><span class="mmeta">${pill(t.by, t.mine)}</span><span class="mpill">${esc(t.state)}</span></div>
-${editing ? formHTML(t) : factsHTML(t)}${reopenHTML(t)}${editing ? "" : tasksHTML(t)}${logHTML(t)}${threadHTML(t)}` };
+${editing ? formHTML(t) : factsHTML(t)}${unlockHTML(t)}${reopenHTML(t)}${editing ? "" : tasksHTML(t)}${logHTML(t)}${threadHTML(t)}` };
   }
 
   // ---- the clicks and keystrokes ---------------------------------------------------------------------------------
@@ -459,6 +465,11 @@ ${editing ? formHTML(t) : factsHTML(t)}${reopenHTML(t)}${editing ? "" : tasksHTM
       } else if (a === "discard") {
         const r = await api(`/api/tickets/${encodeURIComponent(n)}/discard`, {});
         if (r.ok) { S.detail[n] = r.data.ticket; S.form = null; cards.close(); await load(); await refresh(); } else { S.err = (r.data && r.data.error) || "Something went wrong."; await loadOne(n); }
+      } else if (a === "unlock") {
+        const t = S.detail[n];
+        const r = await api(`/api/proposals/${encodeURIComponent(t && t.unlock_id || "")}/withdraw`, {});
+        if (!r.ok) S.err = (r.data && r.data.error) || "Something went wrong.";
+        S.form = null; await loadOne(n); await refresh();
       } else if (a === "reopen") {
         const r = await api(`/api/tickets/${encodeURIComponent(n)}/reopen`, {});
         if (r.ok) { S.detail[n] = r.data.ticket; S.form = null; await refresh(); } else { S.err = (r.data && r.data.error) || "Something went wrong."; await loadOne(n); }
