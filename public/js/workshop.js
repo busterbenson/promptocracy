@@ -270,8 +270,7 @@ ${catalogHTML()}</div></div>`;
           vals: Object.fromEntries(Object.entries(m.attrs || {}).filter(([k]) => mine.has(k)).map(([k, v]) => [k, fieldValue(v)])),
           keep: { attrs: Object.fromEntries(Object.entries(m.attrs || {}).filter(([k]) => !mine.has(k))), flavor: m.flavor, needsBuild: m.needsBuild, art: m.art, copiedFrom: m.copiedFrom } };
       }),
-      rules: t.makes.filter((m) => m.kind === "rule" && m.num).map((m) => m.num).join(", "), numDrafts: Object.fromEntries(t.makes.filter((m) => m.kind === "rule" && m.num && m.draft).map((m) => [m.num, m.draft])), drafts: t.makes.filter((m) => m.kind === "rule" && !m.num).map((m) => m.draft),
-      estimate: t.estimate, running_cost: t.running_cost, tasks: t.tasks.map((x) => x.text).join("\n") };
+      ruleItems: t.makes.filter((m) => m.kind === "rule") };   // the rules, nights, running cost, tasks and price are Gremlin's (rules 801.2, 801.4): the form shows them and never sends them
     f.was = { makes: JSON.stringify(makesBody(f)), held: t.makes.length };   // what the lists made when the form opened
     S.touched = new Set();   // no field has been typed in yet
     return f;
@@ -289,17 +288,17 @@ ${catalogHTML()}</div></div>`;
     if (waiting.length) item.needsBuild = waiting;
     return item;
   }
-  /** @rule 801.2 */
+  /** What the form sends: the title, the brief and (if the player changed them) the entries. Never the nights, running cost, tasks, price or rules. @rule 801.2 */
   function bodyOf(f) {
-    const b = { title: f.title, brief: f.brief, estimate: Number(f.estimate), running_cost: f.running_cost, tasks: lines(f.tasks) };
+    const b = { title: f.title, brief: f.brief };
     // The lists are sent only if the player changed them: what Gremlin drafted (kinds, sizes, a rule's draft) is kept when they didn't touch it.
     const makes = makesBody(f);
     if (!f.was || JSON.stringify(makes) !== f.was.makes) b.makes = makes;
     return b;
   }
-  /** What the form's lists make: its entries, the rules it names, and the rule drafts. @rule 801.2 */
+  /** What the form makes: its entries, then the rules Gremlin put on the ticket exactly as they are. @rule 801.2 */
   function makesBody(f) {
-    return [...f.entries.filter((e) => e.name.trim()).map(entryBody), ...String(f.rules || "").split(/[\s,]+/).filter(Boolean).map((num) => ({ kind: "rule", num, ...(Object.hasOwn(f.numDrafts || {}, num) ? { draft: f.numDrafts[num] } : {}) })), ...f.drafts.map((draft) => ({ kind: "rule", draft }))];
+    return [...f.entries.filter((e) => e.name.trim()).map(entryBody), ...f.ruleItems];
   }
   /** @rule 801.3 */
   const makesNothing = (f) => { const m = makesBody(f); return f.was && JSON.stringify(m) === f.was.makes ? !f.was.held : !m.length; };
@@ -319,6 +318,18 @@ ${catalogHTML()}</div></div>`;
 <label for="wfEk${i}">Kind</label><select id="wfEk${i}" data-ef="kind" data-ei="${i}"${off}><option value="">Not set</option>${S.cat.kinds.map((k) => `<option value="${esc(k.id)}"${e.kind === k.id ? " selected" : ""}>${esc(k.label)}</option>`).join("")}</select>
 ${requiredOf(e.kind).map((a) => attrField(i, a, e.vals[a.key] ?? "", off)).join("")}<div class="row"><button type="button" class="btn ghost small" data-w="rmentry" data-ei="${i}"${off}>Remove</button></div></fieldset>`;
   }
+  /**
+   * What Gremlin sets on a draft, shown as it stands and not editable (rules 801.2, 801.4): the rules it makes, the nights, the running
+   * cost, the price with his reason, the tasks. The requester changes them by talking to him. @rule 801.2, 801.4
+   */
+  function gremlinFacts(t) {
+    const none = '<span class="eempty">—</span>';
+    const rules = t.makes.filter((m) => m.kind === "rule");
+    const row = (k, v) => `<div class="tr"><dt>${k}</dt><dd>${v}</dd></div>`;
+    return `<dl class="tdl wkset">${row("Rules", rules.length ? `<span class="makes">${rules.map((m) => (m.num ? `<span class="mk">${rpill(m.num)}</span>` : `<span class="mk dim">${esc(m.draft)}</span>`)).join("")}</span>` : none)}
+${row("Nights", esc(nights(t.estimate)))}${row("Running cost", t.running_cost ? esc(t.running_cost) : none)}${row("Price", `<span class="wkprice">${esc(points(t.price))}${t.price_reason ? `<span class="mnote"> · ${esc(t.price_reason)}</span>` : ""}</span>`)}
+${row("Tasks", t.tasks.length ? `<ul class="ttasks">${t.tasks.map((x) => `<li><span class="ck" aria-hidden="true"></span>${esc(x.text)}</li>`).join("")}</ul>` : none)}</dl>`;
+  }
   /** @rule 801.2 */
   function formHTML(t) {
     const f = S.form;
@@ -328,19 +339,14 @@ ${requiredOf(e.kind).map((a) => attrField(i, a, e.vals[a.key] ?? "", off)).join(
     return `<div class="pf wkform"><label for="wfTitle">Title</label><input id="wfTitle" maxlength="80" value="${esc(f.title)}"${off}>
 <label for="wfBrief">Brief</label><textarea id="wfBrief" rows="4" maxlength="2000"${off}>${esc(f.brief)}</textarea>
 ${f.entries.map((e, i) => entryFields(e, i, off, t)).join("")}<div class="row"><button type="button" class="btn ghost small" data-w="addentry"${off}>Add an entry</button></div>
-${f.drafts.map((d, i) => `<div class="wkdraft"><span>${esc(d)}</span><button type="button" class="btn ghost small" data-w="rmdraft" data-ei="${i}"${off}>Remove</button></div>`).join("")}
-<label for="wfRules">Rules</label><input id="wfRules" value="${esc(f.rules)}"${off}>
-<label for="wfEstimate">Nights</label><input id="wfEstimate" type="number" min="1" max="99" step="1" value="${esc(f.estimate)}"${off}>
-<label for="wfCost">Running cost</label><input id="wfCost" maxlength="200" value="${esc(f.running_cost)}"${off}>
-<label for="wfTasks">Tasks</label><textarea id="wfTasks" rows="3"${off}>${esc(f.tasks)}</textarea>
-<label>Price</label><p class="wkprice">${esc(points(t.price))}${t.price_reason ? `<span class="mnote"> · ${esc(t.price_reason)}</span>` : ""}</p>
+${gremlinFacts(t)}
 ${S.err ? `<p class="notice err" role="alert">${esc(S.err)}</p>` : ""}${S.note ? `<p class="vmsg" role="status">${esc(S.note)}</p>` : ""}
 <div class="row"><button class="btn small" type="button" data-w="confirm"${off}${can && !nothing ? "" : " disabled"}>Lock it in</button><button class="btn ghost small" type="button" data-w="save"${off}${t.can.edit.allowed ? "" : " disabled"}>Save</button>${chat && chat() && player() ? `<button class="btn ghost small" type="button" data-w="gremlin">Talk to Gremlin</button>` : ""}${can ? `<span class="mnote" id="wfWhy"${nothing ? "" : " hidden"}>It makes nothing yet.</span>` : `<span class="mnote">${esc(t.can.confirm.reason || "")}</span>`}</div></div>`;
   }
   /** @rule 801.2, 801.4, 803.1 */
   function factsHTML(t) {
     const row = (k, v, cls = "") => `<div class="tr${cls}"><dt>${k}</dt><dd>${v}</dd></div>`;
-    return `<dl class="tdl">${row("Brief", `<span class="tbrief">${esc(t.brief) || '<span class="mnote">Empty</span>'}</span>`)}${row("Makes", makesHTML(t), (t.entry_views || []).length ? " stack" : "")}${row("Estimate", esc(nights(t.estimate)))}
+    return `<dl class="tdl">${row("Brief", `<span class="tbrief">${esc(t.brief) || '<span class="mnote">Empty</span>'}</span>`)}${row("Makes", makesHTML(t), (t.entry_views || []).length ? " stack" : "")}${row("Nights", esc(nights(t.estimate)))}
 ${row("Price", `${esc(points(t.price))}${t.price_reason ? `<span class="mnote"> · ${esc(t.price_reason)}</span>` : ""}`)}${t.running_cost ? row("Running cost", esc(t.running_cost)) : ""}${t.proposal ? row("Proposal", `<span class="ppill">${esc(t.proposal)}</span>`) : ""}${t.queue ? row("Queue", `Place ${esc(t.queue)}`) : ""}</dl>`;
   }
   /** @rule 801.2 */
@@ -353,6 +359,8 @@ ${row("Price", `${esc(points(t.price))}${t.price_reason ? `<span class="mnote"> 
     const posts = t.posts.length ? `<ul class="tposts">${t.posts.map((x) => `<li>${author(x)}<span class="mnote mono">${esc(when(x.at))}</span><p>${esc(x.body)}</p></li>`).join("")}</ul>` : "";
     // the lock (rule 107.1) keeps the form but turns it off, with the lock's sentence; a visitor has no form
     const can = t.can.post, off = S.busy || !can.allowed;
+    // a draft is talked through with Gremlin in the chat (rule 801.6): its discussion, and the form to post in it, open when it is confirmed
+    if (t.state === "Draft") return t.posts.length ? `<section class="tsec"><h3>Discussion</h3>${posts}</section>` : "";
     const form = can.allowed || can.locked ? `<div class="pf wkpost"><label for="wkPost">Post</label><textarea id="wkPost" rows="3" maxlength="2000"${off ? " disabled" : ""}>${esc(S.draftPost[t.n] || "")}</textarea>${can.locked ? `<p class="mnote">${esc(can.reason)}</p>` : ""}${S.err && !t.can.edit.allowed ? `<p class="notice err" role="alert">${esc(S.err)}</p>` : ""}<div class="row"><button class="btn small" type="button" data-w="post"${off ? " disabled" : ""}>Post</button></div></div>` : "";
     const wait = t.reply_pending ? `<p class="mnote gwait" role="status">Gremlin is looking at it…</p>` : "";
     return `<section class="tsec"><h3>Discussion ${escalatedChip(t)}</h3>${posts}${wait}${form}</section>`;
@@ -425,10 +433,9 @@ ${editing ? formHTML(t) : factsHTML(t)}${reopenHTML(t)}${editing ? "" : tasksHTM
       return;
     }
     if (a === "flavor") { S.flavorOpen[el.dataset.entry] = !S.flavorOpen[el.dataset.entry]; cards.redraw(); return; }
-    if ((a === "addentry" || a === "rmentry" || a === "rmdraft") && S.form && !S.busy) {
-      S.touched.add(a === "rmdraft" ? "rules" : "entries");
+    if ((a === "addentry" || a === "rmentry") && S.form && !S.busy) {
+      S.touched.add("entries");
       if (a === "addentry") S.form.entries.push({ name: "", kind: "", vals: {}, keep: {} });
-      else if (a === "rmdraft") S.form.drafts.splice(Number(el.dataset.ei), 1);
       else S.form.entries.splice(Number(el.dataset.ei), 1);
       cards.redraw();
       return;
@@ -457,7 +464,7 @@ ${editing ? formHTML(t) : factsHTML(t)}${reopenHTML(t)}${editing ? "" : tasksHTM
       }
     } finally { S.busy = false; cards.redraw(); }
   }
-  const FIELD = { wfTitle: "title", wfBrief: "brief", wfRules: "rules", wfEstimate: "estimate", wfCost: "running_cost", wfTasks: "tasks" };
+  const FIELD = { wfTitle: "title", wfBrief: "brief" };
   /** @rule 801.2, 804.1 */
   function input(el) {
     const ef = el.dataset && el.dataset.ef;
@@ -490,8 +497,8 @@ ${editing ? formHTML(t) : factsHTML(t)}${reopenHTML(t)}${editing ? "" : tasksHTM
     if (S.form && S.form.n === t.n) {
       // what the player has typed in the open form stays; every field they have not touched takes what Gremlin wrote
       const typed = new Set(S.touched), fresh = formFrom(t);
-      const lists = typed.has("entries") || typed.has("rules");   // the two lists change together or not at all (a half-refreshed pair would look edited)
-      for (const k of Object.keys(fresh)) if (k !== "n" && k !== "was" && !typed.has(k) && !(lists && ["entries", "rules", "numDrafts", "drafts"].includes(k))) S.form[k] = fresh[k];
+      const lists = typed.has("entries");   // the entries and their rules are sent together or not at all (a half-refreshed pair would look edited)
+      for (const k of Object.keys(fresh)) if (k !== "n" && k !== "was" && !typed.has(k) && !(lists && k === "entries")) S.form[k] = fresh[k];
       if (!lists) S.form.was = fresh.was;
       S.touched = typed;
     }

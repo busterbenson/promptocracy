@@ -37,12 +37,12 @@ try {
   const h0 = await sha256Hex(stubPng(0)), h1 = await sha256Hex(stubPng(1));
   for (const h of [h0, h1]) r2Put(state, artKey(h), stubPng(h === h0 ? 0 : 1));
   const w2 = ok(await fay.post(T, {}), "fay open").data.ticket;
-  ok(await fay.post(`${T}/${w2}/edit`, { title: "A garden wall", brief: "A low stone wall for the garden.", makes: [{ kind: "entry", name: "Garden wall", catalogKind: "structure", attrs: { size: "2x1" }, art: { prompt: "a low stone garden wall" } }], estimate: 1 }), "fay edit");
+  ok(await fay.post(`${T}/${w2}/edit`, { title: "A garden wall", brief: "A low stone wall for the garden.", makes: [{ kind: "entry", name: "Garden wall", catalogKind: "structure", attrs: { size: "2x1" }, art: { prompt: "a low stone garden wall" } }] }), "fay edit");
   for (const [h, d] of [[h0, 0], [h1, 1]]) d1(state, `INSERT OR IGNORE INTO art_objects (hash, size_bytes, content_type, model, created_at) VALUES ('${h}', 10, 'image/png', 'stub', 'x'); INSERT INTO art_refs (hash, game_id, ticket_id, entry_name, prompt, saved, is_default, created_at) VALUES ('${h}', '${gid}', '${tid(w2)}', 'Garden wall', 'a low stone garden wall', 1, ${d}, '2026-11-10T00:00:0${d}.000Z')`);
   d1(state, `UPDATE tickets SET state = 'Approved', queue_pos = 1, price = 0, paid = 0, paid_at = 'x', approved_at = '2026-11-19T08:00:00.000Z' WHERE id = '${tid(w2)}'`);
   // Eli's W3: one entry whose drawing is on its way (a draw that started in the future, so it stays pending for the whole run) and one whose last draw failed
   const w3 = ok(await eli.post(T, {}), "eli open 3").data.ticket;
-  ok(await eli.post(`${T}/${w3}/edit`, { title: "A moth and a newt", brief: "Two small creatures.", makes: [{ kind: "entry", name: "Moth", catalogKind: "creature", attrs: { hearts: 1 }, art: { prompt: "a pale moth" } }, { kind: "entry", name: "Newt", catalogKind: "creature", attrs: { hearts: 2 }, art: { prompt: "a spotted newt" } }], estimate: 1 }), "eli edit 3");
+  ok(await eli.post(`${T}/${w3}/edit`, { title: "A moth and a newt", brief: "Two small creatures.", makes: [{ kind: "entry", name: "Moth", catalogKind: "creature", attrs: { hearts: 1 }, art: { prompt: "a pale moth" } }, { kind: "entry", name: "Newt", catalogKind: "creature", attrs: { hearts: 2 }, art: { prompt: "a spotted newt" } }] }), "eli edit 3");
   d1(state, `INSERT INTO art_draws (game_id, ticket_id, entry_name, prompt, state, started_at) VALUES ('${gid}', '${tid(w3)}', 'Moth', 'a pale moth', 'pending', '${new Date(Date.now() + 3600e3).toISOString()}'), ('${gid}', '${tid(w3)}', 'Newt', 'a spotted newt', 'failed', '2026-11-10T00:00:00.000Z')`);
   const cookie = [...eli.jar].find(([k]) => k === "s|/catalogued")[1];
   const r = await promisify(execFile)(PYTHON, [ROOT + "/tests/browser-art.py", srv.base, shots || "-", cookie, w1, w2, w3, h0, h1], { timeout: 280000, maxBuffer: 1 << 24 });

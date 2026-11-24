@@ -95,6 +95,31 @@ export function readFields(body, ctx = {}) {
 }
 
 /**
+ * What a requester may not write by hand (rules 801.2, 801.4): the nights, the running cost, the tasks, the rules a ticket makes and
+ * the price are Gremlin's, and change by talking to him. `body` is the edit request, `stored` the ticket's `makes` as saved, `ctx` as
+ * for readFields. Returns null, or the reason (naming the rule) the edit is refused. The entries a ticket makes stay the requester's.
+ * @rule 801.2, 801.4
+ */
+export function handEditRefusal(body, stored, ctx = {}) {
+  if (!body || typeof body !== "object") return null;
+  const mine = [["estimate", "the nights"], ["running_cost", "the running cost"], ["tasks", "the tasks"]].filter(([k]) => k in body).map(([, l]) => l);
+  if (mine.length) {
+    const what = mine.length > 1 ? `${mine.slice(0, -1).join(", ")} and ${mine[mine.length - 1]}` : mine[0];
+    return `${what.charAt(0).toUpperCase()}${what.slice(1)} ${mine.length > 1 ? "are" : "is"} Gremlin's to set (rule 801.2). Talk to him about ${mine.length > 1 ? "them" : "it"}.`;
+  }
+  if ("price" in body || "price_reason" in body) return "The price is Gremlin's to set (rule 801.4). Talk to him about it.";
+  if ("makes" in body && Array.isArray(body.makes)) {
+    /** @rule 801.2 */
+    const rules = (list) => JSON.stringify((list || []).filter((m) => m && m.kind === "rule").map((m) => JSON.stringify({ num: clean(m.num), draft: clean(m.draft) })).sort());
+    let was = [];
+    try { was = typeof stored === "string" ? JSON.parse(stored || "[]") : stored || []; } catch { was = []; }
+    const next = readMakes(body.makes, ctx);
+    if ("makes" in next && rules(next.makes) !== rules(was)) return "The rules it makes are Gremlin's to set (rule 801.2). Talk to him about them.";
+  }
+  return null;
+}
+
+/**
  * Whether a draft can be confirmed, and why not: a title and a brief are needed, and (rule 801.3) it must name something
  * to make. Returns null, or {error, refuse}: `refuse` is true when the rule refuses the commission (rule 801.3), not just
  * an unfinished form.

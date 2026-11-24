@@ -24,15 +24,27 @@ try {
   startPlaying(state, "shop");
   const gid = d1(state, "SELECT id FROM games WHERE slug = 'shop'")[0].id;
   const T = "/shop/api/tickets";
+  // The nights, running cost, tasks and the rules a ticket makes are Gremlin's (rules 801.2, 801.4): the requester's edit refuses them, so the fixtures are
+  // written the way his turn writes them, straight into the ticket, after the title, brief and entries have gone in by hand.
+  const sq = (v) => `'${String(v).replace(/'/g, "''")}'`;
+  const gremlin = (gameId, num, { rules = [], estimate, running_cost, tasks } = {}) => {
+    const t = d1(state, `SELECT id, makes FROM tickets WHERE game_id = '${gameId}' AND number = ${num}`)[0];
+    const sets = [`makes = ${sq(JSON.stringify([...JSON.parse(t.makes), ...rules]))}`];
+    if (estimate !== undefined) sets.push(`estimate = ${estimate}`);
+    if (running_cost !== undefined) sets.push(`running_cost = ${sq(running_cost)}`);
+    d1(state, `UPDATE tickets SET ${sets.join(", ")} WHERE id = '${t.id}'`);
+    if (tasks) { d1(state, `DELETE FROM ticket_tasks WHERE ticket_id = '${t.id}'`); tasks.forEach((x, i) => d1(state, `INSERT INTO ticket_tasks (ticket_id, pos, text) VALUES ('${t.id}', ${i + 1}, ${sq(x)})`)); }
+  };
   const ok = (r, what) => { if (r.status !== 200) throw new Error(`${what}: ${r.status} ${r.text}`); return r; };
   // Bo's commission, confirmed on day 1: it is on day 2's ballot. A long title and brief, to see how they wrap.
   const bn = ok(await bo.post(T, {}), "bo open").data.ticket;
-  ok(await bo.post(`${T}/${bn}/edit`, { title: "A lantern that never goes out, however long the night and however hard the wind", brief: "A lantern that never goes out.\nIt hangs on the north hill and can be lit by anyone who is standing next to it, and it stays lit until someone else puts it out.", makes: [{ kind: "entry", name: "Lantern" }, { kind: "rule", num: "801.2" }], estimate: 3, running_cost: "Nothing.", tasks: ["Draw it", "Give it a tile", "Write its rule"] }), "bo edit");
+  ok(await bo.post(`${T}/${bn}/edit`, { title: "A lantern that never goes out, however long the night and however hard the wind", brief: "A lantern that never goes out.\nIt hangs on the north hill and can be lit by anyone who is standing next to it, and it stays lit until someone else puts it out.", makes: [{ kind: "entry", name: "Lantern" }] }), "bo edit");
+  gremlin(d1(state, "SELECT id FROM games WHERE slug = 'shop'")[0].id, Number(bn.slice(1)), { rules: [{ kind: "rule", num: "801.2" }], estimate: 3, running_cost: "Nothing.", tasks: ["Draw it", "Give it a tile", "Write its rule"] });
   ok(await bo.post(`${T}/${bn}/confirm`, {}), "bo confirm");
   // Cy's ticket: approved, paid, in the queue, with a tick, a log and a thread (including Gremlin and Chalant, as later steps will post)
   const cn = ok(await cy.post(T, {}), "cy open").data.ticket;
-  ok(await cy.post(`${T}/${cn}/edit`, { title: "A drum", brief: "A drum that can be heard on every tile.", makes: [{ kind: "entry", name: "Drum" }], estimate: 1, tasks: ["Draw it", "Give it a sound"] }), "cy edit");
-  ok(await cy.post(`${T}/${cn}/post`, { body: "Is it loud?" }), "cy post");
+  ok(await cy.post(`${T}/${cn}/edit`, { title: "A drum", brief: "A drum that can be heard on every tile.", makes: [{ kind: "entry", name: "Drum" }] }), "cy edit");
+  gremlin(d1(state, "SELECT id FROM games WHERE slug = 'shop'")[0].id, Number(cn.slice(1)), { estimate: 1, tasks: ["Draw it", "Give it a sound"] });
   // the midnight roll: day 1 is over, day 2 is open and Bo's commission is on its ballot (Cy's was approved by the count before)
   d1(state, `UPDATE proposals SET status = 'on_ballot' WHERE game_id = '${gid}' AND status = 'confirmed'`);
   d1(state, `UPDATE days SET status = 'done' WHERE game_id = '${gid}' AND n = 1; UPDATE games SET day = 2 WHERE id = '${gid}'; INSERT INTO days (game_id, n, starts_at, ends_at, status) VALUES ('${gid}', 2, '2000-01-02T00:00:00.000Z', '${new Date(Date.now() + (7 * 60 + 41) * 60000).toISOString()}', 'open')`);
@@ -41,6 +53,7 @@ try {
   d1(state, `UPDATE tickets SET state = 'Approved', queue_pos = 1, price = 2, price_reason = 'Free. I like drums.', paid = 2, paid_at = 'x', approved_at = '2026-11-19T08:00:00.000Z' WHERE id = '${cid}'`);
   d1(state, `UPDATE ticket_tasks SET done = 1, done_day = 1 WHERE ticket_id = '${cid}' AND pos = 1`);
   d1(state, `INSERT INTO ticket_log (ticket_id, day, kind, text, at) VALUES ('${cid}', 1, 'approved', 'Approved: P9 passed. Paid 2 points. Place 1 in the queue.', '2026-11-19T08:00:00.000Z')`);
+  d1(state, `INSERT INTO ticket_posts (ticket_id, game_id, author_kind, player_id, body, at) SELECT '${cid}', '${gid}', 'player', player_id, 'Is it loud?', '2026-11-19T08:30:00.000Z' FROM tickets WHERE id = '${cid}'`);
   d1(state, `INSERT INTO ticket_posts (ticket_id, game_id, author_kind, body, at) VALUES ('${cid}', '${gid}', 'gremlin', 'Kicking this upstairs to Chalant.', '2026-11-19T09:00:00.000Z'), ('${cid}', '${gid}', 'chalant', 'Noted. Louder than the crow.', '2026-11-19T10:00:00.000Z')`);
   const cookie = [...ada.jar].find(([k]) => k === "s|/shop")[1];
   const vcookie = "-";
@@ -75,7 +88,8 @@ try {
     { kind: "entry", name: "Very large hat", catalogKind: "item", attrs: { acquired: "801" }, flavor: { smell: "tar" } },
     { kind: "entry", name: "Garden wall", catalogKind: "structure", attrs: { size: "2x1" }, flavor: { material: "stone", height: "low" } },
     { kind: "entry", name: "Wyrm", catalogKind: "creature", attrs: { hearts: 4, flies: true }, flavor: { colour: "slate", mood: "grumpy", smell: "of wet stone", habitat: "the north hill" }, needsBuild: ["flies"] },
-    { kind: "rule", num: "801.2" }, { kind: "rule", draft: "A creature that flies can cross walls." }], estimate: 1, tasks: ["Draw them"] }), "fay edit");
+  ] }), "fay edit");
+  gremlin(cgid, Number(fn.slice(1)), { rules: [{ kind: "rule", num: "801.2" }, { kind: "rule", draft: "A creature that flies can cross walls." }], estimate: 1, tasks: ["Draw them"] });
   d1(state, `UPDATE tickets SET state = 'Approved', queue_pos = 1, price = 0, paid = 0, paid_at = 'x', approved_at = '2026-11-19T08:00:00.000Z' WHERE game_id = '${cgid}' AND number = ${Number(fn.slice(1))}`);
   // Eli's draft holds what the form does not edit: an attribute another kind needs (size on a creature, waiting for its rule), an entry with
   // no kind and an attribute, a rule that is only a draft sentence. Saving it by hand must change none of it.
@@ -83,8 +97,8 @@ try {
   ok(await eli.post(`${CT}/${en}/edit`, { title: "Things the form keeps", brief: "A draft with data the form does not show.", makes: [
     { kind: "entry", name: "Dragon", catalogKind: "creature", attrs: { hearts: 4, size: "2x1" }, flavor: { mood: "grumpy" }, needsBuild: ["size"], copiedFrom: "C2" },
     { kind: "entry", name: "Thing", attrs: { hearts: 3 } },
-    { kind: "rule", num: "801.2", draft: "A numbered rule that keeps its proposed wording." },
-    { kind: "rule", draft: "A creature that flies can cross walls." }], estimate: 1 }), "eli edit");
+  ] }), "eli edit");
+  gremlin(cgid, Number(en.slice(1)), { rules: [{ kind: "rule", num: "801.2", draft: "A numbered rule that keeps its proposed wording." }, { kind: "rule", draft: "A creature that flies can cross walls." }], estimate: 1 });
   const ccookie = [...eli.jar].find(([k]) => k === "s|/catalogued")[1];
   const r3 = await promisify(execFile)(PYTHON, [ROOT + "/tests/browser-catalog.py", srv.base, shots || "-", ccookie, en], { timeout: 240000, maxBuffer: 1 << 24 });
   process.stdout.write(r3.stdout);

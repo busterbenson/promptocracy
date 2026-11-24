@@ -99,8 +99,8 @@ try {
   check("one agent_calls row: ok, tokens, a cost from usage, no prompt or player text in it", c1.length === 1 && c1[0].outcome === "ok" && c1[0].purpose === "chat" && c1[0].model === "claude-sonnet-5-5" && c1[0].cost_micro > 0 && c1[0].cache_write === REC["wall-sizing"].usage.cache_creation_input_tokens && c1[0].input_tokens === REC["wall-sizing"].usage.input_tokens && !J(c1[0]).includes("stone"), J(c1));
   const ticketPage = (await Ana.get(`${T}/W1`)).data.ticket;
   check("the ticket page shows his price with its reason, and the player's own edit with price in it changes neither", ticketPage.price_reason === w.price_reason);
-  await Ana.post(`${T}/W1/edit`, { price: 99, price_reason: "mine", paid: 5, state: "Approved", title: "Low stone garden wall" });
-  check("a player's own edit body with price, its reason, paid or state in it changes none of them", tk(1).price === 0 && tk(1).price_reason === w.price_reason && tk(1).paid === null && tk(1).state === "Draft");
+  const priceEdit = await Ana.post(`${T}/W1/edit`, { price: 99, price_reason: "mine", paid: 5, state: "Approved", title: "Low stone garden wall" });
+  check("a player's own edit body with price, its reason, paid or state in it is refused (403, rule 801.4) and changes none of them", priceEdit.status === 403 && /rule 801\.4/.test(priceEdit.data.error) && tk(1).price === 0 && tk(1).price_reason === w.price_reason && tk(1).paid === null && tk(1).state === "Draft");
 
   console.log("history is private (rule 106.7)");
   const h1 = await Ana.get(CH);
@@ -165,6 +165,8 @@ try {
   check("a ticket that makes a rule (something to build) keeps the price he sets: 4 points, his reason", bigP.status === 200 && tk(Number(P.slice(1))).price === 4 && tk(Number(P.slice(1))).price_reason === "Two nights of wings.");
 
   const pn = Number(P.slice(1));
+  // (the rule item is Gremlin's, and the requester's own edit can't take it out: 801.2; the build left is an entry waiting for its rule)
+  d1(state, `UPDATE tickets SET makes = '${J([{ kind: "entry", name: "Wyrm", catalogKind: "creature", attrs: { hearts: 4 }, needsBuild: ["flies"] }])}' WHERE id = '${tk(pn).id}'`);
   const handEdit = await Ana.post(`${T}/${P}/edit`, { makes: [{ kind: "entry", name: "Wyrm", catalogKind: "creature", attrs: { hearts: 4 } }] });
   check("the player's own edit that takes the last thing to build off a priced ticket leaves it free too (rule 801.4): price 0 with the platform's reason", handEdit.status === 200 && tk(pn).price === 0 && tk(pn).price_reason === NO_BUILD_REASON && handEdit.data.ticket.price === 0, J([handEdit.status, tk(pn).price, tk(pn).price_reason]));
   const handTitle = await Ana.post(`${T}/${P}/edit`, { title: "A wyrm by hand" });

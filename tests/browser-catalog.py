@@ -86,15 +86,14 @@ with sync_playwright() as p:
     mk = lambda: page.evaluate("(n) => fetch('/catalogued/api/tickets/' + n).then(r => r.json()).then(j => JSON.stringify(j.ticket.makes))", keep_ticket)
     before = mk()
     page.click("#tab-workshop"); page.click(f"#p-workshop [data-ticket='{keep_ticket}']"); page.wait_for_selector("#wfTitle")
-    check("the draft's form lists a draft-only rule with a Remove button, and no field for the creature's size (a structure's attribute)", "A creature that flies can cross walls." in text(page, "#mroot .wkdraft") and page.locator('#mroot [data-w="rmdraft"]').count() == 1 and page.locator("#wfEa0-size").count() == 0)
+    check("the draft's form shows a draft-only rule as read-only data (no Remove button, no Rules field), and no field for the creature's size (a structure's attribute)", "A creature that flies can cross walls." in text(page, "#mroot .wkset") and page.locator('#mroot [data-w="rmdraft"]').count() == 0 and page.locator("#wfRules").count() == 0 and page.locator("#wfEa0-size").count() == 0)
     page.click('[data-w="save"]'); page.wait_for_selector("#mroot .vmsg")
     check("Save by hand changes nothing it does not edit: the stored makes hold the same data before and after (the order of an entry's keys may differ)", json.loads(mk()) == json.loads(before), before + " -> " + mk())
     page.select_option("#wfEk1", "creature"); page.wait_for_selector("#wfEa1-hearts")
     check("giving the kind-less entry a kind brings its held attribute into the kind's field: Hearts 3", page.input_value("#wfEa1-hearts") == "3")
-    page.click('[data-w="rmdraft"]'); page.wait_for_function("document.querySelectorAll('#mroot .wkdraft').length === 0")
     page.click('[data-w="save"]'); page.wait_for_selector("#mroot .vmsg")
     after = mk()
-    check("removing the draft rule and saving takes the rule out and keeps the rest", "A creature that flies" not in after and '"needsBuild":["size"]' in after and '"copiedFrom":"C2"' in after and '"catalogKind":"creature","attrs":{"hearts":3}' in after.replace(" ", ""), after)
+    check("saving after the kind change keeps both of Gremlin's rules and the rest", "A creature that flies" in after and '"num":"801.2"' in after.replace(" ", "") and '"needsBuild":["size"]' in after and '"copiedFrom":"C2"' in after and '"catalogKind":"creature","attrs":{"hearts":3}' in after.replace(" ", ""), after)
     check("no console errors", not errors, str(errors)); c.close()
     # ---- the draft form: a kind picker and the kind's required fields
     for w, h, scheme in [(1280, 900, "light"), (390, 844, "dark")]:

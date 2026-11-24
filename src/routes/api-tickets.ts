@@ -7,7 +7,8 @@
 //                                            counts}; `next` is the cursor of the following page, or null
 //   POST /<slug>/api/tickets                 "Commission something": your open draft, or a new one (W1, W2...). Your blank draft, or a new one
 //   GET  /<slug>/api/tickets/<W3>            the ticket page: every field, its tasks, its log and its discussion
-//   POST /<slug>/api/tickets/<W3>/edit       {title?, brief?, makes?, estimate?, running_cost?, tasks?}: your draft, by hand
+//   POST /<slug>/api/tickets/<W3>/edit       {title?, brief?, makes?}: your draft, by hand. The nights, running cost, tasks, price and the rules it
+//                                            makes are Gremlin's (rules 801.2, 801.4): a request that changes one is 403 with the reason
 //   POST /<slug>/api/tickets/<W3>/confirm    your draft becomes your proposal for the day (rule 801.1, the same limit and the same
 //                                            confirm as any proposal: P-numbered, on tomorrow's ballot, voted at rule 801's mark)
 //   POST /<slug>/api/tickets/<W3>/reopen     a refused or failed ticket of yours becomes a draft again, same number (rule 801.5)
@@ -18,7 +19,7 @@
 import { getPlayer } from "../lib/auth";
 import { clockNow, dayOpenBinds, dayOpenSql, isLocked, loadToday, lockMessage } from "../lib/day";
 import { lockOpenBinds, lockOpenSql } from "../lib/day-gate.js";
-import { CLOSED_STATES, COMMISSION_DRAFT_SQL, EDIT_GUARD, LIVE_STATES, OPEN_DRAFT_SQL, PAGE, RECENT_CLOSED, REOPEN_SQL, STATES, UNLINK_STRAY_SQL, WORKSHOP_RULE, canPost, confirmProblem, readCursor, readFields, readPost, ticketNumber } from "../lib/tickets.js";
+import { CLOSED_STATES, COMMISSION_DRAFT_SQL, EDIT_GUARD, LIVE_STATES, OPEN_DRAFT_SQL, PAGE, RECENT_CLOSED, REOPEN_SQL, STATES, UNLINK_STRAY_SQL, WORKSHOP_RULE, canPost, confirmProblem, handEditRefusal, readCursor, readFields, readPost, ticketNumber } from "../lib/tickets.js";
 import { NO_BUILD_REASON, hasBuild } from "../lib/gremlin.js";
 import { refusalBody, turnBlock } from "../lib/turn";
 import { COLS, FROM, ticketView } from "../lib/ticket-view";
@@ -132,6 +133,7 @@ async function page(ctx: Ctx, r: any, player: any, nowMs: number) {
   }
   // Posting is stopped by the lock alone (rule 107.1), not by End turn.
   let post: { allowed: boolean; reason?: string; locked?: boolean } = canPost(player);
+  if (post.allowed && r.state === "Draft") post = { allowed: false, reason: `W${r.number} is a draft: its discussion opens when it is confirmed.` };   // a draft is talked through with Gremlin in the chat (rule 801.6)
   if (post.allowed) {
     const { game: g, day } = await loadToday(env, game, nowMs);
     if (g.status === "playing" && day && isLocked(g, day, nowMs)) post = { allowed: false, reason: lockMessage(day.n), locked: true };
@@ -212,12 +214,15 @@ export async function edit(ctx: Ctx, player: any, raw: unknown, body: any, nowMs
   if ("status" in m) return m;
   const { t, game } = m;
   const cat = catalogFor(game);
+  // The nights, the running cost, the tasks, the rules it makes and the price are Gremlin's (rules 801.2, 801.4): a hand edit of them is refused.
+  const refused = handEditRefusal(body, t.makes, { registry: cat.registry, required: cat.required });
+  if (refused) return out({ error: refused }, 403);
   const r = readFields(body, { registry: cat.registry, required: cat.required });
   if ("error" in r) return out({ error: r.error }, 400);
   const f = r.fields as any;
   const now = nowIso(nowMs);
   const sets: string[] = [], binds: unknown[] = [];
-  for (const k of ["title", "brief", "estimate", "running_cost"]) if (k in f) { sets.push(`${k} = ?`); binds.push(f[k]); }
+  for (const k of ["title", "brief"]) if (k in f) { sets.push(`${k} = ?`); binds.push(f[k]); }
   if ("makes" in f) {
     sets.push("makes = ?"); binds.push(JSON.stringify(f.makes));
     // Taking the last thing to build off a priced ticket leaves it free (rule 801.4): the same normalization as when Gremlin's own turn does it.
@@ -227,12 +232,6 @@ export async function edit(ctx: Ctx, player: any, raw: unknown, body: any, nowMs
   // mine()'s read still stops the edit
   const gate = dayOpenBinds(game.day, nowMs, player.id);
   const stmts = [env.DB.prepare(`UPDATE tickets SET ${[...sets, "updated_at = ?"].join(", ")} WHERE ${EDIT_GUARD}`).bind(...binds, now, t.id, player.id, ...gate)];
-  if ("tasks" in f) {
-    // the tasks follow the same gate as the fields: your draft, not on a ballot, the day open
-    const ok = `EXISTS (SELECT 1 FROM tickets x JOIN games g ON g.id = x.game_id WHERE x.id = ? AND x.state = 'Draft' AND x.player_id = ? AND x.proposal_id IS NULL AND ${dayOpenSql})`;
-    stmts.push(env.DB.prepare(`DELETE FROM ticket_tasks WHERE ticket_id = ? AND ${ok}`).bind(t.id, t.id, player.id, ...gate));
-    f.tasks.forEach((text: string, i: number) => stmts.push(env.DB.prepare(`INSERT INTO ticket_tasks (ticket_id, pos, text) SELECT ?, ?, ? WHERE ${ok}`).bind(t.id, i + 1, text, t.id, player.id, ...gate)));
-  }
   const res = await env.DB.batch(stmts);
   if (!(res[0]?.meta?.changes > 0)) return out({ error: "The day changed under you. Reload and try again." }, 409);
   const fresh = await findTicket(env, game.id, t.number);
@@ -350,6 +349,7 @@ export async function addPost(ctx: Ctx, player: any, raw: unknown, body: any, no
   if (!can.allowed) return out({ error: can.reason }, 401);
   const t = await findTicket(env, game.id, raw);
   if (!visible(t, player)) return out({ error: "There is no such ticket." }, 404);
+  if (t.state === "Draft") return out({ error: `W${t.number} is a draft: its discussion opens when it is confirmed.` }, 409);
   const r = readPost(body);
   if ("error" in r) return out({ error: r.error }, 400);
   // The lock stops a post like every other write (rule 107.1): read it here for the refusal, and again in the INSERT itself, so a

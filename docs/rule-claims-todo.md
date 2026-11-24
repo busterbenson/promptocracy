@@ -7,7 +7,7 @@ Every function that carries out the game should say which rule it implements, wi
 `src/` is only reported for now: these functions have no claim yet. Site plumbing such as sign-in and email goes
 under rule 101 or 102; a follow-up change claims them and moves `src/` into the strict set.
 
-164 of 492 functions outside `src/engine/` are unclaimed.
+164 of 494 functions outside `src/engine/` are unclaimed.
 
 ## src/index.ts (6)
 
@@ -168,7 +168,7 @@ under rule 101 or 102; a follow-up change claims them and moves `src/` into the 
 
 ## src/lib/tickets.js (1)
 
-- line 180: `pts`
+- line 205: `pts`
 
 ## src/lib/util.ts (27)
 
@@ -257,8 +257,8 @@ under rule 101 or 102; a follow-up change claims them and moves `src/` into the 
 
 ## src/routes/api-tickets.ts (3)
 
-- line 33: `out`
-- line 300: `undo`
+- line 34: `out`
+- line 299: `undo`
 - line 372: `need`
 
 ## src/routes/landing.ts (2)
