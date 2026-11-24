@@ -613,6 +613,13 @@ button.pill[aria-pressed="true"]{background:color-mix(in srgb,var(--accent) 16%,
 .chat .slip.refused{background:var(--surface);border:1.5px dashed var(--err)}
 .chat .slip .makes{display:flex;flex-wrap:wrap;gap:4px}
 .chat .slip .mk{font-family:var(--font-body);font-weight:400;font-size:.8rem;border-style:solid;background:var(--chat)}
+/* a long make (a rule's text) wraps to several lines: a pill's 999px radius bulges past the words, so it gets a card's corners (Buster, day 1) */
+.chat .slip .mk.long{border-radius:12px;padding:6px 10px;display:block}
+.chat .slip .mkart{display:block;width:96px;height:96px;border-radius:10px;border:1.5px solid var(--line);object-fit:cover;background:var(--surface)}
+.chat .slip .mkart.drawing{display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:.62rem;color:var(--ink-muted);text-transform:uppercase;letter-spacing:.06em}
+.chat .slip .mkartbtn{padding:0;border:0;background:none;cursor:pointer;border-radius:10px}
+.chat .slip .act{margin-top:8px;display:flex;justify-content:flex-end}
+.chat .slip .mkent{display:flex;flex-direction:column;gap:6px;align-items:flex-start}
 .chat .slip .mk small{font-family:var(--font-mono);font-size:.58rem;color:var(--ink-muted);text-transform:uppercase;letter-spacing:.06em}
 /* the corner pill: the minimized column, and the phone's way in */
 .chatfab{position:fixed;right:16px;bottom:18px;z-index:40;align-items:center;gap:8px;padding:5px 16px 5px 5px;border-radius:999px;border:1.5px solid var(--ink);background:var(--surface);color:var(--ink);box-shadow:3px 3px 0 var(--ink);font-family:var(--font-display);font-weight:var(--display-weight);font-size:1.2rem;min-height:52px;cursor:pointer}

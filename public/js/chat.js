@@ -23,7 +23,9 @@ const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&
 // Chalant has no window of his own: his portrait sits on his escalation answers only.
 export const AGENTS = {
   gremlin: { key: "gremlin", name: "Gremlin", path: "gremlin", tab: "workshop", cls: "gr", placeholder: "Message Gremlin", portrait: "gremlin" },
-  starling: { key: "starling", name: "Starling", path: "starling", tab: "rules", cls: "st", placeholder: "Message Starling", portrait: "starling", proposals: true },
+  starling: { key: "starling", name: "Starling", path: "starling", tab: "rules", cls: "st", placeholder: "Message Starling", portrait: "starling", proposals: true,
+    // Her first line in an empty window (Buster, 2026-11-24, on day 1): an agent line, not a caption. It is never stored or sent to the model.
+    greeting: "Talk to me about how you'd like to change a rule, add a new rule, or propose an action, and we'll get it submitted to be voted on tomorrow." },
 };
 const CHALANT = { cls: "ch", portrait: "chalant" };
 const SYMBOLS = `<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false"><defs>
@@ -79,20 +81,41 @@ export function createChat({ api, root, me, slug, agent = AGENTS.gremlin, rpill,
 
   // ---- the slip: his ticket, as it stands ---------------------------------------------------------------------------------
   /** The agent's ticket: a title, what it makes, the estimate and the price with its one-line reason. Labels and data only. @rule 801.2, 801.4 */
+  // The entry's drawing on the ticket card in the chat (Buster, day 1: "it's not showing me what it looks like"). The ticket page's
+  // entry_views carry it (src/lib/art.ts overlay); while it is being drawn the card says so and refreshes. @rule 801.2
+  const HASH = /^[0-9a-f]{64}$/;
+  const BASE = "/" + (typeof location === "object" && location.pathname ? location.pathname.split("/")[1] || "" : "");
+  const viewOf = (t, m) => (t.entry_views || []).find((v) => String(v.name || "").toLowerCase() === String(m.name || "").toLowerCase());
+  function artHTML(t, m) {
+    const a = (viewOf(t, m) || {}).art || {};
+    if (HASH.test(a.shown || "")) return `<button type="button" class="mkartbtn" data-ticket="${esc(t.n)}" aria-haspopup="dialog" aria-label="Open ${esc(t.n)} to see every drawing"><img class="mkart" src="${BASE}/art/${a.shown}" alt="${esc(m.name || "")}" loading="lazy"></button>`;
+    if (a.state === "drawing") return `<span class="mkart drawing" aria-label="Drawing">Drawing…</span>`;
+    return "";
+  }
+  let artTimer = null, artTries = 0;
+  function watchArt() {
+    clearTimeout(artTimer);
+    const t = S.slip;
+    const drawing = t && (t.entry_views || []).some((v) => v.art && v.art.state === "drawing");
+    if (!drawing || artTries > 30) { artTries = 0; return; }
+    artTries++;
+    artTimer = setTimeout(async () => { if (S.slip && S.slip.n === t.n) { await loadSlip(t.n); draw(); watchArt(); } }, 3000);
+  }
   function slipHTML() {
     const t = S.slip;
     if (!t) return "";
     const last = [...S.msgs].reverse().find((m) => m.role === "agent");
     const refused = last && last.refusal && last.ticket === t.n;
     const makes = (t.makes || []).map((m) => (m.kind === "rule"
-      ? `<span class="mk">${m.num ? rpill(m.num) : esc(m.draft || "New rule")}</span>`
-      : `<span class="mk">${esc(m.name)}${m.catalogKind ? `<small>${esc(m.catalogKind)}${m.attrs && m.attrs.size ? ` ${esc(sizeText(m.attrs.size))}` : ""}</small>` : ""}</span>`)).join("");
+      ? `<span class="mk${!m.num && String(m.draft || "").length > 40 ? " long" : ""}">${m.num ? rpill(m.num) : esc(m.draft || "New rule")}</span>`
+      : `<span class="mkent">${artHTML(t, m)}<span class="mk">${esc(m.name)}${m.catalogKind ? `<small>${esc(m.catalogKind)}${m.attrs && m.attrs.size ? ` ${esc(sizeText(m.attrs.size))}` : ""}</small>` : ""}</span></span>`)).join("");
     const stamp = refused ? `<span class="cstamp err">REFUSED</span>` : t.state === "Draft" ? `<span class="cstamp">DRAFT</span>` : `<span class="cstamp">${esc(String(t.state).toUpperCase())}</span>`;
     return `<section class="slip${refused ? " refused" : ""}" aria-label="${esc(t.n)}">${stamp}
 <div class="hd">${wpill(t.n)}<b>${esc(t.title || "Untitled")}</b></div>
 ${refused ? `<div class="tx">${esc(last.refusal)}</div>` : ""}
 <dl><dt>Makes</dt><dd>${makes ? `<span class="makes">${makes}</span>` : "Nothing"}</dd><dt>Estimate</dt><dd>${esc(`${t.estimate} ${t.estimate === 1 ? "night" : "nights"}`)}</dd>
-<dt>Price</dt><dd>${esc(`${t.price} ${t.price === 1 ? "point" : "points"}`)}${t.price_reason ? `<span class="cwhy"> · ${esc(t.price_reason)}</span>` : ""}</dd></dl></section>`;
+<dt>Price</dt><dd>${esc(`${t.price} ${t.price === 1 ? "point" : "points"}`)}${t.price_reason ? `<span class="cwhy"> · ${esc(t.price_reason)}</span>` : ""}</dd></dl>
+<div class="act"><button type="button" class="linkbtn" data-ticket="${esc(t.n)}" aria-haspopup="dialog">Open ${esc(t.n)}${(t.entry_views || []).some((v) => v.art && v.art.drawings && v.art.drawings.length) ? ": all drawings" : ""} ›</button></div></section>`;
   }
 
   // ---- Starling's slips: a draft proposal, as the drafter made it ------------------------------------------------------------------
@@ -159,13 +182,22 @@ ${sl.kind !== "action" && (sl.after_text || sl.before_text) ? `<div class="tx cd
   function logHTML() {
     const out = [];
     let prev = null, day = null;
-    for (const m of S.msgs) {
+    // Her live draft sits right after the line that made it (Buster, day 1: pinned to the bottom, the talk that follows
+    // landed above it). Only a draft no loaded line points at goes at the end.
+    const live = agent.proposals ? liveId() : null;
+    let at = -1;
+    if (live) S.msgs.forEach((m, i) => { if (m.proposal === live) at = i; });
+    // Gremlin's ticket card likewise follows his last line about that ticket (Buster, day 1: "like the rules card")
+    if (!agent.proposals && S.slip) S.msgs.forEach((m, i) => { if (m.role === "agent" && m.ticket === S.slip.n) at = i; });
+    S.msgs.forEach((m, i) => {
       if (m.date && m.date !== day) { day = m.date; out.push(`<div class="cday">${esc(dayLabel(m.date))}</div>`); prev = null; }
       out.push(lineHTML(m, prev));
-      prev = m;
-    }
+      if (i === at) { out.push(agent.proposals ? proposalSlipHTML() : slipHTML()); prev = null; }
+      else prev = m;
+    });
+    if (!S.msgs.length && agent.greeting) out.push(`<div class="msg cher greet">${portrait(true)}<div class="bub">${esc(agent.greeting)}</div></div>`);
     if (S.busy) out.push(`<div class="msg cher">${portrait(true)}<div class="bub"><span class="typing" aria-label="${esc(agent.name)} is typing"><i></i><i></i><i></i></span></div></div>`);
-    out.push(agent.proposals ? proposalSlipHTML() : slipHTML());
+    if (at < 0) out.push(agent.proposals ? proposalSlipHTML() : slipHTML());
     return out.join("");
   }
 
@@ -338,7 +370,7 @@ ${sl.kind !== "action" && (sl.after_text || sl.before_text) ? `<div class="tx cd
     for (const m of r.data.messages) S.msgs.push(m);
     if (r.data.state) S.state = r.data.state;
     if (r.data.slips) S.slips = { ...S.slips, ...r.data.slips };
-    if (r.data.ticket) { S.slip = r.data.ticket; onTicket && (await onTicket(r.data.ticket)); }
+    if (r.data.ticket) { S.slip = r.data.ticket; onTicket && (await onTicket(r.data.ticket)); if (!agent.proposals && S.slip && S.slip.n) { await loadSlip(S.slip.n); watchArt(); } }
     draw();
     if (onSlip && r.data.slips && Object.keys(r.data.slips).length) await onSlip();   // the propose bar shows her newest draft
   }
