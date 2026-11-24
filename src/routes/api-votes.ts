@@ -2,7 +2,7 @@
 // Every player in today's electorate (rule 104.2), the proposer included, may vote on each item and change the vote
 // until midnight or until they end their turn (rule 202.4); not during the midnight lock (rule 107.1). A second vote
 // replaces the first. The answer holds only YOUR vote: nobody sees another player's, or any total, until the count
-// (rule 104.4). Not voting counts as no (rule 104.1); there is no abstain.
+// (rule 104.4). Not voting counts neither for nor against (rule 104.1); there is no abstain.
 // The write's own SQL repeats every gate (src/lib/votes.js VOTE_SQL), so a vote that races midnight cannot land after it.
 import { getPlayer } from "../lib/auth";
 import { clockNow, dayOpenBinds, electorsOf, loadToday } from "../lib/day";

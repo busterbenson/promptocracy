@@ -7,37 +7,37 @@ import { neededOf } from "./proposals.js";
 
 export const VOTES = ["yes", "no"];
 
-// The count (rule 104.5: by code, not by the moderator). `votes` are the electorate's votes on one item; anyone in the
-// electorate who did not vote counts as no (rule 104.1). It passes when the yes votes reach what it needs: its mark,
-// fixed at confirm (rule 105.4), of the electorate fixed at the start of the day (rule 104.2). A vote from outside the
-// electorate is not counted (the database refuses one anyway).
+// The count (rule 104.5: by code, not by the moderator). `votes` are the electorate's votes on one item. It is counted among
+// the players who voted on it (rule 104.1): majority passes on more than half of them voting yes, unanimous when every one
+// of them votes yes, and an item nobody voted on fails. Not voting counts neither for nor against. The mark was fixed at
+// confirm (rule 105.4); the electorate is fixed at the start of the day (rule 104.2). A vote from outside the electorate is
+// not counted (the database refuses one anyway). `needed` is the yes votes it took, from the number who voted: at least 1.
 //
 // The Champion's change (rule 402.4) is counted the other way round: it passes unless EVERY other player votes no. Not voting
 // is not against it, and the Champion's own vote (the database holds none) is not counted. With no other player it passes.
-// `needed` is then the number of no votes that stop it: the other players.
+// `needed` is then the number of no votes that stop it: the other players (the stored number is only a fallback).
 /** @rule 104.1, 104.2, 104.5, 402.4 */
 export function tally({ mark, electorate, electors, votes, needed, champion = false, proposer = null }) {
   const inside = new Set(electors ?? []);
   const counted = (votes ?? []).filter((v) => (!electors || inside.has(v.player_id)) && !(champion && v.player_id === proposer));
-  if (champion) {
-    const others = electors ? electors.filter((id) => id !== proposer).length : Math.max(0, Number.isInteger(needed) ? needed : electorate - 1);
-    const yes = counted.filter((v) => v.vote === "yes").length;
-    const no = counted.filter((v) => v.vote === "no").length;
-    return { yes, no, absent: Math.max(0, others - yes - no), needed: others, electorate, passed: no < others || others === 0, champion: true };
-  }
   const yes = counted.filter((v) => v.vote === "yes").length;
   const no = counted.filter((v) => v.vote === "no").length;
-  const need = Number.isInteger(needed) ? needed : neededOf(mark, electorate);
-  const absent = Math.max(0, electorate - yes - no);
-  return { yes, no, absent, needed: need, electorate, passed: yes >= need };
+  if (champion) {
+    const others = electors ? electors.filter((id) => id !== proposer).length : Math.max(0, Number.isInteger(needed) ? needed : electorate - 1);
+    return { yes, no, absent: Math.max(0, others - yes - no), needed: others, electorate, passed: no < others || others === 0, champion: true };
+  }
+  const voters = yes + no;
+  const need = Math.max(1, neededOf(mark, voters));
+  return { yes, no, absent: Math.max(0, electorate - voters), needed: need, electorate, voters, mark, passed: voters > 0 && yes >= need };
 }
 
-// "3 of 5 voted yes; it needed 3." Written on every counted proposal; the Champion's change (rule 402.4) says how many of
-// the other players voted no.
+// "2 of 3 voted; 2 voted yes; it needed every vote cast." Written on every counted proposal; the Champion's change (rule 402.4)
+// says how many of the other players voted no.
 /** @rule 104.1, 402.4 */
 export const resultSentence = (t) => (t.champion
   ? t.needed ? `${t.no} of ${t.needed} other players voted no; it fails only if all ${t.needed} do.` : "There are no other players, so it takes effect."
-  : `${t.yes} of ${t.electorate} voted yes; it needed ${t.needed}.`);
+  : t.voters === 0 ? "Nobody voted on it."
+  : `${t.voters} of ${t.electorate} voted; ${t.yes} voted yes; it needed ${t.mark === "unanimous" ? "every vote cast" : "more than half of the votes cast"}.`);
 
 /** The sentence a Champion's own vote on it is refused with. @rule 402.4 */
 export const CHAMPION_NO_VOTE = "The Champion doesn't vote on their own change (rule 402.4).";

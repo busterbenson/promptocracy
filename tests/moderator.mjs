@@ -183,7 +183,7 @@ try {
   check("every other player voting no stops it (Bo's own no is not counted): it failed, and the result says 2 of 2", res(pc1).status === "failed" && res(pc1).no === 2 && res(pc1).needed === 2 && res(pc1).why === "2 of 2 other players voted no; it fails only if all 2 do.", J(res(pc1)));
   check("one no and one player who did not vote: it passes; not voting does not count as against", res(pc2).status === "passed" && res(pc2).no === 1 && res(pc2).absent === 1 && res(pc2).why === "1 of 2 other players voted no; it fails only if all 2 do.", J(res(pc2)));
   check("a change to a rule with a unanimous mark passes the same way: its mark is not what counts", res(pc3).status === "passed" && res(pc3).no === 1 && res(pc3).absent === 1, J(res(pc3)));
-  check("an ordinary proposal on the same ballot is counted as before: three no votes, it failed", res(pc4).status === "failed" && res(pc4).why === "0 of 3 voted yes; it needed 2." && !res(pc4).champion, J(res(pc4)));
+  check("an ordinary proposal on the same ballot is counted as before: three no votes, it failed", res(pc4).status === "failed" && res(pc4).why === "3 of 3 voted; 0 voted yes; it needed more than half of the votes cast." && !res(pc4).champion, J(res(pc4)));
 
   console.log("the night's rulings are posted inside the lock (rules 106.5, 107.1)");
   dev("clock", plus(day(8).deadline_at, DEPLOY_GRACE_MINUTES + 1)); await cron();   // day 8's passed changes were never claimed: the 3 am fallback ends that night, and day 9 opens

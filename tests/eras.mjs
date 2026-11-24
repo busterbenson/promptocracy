@@ -26,8 +26,8 @@ console.log("the count of the Champion's change (rule 402.4)");
   check("with no other player it takes effect", tally({ mark: "unanimous", electorate: 1, electors: ["a"], votes: [], champion: true, proposer: "a" }).passed === true);
   check("a unanimous mark makes no difference to it (the whole count is the reverse rule)", count([v("b", "no")], { mark: "unanimous" }).passed === true && count([v("b", "no"), v("c", "no"), v("d", "no")], { mark: "unanimous" }).passed === false);
   check("the totals say how many others there are and the sentence reads as the reverse rule", count([v("b", "no")]).needed === 3 && resultSentence(count([v("b", "no")])) === "1 of 3 other players voted no; it fails only if all 3 do." && resultSentence(tally({ mark: "majority", electorate: 1, electors: ["a"], votes: [], champion: true, proposer: "a" })) === "There are no other players, so it takes effect.");
-  const plain = tally({ mark: "majority", electorate: 4, electors: E, votes: [v("a", "yes"), v("b", "yes")] });
-  check("an ordinary proposal is counted as before: not voting counts as no, and it needs more than half", plain.passed === false && plain.needed === 3 && tally({ mark: "majority", electorate: 4, electors: E, votes: [v("a", "yes"), v("b", "yes"), v("c", "yes")] }).passed === true && resultSentence(plain) === "2 of 4 voted yes; it needed 3.");
+  const plain = tally({ mark: "majority", electorate: 4, electors: E, votes: [v("a", "yes"), v("b", "yes"), v("c", "no"), v("d", "no")] });
+  check("an ordinary proposal is counted among the players who voted (rule 104.1): it needs more than half of the votes cast", plain.passed === false && plain.needed === 3 && tally({ mark: "majority", electorate: 4, electors: E, votes: [v("a", "yes"), v("b", "yes"), v("c", "yes")] }).passed === true && resultSentence(plain) === "4 of 4 voted; 2 voted yes; it needed more than half of the votes cast.");
 }
 
 // ---------------------------------------------------------------- the running site

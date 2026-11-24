@@ -148,7 +148,7 @@ ${refused ? `<div class="tx">${esc(last.refusal)}</div>` : ""}
     const sl = S.slips[id], locked = sl.status === "confirmed";
     const c = sl.can || {};
     const why = (b) => (b && !b.allowed && b.reason ? `<span class="why">${esc(b.reason)}</span>` : "");
-    const needs = sl.needs ? `${esc(sl.needs.mark)} · ${esc(sl.needs.needed)} of ${esc(sl.needs.of)}` : esc(sl.mark || "");
+    const needs = sl.needs ? esc(sl.needs.mark) : esc(sl.mark || "");
     const act = locked
       ? `<span class="pill dash">On tomorrow's ballot</span><button type="button" class="linkbtn" data-c="unlock" data-id="${esc(id)}"${c.unlock && c.unlock.allowed ? "" : " disabled"}>Unlock</button>${why(c.unlock)}`
       : `<button type="button" class="btn small" data-c="lock" data-id="${esc(id)}"${c.lock && c.lock.allowed ? "" : " disabled"}>Lock it in</button>${why(c.lock)}`;

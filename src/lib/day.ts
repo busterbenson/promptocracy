@@ -420,13 +420,13 @@ export async function finalizeDay(env: Env, game: any, day: DayRow, nowMs: numbe
     ).bind(game.id, next, day.ends_at, ends, game.id, game.id, day.n, game.id),
     electorsSql(env, game.id, next),
     // The day's confirmed proposals go on the next day's ballot (rule 103.2); withdrawing ends with the day (rule 103.3).
-    // needed: the same numbers as neededOf in src/lib/proposals.js (unanimous: all; majority: more than half); for the
-    // Champion's change (rule 402.4) the other players, all of whom must vote no to stop it.
+    // needed: only the Champion's change (rule 402.4) has one now, the other players, all of whom must vote no to stop it. An
+    // ordinary proposal's number depends on who votes (rule 104.1), so the count writes it (src/lib/votes.js); it is NULL until then.
     env.DB.prepare(
       `UPDATE proposals SET status = 'on_ballot',
          electorate = (SELECT d.electorate FROM days d WHERE d.game_id = proposals.game_id AND d.n = ?),
          needed = (SELECT CASE WHEN proposals.champion = 1 THEN d.electorate - (SELECT COUNT(*) FROM electors e WHERE e.game_id = proposals.game_id AND e.day = d.n AND e.player_id = proposals.player_id)
-                                WHEN proposals.mark = 'unanimous' THEN d.electorate ELSE d.electorate / 2 + 1 END FROM days d WHERE d.game_id = proposals.game_id AND d.n = ?)
+                                END FROM days d WHERE d.game_id = proposals.game_id AND d.n = ?)
        WHERE game_id = ? AND day_proposed = ? AND status = 'confirmed'
          AND EXISTS (SELECT 1 FROM days WHERE game_id = ? AND n = ? AND ${DONE})
          AND EXISTS (SELECT 1 FROM days WHERE game_id = ? AND n = ?)`,

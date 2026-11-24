@@ -416,8 +416,8 @@ try {
   check("signed out, drafting answers 401", (await client(A).post(P, { kind: "repeal", target: "403" })).status === 401);
   const dr = await ana.post(P, { kind: "repeal", target: "403", words: "Nobody understands it." });
   const v = dr.data.proposal;
-  check("a code draft: status draft, no number, the head and the tracked change, drafted by code, the need for 3 players (majority: 2 of 3)",
-    dr.status === 200 && v.status === "draft" && v.n === null && v.head === "Repeal rule 403 (Paradox):" && v.after_text === "[Repealed]" && v.drafted_by === "code" && J(v.needs) === J({ mark: "majority", needed: 2, of: 3 }) && v.mine === true && !!v.id && model.calls.length === 0, dr.text);
+  check("a code draft: status draft, no number, the head and the tracked change, drafted by code, its mark only (majority)",
+    dr.status === 200 && v.status === "draft" && v.n === null && v.head === "Repeal rule 403 (Paradox):" && v.after_text === "[Repealed]" && v.drafted_by === "code" && J(v.needs) === J({ mark: "majority" }) && v.mine === true && !!v.id && model.calls.length === 0, dr.text);
   model.next = null;
   const dm = await ana.post(P, { kind: "reword", target: "401.1", words: "A passed proposal should be worth 15 points, not 10." });
   const call = model.calls.at(-1);

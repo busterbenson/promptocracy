@@ -97,7 +97,7 @@ try {
   check("no type: 400; an amount of 11: 400; a stranger: 400; none of them used up a proposal", (await P("Ana", { kind: "action", params: {} })).status === 400 && (await P("Ana", { kind: "action", type: "grant", params: { to: "Bo", amount: 11 } })).status === 400 && (await P("Ana", { kind: "action", type: "grant", params: { to: "Zed", amount: 2 } })).status === 400);
   const d1r = await P("Ana", { kind: "action", type: "grant", params: { to: "Bo", amount: 5 } });
   const dr = d1r.data?.proposal;
-  check("a grant to Bo of 5 drafts: kind action, headed with its type and rule, the details on the slip, the mark majority (needs 2 of 3)", d1r.status === 200 && dr.kind === "action" && dr.target === "901" && dr.head === "Grant points (rule 901):" && dr.after_text === "To: Bo\nPoints: 5" && dr.mark === "majority" && dr.needs?.needed === 2 && dr.needs?.of === 3 && dr.status === "draft", J(d1r.data));
+  check("a grant to Bo of 5 drafts: kind action, headed with its type and rule, the details on the slip, the mark majority", d1r.status === 200 && dr.kind === "action" && dr.target === "901" && dr.head === "Grant points (rule 901):" && dr.after_text === "To: Bo\nPoints: 5" && dr.mark === "majority" && J(dr.needs) === J({ mark: "majority" }) && dr.status === "draft", J(d1r.data));
   check("the draft shows the type, its rule, what it touches and the details, and never a player id", J(dr.action) === J({ type: "grant", name: "Grant points", rule: 901, touches: [401, 402], shown: [["To", "Bo"], ["Points", "5"]] }) && !J(d1r.data).includes(id.Bo));
   const cf = await C.Ana.post(`/act/api/proposals/${dr.id}/confirm`, {});
   check("confirmed: P1, on tomorrow's ballot, mark fixed at confirm", cf.status === 200 && cf.data.proposal.n === "P1" && prop(1).status === "confirmed" && prop(1).kind === "action" && prop(1).mark === "majority", J(cf.data));
@@ -117,11 +117,12 @@ try {
   await midnight();
   const bal = await C.Cy.get("/act/api/ballot");
   const it = bal.data.items.find((x) => x.n === "P1");
-  check("day 2's ballot has the actions with their details, what they need, and a vote box", game().day === 2 && it?.kind === "action" && it.action.shown[0][1] === "Bo" && it.needs.needed === 2 && it.can_vote.allowed && !bal.data.items.some((x) => x.n === "P3"), J(it));
+  check("day 2's ballot has the actions with their details, what they need, and a vote box", game().day === 2 && it?.kind === "action" && it.action.shown[0][1] === "Bo" && J(it.needs) === J({ mark: "majority" }) && it.can_vote.allowed && !bal.data.items.some((x) => x.n === "P3"), J(it));
   for (const who of names) await C[who].post("/act/api/votes", { proposal: "P1", vote: "yes" });
   await C.Ana.post("/act/api/votes", { proposal: "P2", vote: "yes" });
+  await C.Bo.post("/act/api/votes", { proposal: "P2", vote: "no" }); // Cy does not vote: a non-vote is neither (rule 104.1), so 1 yes of 2 is not more than half
   await midnight();
-  check("the count: P1 (3 yes) and P2 (1 yes of 3) decided; P1 is enacted by the night itself with no moderator claim", prop(1).status === "enacted" && prop(1).commit_sha === null && prop(2).status === "failed" && prop(1).budget_minutes === null, J([prop(1), prop(2)]));
+  check("the count: P1 (3 yes) and P2 (1 yes, 1 no) decided; P1 is enacted by the night itself with no moderator claim", prop(1).status === "enacted" && prop(1).commit_sha === null && prop(2).status === "failed" && prop(1).budget_minutes === null, J([prop(1), prop(2)]));
   check("day 2 is done, day 3 is open and unlocked, and no day-N tag was asked for: rules_day stays 0", day(2).status === "done" && game().day === 3 && game().phase === "open" && game().rules_day === 0 && !day(2).commit_sha, J([day(2), game()]));
   check("points: Bo gets the 5 (901), Ana the 10 for her applied proposal (401); the failed one gave none", score("Bo") === 5 && score("Ana") === 10 && score("Cy") === 0);
   const ev = events("action"), pts = events("points");
