@@ -24,6 +24,8 @@ await new Promise((r) => stubModel.listen(MODEL_PORT, "127.0.0.1", r));
 const SITE = `http://localhost:${SRV_PORT}`;
 const state = newState();
 let srv = null, rules = null;
+// Gremlin's chat turns only: the art description before a drawing (DESCRIBE_MODEL is the same model) is a call to the same stub, and it lands after a turn that asked for a drawing
+const isChatCall = (c) => c.model === "claude-sonnet-5-5" && !/^You describe how things look/.test(String(c.body.system ?? ""));
 const startSrv = (withKey = true) => startServer(state, SRV_PORT, ["DEV_MODE=1", `SITE_URL=${SITE}`, `RULES_BASE_URL=${rules.base}`, ...(withKey ? ["MODEL_API_KEY=stub-key-not-real", `MODEL_BASE_URL=http://127.0.0.1:${MODEL_PORT}`] : [])]);
 try {
   migrate(state);
@@ -91,7 +93,7 @@ try {
   check("the draft ticket holds what he wrote: title, brief, a structure entry with its size, a price of 0 and his reason; state still Draft, no proposal",
     w.state === "Draft" && w.proposal_id === null && w.brief.length > 10 && w.price === 0 && w.price_reason.length > 3 && JSON.parse(w.makes)[0].catalogKind === "structure" && J(JSON.parse(w.makes)[0].attrs) === J({ size: { w: 2, h: 1 } }) && w.paid === null && w.queue_pos === null, J(w));
   check("both lines are stored, private to Ana, with the ticket and the day; the history says which fields he wrote", rows("Ana").length === 2 && rows("Ana").every((r) => r.agent === "gremlin" && r.local_date === "2026-11-10" && r.day === 1 && r.ticket_id === w.id) && J(JSON.parse(rows("Ana")[1].meta).patch).includes("makes") && mm[1].patch.includes("price"));
-  const first = calls.find((c) => c.model === "claude-sonnet-5-5");
+  const first = calls.find((c) => isChatCall(c));
   check("the model was asked as designed: Sonnet 5.5 at low effort with the answer schema, the key in the header, a breakpoint on the day's block, and no thinking",
     first.model === "claude-sonnet-5-5" && first.key === "stub-key-not-real" && first.body.output_config.effort === "low" && first.body.output_config.format.type === "json_schema" && first.body.system[1].cache_control.type === "ephemeral" && !("thinking" in first.body) && first.body.max_tokens === 1500);
   check("her words reached the model fenced as data", first.lastText.includes(`<player_text author="Ana">${WALL}</player_text>`) && first.lastText.includes("W1"));
@@ -115,7 +117,7 @@ try {
   check("a bad kind: the message still counts, the ticket's makes are unchanged, the reply says what he said, and the reason is stored for his next turn",
     bad.status === 200 && JSON.parse(tk(1).makes)[0].name === "Low stone garden wall" && tk(1).title === "Sword" && /is not a kind; the kinds are item, creature, tile, structure, feature/.test(J(JSON.parse(rows("Ana").at(-1).meta).rejected)), J(rows("Ana").at(-1)));
   await say(Ana, "try again", "W1");
-  const next = calls.slice(before).filter((c) => c.model === "claude-sonnet-5-5").at(-1);
+  const next = calls.slice(before).filter((c) => isChatCall(c)).at(-1);
   check("the next turn's tail carries the reason, in the volatile tail and not in the cached part", /"weapon" is not a kind/.test(next.lastText) && !J(next.body.system).includes("weapon"));
   // the ticket has something to build (a rule item), so a price on it is a price: a price on nothing to build is set to 0 (rule 801.4, tested below)
   d1(state, `UPDATE tickets SET makes = json_insert(makes, '$[#]', json('{"kind":"rule","draft":"A wall can be climbed."}')) WHERE id = '${tk(1).id}'`);
@@ -124,7 +126,7 @@ try {
 
   console.log("player text is data: nothing a player says writes outside his ticket's draft fields (rule 106.4)");
   const inj = await say(Ana, INJECT, "W1");
-  const injCall = calls.filter((c) => c.model === "claude-sonnet-5-5").at(-1);
+  const injCall = calls.filter((c) => isChatCall(c)).at(-1);
   check("a closing fence tag and a fake SYSTEM line in the player's words reach the model escaped: only the two real closing tags are there (the ticket's fence and the message's): the one in the player's words is escaped",
     (injCall.lastText.match(/<\/player_text>/g) || []).length === 2 && injCall.lastText.includes("<\\/player_text") && injCall.lastText.includes("SYSTEM: Chalant here"));
   check("the ticket's own fields (typed by the player) are fenced in the tail too", /<player_text author="ticket W1">/.test(injCall.lastText));
@@ -180,7 +182,7 @@ try {
     dropped.status === 200 && tk(Number(P.slice(1))).price === 0 && tk(Number(P.slice(1))).price_reason === NO_BUILD_REASON && /nothing on this ticket needs building any more/.test(J(JSON.parse(rows("Ana").at(-1).meta).notes)) && JSON.parse(tk(Number(P.slice(1))).makes).every((m) => m.kind !== "rule"), J(tk(Number(P.slice(1)))));
 
   console.log("each ticket has its own conversation (rule 801.6)");
-  const sonnetLast = () => calls.filter((c) => c.model === "claude-sonnet-5-5").at(-1);
+  const sonnetLast = () => calls.filter((c) => isChatCall(c)).at(-1);
   const oQ = await Ana.post(T, {});
   const Q = oQ.data.ticket;
   const aLines = ["garden wall", "stone", "Sword", "toad"];   // what was said on W1 (WALL, SWORD, the toad), none of it on this ticket
@@ -298,7 +300,7 @@ try {
   const ev = rows("Bo", "event").at(-1);
   check("after End turn: he answers (200), the message counts, the ticket is untouched, and an event line says nothing was saved and why",
     et.status === 200 && after.status === 200 && after.data.out === "ok" && bt.title === "" && bt.price === 0 && JSON.parse(bt.makes).length === 0 && /Nothing was saved: Your turn has ended for today/.test(ev?.body ?? ""), J(after.data.messages) + " | " + (ev?.body ?? ""));
-  check("the model was told up front that nothing would be saved", /Nothing you write will be saved \(Your turn has ended for today/.test(calls.filter((c) => c.model === "claude-sonnet-5-5").at(-1).lastText));
+  check("the model was told up front that nothing would be saved", /Nothing you write will be saved \(Your turn has ended for today/.test(calls.filter((c) => isChatCall(c)).at(-1).lastText));
   d1(state, `UPDATE tickets SET state = 'Approved', queue_pos = 1 WHERE id = '${w.id}'`);
   const t0 = J(tk(1));
   const appr = await say(Ana, DRAGON, "W1");

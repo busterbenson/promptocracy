@@ -7,7 +7,7 @@ Every function that carries out the game should say which rule it implements, wi
 `src/` is only reported for now: these functions have no claim yet. Site plumbing such as sign-in and email goes
 under rule 101 or 102; a follow-up change claims them and moves `src/` into the strict set.
 
-164 of 494 functions outside `src/engine/` are unclaimed.
+171 of 515 functions outside `src/engine/` are unclaimed.
 
 ## src/index.ts (6)
 
@@ -22,20 +22,27 @@ under rule 101 or 102; a follow-up change claims them and moves `src/` into the 
 
 - line 29: `wanted`
 
-## src/lib/art.js (6)
+## src/lib/art.js (11)
 
-- line 124: `crcTable`
-- line 125: `crc32`
-- line 126: `u32`
-- line 127: `chunk`
-- line 131: `px`
-- line 142: `concat`
+- line 305: `nanoRequest`
+- line 326: `scrub`
+- line 328: `fail`
+- line 330: `timedOut`
+- line 341: `n`
+- line 351: `crcTable`
+- line 352: `crc32`
+- line 353: `u32`
+- line 354: `chunk`
+- line 358: `px`
+- line 371: `concat`
 
-## src/lib/art.ts (3)
+## src/lib/art.ts (5)
 
-- line 76: `queueNew`
-- line 96: `fail`
-- line 125: `gateOf`
+- line 87: `queueNew`
+- line 114: `fail`
+- line 124: `make`
+- line 162: `redrawFailed`
+- line 187: `gateOf`
 
 ## src/lib/auth.ts (6)
 
@@ -168,37 +175,37 @@ under rule 101 or 102; a follow-up change claims them and moves `src/` into the 
 
 ## src/lib/tickets.js (1)
 
-- line 205: `pts`
+- line 180: `pts`
 
 ## src/lib/util.ts (27)
 
-- line 60: `validShape`
-- line 72: `mixHex`
-- line 74: `legacyInfo`
-- line 78: `colorInfo`
-- line 79: `isOfferedColor`
-- line 82: `colorOf`
-- line 88: `who`
-- line 97: `json`
-- line 107: `readJson`
-- line 116: `base64url`
-- line 122: `randomToken`
-- line 124: `sha256Hex`
-- line 131: `normCode`
-- line 133: `validEmail`
-- line 136: `normEmail`
-- line 140: `cleanName`
-- line 147: `esc`
-- line 152: `siteUrl`
-- line 162: `validSlug`
-- line 168: `plain`
-- line 169: `validRepo`
-- line 171: `validRulesPath`
-- line 173: `validRef`
-- line 176: `gameBase`
-- line 178: `seatsTaken`
-- line 185: `playersLine`
-- line 191: `seatLimit`
+- line 66: `validShape`
+- line 78: `mixHex`
+- line 80: `legacyInfo`
+- line 84: `colorInfo`
+- line 85: `isOfferedColor`
+- line 88: `colorOf`
+- line 94: `who`
+- line 103: `json`
+- line 113: `readJson`
+- line 122: `base64url`
+- line 128: `randomToken`
+- line 130: `sha256Hex`
+- line 137: `normCode`
+- line 139: `validEmail`
+- line 142: `normEmail`
+- line 146: `cleanName`
+- line 153: `esc`
+- line 158: `siteUrl`
+- line 168: `validSlug`
+- line 174: `plain`
+- line 175: `validRepo`
+- line 177: `validRulesPath`
+- line 179: `validRef`
+- line 182: `gameBase`
+- line 184: `seatsTaken`
+- line 191: `playersLine`
+- line 197: `seatLimit`
 
 ## src/lib/votes.js (1)
 
@@ -257,9 +264,9 @@ under rule 101 or 102; a follow-up change claims them and moves `src/` into the 
 
 ## src/routes/api-tickets.ts (3)
 
-- line 34: `out`
-- line 299: `undo`
-- line 372: `need`
+- line 33: `out`
+- line 302: `undo`
+- line 374: `need`
 
 ## src/routes/landing.ts (2)
 

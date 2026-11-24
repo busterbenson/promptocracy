@@ -25,12 +25,18 @@ export type Env = {
   // The agents' (Gremlin's) monthly budget per game, in dollars (src/lib/agent.ts): unset = the site's own limit. The tests lower it.
   AGENT_BUDGET_USD?: string;
   // Generated art (src/lib/art.ts): the R2 bucket (private; the Worker serves it through /<slug>/art/<sha256>) and the Workers AI binding that
-  // draws. IMAGE_MODEL picks the model (default FLUX.2 klein 4B). ART_STUB is for the tests: it replaces the model with fixed bytes
+  // draws. IMAGE_MODEL picks the model (default FLUX.2 klein 9B). ART_STUB is for the tests: it replaces the model with fixed bytes
   // (src/lib/art.js); unset in production, where an unset AI binding means drawing is simply unavailable.
   ART: R2Like;
   AI?: { run(model: string, input: any): Promise<any> };
   IMAGE_MODEL?: string;
+  // Nano Banana (IMAGE_MODEL = gemini-nano-banana-2.1): the Google API key, a Worker secret; unset = a Nano draw fails with "no Gemini key". GEMINI_BASE_URL is for the tests only
+  // (a loopback address standing in for Google; anything else is refused); never set in production.
+  GEMINI_API_KEY?: string;
+  GEMINI_BASE_URL?: string;
   ART_STUB?: string;
+  // The tests' stand-in for the vision check after a drawing (src/lib/art-check.ts): pass, fail, unchecked, once (fail, then pass), or model (the real call, to the stub API). Unset in production.
+  ART_CHECK_STUB?: string;
 };
 // The part of an R2 bucket the art code uses.
 export type R2Like = {

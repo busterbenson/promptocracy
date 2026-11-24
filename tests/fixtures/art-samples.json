@@ -1,0 +1,115 @@
+{
+  "note": "One TRAIN sample entry per kind (the subjects the blocks were tuned on) one HOLDOUT per kind (drawn once to confirm in the first climb, a dev check in the second) and one HOLDOUT B per kind (new in the second climb, never tuned on, drawn only after TRAIN and HOLDOUT pass), for the live drawing run (a scratch worker that calls stylePrompt, describeFor, runImage and lookAt on the real AI binding) and for the tests that prove no subject is ever written into a prompt. These words are Gremlin's side of the prompt: they are NEVER part of the house style, a kind's block or a question. tileHoldout: the two terrains held out of the tile climb of 2026-11-23 (tiles judged in place on the board), drawn once on the final tile block with no change after.",
+  "samples": [
+    {
+      "kind": "structure",
+      "attrs": {
+        "size": {
+          "w": 1,
+          "h": 1
+        }
+      },
+      "words": "a ponderosa pine tree"
+    },
+    {
+      "kind": "tile",
+      "attrs": {},
+      "words": "a mossy swamp bog"
+    },
+    {
+      "kind": "item",
+      "attrs": {},
+      "words": "a battered old copper teapot"
+    },
+    {
+      "kind": "creature",
+      "attrs": {
+        "temper": "neutral"
+      },
+      "words": "a small peaceful river otter"
+    },
+    {
+      "kind": "feature",
+      "attrs": {},
+      "words": "a wooden notice board"
+    }
+  ],
+  "holdout": [
+    {
+      "kind": "structure",
+      "attrs": {
+        "size": {
+          "w": 1,
+          "h": 1
+        }
+      },
+      "words": "a stone water well"
+    },
+    {
+      "kind": "tile",
+      "attrs": {},
+      "words": "a sandy beach"
+    },
+    {
+      "kind": "item",
+      "attrs": {},
+      "words": "an old iron key"
+    },
+    {
+      "kind": "creature",
+      "attrs": {},
+      "words": "a barn owl"
+    },
+    {
+      "kind": "feature",
+      "attrs": {},
+      "words": "a wooden signpost with two arrows"
+    }
+  ],
+  "holdoutB": [
+    {
+      "kind": "structure",
+      "attrs": {
+        "size": {
+          "w": 1,
+          "h": 1
+        }
+      },
+      "words": "a red brick chimney"
+    },
+    {
+      "kind": "tile",
+      "attrs": {},
+      "words": "a shallow rocky stream"
+    },
+    {
+      "kind": "item",
+      "attrs": {},
+      "words": "a polished brass lantern"
+    },
+    {
+      "kind": "creature",
+      "attrs": {
+        "temper": "neutral"
+      },
+      "words": "a red fox"
+    },
+    {
+      "kind": "feature",
+      "attrs": {},
+      "words": "a stone milestone marker"
+    }
+  ],
+  "tileHoldout": [
+    {
+      "kind": "tile",
+      "attrs": {},
+      "words": "a grassy meadow"
+    },
+    {
+      "kind": "tile",
+      "attrs": {},
+      "words": "a snowy field"
+    }
+  ]
+}
