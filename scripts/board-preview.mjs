@@ -6,7 +6,7 @@
 // Usage: node scripts/board-preview.mjs <layout> [options]
 //   patch      --tile <img>                  a 5x5 patch of one terrain, 3 pieces on it
 //   mixed      --tile <a> --tile <b> --tile <c>   three terrains side by side (7x5) plus blank slabs, 3 pieces on the seams
-//   structure  --structure <img>             a 3x3 blank patch, the structure on the centre tile, a piece beside it for scale
+//   structure  --structure <img>             a 3x3 blank patch (bigger for a bigger --footprint), the structure on its footprint, a piece beside it for scale
 //   config     --config <file.json>          several scenes at once (see below)
 // Options:
 //   --out <dir>            where the PNGs go (default ./board-preview-out); each scene writes <name>.png (the board's on-screen size) and <name>@2x.png
@@ -16,7 +16,11 @@
 //   --px-per-unit <n>      fix the zoom (screen px per board unit) instead of the game's fit-to-island
 //   --scheme light|dark    the page theme (default light)
 //   --tile-fit slab|square how a tile drawing sits on the diamond (default slab, see below)
-//   --structure-width <f>  the structure's width as a share of the tile's width (default 0.8)
+//   --structure-width <f>  the structure's width as a share of its footprint's width (default 0.8; the footprint's diamond is (fx + fy) half tile widths wide)
+//   --max-pieces <n>       the tallest a structure may be, in pieces (default 2; a wider-than-that-allows drawing is scaled down until it is exactly this tall; 0 = no cap)
+//   --footprint <FxF>      the structure's footprint in tiles, east x north (default 1x1)
+//   --tile-span <n>        one square tile drawing is spread across n x n tiles (default 1, one drawing per tile); groups are aligned to the board grid
+//                          (x mod n, y mod n) and repeat; needs --tile-fit square
 //   --no-seams --no-fog --no-shadow   leave out the tile outline over the art / the fog ring / the structure's contact shadow
 //   --json                 print the measurements as JSON
 // Config file: {"defaults": {...options in camelCase...}, "scenes": [{"layout": "patch", "tile": "a.png", "name": "x"}, ...]}; paths are
@@ -30,10 +34,13 @@
 //    and clipped to it: the slab's own side edge falls outside the clip and is dropped. The tile's outline (--no-seams removes it) is
 //    drawn over the art, as the blank tile's is.
 //  - tile drawing "square": the image is a flat top-down texture; its square maps onto the tile's ground square (up = north).
+//  - tile span n > 1: the square is n tiles wide and n tiles tall on the ground; each tile shows its own (x mod n, y mod n) part of it, so a
+//    feature drawn across the picture spans tiles and a group of n x n tiles repeats the drawing (scripts/board-preview-rules.js spanCell).
 //  - structure: the white page is keyed out (white touching the border), the drawing is scaled uniformly so its widest extent is
-//    --structure-width of the tile's width, and the point it stands on is the centre of the floor ellipse under its base (the bottom
+//    --structure-width of its footprint's width, then scaled down further if that would make it taller than --max-pieces pieces
+//    (scripts/board-preview-rules.js structureScale), and the point it stands on is the centre of the floor ellipse under its base (the bottom
 //    12% of the silhouette gives the base's width and centre; the ellipse's half height is that half width times the board's
-//    foreshortening) placed on the tile's centre, which is where a piece's foot point goes. Pieces are 37 * 1.1 units tall on a 56 wide tile.
+//    foreshortening) placed on the footprint's centre (a 1x1 footprint's centre is the tile's centre, which is where a piece's foot point goes). Pieces are 37 * 1.1 units tall on a 56 wide tile.
 //  - draw order is the board's: a structure sits among the pieces by depth, nearer on top, after every shadow.
 import { createServer } from "node:http";
 import { execFileSync, spawn } from "node:child_process";
@@ -57,14 +64,22 @@ function python() {
 }
 
 const stem = (p) => basename(p, extname(p));
-const DEFAULTS = { viewport: "1010x420", scheme: "light", tileFit: "slab", structureWidth: 0.8, seams: true, fog: true, shadow: true };
+export const DEFAULTS = { viewport: "1010x420", scheme: "light", tileFit: "slab", tileSpan: 1, structureWidth: 0.8, maxPieces: 2, footprint: "1x1", seams: true, fog: true, shadow: true };
+const parseFootprint = (f) => { const m = Array.isArray(f) ? f.map(Number) : String(f).split("x").map(Number); if (m.length !== 2 || !m.every((n) => Number.isInteger(n) && n >= 1)) throw new Error("bad footprint " + f + " (whole tiles, like 2x1)"); return m; };
 const PIECE_SET = [["keeper", "teal", false], ["frog", "vermilion", true], ["robot", "jade", false]];
 
 // A scene is plain data: tiles (x east, y north, each with optional art), structures, pieces.
 export function buildScene(spec, base = ".") {
   const o = { ...DEFAULTS, ...spec };
   const abs = (p) => resolve(base, p);
-  const fit = o.tileFit, tileArt = (p) => ({ src: abs(p), fit });
+  const span = Number(o.tileSpan);
+  if (!Number.isInteger(span) || span < 1) throw new Error("bad --tile-span " + o.tileSpan + " (a whole number from 1)");
+  if (span > 1 && o.tileFit !== "square") throw new Error("--tile-span " + span + " needs --tile-fit square (a slab drawing is already one tile's isometric top)");
+  const maxPieces = Number(o.maxPieces), share = Number(o.structureWidth);
+  if (!(maxPieces >= 0)) throw new Error("bad --max-pieces " + o.maxPieces);
+  if (!(share > 0)) throw new Error("bad --structure-width " + o.structureWidth);
+  const fit = o.tileFit, tileArt = (p) => ({ src: abs(p), fit, span });
+  const structure = (x, y, src, extra = {}) => { const [fx, fy] = parseFootprint(extra.footprint ?? o.footprint); return { x, y, fx, fy, src: abs(src), width: share, maxPieces, shadow: o.shadow, ...extra, footprint: undefined }; };
   const tiles = [], structures = [], pieces = [];
   const piece = (i, x, y) => { const [shape, color, mirrored] = PIECE_SET[i]; pieces.push({ x, y, shape, color: colorOf(color), mirrored }); };
   let name = o.name, caption = o.caption;
@@ -84,13 +99,14 @@ export function buildScene(spec, base = ".") {
     name ||= "mixed-" + ts.map(stem).join("+"); caption ??= ts.join("  |  ");
   } else if (o.layout === "structure") {
     if (!o.structure) throw new Error("structure needs --structure");
-    for (let x = 0; x < 3; x++) for (let y = 0; y < 3; y++) tiles.push({ x, y, art: o.ground ? tileArt(o.ground) : null });
-    structures.push({ x: 1, y: 1, src: abs(o.structure), width: +o.structureWidth, shadow: o.shadow });
-    piece(0, 2, 0);   // (x + 1, y - 1) is straight to the right of (x, y) on screen: level with the structure, a piece beside it
+    const [fx, fy] = parseFootprint(o.footprint);
+    for (let x = 0; x < fx + 2; x++) for (let y = 0; y < fy + 2; y++) tiles.push({ x, y, art: o.ground ? tileArt(o.ground) : null });
+    structures.push(structure(1, 1, o.structure));
+    piece(0, 1 + fx, 0);   // for a 1x1, (x + 1, y - 1) is straight to the right of (x, y) on screen: level with the structure, a piece beside it
     name ||= "structure-" + stem(o.structure); caption ??= o.structure;
   } else if (o.layout === "custom") {
     for (const t of o.tiles || []) tiles.push({ x: t.x, y: t.y, art: t.art ? tileArt(t.art) : null });
-    for (const s of o.structures || []) structures.push({ x: s.x, y: s.y, src: abs(s.src), width: +(s.width ?? o.structureWidth), scale: s.scale, shadow: s.shadow ?? o.shadow });
+    for (const s of o.structures || []) structures.push(structure(s.x, s.y, s.src, { footprint: s.footprint ?? o.footprint, width: +(s.width ?? share), maxPieces: +(s.maxPieces ?? maxPieces), scale: s.scale, shadow: s.shadow ?? o.shadow }));
     for (const p of o.pieces || []) pieces.push({ x: p.x, y: p.y, shape: p.shape || "pawn", color: colorOf(p.color || "teal"), mirrored: !!p.mirrored });
     name ||= "custom"; caption ??= "";
   } else throw new Error("unknown layout " + o.layout + " (patch, mixed, structure, custom)");
@@ -114,6 +130,7 @@ function serve(scenes) {
       let m;
       if ((m = /^\/__scene\/(\d+)$/.exec(p)) && scenes[+m[1]]) return send(res, 200, MIME[".html"], page(+m[1]));
       if (p === "/__preview/page.js") return send(res, 200, MIME[".js"], readFileSync(join(ROOT, "scripts/board-preview-page.js")));
+      if (p === "/__preview/rules.js") return send(res, 200, MIME[".js"], readFileSync(join(ROOT, "scripts/board-preview-rules.js")));
       if ((m = /^\/__art\/(\d+)\.\w+$/.exec(p)) && files[+m[1]]) return send(res, 200, MIME[extname(files[+m[1]]).toLowerCase()] || "application/octet-stream", readFileSync(files[+m[1]]));
       const f = resolve(PUBLIC, "." + p);
       if (f.startsWith(PUBLIC + sep) && existsSync(f) && statSync(f).isFile()) return send(res, 200, MIME[extname(f)] || "application/octet-stream", readFileSync(f));
@@ -126,12 +143,12 @@ function serve(scenes) {
 export async function main(argv) {
   const { values: v, positionals } = parseArgs({ args: argv, allowPositionals: true, options: {
     out: { type: "string" }, name: { type: "string" }, caption: { type: "string" }, viewport: { type: "string" }, "px-per-unit": { type: "string" }, scheme: { type: "string" },
-    tile: { type: "string", multiple: true }, structure: { type: "string" }, ground: { type: "string" }, config: { type: "string" }, "tile-fit": { type: "string" }, "structure-width": { type: "string" },
+    tile: { type: "string", multiple: true }, structure: { type: "string" }, ground: { type: "string" }, config: { type: "string" }, "tile-fit": { type: "string" }, "structure-width": { type: "string" }, "max-pieces": { type: "string" }, footprint: { type: "string" }, "tile-span": { type: "string" },
     "no-seams": { type: "boolean" }, "no-fog": { type: "boolean" }, "no-shadow": { type: "boolean" }, json: { type: "boolean" }, help: { type: "boolean" } } });
   const layout = positionals[0];
-  if (v.help || !layout) { console.log(readFileSync(fileURLToPath(import.meta.url), "utf8").split("\n").filter((l) => l.startsWith("//")).slice(0, 27).map((l) => l.slice(3)).join("\n")); return v.help ? 0 : 2; }
+  if (v.help || !layout) { console.log(readFileSync(fileURLToPath(import.meta.url), "utf8").split("\n").filter((l) => l.startsWith("//")).slice(0, 33).map((l) => l.slice(3)).join("\n")); return v.help ? 0 : 2; }
   const opts = {};
-  for (const [k, key] of [["name", "name"], ["caption", "caption"], ["viewport", "viewport"], ["px-per-unit", "pxPerUnit"], ["scheme", "scheme"], ["structure", "structure"], ["ground", "ground"], ["tile-fit", "tileFit"], ["structure-width", "structureWidth"]]) if (v[k] !== undefined) opts[key] = v[k];
+  for (const [k, key] of [["name", "name"], ["caption", "caption"], ["viewport", "viewport"], ["px-per-unit", "pxPerUnit"], ["scheme", "scheme"], ["structure", "structure"], ["ground", "ground"], ["tile-fit", "tileFit"], ["tile-span", "tileSpan"], ["structure-width", "structureWidth"], ["max-pieces", "maxPieces"], ["footprint", "footprint"]]) if (v[k] !== undefined) opts[key] = v[k];
   if (v["no-seams"]) opts.seams = false; if (v["no-fog"]) opts.fog = false; if (v["no-shadow"]) opts.shadow = false;
   if (v.tile) opts.tile = layout === "mixed" ? v.tile : v.tile[0];
   const specs = [];
@@ -158,8 +175,8 @@ export async function main(argv) {
       for (const it of [...row.result.tiles, ...row.result.structures]) it.src = orig[it.src] || it.src;
       console.log(`wrote ${jobs[i].out1} (${s.viewport.w}x${s.viewport.h}, ${row.result.pxPerUnit.toFixed(2)} px per board unit) and @2x`);
       if (row.result.viewShiftedUnits) console.log(`  view moved up ${row.result.viewShiftedUnits} units so the tall structure is whole (the game's fit would cut it)`);
-      for (const st of row.result.structures) console.log(`  structure ${basename(st.src)}: ${st.widthUnits} x ${st.heightUnits} units = ${st.widthVsTile}x the tile's width, ${st.heightInPieces}x a piece tall${st.overhangsTileWidth ? "  (WIDER THAN ITS TILE)" : ""}`);
-      for (const t of row.result.tiles) console.log(`  tile ${basename(t.src)}: ${t.fit}${t.aspect ? `, drawn top face height/width ${t.aspect} vs the board's ${t.boardAspect} (y stretched ${(t.scaleY / t.scaleX).toFixed(2)}x against x to match)` : ""}`);
+      for (const st of row.result.structures) console.log(`  structure ${basename(st.src)}: ${st.widthUnits} x ${st.heightUnits} units = ${st.widthVsFootprint}x its ${st.fx}x${st.fy} footprint's width (${st.widthVsTile}x a tile's), ${st.heightInPieces} pieces tall${st.cappedByHeight ? " (scaled down to the height cap)" : ""}${st.overhangsFootprint ? "  (WIDER THAN ITS FOOTPRINT)" : ""}`);
+      for (const t of row.result.tiles) console.log(`  tile ${basename(t.src)}: ${t.fit}${t.span > 1 ? `, spread over ${t.span}x${t.span} tiles` : ""}${t.aspect ? `, drawn top face height/width ${t.aspect} vs the board's ${t.boardAspect} (y stretched ${(t.scaleY / t.scaleX).toFixed(2)}x against x to match)` : ""}`);
     }
     if (rows.length < scenes.length) failed = true;
     if (v.json) console.log(JSON.stringify(rows.map((r) => r.result || r), null, 1));

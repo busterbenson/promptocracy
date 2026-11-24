@@ -6,9 +6,11 @@
 import { sceneSVG } from "/js/board.js";
 import { ensureDefs, HW, HH, DEPTH } from "/js/pieces.js";
 import { HEIGHT } from "/js/pieces-data.js";
+import { structureScale, spanCell } from "/__preview/rules.js";
 
 const S = window.SCENE;
 const f2 = (n) => n.toFixed(2);
+const f6 = (n) => n.toFixed(6);   // scale factors: a 1024 px picture is drawn at 0.027 per px, which two decimals turn into 0.03 (10% too big)
 const P = (wx, wy) => [(wx - wy) * HW, -(wx + wy) * HH];
 const top = (x, y) => [P(x, y), P(x + 1, y), P(x + 1, y + 1), P(x, y + 1)];
 const pts = (a) => a.map((p) => f2(p[0]) + "," + f2(p[1])).join(" ");
@@ -16,6 +18,9 @@ const NS = "http://www.w3.org/2000/svg";
 const BG_MIN = 236;   // a pixel whose darkest channel is at least this, and that connects to the picture's border, is the white page
 
 const load = (src) => new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error("cannot load " + src)); i.src = src; });
+
+// A flat square texture: opaque, nothing keyed out (a pale texture must not lose its light parts to the white-page key), used as it is.
+async function texture(src) { const img = await load(src); return { url: src, w: img.naturalWidth, h: img.naturalHeight }; }
 
 // A drawing with its white page keyed out: the page is whatever white touches the border (a white inside the drawing stays), and
 // the pixels on its edge fade out so no white halo survives. Returns the PNG, its size and the opaque mask.
@@ -94,23 +99,25 @@ try {
   const defs = document.createElementNS(NS, "defs");
   svg.prepend(defs);
   const cache = new Map();
-  const art = async (src) => {
-    if (!cache.has(src)) { const k = await keyed(src); cache.set(src, { k, id: "art" + cache.size }); defs.insertAdjacentHTML("beforeend", `<image id="art${cache.size - 1}" href="${k.url}" width="${k.w}" height="${k.h}"/>`); }
-    return cache.get(src);
+  const art = async (src, flat) => {
+    const key = (flat ? "flat:" : "keyed:") + src;
+    if (!cache.has(key)) { const k = flat ? await texture(src) : await keyed(src); cache.set(key, { k, id: "art" + cache.size }); defs.insertAdjacentHTML("beforeend", `<image id="art${cache.size - 1}" href="${k.url}" width="${k.w}" height="${k.h}"/>`); }
+    return cache.get(key);
   };
 
   // tile drawings
   for (const t of S.tiles) {
     if (!t.art) continue;
-    const { k, id } = await art(t.art.src), c = P(t.x + .5, t.y + .5), tp = svg.querySelector(`polygon.top[data-x="${t.x}"][data-y="${t.y}"]`);
+    const { k, id } = await art(t.art.src, t.art.fit === "square"), c = P(t.x + .5, t.y + .5), tp = svg.querySelector(`polygon.top[data-x="${t.x}"][data-y="${t.y}"]`);
     let tf, info = { x: t.x, y: t.y, src: t.art.src, fit: t.art.fit };
     if (t.art.fit === "square") {
-      // a flat texture: the square is the tile's ground square, its top edge the north edge (y + 1)
-      const o = P(t.x, t.y + 1);
-      tf = `matrix(${f2(HW / k.w)} ${f2(-HH / k.w)} ${f2(HW / k.h)} ${f2(HH / k.h)} ${f2(o[0])} ${f2(o[1])})`;
+      // a flat texture: the square is span x span tiles of ground, its top edge the north edge; this tile shows its (x mod span, y mod span) part
+      const span = t.art.span || 1, cell = spanCell(t.x, t.y, span), o = P(cell.ox, cell.oy);
+      tf = `matrix(${f6(span * HW / k.w)} ${f6(-span * HH / k.w)} ${f6(span * HW / k.h)} ${f6(span * HH / k.h)} ${f2(o[0])} ${f2(o[1])})`;
+      info.span = span;
     } else {
       const g = slabDiamond(k);
-      tf = `translate(${f2(c[0])},${f2(c[1])}) scale(${f2(HW / g.a)},${f2(HH / g.b)}) translate(${f2(-g.cx)},${f2(-g.cy)})`;
+      tf = `translate(${f2(c[0])},${f2(c[1])}) scale(${f6(HW / g.a)},${f6(HH / g.b)}) translate(${f2(-g.cx)},${f2(-g.cy)})`;
       Object.assign(info, { halfW: g.a, halfH: g.b, aspect: +(g.b / g.a).toFixed(3), boardAspect: +(HH / HW).toFixed(3), cornerRowAsym: g.asym, scaleX: +(HW / g.a).toFixed(4), scaleY: +(HH / g.b).toFixed(4) });
     }
     const g = document.createElementNS(NS, "g");
@@ -125,13 +132,14 @@ try {
   const figures = () => [...svg.querySelectorAll("g.piece, g.creature")];
   const ty = (el) => Number(/translate\([-\d.]+,([-\d.]+)\)/.exec(el.getAttribute("transform"))[1]);
   for (const s of S.structures) {
-    const { k, id } = await art(s.src), st = standing(k), c = P(s.x + .5, s.y + .5);
-    const bw0 = k.x1 - k.x0, bh0 = k.y1 - k.y0;
-    const sc = s.scale || (s.width * 2 * HW) / bw0;
+    const { k, id } = await art(s.src), st = standing(k), fx = s.fx || 1, fy = s.fy || 1, c = P(s.x + fx / 2, s.y + fy / 2);   // c: the footprint's centre
+    const bw0 = k.x1 - k.x0, bh0 = k.y1 - k.y0, pieceH = HEIGHT * 1.1;
+    const rule = structureScale({ bw: bw0, bh: bh0, fx, fy, share: s.width, maxPieces: s.maxPieces ?? 0, hw: HW, pieceH });
+    const sc = s.scale || rule.scale;   // a hand-set scale (custom layout) overrides the rule
     const g = document.createElementNS(NS, "g");
     g.setAttribute("class", "structure");
     g.setAttribute("transform", `translate(${f2(c[0])},${f2(c[1])})`);
-    g.innerHTML = `<g transform="scale(${f2(sc)}) translate(${f2(-st.ax)},${f2(-st.ay)})"><use href="#${id}"/></g>`;
+    g.innerHTML = `<g transform="scale(${f6(sc)}) translate(${f2(-st.ax)},${f2(-st.ay)})"><use href="#${id}"/></g>`;
     const half = (st.bw * sc) / 2, sh = document.createElementNS(NS, "g");
     sh.setAttribute("class", "structure-shadow");
     sh.setAttribute("transform", `translate(${f2(c[0])},${f2(c[1])})`);
@@ -144,15 +152,26 @@ try {
     const topEdge = c[1] - st.ay * sc;
     if (topEdge < vbY + 6) { result.viewShiftedUnits = +(vbY + 6 - topEdge).toFixed(1); vbY = topEdge - 6; setView(); }
     result.structures.push({
-      x: s.x, y: s.y, src: s.src, scale: +sc.toFixed(4),
-      widthUnits: +(bw0 * sc).toFixed(1), heightUnits: +(bh0 * sc).toFixed(1), tileWidthUnits: 2 * HW,
-      widthVsTile: +(bw0 * sc / (2 * HW)).toFixed(2), heightInPieces: +(bh0 * sc / (HEIGHT * 1.1)).toFixed(2),
+      x: s.x, y: s.y, fx, fy, src: s.src, scale: +sc.toFixed(4),
+      widthUnits: +(bw0 * sc).toFixed(1), heightUnits: +(bh0 * sc).toFixed(1), tileWidthUnits: 2 * HW, footprintWidthUnits: (fx + fy) * HW,
+      widthVsTile: +(bw0 * sc / (2 * HW)).toFixed(2), widthVsFootprint: +(bw0 * sc / ((fx + fy) * HW)).toFixed(2), heightInPieces: +(bh0 * sc / pieceH).toFixed(2),
       baseWidthVsTile: +(st.bw * sc / (2 * HW)).toFixed(2),
-      overhangsTileWidth: bw0 * sc > 2 * HW + .5,
+      cappedByHeight: !s.scale && rule.cappedByHeight, share: s.width, maxPieces: s.maxPieces ?? 0,
+      overhangsFootprint: bw0 * sc > (fx + fy) * HW + .5,
     });
   }
 
   if (S.caption) { const tip = document.createElement("div"); tip.className = "tip"; tip.textContent = S.caption; wrap.appendChild(tip); }
+  // where each tile with art is on screen (its top's centre, px from the board's corner, after any view move): lets a test sample the picture there
+  const wr = wrap.getBoundingClientRect(), box1 = (el) => { const b = el.getBoundingClientRect(); return [b.x, b.y, b.right, b.bottom]; };
+  const topEl = (x, y) => svg.querySelector(`polygon.top[data-x="${x}"][data-y="${y}"]`);
+  result.tileCentres = {};
+  for (const t of S.tiles) if (t.art) { const b = box1(topEl(t.x, t.y)); result.tileCentres[t.x + "," + t.y] = [+((b[0] + b[2]) / 2 - wr.x).toFixed(1), +((b[1] + b[3]) / 2 - wr.y).toFixed(1)]; }
+  S.structures.forEach((s, i) => {   // the footprint's centre on screen
+    const bs = []; for (let x = s.x; x < s.x + (s.fx || 1); x++) for (let y = s.y; y < s.y + (s.fy || 1); y++) bs.push(box1(topEl(x, y)));
+    const x0 = Math.min(...bs.map((b) => b[0])), x1 = Math.max(...bs.map((b) => b[2])), y0 = Math.min(...bs.map((b) => b[1])), y1 = Math.max(...bs.map((b) => b[3]));
+    result.structures[i].footprintCentrePx = [+((x0 + x1) / 2 - wr.x).toFixed(1), +((y0 + y1) / 2 - wr.y).toFixed(1)];
+  });
   result.piecesOnBoard = S.pieces.length;
 } catch (e) { window.__error = String((e && e.stack) || e); }
 window.__result = result;
