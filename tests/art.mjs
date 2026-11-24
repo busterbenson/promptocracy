@@ -12,7 +12,7 @@ import { client, createGame, d1, freePort, join, migrate, newState, r2Delete, r2
 import { readFileSync } from "node:fs";
 import { join as pjoin } from "node:path";
 import { ROOT } from "./lib.mjs";
-import { ART_COST_BY_MODEL, ART_COST_MICRO, CHECK_MODEL, artCostMicro, DESCRIBE_MODEL, HASH, IMAGE_MODEL, KIND_BLOCKS, NANO_COST_MICRO, NANO_MODEL, GEMINI_ORIGIN, isNano, nanoAspect, nanoRequest, runNano, MAX_DETAILS, MAX_PROMPT, artKey, checkQuestion, describeAsk, drawChecked, kindBlock, loosePalette, readVerdict, runImage, sha256Hex, shortDetails, sizeFor, sniffType, stubPng, stylePrompt, tmpKey } from "../src/lib/art.js";
+import { ART_COST_BY_MODEL, ART_COST_MICRO, CHECK_MODEL, artCostMicro, DESCRIBE_MODEL, HASH, IMAGE_MODEL, KIND_BLOCKS, NANO_COST_MICRO, NANO_MODEL, GEMINI_ORIGIN, isNano, nanoAspect, nanoRequest, runNano, MAX_DETAILS, MAX_PROMPT, artKey, checkQuestion, describeAsk, drawChecked, kindBlock, loosePalette, readVerdict, runImage, sha256Hex, shortDetails, sizeFor, sniffType, stubPng, stylePrompt, tmpKey , stubImage } from "../src/lib/art.js";
 import { answerSchema, readMakeItem, systemStatic } from "../src/lib/gremlin.js";
 
 let pass = 0, fail = 0;
@@ -25,6 +25,15 @@ console.log("the key is the bytes' hash (rule 801.2)");
 const png = stubPng(3);
 check("sha256Hex is the SHA-256 of the bytes, 64 lowercase hex characters, and a different picture has a different key", await sha256Hex(png) === sha(png) && HASH.test(await sha256Hex(png)) && await sha256Hex(stubPng(4)) !== await sha256Hex(png));
 check("the stand-in picture differs for every seed, not only every 360 (its colour repeats; two drawings with the same bytes made the sweep test flaky)", sha(stubPng(1)) !== sha(stubPng(361)) && sha(stubPng(100)) !== sha(stubPng(460)) && sha(stubPng(7)) === sha(stubPng(7)));
+// The stub's colour is its seed's hue, 360 of them, so a drawing made with a random seed has the same bytes (the same key) as a fixture
+// drawn with stubPng(n) about once in 360. The sweep section below seeds art_refs/art_objects for stubPng(0) (the catalog's hash) and
+// stubPng(100..105) and expects nothing else to name them; a seeded draw earlier in the same run that landed on one of those hues made its
+// "rows are gone" check fail, about 1 run in 20. The model stand-in therefore draws a size no fixture uses.
+check("a seeded stub draw never has the bytes of a fixture picture (stubPng(0) and stubPng(100..105)), whatever its seed", await (async () => {
+  const fixtures = new Set([0, 100, 101, 102, 103, 104, 105].map((n) => sha(stubPng(n))));
+  for (const n of [0, 100, 101, 102, 103, 104, 105]) for (const seed of [n, n + 360, n + 720]) if (fixtures.has(sha((await stubImage("seeded", { seed })).bytes))) return false;   // seed and seed + 360 share a hue (47 and 360 are coprime)
+  return true;
+})());
 check("only a 64-hex hash makes a key: a path, an uppercase hash, a short one and traversal are refused; the two key spaces are tmp/ and art/", (() => {
   const h = sha(png), refused = (f, v) => { try { f(v); return false; } catch { return true; } };
   return tmpKey(h) === `tmp/${h}` && artKey(h) === `art/${h}` && ["../x", "tmp/" + h, h.toUpperCase(), h.slice(1), h + "0", "", "a/b"].every((v) => refused(tmpKey, v) && refused(artKey, v));
