@@ -4,7 +4,7 @@
 // shows (the default). All of it is the player's own draft's: the same gate as their own edit (EDIT_GUARD), checked in the SQL.
 // Nothing here writes a ticket's `makes`: the page lays these rows over each entry on the way out (overlay), so a drawing that lands while
 // the player is typing can never be lost by, or lose, their edit.
-import { MAX_SAVED, artCostMicro, DRAWING_STALE_MS, DRAW_BUDGET_MS, DRAW_TIMEOUT_MS, DESCRIBE_TIMEOUT_MS, IMAGE_MODEL, artKey, drawChecked, runImage, sha256Hex, sizeFor, stubImage, stylePrompt, tmpKey } from "./art.js";
+import { MAX_SAVED, artCostMicro, DRAWING_STALE_MS, DRAW_BUDGET_MS, DRAW_TIMEOUT_MS, DESCRIBE_TIMEOUT_MS, IMAGE_MODEL, NANO_MODEL, artKey, drawChecked, isNano, runImage, runNano, sha256Hex, sizeFor, stubImage, stylePrompt, tmpKey } from "./art.js";
 import { describeFor, lookAt } from "./art-check";
 import { logCall, monthSpend } from "./agent";
 import { dayOpenBinds } from "./day";
@@ -23,8 +23,8 @@ export const entriesOf = (makes: any[]) =>
   (Array.isArray(makes) ? makes : []).filter((m) => m && m.kind === "entry" && typeof m.name === "string")
     .map((m) => ({ name: m.name as string, kind: (m.catalogKind ?? null) as string | null, attrs: m.attrs ?? {}, prompt: String(m.art?.prompt ?? "") }));
 
-/** The model's id: IMAGE_MODEL when set, else the default. @rule 801.2 */
-export const modelOf = (env: Env) => (env.IMAGE_MODEL && /^@cf\/[\w./-]+$/.test(env.IMAGE_MODEL) ? env.IMAGE_MODEL : IMAGE_MODEL);
+/** The model's id: IMAGE_MODEL when set to a Workers AI model or to Nano Banana (exactly NANO_MODEL), else the default. @rule 801.2 */
+export const modelOf = (env: Env) => (env.IMAGE_MODEL === NANO_MODEL || (env.IMAGE_MODEL && /^@cf\/[\w./-]+$/.test(env.IMAGE_MODEL)) ? env.IMAGE_MODEL! : IMAGE_MODEL);
 
 // ---- what the page shows ------------------------------------------------------------------------------------------------------------
 /**
@@ -113,10 +113,10 @@ export async function draw(env: Env, j: Draw): Promise<void> {
     const looked = !(env.ART_STUB && !env.ART_CHECK_STUB);
     const t1 = Date.now();
     const details = looked ? await describeFor(env, j.game, j.tz, j.player.id, j.kind, j.prompt, DESCRIBE_TIMEOUT_MS) : "";
-    const make = (ms: number) => {
+    const make = (ms: number): Promise<{ bytes: Uint8Array; type: string; usage?: any }> => {
       const seed = crypto.getRandomValues(new Uint32Array(1))[0] % 2147483647, prompt = stylePrompt(j.kind, j.attrs, j.prompt, details);
       return Promise.race([
-        env.ART_STUB ? stubImage(env.ART_STUB, { seed }) : runImage(env.AI, model, { prompt, ...size, seed }),
+        env.ART_STUB ? stubImage(env.ART_STUB, { seed }) : isNano(model) ? runNano(env, { prompt, ...size }, Math.min(DRAW_TIMEOUT_MS, ms)) : runImage(env.AI, model, { prompt, ...size, seed }),
         new Promise<never>((_, rej) => setTimeout(() => rej(new Error("timeout")), Math.min(DRAW_TIMEOUT_MS, ms))),
       ]);
     };
@@ -133,7 +133,7 @@ export async function draw(env: Env, j: Draw): Promise<void> {
       env.DB.prepare("INSERT OR IGNORE INTO art_refs (hash, game_id, ticket_id, entry_name, prompt, saved, is_default, created_at) SELECT ?, ?, ?, ?, ?, 0, 0, ? WHERE EXISTS (SELECT 1 FROM tickets WHERE id = ? AND state = 'Draft')").bind(hash, j.game.id, j.ticket.id, j.name, j.prompt, now, j.ticket.id),
       env.DB.prepare("UPDATE art_draws SET state = CASE WHEN EXISTS (SELECT 1 FROM tickets WHERE id = ? AND state = 'Draft') THEN 'done' ELSE 'failed' END, reason = CASE WHEN EXISTS (SELECT 1 FROM tickets WHERE id = ? AND state = 'Draft') THEN ? ELSE 'ticket changed' END, ended_at = ? WHERE id = ? AND state = 'pending'").bind(j.ticket.id, j.ticket.id, note ? note.slice(0, 120) : null, now, j.drawId),
     ]);
-    await logCall(env, j.game, j.tz, Date.now(), { player_id: j.player.id, agent: "gremlin", purpose: "art", model, outcome: "ok", ms: Date.now() - t0, cost_micro: artCostMicro(model) });
+    await logCall(env, j.game, j.tz, Date.now(), { player_id: j.player.id, agent: "gremlin", purpose: "art", model, outcome: "ok", ms: Date.now() - t0, cost_micro: artCostMicro(model), usage: (made as any).usage });
   } catch (e: any) {
     console.error("art: a drawing failed:", e?.message || "error");
     await fail(String(e?.message || "error"));

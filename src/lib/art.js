@@ -13,6 +13,18 @@ export const HASH = /^[0-9a-f]{64}$/;
  * draws with FLUX.2 [dev]: about 2.7x the price (ART_COST_BY_MODEL) and 14 s a drawing against klein 9B's 6.5-10 s, one at a time; in the
  * fourth climb it drew copper as shiny metal (a battered copper teapot passed 5 of 6 where klein 9B passed 0 of 3 on the same prompt). */
 export const IMAGE_MODEL = "@cf/black-forest-labs/flux-2-klein-9b";
+/**
+ * Google's Nano Banana 2.1, the one image model that does not run on Workers AI: IMAGE_MODEL = `gemini-nano-banana-2.1` draws through Google's
+ * generative-language API with the Worker secret GEMINI_API_KEY (unset = the draw fails with the reason "no Gemini key", like any model error).
+ * Off unless a game's deployment sets IMAGE_MODEL to it. NANO_COST_MICRO is an ESTIMATE until it is checked against a Google bill. From the
+ * usage Google returned for a real 1024 x 1024 drawing (11-23: 142 prompt tokens; 1,399 candidate tokens, of which 1,120 are the image; 723
+ * thinking tokens; earlier drawings: 258-1,127 thinking tokens) at the price page's $1.50 per million input, $7.50 per million text and thinking
+ * output and $30 per million image output: $0.0002 + $0.0336 + $0.0075 = $0.0413. If Google bills all the candidate tokens at the image rate
+ * it is $0.0476. Counted as $0.05, over, never under.
+ */
+export const NANO_MODEL = "gemini-nano-banana-2.1";
+export const NANO_COST_MICRO = 50000;
+export const GEMINI_ORIGIN = "https://generativelanguage.googleapis.com";
 export const MAX_PROMPT = 300;          // what Gremlin may write as an art prompt (3.4 of the plan)
 export const MAX_BYTES = 4 * 1024 * 1024;
 export const DRAW_TIMEOUT_MS = 25_000;   // inside the 30 s a Worker may keep working after its response (ctx.waitUntil), with room left for the writes
@@ -26,7 +38,7 @@ export const ART_COST_MICRO = 20000;     // what one drawing is counted as in th
  * 10 bills 40, 20 bills 80). Counted as $0.085. (klein 9B bills 1,363.6 neurons = $0.015, counted as $0.02.)
  * A model not listed here is counted at the dearest listed price.
  */
-export const ART_COST_BY_MODEL = { "@cf/black-forest-labs/flux-2-klein-9b": ART_COST_MICRO, "@cf/black-forest-labs/flux-2-klein-4b": ART_COST_MICRO, "@cf/black-forest-labs/flux-2-dev": 85000 };
+export const ART_COST_BY_MODEL = { "@cf/black-forest-labs/flux-2-klein-9b": ART_COST_MICRO, "@cf/black-forest-labs/flux-2-klein-4b": ART_COST_MICRO, "@cf/black-forest-labs/flux-2-dev": 85000, [NANO_MODEL]: NANO_COST_MICRO };
 /** The budget cost of one drawing by `model` (ART_COST_BY_MODEL). @rule 106.7 */
 export const artCostMicro = (model) => ART_COST_BY_MODEL[model] ?? Math.max(...Object.values(ART_COST_BY_MODEL));
 export const MAX_SAVED = 20;            // the most drawings one entry keeps (the same limit catalog.json reads, LIMITS.saved)
@@ -266,10 +278,64 @@ export async function runImage(ai, model, { prompt, width, height, seed }) {
   else if (out instanceof ArrayBuffer) bytes = new Uint8Array(out);
   else if (out && typeof out.getReader === "function") bytes = new Uint8Array(await new Response(out).arrayBuffer());
   else throw new Error("the model sent no image");
+  return pictureOf(bytes);
+}
+
+/** The picture a model sent, if it is one: not empty, not over MAX_BYTES, and a png, jpeg or webp by its first bytes. Throws with a short reason. @rule 801.2 */
+function pictureOf(bytes) {
   if (!bytes.length || bytes.length > MAX_BYTES) throw new Error("the picture is empty or too large");
   const type = sniffType(bytes);
   if (!type) throw new Error("the model's answer is not a picture");
   return { bytes, type };
+}
+
+/** Is this IMAGE_MODEL Google's Nano Banana (called over HTTPS with GEMINI_API_KEY) rather than a Workers AI model? @rule 801.2 */
+export const isNano = (model) => model === NANO_MODEL;
+
+/** Google's aspect ratio for a drawing's size: 4:3 for 1024 x 768, 3:4 for 768 x 1024, else 1:1. @rule 801.2 */
+export const nanoAspect = (width, height) => (width > height ? "4:3" : height > width ? "3:4" : "1:1");
+
+/**
+ * The one request Nano gets (what leaves the building, rule 801.2): a POST to Google's generative-language endpoint for NANO_MODEL, the key
+ * in the `x-goog-api-key` header only, and a body of the drawing's prompt, "image only" and an aspect ratio. Nothing else is read from the
+ * caller: only `prompt`, `width` and `height` are taken from what it passes, so a player's id, name or email, the game, the ticket or the
+ * entry cannot reach the body, URL or headers (tests/art.mjs lists every allowed field and fails on any other). The prompt itself is Gremlin's
+ * art words, the description and the house style. `base` is a tests-only override and must be a loopback address, or this refuses.
+ */
+export function nanoRequest({ prompt, width, height }, base) {
+  let origin = GEMINI_ORIGIN;
+  if (base) {
+    if (!/^http:\/\/(?:127\.0\.0\.1|localhost)(?::\d+)?$/.test(base)) throw new Error("the Gemini address is not a local one");
+    origin = base;
+  }
+  return {
+    url: `${origin}/v1beta/models/${NANO_MODEL}:generateContent`,
+    headers: { "content-type": "application/json" },
+    body: { contents: [{ role: "user", parts: [{ text: String(prompt) }] }], generationConfig: { responseModalities: ["IMAGE"], imageConfig: { aspectRatio: nanoAspect(width, height) } } },
+  };
+}
+
+/**
+ * One drawing by Nano Banana over HTTPS. Returns {bytes, type, usage} (usage: Google's own token counts as {input_tokens, output_tokens},
+ * thinking tokens counted in the output because Google bills them as output) or throws with a short reason: no key, a timeout at `ms`, a
+ * Google error, a refusal (no picture), a picture that is not one. The key is never in a reason. `fetchFn` is the tests' stand-in. @rule 801.2
+ */
+export async function runNano(env, { prompt, width, height }, ms = DRAW_TIMEOUT_MS, fetchFn = fetch) {
+  const key = env?.GEMINI_API_KEY;
+  if (!key || typeof key !== "string") throw new Error("no Gemini key");
+  const scrub = (t) => String(t).split(key).join("[key]").replace(/\s+/g, " ").slice(0, 100);
+  const q = nanoRequest({ prompt, width, height }, env.GEMINI_BASE_URL);
+  let res;
+  try { res = await fetchFn(q.url, { method: "POST", headers: { ...q.headers, "x-goog-api-key": key }, body: JSON.stringify(q.body), signal: AbortSignal.timeout(Math.max(1000, ms)) }); }
+  catch (e) { throw new Error(e?.name === "TimeoutError" || e?.name === "AbortError" ? "Google timed out" : "Google could not be reached"); }
+  let j = null;
+  try { j = await res.json(); } catch { /* not JSON */ }
+  if (!res.ok) throw new Error(scrub(`Google ${res.status}: ${j?.error?.status || j?.error?.message || "error"}`));
+  const part = (j?.candidates?.[0]?.content?.parts ?? []).find((p) => (p.inlineData || p.inline_data)?.data);
+  if (!part) throw new Error(scrub(`Google sent no picture: ${j?.promptFeedback?.blockReason || j?.candidates?.[0]?.finishReason || "empty answer"}`));
+  const u = j.usageMetadata ?? {};
+  const n = (v) => (Number.isFinite(v) ? v : 0);
+  return { ...pictureOf(fromBase64((part.inlineData || part.inline_data).data)), usage: { input_tokens: n(u.promptTokenCount), output_tokens: n(u.candidatesTokenCount) + n(u.thoughtsTokenCount), cache_creation_input_tokens: 0, cache_read_input_tokens: 0 } };
 }
 
 // ---- the test stand-in for the model ----------------------------------------------------------------------------------------------

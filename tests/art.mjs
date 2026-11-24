@@ -6,12 +6,13 @@
 // only 64-hex keys; the daily sweep deletes what it should and nothing else (Shelved 31 days vs 29, Refused, a hash in catalog.json, the same bytes
 // saved on two tickets). Run: node tests/art.mjs
 import { createHash } from "node:crypto";
+import { createServer } from "node:http";
 import { createStub } from "./gremlin-stub.mjs";
 import { client, createGame, d1, freePort, join, migrate, newState, r2Delete, r2Get, r2Put, startRulesStub, startServer } from "./lib.mjs";
 import { readFileSync } from "node:fs";
 import { join as pjoin } from "node:path";
 import { ROOT } from "./lib.mjs";
-import { ART_COST_BY_MODEL, ART_COST_MICRO, CHECK_MODEL, artCostMicro, DESCRIBE_MODEL, HASH, IMAGE_MODEL, KIND_BLOCKS, MAX_DETAILS, MAX_PROMPT, artKey, checkQuestion, describeAsk, drawChecked, kindBlock, loosePalette, readVerdict, runImage, sha256Hex, shortDetails, sizeFor, sniffType, stubPng, stylePrompt, tmpKey } from "../src/lib/art.js";
+import { ART_COST_BY_MODEL, ART_COST_MICRO, CHECK_MODEL, artCostMicro, DESCRIBE_MODEL, HASH, IMAGE_MODEL, KIND_BLOCKS, NANO_COST_MICRO, NANO_MODEL, GEMINI_ORIGIN, isNano, nanoAspect, nanoRequest, runNano, MAX_DETAILS, MAX_PROMPT, artKey, checkQuestion, describeAsk, drawChecked, kindBlock, loosePalette, readVerdict, runImage, sha256Hex, shortDetails, sizeFor, sniffType, stubPng, stylePrompt, tmpKey } from "../src/lib/art.js";
 import { answerSchema, readMakeItem, systemStatic } from "../src/lib/gremlin.js";
 
 let pass = 0, fail = 0;
@@ -78,6 +79,41 @@ console.log("the call to the image model (the Workers AI binding)");
   check("the fallback model, FLUX.1 schnell, takes JSON (prompt, steps), no multipart and NO seed (its API refuses the whole call when one is sent: found drawing live, 11-23)", calls1[0].input.prompt === "a frog" && calls1[0].input.steps === 4 && !("multipart" in calls1[0].input) && !("seed" in calls1[0].input), J(calls1[0].input));
   const bad = async (ai) => { try { await runImage(ai, IMAGE_MODEL, { prompt: "x", width: 8, height: 8 }); return "no error"; } catch (e) { return e.message; } };
   check("an answer that is not a picture, an empty one, a missing binding and a model that throws are all errors, never a stored object", /not a picture/.test(await bad({ run: async () => ({ image: btoa("hello there, not an image") }) })) && /empty/.test(await bad({ run: async () => ({ image: "" }) })) && /no image model/.test(await bad(undefined)) && /boom/.test(await bad({ run: async () => { throw new Error("boom"); } })) && /no image/.test(await bad({ run: async () => ({}) })));
+}
+console.log("Nano Banana, Google's image model (rules 801.2, 106.7)");
+const NANO_REC = JSON.parse(readFileSync(pjoin(ROOT, "tests/fixtures/nano-response.json"), "utf8"));   // recorded from Google, 11-23
+{
+  // every field that may leave the building, as a path through the request body: the drawing's prompt and image settings, nothing else
+  const ALLOWED_BODY = ["contents[].role", "contents[].parts[].text", "generationConfig.responseModalities[]", "generationConfig.imageConfig.aspectRatio"];
+  const paths = (v, at = "") => Array.isArray(v) ? v.flatMap((x) => paths(x, at + "[]")) : v && typeof v === "object" ? Object.entries(v).flatMap(([k, x]) => paths(x, at ? `${at}.${k}` : k)) : [at];
+  const norm = (list) => [...new Set(list)].sort();
+  // a caller that holds everything about the player and the game and passes it all: none of it may get through
+  const everything = { prompt: "a stone water well", width: 1024, height: 768, seed: 5, player: { id: "pl_9f3", display_name: "Ana Quist", email: "ana@example.com" }, game: { id: "gm_77", slug: "rickshaw-1" }, ticket: { id: "tk_55", number: 12 }, name: "Ana's Well", playerId: "pl_9f3", email: "ana@example.com", slug: "rickshaw-1", attrs: { size: { w: 2, h: 1 } } };
+  const q = nanoRequest(everything);
+  check("the request goes to Google's generative-language endpoint for the one model, a POST of a body with exactly the whitelisted fields (the role, the prompt, image only, an aspect ratio) and no other field at any depth", q.url === `${GEMINI_ORIGIN}/v1beta/models/gemini-nano-banana-2.1:generateContent` && new URL(q.url).host === "generativelanguage.googleapis.com" && !new URL(q.url).search && J(norm(paths(q.body))) === J(norm(ALLOWED_BODY)), J(norm(paths(q.body))));
+  check("what is sent is the drawing's prompt, image only and the aspect ratio: no seed, no id, name, email, game, slug, ticket or entry name appears anywhere in the URL, the headers or the body, though the caller passed them all", q.body.contents[0].parts[0].text === "a stone water well" && J(q.body.generationConfig) === J({ responseModalities: ["IMAGE"], imageConfig: { aspectRatio: "4:3" } }) && !/pl_9f3|Ana|ana@|gm_77|rickshaw|tk_55|Well\b.*Ana|"seed"/.test(J(q) .replace("a stone water well", "")) && J(Object.keys(q.headers)) === J(["content-type"]), J(q));
+  check("the aspect ratio follows the size: 1024 x 1024 is 1:1, 1024 x 768 is 4:3, 768 x 1024 is 3:4", nanoAspect(1024, 1024) === "1:1" && nanoAspect(1024, 768) === "4:3" && nanoAspect(768, 1024) === "3:4");
+  check("the endpoint can be moved only to a loopback address (the tests' stand-in for Google); any other address is refused, so a prompt cannot be sent anywhere else", nanoRequest({ prompt: "x", width: 1, height: 1 }, "http://127.0.0.1:8123").url.startsWith("http://127.0.0.1:8123/v1beta/models/") && ["https://example.com", "http://evil.test", "http://127.0.0.1.evil.test", "http://localhost.evil.test", "https://127.0.0.1", "http://127.0.0.1@evil.test"].every((b) => { try { nanoRequest({ prompt: "x", width: 1, height: 1 }, b); return false; } catch { return true; } }));
+
+  // the call itself, with Google's recorded answer
+  const seen = [];
+  const google = (answer, status = 200) => async (url, init) => { seen.push({ url, init }); return new Response(J(answer), { status, headers: { "content-type": "application/json" } }); };
+  const env = { GEMINI_API_KEY: "AIza-test-key-1234" };
+  const r = await runNano(env, { prompt: "a stone water well", width: 1024, height: 1024 }, 20000, google(NANO_REC));
+  const sent = seen[0];
+  check("a recorded Google answer is read back as the picture: the bytes of its inline image, its real type, and Google's own usage (142 prompt tokens in; 1,399 candidate and 723 thinking tokens out, the thinking counted because Google bills it)", r.type === "image/jpeg" && r.bytes.length > 500 && r.usage.input_tokens === 142 && r.usage.output_tokens === 1399 + 723 && NANO_REC.usageMetadata.candidatesTokensDetails[0].tokenCount === 1120, J(r.usage));
+  check("the key goes in the x-goog-api-key header only: not in the URL, not in the body; the call is a POST with a JSON body that is the whitelisted one", sent.init.method === "POST" && sent.init.headers["x-goog-api-key"] === env.GEMINI_API_KEY && !sent.url.includes(env.GEMINI_API_KEY) && !sent.init.body.includes(env.GEMINI_API_KEY) && J(norm(paths(JSON.parse(sent.init.body)))) === J(norm(ALLOWED_BODY)) && J(Object.keys(sent.init.headers).sort()) === J(["content-type", "x-goog-api-key"]));
+  const fails = async (f, e = env) => { try { await runNano(e, { prompt: "x", width: 8, height: 8 }, 20000, f); return "no error"; } catch (x) { return x.message; } };
+  check("a missing key is an error before anything is sent; so are a Google error (its status shown, never the key), an answer with no picture (its finish reason shown), a block, a picture that is not one, a network failure and a timeout", await fails(google(NANO_REC), {}) === "no Gemini key" && seen.length === 1 && await fails(google(NANO_REC), { GEMINI_API_KEY: "" }) === "no Gemini key"
+    && /^Google 429: RESOURCE_EXHAUSTED$/.test(await fails(google({ error: { status: "RESOURCE_EXHAUSTED", message: "quota" } }, 429)))
+    && !(await fails(google({ error: { message: `bad key ${env.GEMINI_API_KEY}` } }, 400))).includes(env.GEMINI_API_KEY)
+    && /sent no picture: SAFETY/.test(await fails(google({ candidates: [{ finishReason: "SAFETY", content: { parts: [{ text: "no" }] } }] })))
+    && /sent no picture: PROHIBITED_CONTENT/.test(await fails(google({ promptFeedback: { blockReason: "PROHIBITED_CONTENT" } })))
+    && /not a picture/.test(await fails(google({ candidates: [{ content: { parts: [{ inlineData: { mimeType: "image/png", data: btoa("this is not a picture at all") } }] } }] })))
+    && /could not be reached/.test(await fails(async () => { throw new TypeError("fetch failed"); }))
+    && /timed out/.test(await fails(async () => { const e = new Error("t"); e.name = "TimeoutError"; throw e; })));
+  check("the call carries its own timeout (a signal), so a Google that never answers is cut off, not left running", sent.init.signal instanceof AbortSignal);
+  check("Nano is a model of its own: isNano is true for it and for nothing else, the default does not change (klein 9B), and a drawing by it is counted at its own price in the budget, an ESTIMATE of $0.05 (over Google's $0.041 computed from usage), under the dearest listed price so no model is counted lower than before", isNano(NANO_MODEL) && !isNano(IMAGE_MODEL) && !isNano("@cf/black-forest-labs/flux-2-dev") && !isNano("gemini-nano-banana-2.1 ") && IMAGE_MODEL === "@cf/black-forest-labs/flux-2-klein-9b" && artCostMicro(NANO_MODEL) === NANO_COST_MICRO && NANO_COST_MICRO === 50000 && NANO_COST_MICRO > 41330 && artCostMicro("@cf/black-forest-labs/flux-2-dev") === 85000 && artCostMicro("@cf/black-forest-labs/flux-1-schnell") === 85000);
 }
 console.log("the look at a drawing, and the redraw (rule 801.2)");
 {
@@ -401,6 +437,61 @@ try {
   check("the draw that was out when the ticket was confirmed finishes as failed (ticket changed) and stores no row; nobody is shown a picture the requester never kept", !!(await until(() => draws(1).length === dr0 + 1 && draws(1)[dr0].state !== "pending")) && draws(1)[dr0].state === "failed" && draws(1)[dr0].reason === "ticket changed" && refs(1).length === r0, J({ lateDraw: lateDraw.status, err: lateDraw.data?.error, draws: draws(1).slice(-2), refs: refs(1).length, r0 }));
   check("and no orphan object row is left for it, and anyone but the requester sees the entry's kept picture as ready, never a failed call (that draw's own end, 'ticket changed', is not shown to anybody)", d1(state, "SELECT COUNT(*) AS n FROM art_objects o WHERE NOT EXISTS (SELECT 1 FROM art_refs r WHERE r.hash = o.hash)")[0].n === 0 && (await Bo.get(`${T}/W1`)).data.ticket.entry_views[0].art.state === "ready" && (await entryArt(1)).state !== "drawing");
   d1(state, `UPDATE tickets SET state = 'Draft' WHERE id = '${tk(1).id}'`);
+
+  console.log("Nano Banana through the Worker, Google's answer stubbed with the recorded one (rules 801.2, 106.7)");
+  const gSeen = [], gState = { mode: "ok" };
+  const googleStub = createServer((req, res) => {
+    let body = ""; req.on("data", (c) => (body += c));
+    req.on("end", () => {
+      gSeen.push({ method: req.method, url: req.url, headers: req.headers, body });
+      const send = (st, o) => { res.writeHead(st, { "content-type": "application/json" }); res.end(J(o)); };
+      if (gState.mode === "500") return send(500, { error: { code: 500, status: "INTERNAL", message: "Internal error" } });
+      if (gState.mode === "refuse") return send(200, { candidates: [{ finishReason: "IMAGE_SAFETY", content: { parts: [] } }], usageMetadata: { promptTokenCount: 140 } });
+      if (gState.mode === "hang") return;   // never answers
+      send(200, NANO_REC);
+    });
+  });
+  const G_PORT = await freePort();
+  await new Promise((r) => googleStub.listen(G_PORT, "127.0.0.1", r));
+  const nanoSrv = (extra = []) => startSrv("", ["IMAGE_MODEL=gemini-nano-banana-2.1", `GEMINI_BASE_URL=http://127.0.0.1:${G_PORT}`, "ART_CHECK_STUB=pass", ...extra]);
+  try {
+    await srv.stop();
+    srv = await nanoSrv(["GEMINI_API_KEY=stub-gemini-key-not-real"]);
+    const nr0 = refs(1).length, nd0 = draws(1).length;
+    const nr = await act(1, { entry: "Frog", action: "redraw" });
+    const landed = await until(() => refs(1).length === nr0 + 1 && draws(1).length === nd0 + 1 && draws(1)[nd0].state === "done");
+    const nh = refs(1)[nr0]?.hash, nobj = nh && d1(state, `SELECT * FROM art_objects WHERE hash = '${nh}'`)[0], ncall = d1(state, "SELECT * FROM agent_calls WHERE purpose = 'art' AND outcome = 'ok' ORDER BY id DESC LIMIT 1")[0];
+    check("with IMAGE_MODEL set to Nano a Redraw is drawn by Google: one draw done, the picture stored once under tmp/<its hash>, its object row names Nano as the model", nr.status === 200 && !!landed && !!nh && nobj?.model === "gemini-nano-banana-2.1" && nobj.content_type === "image/jpeg" && sha(r2Get(state, tmpKey(nh))) === nh, J({ st: nr.status, landed: !!landed, nobj }));
+    check("the draw is logged as art by Nano with Google's own token counts (142 in, 2,122 out) and counted in the month's budget at the Nano estimate", ncall?.model === "gemini-nano-banana-2.1" && ncall.cost_micro === NANO_COST_MICRO && ncall.input_tokens === 142 && ncall.output_tokens === 2122, J(ncall));
+    const gq = gSeen[0], gb = gq && JSON.parse(gq.body);
+    const bodyPaths = (v, at = "") => Array.isArray(v) ? v.flatMap((x) => bodyPaths(x, at + "[]")) : v && typeof v === "object" ? Object.entries(v).flatMap(([k, x]) => bodyPaths(x, at ? `${at}.${k}` : k)) : [at];
+    check("what the Worker sent to Google: one POST, to the model's generateContent path, the key in its header, a body of only the whitelisted fields, and no player, game, ticket or entry identifier in the URL, the headers or the body", gSeen.length === 1 && gq.method === "POST" && gq.url === "/v1beta/models/gemini-nano-banana-2.1:generateContent" && gq.headers["x-goog-api-key"] === "stub-gemini-key-not-real" && J([...new Set(bodyPaths(gb))].sort()) === J(["contents[].parts[].text", "contents[].role", "generationConfig.imageConfig.aspectRatio", "generationConfig.responseModalities[]"]) && !new RegExp([id.Ana, gid, tk(1).id, "ana@example.com", "Ana", "catalogued", "\"Frog\""].join("|")).test(gq.url + J(gq.headers).replace(/"host":"[^"]*"/, "") + gq.body.replace(gb.contents[0].parts[0].text, "")) && gb.contents[0].parts[0].text.length > 20, gq && gq.body.slice(0, 300));
+    check("and the same step after the drawing: the page shows it as the entry's ready drawing", (await entryArt(1)).state === "ready" && (await entryArt(1)).drawings.some((d) => d.hash === nh));
+
+    console.log("a Nano drawing that fails is a failed drawing, with its reason, like any model error");
+    const failReason = async (n) => { const k = draws(1).length; await act(1, { entry: "Frog", action: "redraw" }); return (await until(() => draws(1).length === k + 1 && draws(1)[k].state !== "pending")) && draws(1)[k]; };
+    gState.mode = "500";
+    const d500 = await failReason();
+    check("Google answers 500: the draw is failed with 'Google 500: INTERNAL', nothing stored, the call logged as failed with the same reason, and the page offers the redraw", d500 && d500.state === "failed" && d500.reason === "Google 500: INTERNAL" && d1(state, "SELECT * FROM agent_calls WHERE purpose = 'art' AND outcome = 'failed' AND reason = 'Google 500: INTERNAL'").length === 1 && refs(1).length === nr0 + 1 && (await entryArt(1)).state === "failed", J(d500));
+    gState.mode = "refuse";
+    const dRef = await failReason();
+    check("Google answers with no picture (a safety block): failed, the finish reason is the reason", dRef && dRef.state === "failed" && /^Google sent no picture: IMAGE_SAFETY$/.test(dRef.reason), J(dRef));
+    check("a failed Nano draw costs the budget nothing it did not already: its row is outcome failed with no cost", d1(state, "SELECT COALESCE(SUM(cost_micro), 0) AS c FROM agent_calls WHERE purpose = 'art' AND outcome = 'failed' AND model = 'gemini-nano-banana-2.1'")[0].c === 0);
+
+    console.log("a Nano setting with no key is a failed drawing, not a crash");
+    gState.mode = "ok";
+    await srv.stop();
+    srv = await nanoSrv([]);
+    const gBefore = gSeen.length;
+    const dNo = await failReason();
+    check("no GEMINI_API_KEY: the draw fails with 'no Gemini key', nothing is sent to Google, nothing is stored, and the turn and the page still answer", dNo && dNo.state === "failed" && dNo.reason === "no Gemini key" && gSeen.length === gBefore && refs(1).length === nr0 + 1 && (await entryArt(1)).state === "failed" && d1(state, "SELECT * FROM agent_calls WHERE purpose = 'art' AND outcome = 'failed' AND reason = 'no Gemini key'").length === 1, J(dNo));
+    gState.mode = "hang";
+    const t0h = Date.now(), hung = await runNano({ GEMINI_API_KEY: "k", GEMINI_BASE_URL: `http://127.0.0.1:${G_PORT}` }, { prompt: "x", width: 8, height: 8 }, 1000).then(() => "answered", (e) => e.message);
+    check("a Google that never answers is cut off by the call's own timeout (1 s asked, 'Google timed out'), not left running; the Worker asks for at most DRAW_TIMEOUT_MS (25 s), inside its 27 s budget", hung === "Google timed out" && Date.now() - t0h < 4000 && /Math\.min\(DRAW_TIMEOUT_MS, ms\)\)/.test(readFileSync(pjoin(ROOT, "src/lib/art.ts"), "utf8")), `${hung} ${Date.now() - t0h}ms`);
+    gState.mode = "ok";
+  } finally { googleStub.close(); }
+  await srv.stop();
+  srv = await startSrv("seeded");
 
   console.log("over the month's budget nothing more is drawn (rule 106.7)");
   await srv.stop();
