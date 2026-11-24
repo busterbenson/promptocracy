@@ -99,6 +99,15 @@ console.log("the look at a drawing, and the redraw (rule 801.2)");
     check("read by readVerdict, the recorded answers give what the study measured: DEV fails 25 of 27 drawings a person failed and passes 17 of 20 they passed", dv.caught === 25 && dv.fails === 27 && dv.passed === 17 && dv.passes === 20, J(dv));
     check("HOLDOUT (subjects never tuned on): it fails 9 of 13 and passes 9 of 10; this is BELOW the 90% / 80% bar on fails (a held-out teapot with a kettle's handle and a signpost with one plank still pass), recorded so a later change has to beat it", ho.caught === 9 && ho.fails === 13 && ho.passed === 9 && ho.passes === 10, J(ho));
     check("a recorded 'no' keeps its reason and a recorded 'yes' has none, so the answers read like the live ones", REC.every((r) => (r.check.answer === "yes") === (r.check.reason === "")));
+    // round 2 (art-check2, 11-23): 35 FRESH drawings of six subjects chosen before drawing, judged by a person before any check ran on them
+    {
+      const FR = JSON.parse(readFileSync(pjoin(ROOT, "tests/fixtures/art-check-fresh.json"), "utf8")).rows, seen = new Set(REC.map((r) => r.subject.toLowerCase()));
+      const f = FR.filter((r) => r.human === "F"), p = FR.filter((r) => r.human === "P"), verdict = (r) => readVerdict(J(r.check)).verdict;
+      check("the fresh-set answers were given to the question as it is now: each row's question hash matches checkQuestion(kind, words) (re-record them when the question changes)", FR.length === 35 && FR.every((r) => r.question_sha256 === sha(checkQuestion(r.kind, r.words))));
+      check("the fresh subjects are new: none is a DEV or HOLDOUT subject of the first study, and none of their words appears in the sample fixtures", FR.every((r) => !seen.has(r.subject.toLowerCase()) && !readFileSync(pjoin(ROOT, "tests/fixtures/art-samples.json"), "utf8").toLowerCase().includes(r.subject.toLowerCase())) && new Set(FR.map((r) => r.subject)).size === 6);
+      check("on the fresh set the current look fails 5 of 8 drawings a person failed and passes 26 of 27 they passed: it is BELOW the 90% fail bar (the two it lets through that the person failed for a white plinth under the drawing and one too thin to count at board size); neither Sonnet on the same question nor must-show facts with haiku beat it, so nothing was changed", f.length === 8 && f.filter((r) => verdict(r) === "fail").length === 5 && p.length === 27 && p.filter((r) => verdict(r) === "pass").length === 26, J({ f: f.length, p: p.length }));
+      check("it caught every drawing whose COUNT was wrong (four candles for five, two heads for three, four roofs for five), so a count in the words is read when the count is visible", FR.filter((r) => /FOUR|TWO heads/.test(r.human_reason)).length === 3 && FR.filter((r) => /FOUR|TWO heads/.test(r.human_reason)).every((r) => verdict(r) === "fail"));
+    }
   }
   // a clock the tests move: make() and check() cost what we say
   const clock = (costs) => { let t = 0; const now = () => t; return { now, tick: (n) => { t += n; } }; };
