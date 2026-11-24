@@ -64,7 +64,7 @@ export function validTimeZone(v) {
 }
 
 // The site's own bounds (what it will pay for), not game settings: a passed proposal can lower these two settings, never raise them past here.
-export const GREMLIN_MESSAGES_MAX = 60, PRICE_CEILING_MAX = 100, GREMLIN_THREAD_MAX = 40, STARLING_MESSAGES_MAX = 80;
+export const GREMLIN_MESSAGES_MAX = 200, PRICE_CEILING_MAX = 100, GREMLIN_THREAD_MAX = 40, STARLING_MESSAGES_MAX = 200; // chat caps raised 2026-11-24 so a game can start at 100 a day each (Buster)
 const isInt = (v, lo, hi) => Number.isInteger(v) && v >= lo && v <= hi;
 const isObj = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
 const evenInt = (v, lo, hi) => isInt(v, lo, hi) && v % 2 === 0;
