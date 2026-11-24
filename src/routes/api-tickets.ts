@@ -149,7 +149,7 @@ async function page(ctx: Ctx, r: any, player: any, nowMs: number) {
   }
   // Posting is stopped by the lock alone (rule 107.1), not by End turn.
   let post: { allowed: boolean; reason?: string; locked?: boolean } = canPost(player);
-  if (post.allowed && r.state === "Draft") post = { allowed: false, reason: `W${r.number} is a draft: its discussion opens when it is confirmed.` };   // a draft is talked through with Gremlin in the chat (rule 801.6)
+  if (post.allowed && r.state === "Draft") post = { allowed: false, reason: `W${r.number} is a draft: its discussion opens when it is confirmed (804.2).` };   // a draft is talked through with Gremlin in the chat (rules 801.6, 804.2)
   if (post.allowed) {
     const { game: g, day } = await loadToday(env, game, nowMs);
     if (g.status === "playing" && day && isLocked(g, day, nowMs)) post = { allowed: false, reason: lockMessage(day.n), locked: true };
@@ -387,7 +387,7 @@ export async function addPost(ctx: Ctx, player: any, raw: unknown, body: any, no
   if (!can.allowed) return out({ error: can.reason }, 401);
   const t = await findTicket(env, game.id, raw);
   if (!visible(t, player)) return out({ error: "There is no such ticket." }, 404);
-  if (t.state === "Draft") return out({ error: `W${t.number} is a draft: its discussion opens when it is confirmed.` }, 409);
+  if (t.state === "Draft") return out({ error: `W${t.number} is a draft: its discussion opens when it is confirmed (804.2).` }, 409);
   const r = readPost(body);
   if ("error" in r) return out({ error: r.error }, 400);
   // The lock stops a post like every other write (rule 107.1): read it here for the refusal, and again in the INSERT itself, so a
