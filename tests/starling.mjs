@@ -67,9 +67,9 @@ console.log("the slip shows what a setting change sets (the drafter keeps it out
 
 console.log("her cap, a setting (rule 106.7)");
 {
-  check("starling.messages_per_day is 60 by default, 0-80 are valid, 81 and 2.5 are not", DEFAULT_SETTINGS["starling.messages_per_day"] === 60 && !validateSettings({ ...DEFAULT_SETTINGS, "starling.messages_per_day": 80 }).length && !validateSettings({ ...DEFAULT_SETTINGS, "starling.messages_per_day": 0 }).length &&
-    validateSettings({ ...DEFAULT_SETTINGS, "starling.messages_per_day": 81 }).length === 1 && validateSettings({ ...DEFAULT_SETTINGS, "starling.messages_per_day": 2.5 }).length === 1);
-  check("a game whose stored settings lack it (Rickshaw's today) runs on 60; a stored 99 falls back to 60", getSettings(J({ max_players: 8 }))["starling.messages_per_day"] === 60 && getSettings(J({ "starling.messages_per_day": 99 }))["starling.messages_per_day"] === 60 && getSettings(J({ "starling.messages_per_day": 20 }))["starling.messages_per_day"] === 20);
+  check("starling.messages_per_day is 60 by default, 0-200 are valid, 201 and 2.5 are not", DEFAULT_SETTINGS["starling.messages_per_day"] === 60 && !validateSettings({ ...DEFAULT_SETTINGS, "starling.messages_per_day": 200 }).length && !validateSettings({ ...DEFAULT_SETTINGS, "starling.messages_per_day": 0 }).length &&
+    validateSettings({ ...DEFAULT_SETTINGS, "starling.messages_per_day": 201 }).length === 1 && validateSettings({ ...DEFAULT_SETTINGS, "starling.messages_per_day": 2.5 }).length === 1);
+  check("a game whose stored settings lack it (Rickshaw's today) runs on 60; a stored 999 falls back to 60; 100 is kept", getSettings(J({ max_players: 8 }))["starling.messages_per_day"] === 60 && getSettings(J({ "starling.messages_per_day": 100 }))["starling.messages_per_day"] === 100 && getSettings(J({ "starling.messages_per_day": 999 }))["starling.messages_per_day"] === 60 && getSettings(J({ "starling.messages_per_day": 20 }))["starling.messages_per_day"] === 20);
 }
 
 console.log("her answer: what the platform keeps");
