@@ -626,11 +626,13 @@ button.pill[aria-pressed="true"]{background:color-mix(in srgb,var(--accent) 16%,
 .chatfab{position:fixed;right:16px;bottom:18px;z-index:40;align-items:center;gap:8px;padding:5px 16px 5px 5px;border-radius:999px;border:1.5px solid var(--ink);background:var(--surface);color:var(--ink);box-shadow:3px 3px 0 var(--ink);font-family:var(--font-display);font-weight:var(--display-weight);font-size:1.2rem;min-height:52px;cursor:pointer}
 .chatfab .por{width:40px;height:40px}.chatfab .por svg{width:36px;height:36px}
 @media (min-width:900px){
-  .bwrap[data-chat="open"]{display:grid;grid-template-columns:minmax(0,1fr) 400px;gap:0 8px;align-items:start}
-  /* The open window is pinned to the bottom of the browser window, not to its column: the column only holds its place in the grid, and the window is fixed
-     (its left edge is the column's, from the static position). Capped to the viewport less the site bar (72px), so the bell and account stay reachable and its header, with Minimize, is always in view; the log scrolls inside. */
-  .bwrap[data-chat="open"] .chatcol{display:block;padding:0 16px 0 0}
-  .bwrap[data-chat="open"] .chat{position:fixed;bottom:6px;z-index:30;width:384px;height:min(820px,calc(100vh - 78px));height:min(820px,calc(100dvh - 78px))}
+  /* The open window is pinned to the bottom of the browser window, not to a column: it is fixed at the right edge, and the whole page (header, board, day
+     panel, book) gives it room with a right padding while it is open (body.chat-docked, set by chat.js), so nothing interactive is ever under it.
+     Capped to the viewport less the site bar (72px), so the bell and account stay reachable and its header, with Minimize, is always in view; the log scrolls inside. */
+  body.chat-docked{padding-right:408px}
+  body.chat-docked .tklist{grid-template-columns:repeat(2,minmax(0,1fr))}   /* the day panel is 408px narrower: two by two, so no step is squeezed */
+  .bwrap[data-chat="open"] .chatcol{display:block}
+  .bwrap[data-chat="open"] .chat{position:fixed;right:16px;bottom:6px;z-index:30;width:384px;height:min(820px,calc(100vh - 78px));height:min(820px,calc(100dvh - 78px))}
   .bwrap[data-chat="min"] .chatfab{display:inline-flex}
 }
 @media (max-width:899.98px){

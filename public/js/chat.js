@@ -258,6 +258,7 @@ ${sl.kind !== "action" && (sl.after_text || sl.before_text) ? `<div class="tx cd
     if (col) col.hidden = !on;
     if (on) drawFab();
     document.body.classList.toggle("chat-sheet", !!(on && S.sheet && !desktop()));
+    document.body.classList.toggle("chat-docked", !!(on && S.open && desktop()));   // the page makes room for the open column (site.css)
   }
   /** Called when the tab or the player changes. @rule 106.3 */
   async function sync(tab, reread) {
