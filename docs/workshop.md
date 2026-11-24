@@ -23,7 +23,7 @@ One page per commission, opened from the Workshop list or any pill that names it
 |---|---|---|
 | Title, number (W1, W2...) | | Gremlin drafts, the player confirms |
 | Requester | player pill | |
-| State | Draft → Proposed (on the ballot) → Ready (passed, the requester can't pay the whole price yet) → Approved (in the queue) → Building → Done; or Refused, Failed, Shelved. Refused and Failed tickets can be reopened as drafts by their requester (same number); Shelved stays closed | the site |
+| State | Draft → Proposed (on the ballot) → Ready (passed, the requester can't pay the whole price yet) → Approved (in the queue) → Building → Done; or Refused, Failed, Shelved. Refused and Failed tickets can be reopened as drafts by their requester (same number); Shelved stays closed. A draft its requester discards (801.8) is Shelved, and stays private to them. Lock it in waits for Gremlin's draft: `tickets.drafted` is 1 once he has written a price (801.7) | the site |
 | Brief | what it is and what it does, in plain words | Gremlin, from the conversation |
 | Makes | the catalog entries and rules it will add or change, as pills (dimmed until live) | Gremlin drafts, Chalant finalizes at build time |
 | Estimate | nights | Gremlin's guess; Chalant can revise once building starts |

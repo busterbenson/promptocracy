@@ -23,10 +23,11 @@ check("fields are read only when present; limits are enforced: title 80, brief 2
   J(readFields({ title: "  A  dragon ", estimate: "3", tasks: ["a", " ", { text: "b" }] }).fields) === J({ title: "A dragon", estimate: 3, tasks: ["a", "b"] }) &&
   "error" in readFields({ title: "x".repeat(81) }) && "error" in readFields({ brief: "x".repeat(2001) }) && "error" in readFields({ estimate: 0 }) && "error" in readFields({ estimate: 1.5 }) &&
   "error" in readFields({ estimate: 100 }) && "error" in readFields({ tasks: Array.from({ length: 21 }, () => "t") }) && "error" in readFields({ tasks: "no" }) && "error" in readFields(null));
-check("a draft can be confirmed only with a title, a brief, and (801.3) something to make; naming nothing is a refusal, not just an unfinished form",
-  confirmProblem({ title: "", brief: "b", makes: [{}] }).refuse !== true && confirmProblem({ title: "t", brief: " ", makes: [{}] }).refuse !== true &&
-  confirmProblem({ title: "t", brief: "b", makes: "[]" }).refuse === true && /names nothing to make/.test(confirmProblem({ title: "t", brief: "b", makes: [] }).error) &&
-  confirmProblem({ title: "t", brief: "b", makes: '[{"kind":"entry","name":"x"}]' }) === null);
+check("a draft can be confirmed only with a title, a brief, Gremlin's draft (801.7) and (801.3) something to make; naming nothing is a refusal, not just an unfinished form",
+  confirmProblem({ title: "", brief: "b", drafted: 1, makes: [{}] }).refuse !== true && confirmProblem({ title: "t", brief: " ", drafted: 1, makes: [{}] }).refuse !== true &&
+  confirmProblem({ title: "t", brief: "b", drafted: 1, makes: "[]" }).refuse === true && /names nothing to make/.test(confirmProblem({ title: "t", brief: "b", drafted: 1, makes: [] }).error) &&
+  confirmProblem({ title: "t", brief: "b", drafted: 0, makes: '[{"kind":"entry","name":"x"}]' }).error === "Gremlin hasn't drafted it yet." && confirmProblem({ title: "t", brief: "b", drafted: 0, makes: '[{"kind":"entry","name":"x"}]' }).refuse !== true &&
+  confirmProblem({ title: "t", brief: "b", drafted: 1, makes: '[{"kind":"entry","name":"x"}]' }) === null);
 check("anyone signed in to the game can post (a visitor can't); a post is 1 to 2000 characters", canPost({ id: "p" }).allowed && !canPost(null).allowed && readPost({ body: "  hi " }).body === "hi" && "error" in readPost({ body: " " }) && "error" in readPost({ body: "x".repeat(LIMITS.post + 1) }));
 
 // ---------------------------------------------------------------- end to end
@@ -69,6 +70,7 @@ try {
   const sq = (v) => (typeof v === "number" ? String(v) : `'${String(v).replace(/'/g, "''")}'`);
   const gset = (n, f) => {
     const num = Number(String(n).replace(/\D/g, ""));
+    d1(state, `UPDATE tickets SET drafted = 1 WHERE game_id = '${gid}' AND number = ${num}`);   // his turn sets the marker with his price (rule 801.7)
     const sets = ["estimate", "running_cost"].filter((k) => k in f).map((k) => `${k} = ${sq(f[k])}`);
     if ("makes" in f) sets.push(`makes = ${sq(J(f.makes))}`);
     if (sets.length) d1(state, `UPDATE tickets SET ${sets.join(", ")} WHERE game_id = '${gid}' AND number = ${num}`);
@@ -128,13 +130,21 @@ try {
       Ana.post(`${T}/W1/edit`, { estimate: 2, running_cost: "x", tasks: ["a"] }),
     ]);
     check("a requester can't set the nights, running cost, tasks, price or rules by hand: 403 with the rule that says whose they are, and nothing is written",
-      no.every((r) => r.status === 403) && /^The nights is Gremlin's to set \(rule 801\.2\)/.test(no[0].data.error) && /^The running cost is/.test(no[1].data.error) && /^The tasks is/.test(no[2].data.error) && /^The nights is/.test(no[3].data.error) &&
-      /^The price is Gremlin's to set \(rule 801\.4\)/.test(no[4].data.error) && /^The rules it makes are Gremlin's to set \(rule 801\.2\)/.test(no[5].data.error) && /^The nights, the running cost and the tasks are Gremlin's/.test(no[6].data.error) &&
+      no.every((r) => r.status === 403) && /^The nights is Gremlin's to set \(rule 801\.7\)/.test(no[0].data.error) && /^The running cost is/.test(no[1].data.error) && /^The tasks is/.test(no[2].data.error) && /^The nights is/.test(no[3].data.error) &&
+      /^The price is Gremlin's to set \(rule 801\.7\)/.test(no[4].data.error) && /^The rules it makes are Gremlin's to set \(rule 801\.7\)/.test(no[5].data.error) && /^The nights, the running cost and the tasks are Gremlin's/.test(no[6].data.error) && no.every((r) => /\(rule 801\.7\)/.test(r.data.error) && !/801\.[24]\)/.test(r.data.error)) &&
       was === J({ e: tk(1).estimate, c: tk(1).running_cost, m: tk(1).makes, p: tk(1).price, pr: tk(1).price_reason, t: tk(1).title }) && d1(state, `SELECT COUNT(*) AS n FROM ticket_tasks WHERE ticket_id = '${tk(1).id}'`)[0].n === 0, no.map((r) => r.status + " " + (r.data?.error || "")).join(" | "));
   }
   check("another player's draft can't be edited (404), nor can a visitor's request (401)", (await Bo.post(`${T}/W1/edit`, { title: "mine now" })).status === 404 && (await visitor.post(`${T}/W1/edit`, { title: "x" })).status === 401 && tk(1).title === "");
+  {
+    // Lock it in waits for Gremlin's draft (rule 801.7): a draft he never wrote (no price from him) can't be confirmed, in the server and on the page
+    const fresh = await Ana.get(`${T}/W1`);
+    check("a draft Gremlin never drafted says so: drafted false, Lock it in not allowed with the reason, Save and Discard allowed", fresh.data.ticket.drafted === false && fresh.data.ticket.can.confirm.allowed === false && fresh.data.ticket.can.confirm.reason === "Gremlin hasn't drafted it yet." && fresh.data.ticket.can.edit.allowed === true && fresh.data.ticket.can.discard.allowed === true, fresh.text);
+    await Ana.post(`${T}/W1/edit`, { title: "A dragon", brief: "A dragon that sleeps on the north hill.", makes: [{ kind: "entry", name: "Dragon" }] });
+    const k0 = await Ana.post(`${T}/W1/confirm`, {});
+    check("and the confirm route refuses it too (400) whatever the page shows: no proposal, the ticket still a draft", k0.status === 400 && /Gremlin hasn't drafted it yet/.test(k0.data.error) && tk(1).state === "Draft" && tk(1).proposal_id === null && d1(state, "SELECT COUNT(*) AS n FROM proposals WHERE kind = 'commission'")[0].n === 0, k0.text);
+  }
   const ed = await fill(Ana, "W1", good({ title: "Placeholder" }));
-  check("edit writes the fields and the tasks in order, and the page shows them", ed.status === 200 && ed.data.ticket.title === "Placeholder" && J(ed.data.ticket.makes) === J(good().makes) && ed.data.ticket.estimate === 2 && ed.data.ticket.tasks.map((t) => t.text).join("|") === "Draw the dragon|Give it a tile" && ed.data.ticket.can.confirm.allowed === true, ed.text);
+  check("edit writes the fields and the tasks in order, and the page shows them", ed.status === 200 && ed.data.ticket.title === "Placeholder" && J(ed.data.ticket.makes) === J(good().makes) && ed.data.ticket.estimate === 2 && ed.data.ticket.tasks.map((t) => t.text).join("|") === "Draw the dragon|Give it a tile" && ed.data.ticket.can.confirm.allowed === true && ed.data.ticket.drafted === true, ed.text);
   const ed2 = await fill(Ana, "W1", { title: "A dragon", tasks: ["Only one"] });
   check("an edit changes only the fields it names; Gremlin's tasks are replaced as a list", ed2.data.ticket.title === "A dragon" && ed2.data.ticket.brief.startsWith("A dragon that") && ed2.data.ticket.tasks.length === 1);
   const ed3 = await Ana.post(`${T}/W1/edit`, { title: "A dragon", brief: ed2.data.ticket.brief, makes: JSON.parse(tk(1).makes) });
@@ -215,6 +225,7 @@ try {
   check("the proposal row: kind commission, scope block, target 800, mark majority, ballot day 2, titled and worded from the ticket; the ticket points at it",
     p1.kind === "commission" && p1.scope === "block" && p1.target === "800" && p1.mark === "majority" && p1.day_ballot === 2 && p1.status === "confirmed" && p1.title === "A dragon" && p1.words.startsWith("A dragon that") && tk(3).proposal_id === d1(state, "SELECT id FROM proposals WHERE number = 1")[0].id && tk(3).state === "Proposed");
   check("the ticket log says it was put on the ballot; a proposed ticket can't be edited (409)", d1(state, `SELECT text FROM ticket_log WHERE ticket_id = '${tk(3).id}'`).map((r) => r.text).join() === "Put on tomorrow's ballot as P1." && (await Ana.post(`${T}/W3/edit`, { title: "x" })).status === 409);
+  { const r = await Ana.post(`${T}/W3/discard`, {}); check("a confirmed ticket can't be discarded (409, rule 801.8: only a draft): it stays Proposed on its ballot; withdrawing it is the proposal's (103.3)", r.status === 409 && tk(3).state === "Proposed" && tk(3).proposal_id !== null, r.text); }
   const mineList = (await Ana.get("/wk/api/proposals")).data;
   const hidden = (await Bo.get("/wk/api/proposals")).data;
   check("it is hidden from others until it is on the ballot (like any proposal), and Ana sees her own with its ticket", hidden.proposals.length === 0 && mineList.proposals.length === 1 && mineList.proposals[0].kind === "commission" && mineList.proposals[0].ticket.n === "W3");
@@ -518,7 +529,7 @@ try {
   {
     const lc = (await Bo.get(T)).data;
     check("the default list holds only live tickets (own drafts, Proposed, Ready, Approved, Building) and at most 5 closed ones, and says how many there are in all", lc.total === d1(state, `SELECT COUNT(*) AS n FROM tickets WHERE state != 'Draft' OR player_id = '${id.Bo}'`)[0].n && lc.tickets.filter((t) => ["Done", "Refused", "Failed", "Shelved"].includes(t.state)).length <= 5 && lc.counts.Approved >= 3, J(lc.counts));
-    d1(state, `WITH RECURSIVE c(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM c WHERE i < 120) INSERT INTO tickets (id, game_id, number, player_id, title, state, created_at, updated_at) SELECT 'bulk' || i, '${gid}', 1000 + i, '${id.Ana}', 'Bulk ' || i, CASE WHEN i % 2 = 0 THEN 'Done' ELSE 'Shelved' END, '2026-10-01T00:00:00.000Z', '2026-10-' || printf('%02d', 1 + i / 10) || 'T00:00:00.000Z' FROM c`);
+    d1(state, `WITH RECURSIVE c(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM c WHERE i < 120) INSERT INTO tickets (id, game_id, number, player_id, title, state, created_at, proposed_at, updated_at) SELECT 'bulk' || i, '${gid}', 1000 + i, '${id.Ana}', 'Bulk ' || i, CASE WHEN i % 2 = 0 THEN 'Done' ELSE 'Shelved' END, '2026-10-01T00:00:00.000Z', '2026-10-01T00:00:00.000Z', '2026-10-' || printf('%02d', 1 + i / 10) || 'T00:00:00.000Z' FROM c`);
     const p1 = (await visitor.get(`${T}?all=1`)).data;
     check("All tickets, page 1: 50 rows, newest change first, with a cursor for the next; a visitor sees it (public)", p1.tickets.length === 50 && !!p1.next && p1.tickets[0].changed_at >= p1.tickets[49].changed_at && p1.total >= 120, J([p1.tickets.length, p1.next, p1.total]));
     const p2 = (await visitor.get(`${T}?all=1&cursor=${encodeURIComponent(p1.next)}`)).data, p3 = (await visitor.get(`${T}?all=1&cursor=${encodeURIComponent(p2.next)}`)).data;
@@ -534,6 +545,25 @@ try {
     check("with 120 commissions the proposals list still loads and every one carries its ticket (no query binds more than 100 values)", many.status === 200 && withTicket.length === 120, J([many.status, withTicket.length, many.data?.error]));
     d1(state, `UPDATE tickets SET proposal_id = NULL WHERE id LIKE 'bulk%'; DELETE FROM proposals WHERE id LIKE 'bulkp%'`);
     d1(state, `DELETE FROM tickets WHERE id LIKE 'bulk%'`);
+  }
+  console.log("801.8: discarding a draft");
+  {
+    const o = await Cy.post(T, {});
+    const n = o.data?.ticket, row = () => d1(state, `SELECT * FROM tickets WHERE game_id = '${gid}' AND number = ${Number(String(n).replace(/\D/g, ""))}`)[0];
+    check("Cy opens a blank draft; the page offers Discard to him", o.status === 200 && row().state === "Draft" && (await Cy.get(`${T}/${n}`)).data.ticket.can.discard.allowed === true);
+    const other = await Ana.post(`${T}/${n}/discard`, {}), vis = await visitor.post(`${T}/${n}/discard`, {});
+    check("nobody else can discard it: another player gets 404, a visitor 401; it is still a draft", other.status === 404 && vis.status === 401 && row().state === "Draft");
+    const d = await Cy.post(`${T}/${n}/discard`, {});
+    check("the requester discards it: 200, Shelved with decided_at, one log line, never put on a ballot", d.status === 200 && d.data.ticket.state === "Shelved" && !!row().decided_at && !row().proposed_at && row().proposal_id === null
+      && d1(state, `SELECT text FROM ticket_log WHERE ticket_id = '${row().id}'`).map((r) => r.text).join() === "Discarded by its requester.", d.text);
+    const lists = [await visitor.get(`${T}?all=1`), await visitor.get(T), await Ana.get(T), await Cy.get(`${T}?all=1`), await Cy.get(T)];
+    const shelved = d1(state, "SELECT COUNT(*) AS n FROM tickets WHERE state = 'Shelved' AND proposed_at IS NOT NULL")[0].n;
+    check("it is gone from every list, its requester's too, and from the counts; its page is private to him (rule 801.8: the draft was never public): 404 for another player, readable by number for Cy",
+      lists.every((r) => r.data.tickets.every((t) => t.n !== n) && (r.data.counts.Shelved ?? 0) === shelved) && (await Ana.get(`${T}/${n}`)).status === 404 && (await Cy.get(`${T}/${n}`)).status === 200, J(lists.map((r) => r.data.counts)));
+    const again = await Cy.post(`${T}/${n}/discard`, {}), edit = await Cy.post(`${T}/${n}/edit`, { title: "back" }), conf = await Cy.post(`${T}/${n}/confirm`, {}), reo = await Cy.post(`${T}/${n}/reopen`, {});
+    check("a discarded ticket is closed: discard again, edit, confirm and reopen are all 409 and change nothing", [again, edit, conf, reo].every((r) => r.status === 409) && row().state === "Shelved" && row().title === "");
+    const o2 = await Cy.post(T, {});
+    check("and he can open a new blank draft: the discarded one no longer blocks it, and its number is not reused", o2.status === 200 && o2.data.existing === false && o2.data.ticket !== n);
   }
 } catch (e) {
   fail++; console.log("  FAIL  harness:", e?.stack || e);

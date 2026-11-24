@@ -16,6 +16,7 @@
 // Nothing here decides what is allowed: the server's answers (the cap, the lock, a refusal) are shown as they come.
 
 import { diffOf } from "./propose.js";
+import { nightsOf, pointsOf } from "./commission.js";
 
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
@@ -113,8 +114,8 @@ export function createChat({ api, root, me, slug, agent = AGENTS.gremlin, rpill,
     return `<section class="slip${refused ? " refused" : ""}" aria-label="${esc(t.n)}">${stamp}
 <div class="hd">${wpill(t.n)}<b>${esc(t.title || "Untitled")}</b></div>
 ${refused ? `<div class="tx">${esc(last.refusal)}</div>` : ""}
-<dl><dt>Makes</dt><dd>${makes ? `<span class="makes">${makes}</span>` : "Nothing"}</dd><dt>Estimate</dt><dd>${esc(`${t.estimate} ${t.estimate === 1 ? "night" : "nights"}`)}</dd>
-<dt>Price</dt><dd>${esc(`${t.price} ${t.price === 1 ? "point" : "points"}`)}${t.price_reason ? `<span class="cwhy"> · ${esc(t.price_reason)}</span>` : ""}</dd></dl>
+<dl><dt>Makes</dt><dd>${makes ? `<span class="makes">${makes}</span>` : "Nothing"}</dd><dt>Nights</dt><dd>${esc(nightsOf(t))}</dd>
+<dt>Price</dt><dd>${esc(pointsOf(t))}${t.price_reason ? `<span class="cwhy"> · ${esc(t.price_reason)}</span>` : ""}</dd></dl>
 <div class="act"><button type="button" class="linkbtn" data-ticket="${esc(t.n)}" aria-haspopup="dialog">Open ${esc(t.n)}${(t.entry_views || []).some((v) => v.art && v.art.drawings && v.art.drawings.length) ? ": all drawings" : ""} ›</button></div></section>`;
   }
 

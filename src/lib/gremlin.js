@@ -136,7 +136,7 @@ PRICES. You set the price in points when you draft, with a one-line reason (${PR
 
 FORMAT. Reply with JSON only, in exactly this shape, every key present every time:
 ${ANSWER_SHAPE}
-"say" is what you tell the player (at most ${SAY_MAX} characters, plain text, no links, no markup; rule numbers like 801.2 are fine). "ticket" holds the fields you are changing now: an empty value ("" for text, 0 for estimate and price points, [] for a list) leaves that field as it is, and you cannot clear a field (the player does that). "makes" is the COMPLETE list when you send it, each item shaped like this (an entry fills "name", "catalogKind", "attrs", "flavor", "needsBuild", "art"; a rule fills "num" or "draft"; the rest stay empty):
+"say" is what you tell the player (at most ${SAY_MAX} characters, plain text, no links, no markup; rule numbers like 801.2 are fine). "ticket" holds the fields you are changing now: an empty value ("" for text, 0 for estimate and price points, [] for a list) leaves that field as it is. To empty the running cost or the tasks (the player cannot, they are yours), send "${CLEAR}" as the running cost, or as the only task: ["${CLEAR}"]. "makes" is the COMPLETE list when you send it, each item shaped like this (an entry fills "name", "catalogKind", "attrs", "flavor", "needsBuild", "art"; a rule fills "num" or "draft"; the rest stay empty):
 ${MAKES_SHAPE}
 "price" is {"points": ..., "reason": ...}: leave both empty (0 and "") when you are not setting a price. "escalate" has "category": "none" and an empty "reason" unless you are kicking something upstairs. "refusal" is empty unless you refuse. Limits: title ${LIMITS.title} characters, brief ${LIMITS.brief}, ${LIMITS.makes} things made, ${LIMITS.tasks} tasks of ${LIMITS.task} characters, running cost ${LIMITS.running_cost}. If a field was rejected last turn, the reason is in the ticket notes: fix it and tell the player in your own words.
 
@@ -241,6 +241,12 @@ const escalateSchema = () => ({
   properties: { category: { type: "string", enum: [...ESCALATION_CATEGORIES, ESCALATE_NONE] }, reason: { type: "string" } },
   required: ["category", "reason"], additionalProperties: false,
 });
+/**
+ * The word he sends to EMPTY the running cost (as the value) or the tasks (as the only task): an empty value leaves a field as it is, and the requester
+ * can't clear it by hand (rule 801.7), so without this nobody could. A sentinel inside the existing fields, not a new schema property: the schema is at the
+ * size the live API was measured to accept. @rule 801.7
+ */
+export const CLEAR = "CLEAR";
 /** An object schema whose every property is required. @rule 801.2 */
 const allRequired = (properties) => ({ type: "object", properties, required: Object.keys(properties), additionalProperties: false });
 /** The JSON schema the answer is constrained to (output_config.format). The platform still validates meaning. @rule 801.2 */
@@ -368,6 +374,9 @@ export function readGremlinAnswer(text, ctx) {
     for (const k of ["title", "brief", "estimate", "running_cost", "tasks"]) {
       if (!(k in t) || t[k] === null) continue;
       // an empty value leaves the field as it is: with the schema he may send every property, and an empty one must not wipe what the player wrote
+      // the one word CLEAR empties the running cost, or the tasks when it is the only task (rule 801.7)
+      if (k === "running_cost" && oneLine(t[k]) === CLEAR) { patch.running_cost = ""; continue; }
+      if (k === "tasks" && Array.isArray(t[k]) && t[k].length === 1 && oneLine(typeof t[k][0] === "string" ? t[k][0] : t[k][0]?.text) === CLEAR) { patch.tasks = []; continue; }
       if ((k === "title" || k === "brief" || k === "running_cost") && !oneLine(t[k]) || k === "estimate" && (t[k] === "" || t[k] === 0) || k === "tasks" && Array.isArray(t[k]) && !t[k].length) continue;
       const r = readFields({ [k]: t[k] });
       if ("error" in r) rejected.push(`${k}: ${r.error}`); else patch[k] = r.fields[k];

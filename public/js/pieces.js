@@ -94,6 +94,17 @@ export function creatureSVG(c, { scale = 1.1, part = "" } = {}) {
   return CREATURE_PIECES.includes(key) ? pieceSVG({ shape: key, color: null, scale, part }) : null;
 }
 
+// A creature's board piece as a picture for a card (the catalog card, the Makes card): the same traced art the board draws, standing on
+// nothing, cropped to the figure. For a creature with no saved drawing; null when it has no piece (looked up by name, any case).
+// @rule 701.1
+export function creatureThumb(name) {
+  const key = String(name || "").trim().toLowerCase();
+  if (!CREATURE_PIECES.includes(key)) return null;
+  ensureDefs();
+  const u = HEIGHT / CANVAS.tall * (FIT[key] || 1), half = (HALF_WIDTH[key] || 150) * u * SHADOW.soft, top = HEIGHT * (FIT[key] || 1) * 1.05;
+  return `<svg class="piecethumb" viewBox="${(-half).toFixed(2)} ${(-top).toFixed(2)} ${(half * 2).toFixed(2)} ${(top + half * HH / HW).toFixed(2)}" role="img" aria-label="${key.charAt(0).toUpperCase() + key.slice(1)}" focusable="false">${pieceSVG({ shape: key, color: null, scale: 1, clip: false })}</svg>`;
+}
+
 // A flat tile (for the join picker and the landing page): a charted tile at the page's colors.
 export function tileSVG() {
   const D = DEPTH, l = [[-HW, 0], [0, HH], [0, HH + D], [-HW, D]], r = [[0, HH], [HW, 0], [HW, D], [0, HH + D]], top = [[-HW, 0], [0, -HH], [HW, 0], [0, HH]];

@@ -19,7 +19,7 @@
 import { getPlayer } from "../lib/auth";
 import { clockNow, dayOpenBinds, dayOpenSql, isLocked, loadToday, lockMessage, timeZoneOf } from "../lib/day";
 import { lockOpenBinds, lockOpenSql } from "../lib/day-gate.js";
-import { CLOSED_STATES, COMMISSION_DRAFT_SQL, EDIT_GUARD, LIVE_STATES, OPEN_DRAFT_SQL, PAGE, RECENT_CLOSED, REOPEN_SQL, STATES, UNLINK_STRAY_SQL, WORKSHOP_RULE, canPost, confirmProblem, handEditRefusal, readCursor, readFields, readPost, ticketNumber } from "../lib/tickets.js";
+import { CLOSED_STATES, COMMISSION_DRAFT_SQL, EDIT_GUARD, NOT_DRAFTED, LIVE_STATES, OPEN_DRAFT_SQL, PAGE, RECENT_CLOSED, REOPEN_SQL, STATES, UNLINK_STRAY_SQL, WORKSHOP_RULE, canPost, confirmProblem, handEditRefusal, readCursor, readFields, readPost, ticketNumber } from "../lib/tickets.js";
 import { NO_BUILD_REASON, hasBuild } from "../lib/gremlin.js";
 import { refusalBody, turnBlock } from "../lib/turn";
 import { COLS, FROM, ticketView } from "../lib/ticket-view";
@@ -41,7 +41,9 @@ async function findTicket(env: Ctx["env"], gameId: string, raw: unknown) {
 }
 // A draft is its requester's alone to see.
 /** @rule 801.2 */
-const visible = (r: any, player: any) => r && (r.state !== "Draft" || (!!player && r.player_id === player.id));
+// A draft is its requester's alone, and so is a draft they discarded (a Shelved ticket that never went on a ballot, rule 801.8).
+const privateTo = (r: any) => r.state === "Draft" || (r.state === "Shelved" && !r.proposed_at);
+const visible = (r: any, player: any) => r && (!privateTo(r) || (!!player && r.player_id === player.id));
 
 // GET /api/tickets
 /** @rule 801.2 */
@@ -51,7 +53,7 @@ export const get = async (ctx: Ctx) => {
   const player = await getPlayer(env, request, game);
   const url = new URL(request.url);
   const me = player?.id ?? "";
-  const seen = "(t.state != 'Draft' OR t.player_id = ?)"; // other players' drafts are never listed
+  const seen = "(NOT (t.state = 'Shelved' AND t.proposed_at IS NULL) AND (t.state != 'Draft' OR t.player_id = ?))"; // other players' drafts are never listed, and a discarded draft is listed for no one (its own requester can still open it by its number)
   const counted = (await env.DB.prepare(`SELECT t.state AS state, COUNT(*) AS n FROM tickets t WHERE t.game_id = ? AND ${seen} GROUP BY t.state`).bind(game.id, me).all()).results as any[];
   const counts: Record<string, number> = {};
   for (const r of counted) counts[r.state] = r.n;
@@ -76,8 +78,8 @@ export const get = async (ctx: Ctx) => {
      ORDER BY CASE t.state ${LIVE_STATES.map((s, i) => `WHEN '${s}' THEN ${i}`).join(" ")} END, t.number DESC LIMIT 100`,
   ).bind(game.id, me).all()).results as any[];
   const closed = (await env.DB.prepare(
-    `SELECT ${COLS} ${FROM} WHERE t.game_id = ? AND t.state IN (${CLOSED_STATES.map((s) => `'${s}'`).join(",")}) ORDER BY t.updated_at DESC, t.number DESC LIMIT ${RECENT_CLOSED}`,
-  ).bind(game.id).all()).results as any[];
+    `SELECT ${COLS} ${FROM} WHERE t.game_id = ? AND ${seen} AND t.state IN (${CLOSED_STATES.map((s) => `'${s}'`).join(",")}) ORDER BY t.updated_at DESC, t.number DESC LIMIT ${RECENT_CLOSED}`,
+  ).bind(game.id, me).all()).results as any[];
   return json({ tickets: [...live, ...closed].map((r) => ticketView(r, player?.id)), total, counts });
 };
 
@@ -120,10 +122,14 @@ async function page(ctx: Ctx, r: any, player: any, nowMs: number) {
     ).bind(r.id).all(),
   ]);
   let edit: { allowed: boolean; reason?: string } = { allowed: false };
+  let confirm = edit, discard = edit;
   if (player && r.player_id === player.id && r.state === "Draft") {
     const { game: g, day, turn } = await loadToday(env, game, nowMs, player.id);
     const b = turnBlock(g, day, turn, player, "propose", nowMs);
     edit = b ? { allowed: false, reason: b.error } : { allowed: true };
+    // Lock it in waits for Gremlin's draft (rule 801.7); the edit and the discard do not
+    confirm = b ? edit : r.drafted ? edit : { allowed: false, reason: NOT_DRAFTED };
+    discard = edit;
   }
   let reopen: { allowed: boolean; reason?: string } = { allowed: false };
   if (player && r.player_id === player.id && (r.state === "Refused" || r.state === "Failed")) {
@@ -160,7 +166,7 @@ async function page(ctx: Ctx, r: any, player: any, nowMs: number) {
       id: x.id, at: x.at, body: x.body, author: x.author_kind, reply_to: x.reply_to ?? null,
       by: x.author_kind === "player" && x.name ? { name: x.name, color: colorOf(x.color) } : undefined,
     })),
-    can: { edit, confirm: edit, post, reopen },
+    can: { edit, confirm, discard, post, reopen },
   };
 }
 
@@ -209,14 +215,14 @@ export async function mine(ctx: Ctx, player: any, raw: unknown, nowMs: number): 
 }
 
 // POST /api/tickets/<W3>/edit
-/** @rule 801.2, 801.4 */
+/** @rule 801.2, 801.7 */
 export async function edit(ctx: Ctx, player: any, raw: unknown, body: any, nowMs: number): Promise<Out> {
   const { env } = ctx;
   const m = await mine(ctx, player, raw, nowMs);
   if ("status" in m) return m;
   const { t, game } = m;
   const cat = catalogFor(game);
-  // The nights, the running cost, the tasks, the rules it makes and the price are Gremlin's (rules 801.2, 801.4): a hand edit of them is refused.
+  // The nights, the running cost, the tasks, the rules it makes and the price are Gremlin's (rule 801.7): a hand edit of them is refused.
   const refused = handEditRefusal(body, t.makes, { registry: cat.registry, required: cat.required });
   if (refused) return out({ error: refused }, 403);
   const r = readFields(body, { registry: cat.registry, required: cat.required });
@@ -252,10 +258,11 @@ export async function pageOf(ctx: Ctx, raw: unknown, player: any, nowMs: number)
 // not tied to a proposal, the whole day gate re-checked in the write), so he can never write an approved ticket, write during the lock, or
 // write after End turn. `patch` is what readGremlinAnswer returned: the only route by which `price` and `price_reason` are ever written
 // (readFields, the player's reader, does not read them). Returns whether it landed.
-/** @rule 801.2, 801.4, 106.3, 107.1, 202.4 */
+/** @rule 801.2, 801.4, 801.7, 106.3, 107.1, 202.4 */
 export async function gremlinWrite(env: Ctx["env"], game: any, player: any, t: any, patch: Record<string, any>, nowMs: number): Promise<boolean> {
   const sets: string[] = [], binds: unknown[] = [];
   for (const k of ["title", "brief", "estimate", "running_cost", "price", "price_reason"]) if (k in patch) { sets.push(`${k} = ?`); binds.push(patch[k]); }
+  if ("price" in patch) sets.push("drafted = 1");   // a price is his draft done: Lock it in opens and the nights and price show (rule 801.7)
   if ("makes" in patch) { sets.push("makes = ?"); binds.push(JSON.stringify(patch.makes)); }
   const f = patch as any;
   if (!sets.length && !("tasks" in f)) return true;   // nothing to write is not a failed write
@@ -342,6 +349,24 @@ export async function reopen(ctx: Ctx, player: any, raw: unknown, nowMs: number)
   return out({ ok: true, ticket: await page(ctx, fresh, player, nowMs) });
 }
 
+// POST /api/tickets/<W3>/discard: your own commission, while it's still a draft (rule 801.8). It is Shelved, the state a closed ticket that
+// can't be reopened has; the number stays used and its log and thread stay. Like every write of the day it re-checks the day gate in the write.
+/** @rule 801.8, 107.1 */
+export async function discard(ctx: Ctx, player: any, raw: unknown, nowMs: number): Promise<Out> {
+  const { env } = ctx;
+  const m = await mine(ctx, player, raw, nowMs);
+  if ("status" in m) return m;
+  const { t, game } = m;
+  const now = nowIso(nowMs);
+  const res = await env.DB.batch([
+    env.DB.prepare(`UPDATE tickets SET state = 'Shelved', decided_at = ?, updated_at = ? WHERE ${EDIT_GUARD}`).bind(now, now, t.id, player.id, ...dayOpenBinds(game.day, nowMs, player.id)),
+    env.DB.prepare("INSERT INTO ticket_log (ticket_id, day, kind, text, at) SELECT id, ?, 'shelved', 'Discarded by its requester.', ? FROM tickets WHERE id = ? AND state = 'Shelved' AND updated_at = ?").bind(game.day, now, t.id, now),
+  ]);
+  if (!(res[0]?.meta?.changes > 0)) return out({ error: "The day changed under you. Reload and try again." }, 409);
+  const fresh = await findTicket(env, game.id, t.number);
+  return out({ ok: true, ticket: await page(ctx, fresh, player, nowMs) });
+}
+
 // POST /api/tickets/<W3>/post: anyone in the game (rule 804.1).
 /** @rule 804.1, 107.1 */
 export async function addPost(ctx: Ctx, player: any, raw: unknown, body: any, nowMs: number): Promise<Out> {
@@ -382,13 +407,13 @@ export const post = async (ctx: Ctx) => {
   return send(await open(ctx, player, await clockNow(ctx.env)));
 };
 
-// POST /api/tickets/<W3>/(edit|confirm|post|reopen)
-/** @rule 801.1, 801.2, 801.5, 804.1 */
-export const action = (what: "edit" | "confirm" | "post" | "reopen") => async (ctx: Ctx) => {
+// POST /api/tickets/<W3>/(edit|confirm|post|reopen|discard)
+/** @rule 801.1, 801.2, 801.5, 801.8, 804.1 */
+export const action = (what: "edit" | "confirm" | "post" | "reopen" | "discard") => async (ctx: Ctx) => {
   const player = await need(ctx);
   if (!player) return json({ error: what === "post" ? "Log in to post." : "Log in to commission something." }, 401);
   const body = await readJson(ctx.request);
   const nowMs = await clockNow(ctx.env);
   const n = ctx.params.n;
-  return send(await (what === "edit" ? edit(ctx, player, n, body, nowMs) : what === "post" ? addPost(ctx, player, n, body, nowMs) : what === "reopen" ? reopen(ctx, player, n, nowMs) : confirm(ctx, player, n, nowMs)));
+  return send(await (what === "edit" ? edit(ctx, player, n, body, nowMs) : what === "post" ? addPost(ctx, player, n, body, nowMs) : what === "reopen" ? reopen(ctx, player, n, nowMs) : what === "discard" ? discard(ctx, player, n, nowMs) : confirm(ctx, player, n, nowMs)));
 };

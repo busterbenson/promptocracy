@@ -2,12 +2,14 @@
 # ticket yet), Bo (vermilion, a commission on today's ballot as P1), Cy (cobalt, an approved ticket with a tick, a log and a thread).
 # Checks the Workshop tab, the commission flow, the ticket page and the thread, the ballot row, light and dark, 1280 and 390, no
 # sideways scroll and no console errors. "ok"/"FAIL" lines; any FAIL makes the exit code 1.
-# Usage: browser-workshop.py <base> <screenshot dir or -> <Ada's session cookie> <unused>
+# Usage: browser-workshop.py <base> <screenshot dir or -> <Ada's session cookie> <unused> <test hook: GET /drafted/<n> marks ticket n as drafted by Gremlin>
 import re, sys
 from urllib.parse import urlparse
 from playwright.sync_api import sync_playwright
 
-base, out, cookie, _ = sys.argv[1:5]
+base, out, cookie, _, hook = sys.argv[1:6]
+from urllib.request import urlopen
+NOT_DRAFTED = "Gremlin hasn't drafted it yet."
 host = urlparse(base).hostname
 failed = []
 SLUG = "shop"
@@ -78,19 +80,24 @@ with sync_playwright() as p:
         page.click("#tab-workshop"); page.click('[data-w="open"]'); page.wait_for_selector("#wfTitle")
         page.fill("#wfTitle", "A kite"); page.fill("#wfBrief", "A kite that flies on its own."); page.click('[data-w="addentry"]'); page.fill("#wfEn0", "Kite")
         shot(page, f"draft-dialog-top-{tag}")
+        facts = {t.inner_text().strip().lower(): d.inner_text().strip() for t, d in zip(page.locator("#mroot .wkset dt").all(), page.locator("#mroot .wkset dd").all())}
+        check(f"{tag}: a draft Gremlin has not drafted shows a dash for its nights and price (not '1 night' and '0 points'), and Lock it in is disabled with the reason next to it",
+              facts.get("nights") == "—" and facts.get("price") == "—" and "1 night" not in text(page, "#mroot .mcard") and "0 points" not in text(page, "#mroot .mcard")
+              and page.locator('[data-w="confirm"]').is_disabled() and NOT_DRAFTED in text(page, '#mroot .mcard .row:has([data-w="confirm"])'), str(facts))
+        check(f"{tag}: Discard draft is there and enabled, next to Save, and says nothing else", page.locator('[data-w="discard"]').is_enabled() and page.locator('[data-w="discard"]').inner_text() == "Discard draft")
         page.locator('[data-w="confirm"]').scroll_into_view_if_needed(); page.wait_for_timeout(200)
         shot(page, f"draft-dialog-bottom-{tag}"); sideways(page, w, f"{tag} draft dialog")
         check(f"{tag}: draft dialog has no console errors", not errors, str(errors)); c.close()
     # ---- the draft form at 390 dark: opened and filled, not saved (the draft is still blank to the server)
     c, page, errors = new_page(b, 390, 844, "dark")
     page.click("#tab-workshop"); page.click('[data-w="open"]'); page.wait_for_selector("#wfTitle")
-    check("390-dark: Commission something opens a draft ticket (W3) with the form; 'Lock it in' is disabled while it makes nothing", "W3" in text(page, "#mroot .mcard") and page.locator('[data-w="confirm"]').is_disabled() and page.locator("#wfWhy").is_visible())
+    check("390-dark: Commission something opens a draft ticket (W3) with the form; 'Lock it in' is disabled until Gremlin has drafted it, with the reason beside it", "W3" in text(page, "#mroot .mcard") and page.locator('[data-w="confirm"]').is_disabled() and NOT_DRAFTED in text(page, '#mroot .mcard .row:has([data-w="confirm"])'))
     shot(page, "draft-empty-390-dark")
     page.fill("#wfTitle", "A kite"); page.fill("#wfBrief", "A kite that flies on its own."); page.click('[data-w="addentry"]'); page.fill("#wfEn0", "Kite")
     shot(page, "draft-filled-390-dark"); sideways(page, 390, "390-dark draft form")
     # Gremlin's fields (rules 801.2, 801.4) are shown, not editable: no input for them, the labels and values are there; and a draft has no discussion
-    check("390-dark: the draft shows Rules, Nights, Running cost, Price and Tasks as read-only data (no input or textarea for any of them)",
-          all(page.locator(sel).count() == 0 for sel in ["#wfRules", "#wfEstimate", "#wfCost", "#wfTasks"]) and [t.inner_text().strip().lower() for t in page.locator("#mroot .wkset dt").all()] == ["rules", "nights", "running cost", "price", "tasks"] and "1 night" in text(page, "#mroot .wkset") and "0 points" in text(page, "#mroot .wkset"), text(page, "#mroot .wkset"))
+    check("390-dark: the draft shows Rules, Nights, Running cost, Price and Tasks as read-only data, a dash for each while Gremlin has not drafted it (no input or textarea for any of them)",
+          all(page.locator(sel).count() == 0 for sel in ["#wfRules", "#wfEstimate", "#wfCost", "#wfTasks"]) and [t.inner_text().strip().lower() for t in page.locator("#mroot .wkset dt").all()] == ["rules", "nights", "running cost", "price", "tasks"] and "1 night" not in text(page, "#mroot .wkset") and "0 points" not in text(page, "#mroot .wkset"), text(page, "#mroot .wkset"))
     check("390-dark: the draft's title, brief and entry name stay editable, and Save, Lock it in and Talk to Gremlin are there", page.locator("#wfTitle").is_editable() and page.locator("#wfBrief").is_editable() and page.locator("#wfEn0").is_editable() and page.locator('[data-w="save"]').count() == 1 and page.locator('[data-w="confirm"]').count() == 1)
     check("390-dark: a draft has no discussion: no post box, no Post button, no Discussion heading", page.locator("#wkPost").count() == 0 and page.locator('[data-w="post"]').count() == 0 and "discussion" not in text(page, "#mroot .mcard").lower())
     check("390-dark: no console errors", not errors, str(errors)); c.close()
@@ -100,10 +107,15 @@ with sync_playwright() as p:
     check("1280-light: the blank draft is opened again (still W3)", "W3" in text(page, "#mroot .mcard"))
     shot(page, "draft-blank-1280-light")
     page.fill("#wfTitle", "A kite"); page.fill("#wfBrief", "A kite that flies on its own."); page.click('[data-w="addentry"]'); page.fill("#wfEn0", "Kite")
-    check("1280-light: filling in what it makes enables the button and hides the reason", page.locator('[data-w="confirm"]').is_enabled() and not page.locator("#wfWhy").is_visible())
+    check("1280-light: filling in what it makes does not open Lock it in: it waits for Gremlin's draft, and says so", page.locator('[data-w="confirm"]').is_disabled() and NOT_DRAFTED in text(page, '#mroot .mcard .row:has([data-w="confirm"])'))
     shot(page, "draft-filled-1280-light")
     page.click('[data-w="save"]'); page.wait_for_selector("#mroot .vmsg")
     check("1280-light: Save keeps the draft", "Saved." in text(page, "#mroot .mcard"))
+    # Gremlin drafts it (the hook marks W3 as his: the chat that does it is tested in tests/chat.mjs), and the page, reloaded, opens Lock it in
+    urlopen(hook + "/drafted/3", timeout=10).read()
+    page.reload(); page.wait_for_selector("#tab-workshop"); page.wait_for_timeout(500)
+    page.click("#tab-workshop"); page.click('#p-workshop [data-ticket="W3"]'); page.wait_for_selector("#wfTitle")
+    check("1280-light: once Gremlin has drafted it, Lock it in is enabled and its nights and price show as numbers", page.locator('[data-w="confirm"]').is_enabled() and NOT_DRAFTED not in text(page, "#mroot .mcard") and "1 night" in text(page, "#mroot .wkset"))
     page.click('[data-w="confirm"]'); page.wait_for_function("document.querySelector('#mroot .mpill') && document.querySelector('#mroot .mpill').textContent.trim() === 'Proposed'")
     card = text(page, "#mroot .mcard")
     check("1280-light: confirming makes it Proposed: the proposal's P-number is on the page, and the log says so", re.search(r"Proposal\s*P2", card, re.I) and "Put on tomorrow's ballot as P2." in card, card)
@@ -115,6 +127,18 @@ with sync_playwright() as p:
     check("1280-light: the Propose step's filled circle is the ticket's W-number and its card shows the commission's title, brief and facts, with Open in Workshop, not an empty diff", page.locator("#pzone .tkstep.pr .tkm.p", has_text="W3").count() == 1 and "A kite" in text(page, "#pzone") and "1 night · 0 points" in text(page, "#pzone") and "Open in Workshop" in text(page, "#pzone"), text(page, "#pzone"))
     shot(page, "yours-1280-light", full_page=True); sideways(page, 1280, "1280-light yours")
     check("1280-light: no console errors", not errors, str(errors)); c.close()
+    # ---- discarding a blank draft (rule 801.8): the button, and the draft gone from the list
+    c, page, errors = new_page(b, 390, 844, "light")
+    page.click("#tab-workshop"); page.click('[data-w="open"]'); page.wait_for_selector("#wfTitle")
+    num = re.search(r"W\d+", text(page, "#mroot .mcard")).group(0)
+    shot(page, "draft-blank-discard-390-light")
+    page.click('[data-w="discard"]'); page.wait_for_selector("#mroot .mcard", state="detached")
+    page.wait_for_timeout(500)
+    check(f"390-light: Discard draft closes the blank draft {num}; it is gone from the Workshop list and 'Commission something' opens a fresh one", page.locator(f'#p-workshop [data-ticket="{num}"]').count() == 0 and page.locator('[data-w="open"]').is_enabled())
+    page.click('[data-w="open"]'); page.wait_for_selector("#wfTitle")
+    check("390-light: the fresh draft has the next number", re.search(r"W\d+", text(page, "#mroot .mcard")).group(0) != num)
+    page.click('[data-w="discard"]'); page.wait_for_selector("#mroot .mcard", state="detached")   # leave no draft behind for the list test that follows
+    check("390-light: discarding leaves no console errors", not errors, str(errors)); c.close()
     # ---- a visitor: the list is public, the ticket page reads, no post box, no Commission button
     c, page, errors = new_page(b, 1280, 900, "light", logged_in=False)
     page.click("#tab-workshop"); page.wait_for_selector("#p-workshop .tlist")

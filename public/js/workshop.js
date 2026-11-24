@@ -13,7 +13,8 @@
 //   W.load()  W.count()  W.tabHTML()  W.summaryHTML()  W.card(spec)  W.open(n, push)  W.openEntry(id, push)  W.click(el)  W.input(el)  W.apply(page)
 // A card is a ticket ({kind: "ticket", key: "W3"}) or a catalog entry ({kind: "entry", key: "I1"}); the entries come from /api/catalog (rules 701-705).
 // Nothing here decides what is allowed: the server's answers (the lock, one a day, a refusal) are shown as they come.
-import { nights, points, wPill } from "/js/commission.js";
+import { nightsOf, pointsOf, wPill } from "/js/commission.js";
+import { creatureThumb } from "/js/pieces.js";
 
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const lines = (s) => String(s || "").split("\n").map((x) => x.trim()).filter(Boolean);
@@ -96,10 +97,13 @@ export function createWorkshop({ api, me, pill, rpill, when, canCommission, refr
     const first = list.find((d) => d.default) || list[0];
     return { shown: first ? first.hash : null, state: "ready", prompt: a.prompt || "", list: first ? [first, ...list.filter((d) => d !== first)] : list };
   }
-  /** The art slot: the drawing the entry shows, or until one exists a neutral tile with the kind's letter. @rule 701.1 */
+  /** The art slot: the drawing the entry shows, or until one exists a creature's board piece, or a neutral tile with the kind's letter. @rule 701.1 */
   function artTile(v, big) {
     const a = artOf(v);
     if (a.shown) return `<img class="artimg${big ? " big" : ""}" src="${artUrl(a.shown)}" alt="${esc(v.name || "")}" loading="lazy">`;
+    // a creature with no drawing of its own shows its board piece, when it has one (rule 701.1); anything else, the kind's letter
+    const piece = v.kind === "creature" && a.state !== "drawing" ? creatureThumb(v.name) : null;
+    if (piece) return `<span class="arttile piece${big ? " big" : ""}">${piece}</span>`;
     return `<span class="arttile${big ? " big" : ""}${a.state === "drawing" ? " drawing" : ""}" aria-hidden="true">${esc(v.letter || "?")}</span>`;
   }
   /** The strip of drawings: each one's thumbnail, and for the requester Save on one not kept and Make default on one kept; the default is marked. @rule 801.2 */
@@ -221,7 +225,7 @@ ${stripHTML(artOf(v), false, "", 1)}${attrsHTML(v)}${flavorHTML(v, open)}${more 
   /** @rule 801.2, 801.4 */
   function rowHTML(t, dense) {
     return `<li class="trow" id="wk-${esc(t.n)}"><span class="tmain"><button type="button" class="tlink" data-ticket="${esc(t.n)}" aria-haspopup="dialog"><span class="wpill">${esc(t.n)}</span><span class="tt">${esc(t.title || "Untitled")}</span></button></span>
-<span class="tmeta">${pill(t.by, t.mine)}<span class="pill tstate" data-state="${esc(t.state)}">${esc(t.state)}</span>${escalatedChip(t)}<span class="tnum mono">${esc(nights(t.estimate))}</span><span class="tnum mono">${esc(points(t.price))}</span>${dense ? `<span class="tnum mono">${esc(when(t.changed_at))}</span>` : ""}</span></li>`;
+<span class="tmeta">${pill(t.by, t.mine)}<span class="pill tstate" data-state="${esc(t.state)}">${esc(t.state)}</span>${escalatedChip(t)}<span class="tnum mono">${esc(nightsOf(t))}</span><span class="tnum mono">${esc(pointsOf(t))}</span>${dense ? `<span class="tnum mono">${esc(when(t.changed_at))}</span>` : ""}</span></li>`;
   }
   /** The chip a ticket with an open escalation wears (rule 106.4): Gremlin passed something on and Chalant hasn't answered. It is not a state. @rule 106.4 */
   const escalatedChip = (t) => (t.escalated ? `<span class="pill tstate" data-state="Escalated">Escalated</span>` : "");
@@ -319,7 +323,7 @@ ${catalogHTML()}</div></div>`;
 ${requiredOf(e.kind).map((a) => attrField(i, a, e.vals[a.key] ?? "", off)).join("")}<div class="row"><button type="button" class="btn ghost small" data-w="rmentry" data-ei="${i}"${off}>Remove</button></div></fieldset>`;
   }
   /**
-   * What Gremlin sets on a draft, shown as it stands and not editable (rules 801.2, 801.4): the rules it makes, the nights, the running
+   * What Gremlin sets on a draft, shown as it stands and not editable (rules 801.2, 801.4, 801.7): the rules it makes, the nights, the running
    * cost, the price with his reason, the tasks. The requester changes them by talking to him. @rule 801.2, 801.4
    */
   function gremlinFacts(t) {
@@ -327,7 +331,7 @@ ${requiredOf(e.kind).map((a) => attrField(i, a, e.vals[a.key] ?? "", off)).join(
     const rules = t.makes.filter((m) => m.kind === "rule");
     const row = (k, v) => `<div class="tr"><dt>${k}</dt><dd>${v}</dd></div>`;
     return `<dl class="tdl wkset">${row("Rules", rules.length ? `<span class="makes">${rules.map((m) => (m.num ? `<span class="mk">${rpill(m.num)}</span>` : `<span class="mk dim">${esc(m.draft)}</span>`)).join("")}</span>` : none)}
-${row("Nights", esc(nights(t.estimate)))}${row("Running cost", t.running_cost ? esc(t.running_cost) : none)}${row("Price", `<span class="wkprice">${esc(points(t.price))}${t.price_reason ? `<span class="mnote"> · ${esc(t.price_reason)}</span>` : ""}</span>`)}
+${row("Nights", esc(nightsOf(t)))}${row("Running cost", t.running_cost ? esc(t.running_cost) : none)}${row("Price", `<span class="wkprice">${esc(pointsOf(t))}${t.price_reason ? `<span class="mnote"> · ${esc(t.price_reason)}</span>` : ""}</span>`)}
 ${row("Tasks", t.tasks.length ? `<ul class="ttasks">${t.tasks.map((x) => `<li><span class="ck" aria-hidden="true"></span>${esc(x.text)}</li>`).join("")}</ul>` : none)}</dl>`;
   }
   /** @rule 801.2 */
@@ -341,13 +345,13 @@ ${row("Tasks", t.tasks.length ? `<ul class="ttasks">${t.tasks.map((x) => `<li><s
 ${f.entries.map((e, i) => entryFields(e, i, off, t)).join("")}<div class="row"><button type="button" class="btn ghost small" data-w="addentry"${off}>Add an entry</button></div>
 ${gremlinFacts(t)}
 ${S.err ? `<p class="notice err" role="alert">${esc(S.err)}</p>` : ""}${S.note ? `<p class="vmsg" role="status">${esc(S.note)}</p>` : ""}
-<div class="row"><button class="btn small" type="button" data-w="confirm"${off}${can && !nothing ? "" : " disabled"}>Lock it in</button><button class="btn ghost small" type="button" data-w="save"${off}${t.can.edit.allowed ? "" : " disabled"}>Save</button>${chat && chat() && player() ? `<button class="btn ghost small" type="button" data-w="gremlin">Talk to Gremlin</button>` : ""}${can ? `<span class="mnote" id="wfWhy"${nothing ? "" : " hidden"}>It makes nothing yet.</span>` : `<span class="mnote">${esc(t.can.confirm.reason || "")}</span>`}</div></div>`;
+<div class="row"><button class="btn small" type="button" data-w="confirm"${off}${can && !nothing ? "" : " disabled"}>Lock it in</button><button class="btn ghost small" type="button" data-w="save"${off}${t.can.edit.allowed ? "" : " disabled"}>Save</button><button class="btn ghost small" type="button" data-w="discard"${off}${t.can.discard && t.can.discard.allowed ? "" : " disabled"}>Discard draft</button>${chat && chat() && player() ? `<button class="btn ghost small" type="button" data-w="gremlin">Talk to Gremlin</button>` : ""}${can ? `<span class="mnote" id="wfWhy"${nothing ? "" : " hidden"}>It makes nothing yet.</span>` : `<span class="mnote">${esc(t.can.confirm.reason || "")}</span>`}</div></div>`;
   }
   /** @rule 801.2, 801.4, 803.1 */
   function factsHTML(t) {
     const row = (k, v, cls = "") => `<div class="tr${cls}"><dt>${k}</dt><dd>${v}</dd></div>`;
-    return `<dl class="tdl">${row("Brief", `<span class="tbrief">${esc(t.brief) || '<span class="mnote">Empty</span>'}</span>`)}${row("Makes", makesHTML(t), (t.entry_views || []).length ? " stack" : "")}${row("Nights", esc(nights(t.estimate)))}
-${row("Price", `${esc(points(t.price))}${t.price_reason ? `<span class="mnote"> · ${esc(t.price_reason)}</span>` : ""}`)}${t.running_cost ? row("Running cost", esc(t.running_cost)) : ""}${t.proposal ? row("Proposal", `<span class="ppill">${esc(t.proposal)}</span>`) : ""}${t.queue ? row("Queue", `Place ${esc(t.queue)}`) : ""}</dl>`;
+    return `<dl class="tdl">${row("Brief", `<span class="tbrief">${esc(t.brief) || '<span class="mnote">Empty</span>'}</span>`)}${row("Makes", makesHTML(t), (t.entry_views || []).length ? " stack" : "")}${row("Nights", esc(nightsOf(t)))}
+${row("Price", `${esc(pointsOf(t))}${t.price_reason ? `<span class="mnote"> · ${esc(t.price_reason)}</span>` : ""}`)}${t.running_cost ? row("Running cost", esc(t.running_cost)) : ""}${t.proposal ? row("Proposal", `<span class="ppill">${esc(t.proposal)}</span>`) : ""}${t.queue ? row("Queue", `Place ${esc(t.queue)}`) : ""}</dl>`;
   }
   /** @rule 801.2 */
   const tasksHTML = (t) => (t.tasks.length ? `<section class="tsec"><h3>Tasks</h3><ul class="ttasks">${t.tasks.map((x) => `<li${x.done ? ' class="done"' : ""}><span class="ck" aria-hidden="true">${x.done ? "✓" : ""}</span>${esc(x.text)}${x.done && x.done_day ? `<span class="mnote"> · day ${esc(x.done_day)}</span>` : ""}</li>`).join("")}</ul></section>` : "");
@@ -393,7 +397,7 @@ ${editing ? formHTML(t) : factsHTML(t)}${reopenHTML(t)}${editing ? "" : tasksHTM
     S.err = (r.data && r.data.error) || "Something went wrong.";
     return false;
   }
-  /** @rule 801.1, 801.2, 804.1 */
+  /** @rule 801.1, 801.2, 801.8, 804.1 */
   async function click(el) {
     const a = el.dataset.w;
     const cur = cards.current();
@@ -452,6 +456,9 @@ ${editing ? formHTML(t) : factsHTML(t)}${reopenHTML(t)}${editing ? "" : tasksHTM
           else { S.err = (r.data && r.data.error) || "Something went wrong."; await loadOne(n); S.form = null; }
           await refresh();
         }
+      } else if (a === "discard") {
+        const r = await api(`/api/tickets/${encodeURIComponent(n)}/discard`, {});
+        if (r.ok) { S.detail[n] = r.data.ticket; S.form = null; cards.close(); await load(); await refresh(); } else { S.err = (r.data && r.data.error) || "Something went wrong."; await loadOne(n); }
       } else if (a === "reopen") {
         const r = await api(`/api/tickets/${encodeURIComponent(n)}/reopen`, {});
         if (r.ok) { S.detail[n] = r.data.ticket; S.form = null; await refresh(); } else { S.err = (r.data && r.data.error) || "Something went wrong."; await loadOne(n); }

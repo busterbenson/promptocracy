@@ -112,7 +112,7 @@ with sync_playwright() as p:
         # Commission something opens the chat on the new draft: the chat, not the card (the card would cover it)
         page.click('[data-w="open"]'); page.wait_for_function("(document.querySelector('.ch-in .chip') || {textContent: ''}).textContent.includes('W2')")
         check(f"{tag}: Commission something opens the chat attached to the new draft (a W2 chip beside the box) and no card: the chat stays usable", "W2" in text(page, ".ch-in .chip") and not vis(page, "#mroot .mcard") and mode(page) == "open" and vis(page, "#chatText"), text(page, ".ch-in"))
-        check(f"{tag}: the slip is the new draft's: W2, nothing made, 0 points", "W2" in text(page, "#chatLog .slip") and "Nothing" in text(page, "#chatLog .slip") and "0 points" in text(page, "#chatLog .slip"), text(page, "#chatLog .slip"))
+        check(f"{tag}: the slip is the new draft's: W2, nothing made, a dash for nights and price until Gremlin drafts it, and the label says Nights (not Estimate)", "W2" in text(page, "#chatLog .slip") and "Nothing" in text(page, "#chatLog .slip") and "0 points" not in text(page, "#chatLog .slip") and re.search(r"NIGHTS\s*—|Nights\s*—", text(page, "#chatLog .slip"), re.I) and "estimate" not in text(page, "#chatLog .slip").lower(), text(page, "#chatLog .slip"))
         check(f"{tag}: the new draft's conversation is its own and starts empty: none of W1's lines are in the log (rule 801.6)", msgs(page) == 0 and "Ghost" not in text(page, "#chatLog") and "wall" not in text(page, "#chatLog").lower(), text(page, "#chatLog"))
         page.evaluate("document.getElementById('book').scrollIntoView()")
         shot(page, f"desktop-commission-{tag}")

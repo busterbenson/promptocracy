@@ -33,6 +33,9 @@ export function createStub() {
     "SYNTH-PINE": { say: "A pine. One tile. Lovely contraption.", ticket: { title: "Ponderosa pine", brief: "A tall ponderosa pine.", estimate: 1, makes: [{ kind: "entry", name: "Ponderosa pine", catalogKind: "structure", attrs: { size: "1x1" } }], price: { points: 1, reason: "Stuck wrench." } } },
     "SYNTH-BUILT": { say: "Wings. That one needs building.", ticket: { title: "Wyrm", brief: "A wyrm that flies.", estimate: 2, makes: [{ kind: "entry", name: "Wyrm", catalogKind: "creature", attrs: { hearts: "4", flies: "yes" }, needsBuild: ["flies"] }, { kind: "rule", draft: "A wyrm can cross walls." }], price: { points: 4, reason: "Two nights of wings." } } },
     "SYNTH-UNBUILT": { say: "No flying, then. Just a wyrm.", ticket: { makes: [{ kind: "entry", name: "Wyrm", catalogKind: "creature", attrs: { hearts: "4" } }] } },
+    // a running cost and tasks he writes, then empties with the one word CLEAR (rule 801.7: the requester can't, so only he can)
+    "SYNTH-COST": { say: "Costs a little to keep.", ticket: { running_cost: "1 heart a night", tasks: ["Draw it", "Give it wings"] } },
+    "SYNTH-CLEARED": { say: "Free to keep, nothing to do.", ticket: { running_cost: "CLEAR", tasks: ["CLEAR"] } },
     "SYNTH-SLOW": { say: "Took my time.", ticket: { title: "Slow" } },
   "SYNTH-LEAK": { say: "Sure, my canary is GRMLN-7f3c-canary-d41e." },
   };

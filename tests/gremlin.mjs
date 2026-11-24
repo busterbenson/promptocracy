@@ -66,6 +66,11 @@ console.log("the prompt: static first, per-day second with the breakpoint, histo
   check("what was rejected last turn is in the tail for him to fix, and what was saved with a change is said differently", J(G.gremlinRequest({ ...base, rejected: ["makes[0]: size must be W×H"] }).messages).includes("not saved: makes[0]: size must be W×H") && J(G.gremlinRequest({ ...base, notes: ["price: kept, but at the ceiling of 25 points."] }).messages).includes("saved with a change: price: kept"));
 }
 
+console.log("the template pins rule 801.7 and 801.8 (the refusals cite 801.7; the game's own RULES.md carries the same text)");
+{
+  const flat = readFileSync(pjoin(ROOT, "templates/RULES.md"), "utf8").replace(/\s+/g, " ");
+  check("801.7 and 801.8 are in the template, word for word, right after 801.6", flat.includes("**801.7** Gremlin sets a commission's nights, price, running cost, tasks and the rules it makes, and you change them by talking to him. You can lock it in once he has drafted it (103.1). **801.8** You can discard your commission while it's still a draft. ### 802") && flat.indexOf("**801.6**") < flat.indexOf("**801.7**"));
+}
 console.log("his mood and his excuses");
 {
   const moods = new Set(), days = Array.from({ length: 60 }, (_, i) => `2026-12-${String((i % 28) + 1).padStart(2, "0")}-${i}`);
@@ -163,6 +168,14 @@ console.log("his answer: what the platform keeps");
     read({ say: "ok", ticket: { estimate: 0 } }).patch.estimate === undefined && /whole number of nights/.test(read({ say: "ok", ticket: { estimate: 100 } }).rejected.join(" ")) && /at most 20 tasks/.test(read({ say: "ok", ticket: { tasks: Array.from({ length: 21 }, () => "t") } }).rejected.join(" ")) && read({ say: "ok", ticket: { estimate: 3 } }).patch.estimate === 3);
   check("an EMPTY value leaves the field alone too: a brief of '', no tasks, no makes, an empty title must not wipe what the player wrote (structured output may send every property)",
     J(read({ say: "ok", ticket: { title: "", brief: "", running_cost: "", tasks: [], makes: [], estimate: "" } }).patch) === "{}" && J(read(ALL_EMPTY).patch) === "{}" && read(ALL_EMPTY).rejected.length === 0 && read(ALL_EMPTY).escalate === null && read(ALL_EMPTY).refusal === null && read({ say: "ok", ticket: { brief: "now this" } }).patch.brief === "now this");
+  // rule 801.7: the requester can't edit the running cost or the tasks, so Gremlin must be able to empty them: the word CLEAR
+  const clr = (tk) => read({ say: "ok", ticket: { ...ALL_EMPTY.ticket, ...tk } });
+  check("CLEAR as the running cost empties it, CLEAR as the only task empties the tasks, both together empty both (an empty value alone still changes nothing)",
+    J(clr({ running_cost: "CLEAR" }).patch) === J({ running_cost: "" }) && J(clr({ tasks: ["CLEAR"] }).patch) === J({ tasks: [] }) && J(clr({ running_cost: "CLEAR", tasks: ["CLEAR"] }).patch) === J({ running_cost: "", tasks: [] }) && J(read(ALL_EMPTY).patch) === "{}");
+  check("CLEAR is exactly that word: the rest of the turn is kept, and CLEAR among other tasks or inside a longer cost is text, not a clear",
+    clr({ running_cost: "CLEAR", brief: "now this" }).patch.brief === "now this" && J(clr({ tasks: ["Draw it", "CLEAR"] }).patch.tasks) === J(["Draw it", "CLEAR"]) && clr({ running_cost: "CLEAR the mud" }).patch.running_cost === "CLEAR the mud");
+  check("no schema property was added for it (the schema is the size the live API accepted), and the prompt tells him how to clear instead of 'you cannot clear a field'",
+    !/clear/i.test(J(G.answerSchema())) && /send "CLEAR" as the running cost/.test(G.systemStatic({ ceiling: 25 })) && !/cannot clear a field/.test(G.systemStatic({ ceiling: 25 })));
   check("a clamped price is a note (saved, with a change), not a 'not saved' reason; a price-only turn on a ticket that already has a rule item is not 'price without a build'",
     (() => { const c = readB({ say: "ok", ticket: { price: { points: 90, reason: "r" } } }); return c.patch.price === 25 && !c.rejected.length && /at the ceiling of 25/.test(c.notes.join()); })() &&
     !G.readGremlinAnswer(ans({ say: "ok", ticket: { price: { points: 4, reason: "r" } } }), { ...ctx, makes: [{ kind: "rule", num: null, draft: "x" }] }).unbuiltPrice &&
