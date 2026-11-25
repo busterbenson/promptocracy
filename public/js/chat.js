@@ -155,7 +155,7 @@ ${refused ? `<div class="tx">${esc(last.refusal)}</div>` : ""}
     const needs = sl.needs ? esc(sl.needs.mark) : esc(sl.mark || "");
     const act = locked
       ? `<span class="pill dash">On tomorrow's ballot</span><button type="button" class="linkbtn" data-c="unlock" data-id="${esc(id)}"${c.unlock && c.unlock.allowed ? "" : " disabled"}>Unlock</button>${why(c.unlock)}`
-      : `<button type="button" class="btn small" data-c="lock" data-id="${esc(id)}"${c.lock && c.lock.allowed ? "" : " disabled"}>Lock it in</button>${why(c.lock)}`;
+      : `<button type="button" class="btn" data-c="lock" data-id="${esc(id)}"${c.lock && c.lock.allowed ? "" : " disabled"}>Lock it in</button>${why(c.lock)}`;
     const err = S.lockErr[id] ? `<p class="err" role="alert">${esc(S.lockErr[id])}</p>` : "";
     return `<section class="slip${locked ? " locked" : ""}" aria-label="${esc(sl.n || "Draft")}"><span class="cstamp">${locked ? "LOCKED" : "DRAFT"}</span>
 <div class="hd">${sl.n ? ppill(sl.n) : ""}<span class="hdt">${textHTML(sl.head || "")}</span></div>

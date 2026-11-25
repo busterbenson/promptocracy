@@ -212,7 +212,7 @@ ${p.words && !S.ui.prefilled ? `<p class="quote">You wrote: â€œ${esc(p.words)}â€
 <div class="draft">${p.kind === "action" && p.action ? actionHTML(p) : `<p class="mono head"><b>${esc(p.head)}</b></p><p class="cdiff">${diffOf(p)}</p>`}${settingsHTML(p)}</div>
 ${p.conflict_note ? `<p class="cnote">${withPills(p.conflict_note)}</p>` : ""}<p class="needline mono">${esc(needText(p))}</p>
 ${S.ui.err ? `<p class="notice err" role="alert">${withPills(S.ui.err)}</p>` : ""}
-<div class="row"><button class="btn small" type="button" data-p="confirm"${off}>Lock it in</button><button class="btn ghost small" type="button" data-p="edit"${off}>${p.kind === "action" ? "Change it" : "Change my words"}</button><button class="linkbtn" type="button" data-p="cancel">Cancel</button></div></article>`;
+<div class="row"><button class="btn" type="button" data-p="confirm"${off}>Lock it in</button><button class="btn ghost small" type="button" data-p="edit"${off}>${p.kind === "action" ? "Change it" : "Change my words"}</button><button class="linkbtn" type="button" data-p="cancel">Cancel</button></div></article>`;
   }
 
   // The form for an action (rule 103.5): the type, then one field for each of its details, as the game's rules describe them.
@@ -323,7 +323,7 @@ ${S.ui.err ? `<p class="notice err" role="alert">${withPills(S.ui.err)}</p>` : "
       : p.kind === "action" && p.action ? actionHTML(p) : `<p class="mono head"><b>${esc(p.head || "")}</b></p><p class="cdiff">${diffOf(p)}</p>`;
     const open = p.kind === "commission" && p.ticket ? `<button type="button" class="linkbtn" data-p="bar-workshop" data-t="${esc(p.ticket.n)}">Open in Workshop</button>`
       : stReady() ? `<button type="button" class="linkbtn" data-p="bar-starling">Open in Starling</button>` : "";
-    const lock = isDraft ? `<button type="button" class="btn small" data-p="lock" data-id="${esc(p.id)}"${lockOk ? "" : " disabled"}>Lock it in</button>${lockOk ? "" : `<span class="why">${esc(base().reason || "")}</span>`}` : "";
+    const lock = isDraft ? `<button type="button" class="btn" data-p="lock" data-id="${esc(p.id)}"${lockOk ? "" : " disabled"}>Lock it in</button>${lockOk ? "" : `<span class="why">${esc(base().reason || "")}</span>`}` : "";
     return `<article class="pcard${isDraft ? " draft" : ""}" data-pn="${esc(p.n || "")}"><div class="ch">${p.n ? pPill(p) : ""}<span class="pill ${isDraft ? "acc" : "dash"}">${isDraft ? "Draft" : "On tomorrow's ballot"}</span>${p.champion ? `<span class="pill core">Champion's change</span>` : ""}${unlock ? `<button type="button" class="linkbtn" data-p="unlock" data-id="${esc(p.id)}">Unlock</button>` : ""}</div>${body}${settingsHTML(p)}${p.conflict_note ? `<p class="cnote">${withPills(p.conflict_note)}</p>` : ""}<p class="needline mono">${esc(needText(p))}</p><div class="row">${lock}${open}</div>${err}</article>`;
   }
 

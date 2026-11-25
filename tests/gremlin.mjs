@@ -33,6 +33,8 @@ console.log("the prompt: static first, per-day second with the breakpoint, histo
   const base = { ceiling: 25, rulesMd: rules, mood, localDate: "2026-11-20", history: [], ticket: null, posts: [], queueDepth: 0, rejected: [], label: "Ada", message: "a lantern", noWrite: null };
   const a = G.gremlinRequest(base);
   const b = G.gremlinRequest({ ...base, label: "Bo", message: "a dragon", queueDepth: 4, ticket: { number: 2, title: "T", brief: "B", makes: [], estimate: 1, running_cost: "", tasks: [], price: 0, price_reason: "" } });
+  check("his prompt carries the nights scale (1 night for drawings and up to 2 small rules, 2 for 3-4 rules, 3+ only for big contraptions; fewer nights, lower price) and the Lock it in submit line, with the 1..estimate bound kept",
+    /1 night: drawings, and anything with up to 2 small rules/.test(a.system[0].text) && /2 nights: 3 or 4 rules/.test(a.system[0].text) && /3 or more: only a big multi-part contraption/.test(a.system[0].text) && /fewer the nights, the lower the price/.test(a.system[0].text) && /from 1 to \d+; the scale/.test(a.system[0].text) && /SUBMITTING[^]*Lock it in[^]*tomorrow's ballot/.test(a.system[0].text));
   check("two blocks: the first is the same for every player and carries no date, mood or player; the second carries the day's mood and the rulebook and ends in the cache breakpoint",
     a.system.length === 2 && J(a.system[0]) === J(b.system[0]) && !/2026-11-20/.test(a.system[0].text) && !a.system[0].text.includes(mood[1]) && !("cache_control" in a.system[0]) &&
     a.system[1].text.includes(mood[1]) && a.system[1].text.includes("<rulebook>") && a.system[1].cache_control?.type === "ephemeral");

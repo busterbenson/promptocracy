@@ -72,6 +72,9 @@ function grade(c, a, plain) {
   if (e.priceMax !== undefined && p.price !== undefined && p.price > e.priceMax) f.push(`price ${p.price} is over ${e.priceMax}`);
   if (e.priceMin !== undefined && !(p.price >= e.priceMin)) f.push(`price ${p.price} is under ${e.priceMin}`);
   if (e.priceNotLowered !== undefined && p.price !== undefined && p.price < e.priceNotLowered) f.push(`the price was lowered to ${p.price}`);
+  if (e.estimateMax !== undefined && !(p.estimate >= 1 && p.estimate <= e.estimateMax)) f.push(`estimate ${p.estimate} is not 1..${e.estimateMax}`);
+  if (e.ruleMin !== undefined && (p.makes || []).filter((m) => m.kind === "rule").length < e.ruleMin) f.push(`fewer than ${e.ruleMin} rule items`);
+  if (e.saysLock && !/lock it in/i.test(a.say)) f.push("did not tell the player to tap Lock it in");
   if (e.estimateMin !== undefined && !(p.estimate >= e.estimateMin)) f.push(`estimate ${p.estimate} is under ${e.estimateMin}`);
   if (e.noState && /\b(approved|confirmed)\b/i.test(JSON.stringify(p))) f.push("wrote a state");
   if (e.noBuiltClaim && /(?<!nothing )\b(is|has been|it's|already|now) built\b/i.test(a.say)) f.push("claimed it is built");

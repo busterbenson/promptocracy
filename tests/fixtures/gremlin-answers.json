@@ -152,5 +152,27 @@
       "cache_read_input_tokens": 0
     },
     "recorded_at": "2026-11-25"
+  },
+  "two-small-rules": {
+    "message": "a little pancake creature that sits still. a player who ends their turn next to it gets a heart back, and a player who starts their turn next to it gets 1 point. build both rules",
+    "text": "{\"say\":\"Pancake creature, sits still, two rules. Lovely contraption. Rule 1: end turn next to it, get a heart back (capped at your starting hearts, 601.1). Rule 2: start turn next to it, get 1 point. Charmed today, so I'm shaving the price. Two small rules is 1 night. I guessed 3 hearts for the pancake and a neutral temper, so it stays put (602.1). Tell me if you want different. Two ahead of you in the queue. The Lock it in button under the draft is your own click; it puts this on tomorrow's ballot, and until you press it nothing is submitted.\",\"refusal\":\"\",\"escalate\":{\"category\":\"none\",\"reason\":\"\"},\"handoff\":\"none\",\"ticket\":{\"title\":\"Pancake creature\",\"brief\":\"A little pancake creature that sits still. A player who ends their turn next to it gets 1 heart back (never above their starting hearts). A player who starts their turn next to it gets 1 point.\",\"estimate\":1,\"running_cost\":\"CLEAR\",\"tasks\":[\"Draw the pancake creature\",\"Add its catalog entry: 3 hearts, neutral temper\",\"Build rule: ending your turn next to it heals 1 heart, up to the starting hearts\",\"Build rule: starting your turn next to it gives 1 point\",\"Write tests for both rules\"],\"makes\":[{\"kind\":\"entry\",\"name\":\"Pancake\",\"catalogKind\":\"creature\",\"attrs\":[{\"key\":\"hearts\",\"value\":\"3\"}],\"flavor\":[{\"key\":\"temper\",\"value\":\"neutral\"}],\"needsBuild\":[],\"num\":\"\",\"draft\":\"\",\"art\":\"A small round golden pancake creature with a tiny happy face, a pat of butter on top, sitting still.\"},{\"kind\":\"rule\",\"name\":\"Pancake heals\",\"catalogKind\":\"\",\"attrs\":[],\"flavor\":[],\"needsBuild\":[\"Pancake\"],\"num\":\"\",\"draft\":\"A player who ends their turn next to a Pancake gets 1 heart back, never above their starting hearts (601.1).\",\"art\":\"\"},{\"kind\":\"rule\",\"name\":\"Pancake points\",\"catalogKind\":\"\",\"attrs\":[],\"flavor\":[],\"needsBuild\":[\"Pancake\"],\"num\":\"\",\"draft\":\"A player who starts their turn next to a Pancake gets 1 point.\",\"art\":\"\"}],\"price\":{\"points\":5,\"reason\":\"Two small rules, 1 night. Charmed day discount for a pancake, with a grin.\"}}}",
+    "usage": {
+      "input_tokens": 234,
+      "output_tokens": 808,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 11995
+    },
+    "recorded_at": "2026-11-25"
+  },
+  "big-contraption": {
+    "message": "Count the nights for this whole ferry and set its price. Change nothing else, and keep your answer short.",
+    "text": "{\"say\":\"Six rules plus a ferry is a big contraption. 3 nights. Charmed today, so 9 points, not the usual 12ish. Two ahead of you in the queue. The toll touches rule 401, so Chalant may squint at it later. Lock it in is the button under the draft. It's your click, it puts this on tomorrow's ballot, and until then nothing is submitted.\",\"refusal\":\"\",\"escalate\":{\"category\":\"none\",\"reason\":\"\"},\"handoff\":\"none\",\"ticket\":{\"title\":\"\",\"brief\":\"\",\"estimate\":3,\"running_cost\":\"\",\"tasks\":[],\"makes\":[],\"price\":{\"points\":9,\"reason\":\"3 nights of building, six rules, shaved down because a shiny put me in a good mood.\"}}}",
+    "usage": {
+      "input_tokens": 763,
+      "output_tokens": 723,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 11995
+    },
+    "recorded_at": "2026-11-25"
   }
 }
