@@ -45,6 +45,9 @@ export async function clockNow(env: Env): Promise<number> {
 // ---- midnights, the gate, its SQL: src/lib/day-gate.js (plain JS, shared with the tests) ---------------------------------
 export { addDays, dayGate, dayOpenBinds, dayOpenSql, isLocked, localDate, lockMessage, nextMidnight, startOfDate } from "./day-gate.js";
 import { deadlineAfter, nextMidnight } from "./day-gate.js";
+import { HISTORY_STATUSES, noticeLink, readyApprovedNotice, resultNotice } from "./history.js";
+import { parseBook } from "./proposals.js";
+import { commissionsFor } from "./ticket-view";
 import { countTicketStatements, readyIds, readyStatements } from "./tickets.js";
 import { DEADLINE_REASON, DEPLOY_GRACE_MINUTES, DEPLOY_REASON, ENACT_REASON, resultSentence, returnedBody, tally } from "./votes.js";
 
@@ -167,7 +170,7 @@ export const NOT_FOR_MODERATOR = ["commission", "action"];
 // 2 am deadline (rule 107.6); otherwise the night goes straight on to finalize.
 /** @rule 104.1, 104.2, 104.5, 107.6, 402.4, 801.4, 803.1 */
 export async function countBallot(env: Env, game: any, day: DayRow, nowMs: number): Promise<StepResult> {
-  if (day.status !== "locked") return "done"; // counted on an earlier run
+  if (day.status !== "locked") { await announceCount(env, game, day.n, nowMs); return "done"; } // counted on an earlier run (its notices are written once, whenever they were missed)
   const items = (await env.DB.prepare("SELECT id, number, mark, needed, kind, champion, player_id FROM proposals WHERE game_id = ? AND day_ballot = ? AND status = 'on_ballot' ORDER BY number").bind(game.id, day.n).all()).results as any[];
   const electors = await electorsOf(env, game.id, day.n);
   const votes = items.length ? ((await env.DB.prepare("SELECT proposal_id, player_id, vote FROM votes WHERE game_id = ? AND day = ?").bind(game.id, day.n).all()).results as any[]) : [];
@@ -191,7 +194,7 @@ export async function countBallot(env: Env, game: any, day: DayRow, nowMs: numbe
     ...writes.filter(({ q }) => q.kind === "commission").flatMap(({ q, t }) => countTicketStatements(env.DB, game, q, { passed: t.passed, sentence: resultSentence(t) }, day.n, now)),
     // Then the tickets that were Ready: each whose requester can now pay the whole price pays it once and joins the queue, behind
     // tonight's approvals (rules 801.4, 803.1). Before the moderator.
-    ...readyStatements(env.DB, game, ready, day.n, now),
+    ...readyStatements(env.DB, game, ready, day.n, now, await readyNotices(env, game, ready)),
     env.DB.prepare(
       `UPDATE days SET status = 'processing', deadline_at = ? WHERE game_id = ? AND n = ? AND status = 'locked'
          AND EXISTS (SELECT 1 FROM proposals WHERE game_id = ? AND day_ballot = ? AND status = 'passed')`,
@@ -200,7 +203,50 @@ export async function countBallot(env: Env, game: any, day: DayRow, nowMs: numbe
   // Read back what is stored, not what this run computed: an overlapping run may have counted the ballot first.
   const fresh: any = await env.DB.prepare("SELECT status, deadline_at FROM days WHERE game_id = ? AND n = ?").bind(game.id, day.n).first();
   if (fresh) { day.status = fresh.status; day.deadline_at = fresh.deadline_at; }
+  await announceCount(env, game, day.n, nowMs);
   return "done";
+}
+
+// Every player is told how each counted proposal came out: one in-game notification each (no email), with History's sentence and a link
+// that opens its card. Written from what is stored, after the count, so a night counted before this existed, or a run that stopped
+// between the count and here, still gets them on the next tick; a proposal that already has them is skipped, and the ids
+// (count-<proposal>-<player>) make a second write a no-op.
+/** @rule 104.4, 801.2 */
+export async function announceCount(env: Env, game: any, n: number, nowMs: number) {
+  const statuses = HISTORY_STATUSES.map((s: string) => `'${s}'`).join(", ");
+  const rows = (await env.DB.prepare(
+    `SELECT q.*, p.display_name AS name FROM proposals q JOIN players p ON p.game_id = q.game_id AND p.id = q.player_id
+     WHERE q.game_id = ? AND q.day_ballot = ? AND q.status IN (${statuses})
+       AND NOT EXISTS (SELECT 1 FROM notifications x WHERE x.game_id = q.game_id AND x.kind = 'proposal_result' AND x.id LIKE 'count-' || q.id || '-%')
+     ORDER BY q.number`,
+  ).bind(game.id, n).all()).results as any[];
+  if (!rows.length) return;
+  const tickets = await commissionsFor(env, game.id, rows.filter((r) => r.kind === "commission").map((r) => r.id));
+  const book = rows.some((r) => r.kind === "mark") ? parseBook(bundleFor(game).bundle.rulesMd) : null;
+  const now = nowIso(nowMs);
+  await env.DB.batch(rows.map((r) => {
+    const ticket = tickets.get(r.id);
+    return env.DB.prepare(
+      `INSERT OR IGNORE INTO notifications (id, game_id, player_id, kind, body, link, created_at)
+       SELECT 'count-' || ? || '-' || p.id, p.game_id, p.id, 'proposal_result', ?, ?, ? FROM players p
+       WHERE p.game_id = ? AND EXISTS (SELECT 1 FROM proposals WHERE id = ? AND status IN (${statuses}))`,
+    ).bind(r.id, resultNotice(r, ticket, { block: r.kind === "mark" && book?.byNum[r.target]?.kind === "block" }), noticeLink(game.slug, r, ticket), now, game.id, r.id);
+  }));
+}
+
+// What the bell says about each ticket that was waiting (Ready) if the count approves it tonight: read before the count's batch; it is written only
+// if the batch did approve it.
+/** @rule 801.4, 803.1 */
+async function readyNotices(env: Env, game: any, ids: string[]) {
+  const notices = new Map<string, { body: string; link: string }>();
+  for (let i = 0; i < ids.length; i += 99) {
+    const part = ids.slice(i, i + 99);
+    const rows = (await env.DB.prepare(
+      `SELECT t.id, t.number, t.title, t.price, p.display_name AS name FROM tickets t JOIN players p ON p.game_id = t.game_id AND p.id = t.player_id WHERE t.game_id = ? AND t.id IN (${part.map(() => "?").join(",")})`,
+    ).bind(game.id, ...part).all()).results as any[];
+    for (const t of rows) notices.set(t.id, { body: readyApprovedNotice({ n: `W${t.number}`, title: t.title, price: t.price }, t.name), link: `/${game.slug}/#w-W${t.number}` });
+  }
+  return notices;
 }
 
 // The moderator's part of the night (rules 107.2-107.8). The moderator (moderator/process-day.mjs on the Mac mini) applies

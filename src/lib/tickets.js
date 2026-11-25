@@ -297,9 +297,15 @@ export async function readyIds(db, gameId) {
  * Approved with the next place in the queue; any other stays Ready, untouched. A ticket that is no longer Ready changes nothing.
  * @rule 801.4, 803.1
  */
-export function readyStatements(db, game, ids, day, now) {
+export function readyStatements(db, game, ids, day, now, notices = new Map()) {
   return ids.flatMap((id) => [
     db.prepare(`UPDATE tickets SET state = 'Approved', approved_at = ?, updated_at = ?, paid = COALESCE(paid, price), queue_pos = ${NEXT_PLACE} WHERE id = ? AND state = 'Ready' AND ${CAN_PAY}`).bind(now, now, id),
     ...payStatements(db, "id = ?", [id], game, `'Approved: ' || (SELECT display_name FROM players WHERE game_id = t.game_id AND id = t.player_id) || ' can pay now. ' || CASE WHEN t.paid_at = '${now}' THEN 'Paid ' || ${pts("t.paid")} || '. ' ELSE '' END || 'Place ' || t.queue_pos || ' in the queue.'`, day, now),
+    // Every player is told, once: the id is the ticket and the player, and it lands only if THIS run approved the ticket.
+    ...(notices.has(id) ? [db.prepare(
+      `INSERT OR IGNORE INTO notifications (id, game_id, player_id, kind, body, link, created_at)
+       SELECT 'ready-ok-' || ? || '-' || p.id, p.game_id, p.id, 'commission_approved', ?, ?, ? FROM players p
+       WHERE p.game_id = ? AND EXISTS (SELECT 1 FROM tickets WHERE id = ? AND state = 'Approved' AND approved_at = ?)`,
+    ).bind(id, notices.get(id).body, notices.get(id).link, now, game.id, id, now)] : []),
   ]);
 }
