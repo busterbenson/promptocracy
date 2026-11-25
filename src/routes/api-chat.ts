@@ -254,6 +254,7 @@ export async function turn(ctx: Ctx, player: Player, body: any, nowMs: number): 
   if (a.rejected.length) meta.rejected = a.rejected;
   if (a.notes.length) meta.notes = a.notes;
   if (a.refusal) meta.refusal = a.refusal;
+  if (a.handoff) meta.handoff = a.handoff;   // what he said belongs to Starling: the line carries it, the window shows a button (rule 106.3)
   // What he can't settle goes to Chalant (rule 106.4): the escalation holds this turn's message; a second one while one is open in this chat, or a
   // sixth today, is dropped and logged on the call's row. His words to the player stand either way.
   let escNote = "";

@@ -679,6 +679,8 @@ button.pill[aria-pressed="true"]{background:color-mix(in srgb,var(--accent) 16%,
 .chat .slip .act{display:flex;gap:6px 10px;align-items:center;flex-wrap:wrap;border-top:1px solid color-mix(in srgb,var(--accent) 30%,transparent);padding-top:8px}
 .chat .slip .act .why{font-family:var(--font-mono);font-size:.62rem;color:var(--ink-muted);flex:1 1 8em}
 .chat .slip .act .linkbtn{margin-left:auto}
+.chat .handoff{display:flex;gap:6px 10px;align-items:center;flex-wrap:wrap;margin:-2px 0 0 35px}
+.chat .handoff .why{font-family:var(--font-mono);font-size:.62rem;color:var(--ink-muted);flex:1 1 8em}
 .chat .slip .err{margin:0;font-size:.8rem;color:var(--err)}
 .chat .slip.locked{background:var(--surface);border:1.5px solid var(--accent);border-top:1.5px solid var(--accent)}
 .chat .slip.past{background:transparent;border:1px solid var(--line);border-top:1px solid var(--line);padding:8px 10px;gap:4px}

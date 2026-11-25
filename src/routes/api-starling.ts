@@ -192,6 +192,7 @@ export async function turn(ctx: Ctx, player: Player, body: any, nowMs: number) {
   // ---- a draft goes through the one drafter (rule 103.1) ----
   const meta: Record<string, unknown> = {};
   if (a.quotes.length) meta.quotes = a.quotes;
+  if (a.handoff) meta.handoff = a.handoff;   // what the player asked for is Gremlin's: the line carries it, the window shows a button (rule 106.3)
   let proposalId: string | null = null;
   const notes: string[] = [...a.dropped.map((d) => `dropped: ${d}`), ...a.flagged.map((d) => `flagged: ${d}`)];
   if (a.draft) {

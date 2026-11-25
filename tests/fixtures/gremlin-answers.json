@@ -141,5 +141,16 @@
       "cache_read_input_tokens": 10926
     },
     "recorded_at": "2026-11-23"
+  },
+  "handoff-rule": {
+    "message": "change the rules so we move 2 spaces",
+    "text": "{\"say\":\"Rule changes aren't my bench. That's Starling's, the rulebook's bird (103, 202.2). Hit the button and she'll take your words. Got a thing to make instead? A creature, an item, a tile? Bring it here.\",\"refusal\":\"\",\"escalate\":{\"category\":\"none\",\"reason\":\"\"},\"handoff\":\"starling\",\"ticket\":{\"title\":\"\",\"brief\":\"\",\"estimate\":0,\"running_cost\":\"\",\"tasks\":[],\"makes\":[],\"price\":{\"points\":0,\"reason\":\"\"}}}",
+    "usage": {
+      "input_tokens": 194,
+      "output_tokens": 172,
+      "cache_creation_input_tokens": 11568,
+      "cache_read_input_tokens": 0
+    },
+    "recorded_at": "2026-11-25"
   }
 }

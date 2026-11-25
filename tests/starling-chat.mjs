@@ -326,6 +326,14 @@ try {
   check("repeated sends while over budget log one row for the player that day", acalls("outcome = 'over_budget'").length === 1);
   d1(state, `DELETE FROM agent_calls WHERE cost_micro = 60000000`);
 
+  console.log("a hand-off to Gremlin (rule 106.3): the line carries it, the history keeps it, nothing is drafted");
+  const ho = await say(Ana, REC["h-commission"].message);
+  const hj = await say(Ana, "SYNTH-HANDOFF-JUNK is this one yours?");
+  const hh = await Ana.get(CH);
+  check("a recorded answer that points to Gremlin comes back with handoff: gremlin, drafts nothing, and the line is stored with it (the history still says it after a reload)",
+    ho.status === 200 && ho.data.out === "ok" && ho.data.messages[1].handoff === "gremlin" && !ho.data.messages[1].proposal && hh.data.messages.find((m) => m.id === ho.data.messages[1].id)?.handoff === "gremlin");
+  check("a handoff to anyone else is dropped: the line has none", hj.status === 200 && hj.data.messages[1].handoff === undefined && !hh.data.messages.find((m) => m.id === hj.data.messages[1].id)?.handoff);
+
   console.log("no key: she is out (section 4.4)");
   await srv.stop();
   srv = await startSrv({ noKey: true });
