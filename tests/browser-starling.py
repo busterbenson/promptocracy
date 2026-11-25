@@ -114,6 +114,8 @@ with sync_playwright() as p:
         check(f"{tag}: the draft slip: DRAFT, the drafter's head, the player's words, the new text, the change, the votes needed, the conflict (402), and Lock it in",
               "DRAFT" in slip and "Amend rule 401 (Points) to read:" in slip and "15 points" in slip and "Reword" in slip and "majority" in slip and "402" in slip and "Lock it in" in slip, slip)
         check(f"{tag}: the slip shows the amendment as a diff: the old words struck (del) and the new ones marked (ins)", page.locator("#chatLog .slip del").count() >= 1 and page.locator("#chatLog .slip ins").count() >= 1, page.locator("#chatLog .slip .tx").first.inner_html())
+        lk = page.evaluate("(() => { const e = document.querySelector('#chatLog .slip [data-c=lock]'), s = getComputedStyle(e); return { h: e.getBoundingClientRect().height, small: e.classList.contains('small'), bg: s.backgroundColor }; })()")
+        check(f"{tag}: Lock it in is the primary on the slip: filled, normal size (44 px, not the small button)", lk["h"] >= 43 and not lk["small"] and lk["bg"] not in ("rgba(0, 0, 0, 0)", "transparent"), str(lk))
         check(f"{tag}: Lock it in is the one filled button on the slip, and it is enabled", page.locator("#chatLog .slip .btn").count() == 1 and page.locator('#chatLog .slip [data-c="lock"]').is_enabled())
         to_book(page); shot(page, f"desktop-draft-{tag}")
         sideways(page, 1280, f"{tag} chat open")

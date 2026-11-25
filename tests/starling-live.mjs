@@ -84,6 +84,7 @@ function grade(c, a, plain) {
   if (e.asks && !/\?/.test(a.say)) f.push("did not ask a question");
   if (e.saysUnknown && !/(doesn'?t say|don'?t say|not say|nothing|no rule|isn'?t|silent|can'?t find|not mention)/i.test(a.say)) f.push("did not say the rules are silent");
   if (e.saysCant && !/(can'?t|cannot|not right now|ended)/i.test(a.say)) f.push("did not say nothing can be drafted now");
+  if (e.saysLock && !/lock it in/i.test(a.say)) f.push("did not tell the player to tap Lock it in");
   if (e.noLockClaim && /(locked in|is on (tomorrow'?s|the) ballot|i('ve| have) locked)/i.test(a.say) && !/(can'?t|won'?t|only you|your (own )?click)/i.test(a.say)) f.push("claimed to lock something in");
   return f;
 }

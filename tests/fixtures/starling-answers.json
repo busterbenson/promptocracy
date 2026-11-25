@@ -218,5 +218,16 @@
       "cache_read_input_tokens": 0
     },
     "recorded_at": "2026-11-25"
+  },
+  "d-submit": {
+    "message": "Make it 12 points instead of 10.",
+    "text": "{\"say\":\"12 instead of 10, got it! Rule 401 is a majority rule, so a majority of yes votes would change it. I've drafted an amend of 401.1 with your words. The vote decides, not me. When the draft slip appears, the Lock it in button under it is your own click: that puts it on tomorrow's ballot, and until you press it nothing has been submitted.\",\"quotes\":[{\"num\":\"401.1\",\"text\":\"A player whose proposal passes and is applied gets 10 points when it is applied (rule 107).\"}],\"draft\":{\"kind\":\"amend\",\"target\":\"401.1\",\"words\":\"Make it 12 points instead of 10.\"}}",
+    "usage": {
+      "input_tokens": 162,
+      "output_tokens": 212,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 11186
+    },
+    "recorded_at": "2026-11-25"
   }
 }
