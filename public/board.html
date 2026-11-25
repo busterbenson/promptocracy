@@ -224,7 +224,25 @@ import { hold } from "/js/busy.js";
     drawNotes(); drawWho();
   }
   function drawNotes() {
-    $("notes").innerHTML = NOTES.list.length ? NOTES.list.map(n => `<li class="${n.read_at ? "" : "unread"}"><span class="dot" style="background:var(--accent);margin-top:5px"></span><span>${esc(n.body)}<small>${esc(whenText(n.created_at))}</small></span></li>`).join("") : "<li>Nothing yet.</li>";
+    $("notes").innerHTML = NOTES.list.length ? NOTES.list.map(n => {
+      const inner = `<span class="dot" style="background:var(--accent);margin-top:5px"></span><span>${esc(n.body)}<small>${esc(whenText(n.created_at))}</small></span>`;
+      const to = noteTarget(n);   // a row that points at a proposal (P3) or a commission (W3) is a button that opens its card
+      return `<li class="${n.read_at ? "" : "unread"}">${to ? `<button type="button" class="nrow" data-note="${esc(to)}" aria-label="Open ${esc(to)}">${inner}</button>` : inner}</li>`;
+    }).join("") : "<li>Nothing yet.</li>";
+  }
+  // The link a notification carries (/<slug>/#p-P3 or #w-W3) says what it points at.
+  function noteTarget(n) { const m = /#([pw])-([PW]\d{1,6})$/.exec(String(n.link || "")); return m && m[2][0].toLowerCase() === m[1] ? m[2] : ""; }
+  // Opens that card: a commission's ticket; a proposal's rule (an enacted new rule under its new number). A proposal with no card (a new rule that
+  // never made it in, a block) opens History, where its sentence is.
+  async function openNote(to) {
+    await closePanels();
+    if (to[0] === "W") { if (WS) { CARDS.hidePreview(); WS.open(to, false); } return; }
+    const r = await api("/api/history?days=30");
+    const it = r.ok ? r.data.days.flatMap(d => d.items).find(i => i.n === to) : null;
+    if (it && it.kind === "commission" && it.ticket && WS) { CARDS.hidePreview(); WS.open(it.ticket.n, false); return; }
+    const key = !it ? null : it.kind === "add" ? (it.status === "enacted" && it.new_num ? String(it.new_num).split(".")[0] : null) : String(it.target || "").split(".")[0];
+    if (key && BOOK && BOOK.openRule(key)) return;
+    setTab("history", true);
   }
 
   $("login-form").addEventListener("submit", async e => {
@@ -684,6 +702,8 @@ import { hold } from "/js/busy.js";
     const t = e.target;
     if (PROP && !t.closest("#pzone .tkstep.pr")) PROP.closeMenu();   // a click anywhere else puts the Propose menu away (first, so a vote or a tab click does too)
     if (t.closest("[data-hmore]")) { await loadHistory(true); return; }
+    const nt = t.closest("[data-note]");
+    if (nt) { await openNote(nt.dataset.note); return; }
     if (t.closest("[data-yours]")) { await closePanels(); await openYours(); return; }
     const tab = t.closest("[data-tab]");
     if (tab && !tab.disabled) { setTab(tab.dataset.tab, !tab.closest(".btabs")); return; }

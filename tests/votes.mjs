@@ -282,11 +282,26 @@ try {
     J(rev.items[0].roll_call.map((r) => [r.name, r.vote])) === J([["Ana", "yes"], ["Bo", "yes"], ["Cy", "yes"], ["Dee", null], ["Eve", null]]) &&
     J(rev.items[1].result) === J({ yes: 2, no: 2, didnt_vote: 1, needed: 3, electorate: 5, passed: false, applied: null, sentence: "4 of 5 voted; 2 voted yes; it needed more than half of the votes cast.", not_applied_reason: null }) &&
     rev.items[0].result.passed === true && rev.items.every((i) => i.can_vote.allowed === false), J(rev.items[0]));
+  const results = () => d1(state, `SELECT player_id, body, link, id FROM notifications WHERE game_id = '${gid}' AND kind = 'proposal_result' ORDER BY id`);
+  const r1 = results().filter((r) => r.id.startsWith(`count-${d1(state, `SELECT id FROM proposals WHERE game_id = '${gid}' AND number = 1`)[0].id}-`));
+  check("the count tells every player, once per proposal: 3 counted proposals x 6 players (Fay joined on day 2) = 18 in-game notifications, none emailed",
+    results().length === 18 && r1.length === 6 && new Set(r1.map((r) => r.player_id)).size === 6 && d1(state, `SELECT COUNT(*) AS n FROM notifications WHERE kind = 'proposal_result' AND emailed_at IS NOT NULL`)[0].n === 0, String(results().length));
+  check("each carries History's sentence with who proposed it: P1's is 'P1 by Ana.', what it was, 'Passed.' and the count; P2's says Failed; the link points at the proposal",
+    r1[0].body === `P1 by Ana. A repeal of rule 403. Passed. ${prop(1).why}` && r1[0].link === "/vote/#p-P1" &&
+    results().some((r) => r.body === `P2 by Bo. A new clause for rule 401. Failed. ${prop(2).why}`), J(r1[0]));
+  const api = (await ana.get("/vote/api/notifications")).data;
+  check("the API returns each row's target: the bell's rows carry the link (/vote/#p-P1 ...) next to the sentence",
+    api.notifications.filter((n) => n.kind === "proposal_result").map((n) => n.link).sort().join() === "/vote/#p-P1,/vote/#p-P2,/vote/#p-P3" && api.unread >= 3, J(api).slice(0, 300));
   const snap = () => J([d1(state, `SELECT number, status, yes, no, absent, needed, why, not_applied_reason, decided_at FROM proposals WHERE game_id = '${gid}' ORDER BY number`), dayRow(2), dayRow(3) ?? null, d1(state, `SELECT id, kind FROM notifications WHERE game_id = '${gid}' AND kind = 'not_applied'`), gameRow()]);
   const s1 = snap();
   setClock("2026-11-02T10:00:00.000Z"); // 2:00 am PST: past the old 2 am deadline, before the 3 am one
   await cron(); await cron();
   check("the cron run twice more before the deadline counts nothing twice and changes nothing (still waiting for the moderator)", snap() === s1, snap());
+  check("and writes no second notification", results().length === 18);
+  // A night counted before the notices existed (or a run that stopped between the count and them): they come at the next tick, once.
+  d1(state, `DELETE FROM notifications WHERE game_id = '${gid}' AND kind = 'proposal_result'`);
+  await cron(); await cron();
+  check("a counted night that is missing its notices gets them on the next tick, once (18 again, not 36)", results().length === 18);
   // Two overlapping midnight runs (Codex P1 on #15): the second loaded the day as 'locked' before the first counted it.
   // Replay that stale view: put the day back to 'locked' with P1 still passed and unapplied, and tick.
   d1(state, `UPDATE days SET status = 'locked' WHERE game_id = '${gid}' AND n = 2`);
@@ -317,6 +332,7 @@ try {
   check("the cron run twice more after the deadline changes nothing: no second notification, no second day", snap() === s2 && d1(state, `SELECT COUNT(*) AS n FROM days WHERE game_id = '${gid}'`)[0].n === 3);
   const fv3 = await vote(fay, "P4", "yes");
   const av3 = await vote(ana, "P4", "no");
+  check("the repeated ticks after the deadline wrote no second notification either: still 18", results().length === 18);
   check("Fay votes yes and Ana votes no from day 3", fv3.status === 200 && av3.status === 200, fv3.text + av3.text);
 
   console.log("a ballot where nothing passes");
@@ -324,6 +340,7 @@ try {
   await cron();
   check("day 3's only item fails (1 yes, 1 no, 4 didn't vote: not more than half of the 2 who voted; it needed 2), so day 4 opens at once: day 3 done, no deadline",
     prop(4).status === "failed" && prop(4).yes === 1 && prop(4).no === 1 && prop(4).needed === 2 && prop(4).absent === 4 && dayRow(3).status === "done" && dayRow(3).deadline_at === null && dayRow(4)?.status === "open" && gameRow().day === 4 && gameRow().phase === "open", J([prop(4), dayRow(3)]));
+  check("day 3's count told all 6 players (Fay joined) about P4, once: 18 + 6 = 24", results().length === 24 && results().filter((r) => r.body.startsWith("P4 by ")).length === 6 && results().find((r) => r.body.startsWith("P4 by "))?.body.includes(" Failed. "), String(results().length));
 } catch (e) {
   fail++;
   console.log("  FAIL  harness error:", e?.stack || e, e?.cause, e?.stderr ? String(e.stderr).slice(-1500) : "");

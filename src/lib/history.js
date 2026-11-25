@@ -62,3 +62,27 @@ export function proposalSentence(r, ticket, o = {}) {
 
 /** The statuses a proposal has once its ballot has been counted: only these reach History (rule 104.4). */
 export const HISTORY_STATUSES = ["passed", "failed", "enacted", "not_applied", "approved"];
+
+// ---- the bell's words (the same sentence, written to every player when the count runs) ----------------------------------------------------
+/**
+ * A counted proposal as a notification: "P3 by Ada. A change to rule 402, "Shorter Eras". Passed. 2 of 3 voted; ..." (who, then the History sentence).
+ * `r` is the proposal row with the proposer's `name`.
+ * @rule 104.4, 801.2
+ */
+export function resultNotice(r, ticket, o = {}) {
+  return `P${r.number} by ${r.name}. ${proposalSentence(r, ticket, o)}`;
+}
+
+/**
+ * Where a bell row opens: a commission's ticket (#w-W3), else the proposal (#p-P3). The page resolves the P-number to its card when
+ * the row is clicked (the rule it changes; an enacted new rule opens under its new number), so the link stays right as the night goes on.
+ * @rule 104.4, 801.2
+ */
+export function noticeLink(slug, r, ticket) {
+  return `/${slug}/#${r.kind === "commission" && ticket ? `w-${ticket.n}` : `p-P${r.number}`}`;
+}
+
+/** A commission that was waiting for its price and is now paid and approved, as a notification. @rule 801.4, 803.1 */
+export function readyApprovedNotice(ticket, name) {
+  return `${whatSentence({ kind: "commission" }, ticket)}. Approved: ${name} can pay now.`;
+}
