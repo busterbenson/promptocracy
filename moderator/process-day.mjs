@@ -158,11 +158,16 @@ const tagsIn = (t) => [...String(t ?? "").matchAll(/\[setting:\s*([A-Za-z0-9_.]+
 
 // ---- the voted words (rules 107.4, 107.9) ----------------------------------------------------------------------------
 // What the players voted on are the WORDS of after_text. Markup the helpers wrote around them is not the words, and the night may
-// repair it (rule 107.9): bold marks, spacing and line wraps, heading marks and a rule's mark are invisible and ignored; and the rule
-// side may carry, between the voted words, only (a) a [setting: key] tag (109.2: Starling's drafter writes plain text) and (b) a
-// parenthesised citation of an existing rule or clause that the text being amended already had and the draft dropped. A draft's
-// leading clause number may differ from the clause it lands in. Each tag, citation or number the check had to look past is returned
-// as a repair, for the night's report. Different words, or a different number, are never tolerated.
+// repair it (rule 107.9). The repairs are a short list of transformations; every other token is compared as it is, one for one:
+//   1. invisible markup is ignored without a mention: `**` marks, spacing and line wraps, heading marks, a rule's [u]/[m];
+//   2. a [setting: key] tag in the rule between the voted words (109.2: Starling's drafter writes plain text), when the clause stood
+//      with that tag in that place (the word before it is the same), or the proposal itself sets that setting;
+//   3. a parenthesised citation of an existing rule or clause that the SAME clause already had in the same place (the word before
+//      it is the same) and the draft dropped. A citation the clause never had is a new word, not a repair, wherever else in the
+//      rule it appears;
+//   4. the clause number the draft starts with, when it is a clause label of the same rule as the clause it lands in and sits at the
+//      clause-label position of the rule's text. A leading number anywhere else is a value in the words ("100.5 points").
+// Each tag, citation or number the check had to look past is returned as a repair, for the night's report.
 const TAG_SRC = String.raw`\[setting:\s*[A-Za-z0-9_.]+\s*\]`;
 const CITE_SRC = String.raw`\((?:rules?\s+)?\d{3}(?:\.\d+)?(?:\s*(?:,|and|or|&)\s*(?:rules?\s+)?\d{3}(?:\.\d+)?)*\)`;
 const GAP_SRC = `(?:${TAG_SRC}|${CITE_SRC})`;
@@ -180,40 +185,64 @@ function wordsRegex(text) {
 }
 const tagKey = (x) => (x.startsWith("[") ? `[setting: ${/\[setting:\s*([A-Za-z0-9_.]+)/.exec(x)[1]}]` : norm(x));
 const countBy = (xs) => xs.reduce((m, x) => m.set(x, (m.get(x) ?? 0) + 1), new Map());
+// The tags and citations in `text`, each with the word just before it: the place it stands in.
+function gapsOf(text) {
+  const g = new RegExp(GAP_SRC, "g");
+  return [...String(text ?? "").matchAll(g)].map((m) => ({ key: tagKey(m[0]), prev: norm(text.slice(0, m.index).replace(g, "")).split(" ").pop() }));
+}
+// A rule's text as it stood: each clause's label -> its plain text (tags and citations kept). Text with no clause label is one clause, "".
+function clausesOf(md) {
+  const out = new Map();
+  let key = "";
+  for (const line of String(md ?? "").split("\n")) {
+    if (/^#{1,6}\s/.test(line)) continue;
+    const c = /^\*\*(\d{3}\.\d+)\*\*\s*(.*)$/.exec(line);
+    if (c) { key = c[1]; out.set(key, c[2]); } else out.set(key, `${out.get(key) ?? ""} ${line}`);
+  }
+  return new Map([...out].map(([k, v]) => [k, plain(v)]));
+}
+// The clause label that sits just before position `idx` of the plain text of a rule (the label position), if any.
+const labelBefore = (t, idx) => /(?:^|\s)(\d{3}\.\d+) $/.exec(t.slice(0, idx))?.[1];
 /** @rule 107.9 */
-export function votedWords({ afterText, own, before = "", known = new Set() }) {
-  const ownPlain = plain(own), beforePlain = plain(before);
+export function votedWords({ afterText, own, before = "", known = new Set(), settings = [] }) {
+  const ownPlain = plain(own), clauses = clausesOf(before), setKeys = new Set(settings);
   const rawParts = String(afterText ?? "").split(/\n\s*\n/);
   const parts = rawParts.map((x) => plain(stripTags(x))), hadTags = rawParts.map((x) => [...x.matchAll(new RegExp(TAG_SRC, "g"))].map((m) => tagKey(m[0])));
   const repairs = [], ranges = [];
-  for (const [at, part] of parts.entries()) {
+  for (const [i, part] of parts.entries()) {
     if (!part) continue;
-    const tries = [{ text: part, renumbered: false }];
-    const bare = part.replace(/^\d{3}\.\d+\s+/, "");
-    if (bare !== part && bare) tries.push({ text: bare, renumbered: true });
+    const lead = /^(\d{3}\.\d+)\s+(\S.*)$/.exec(part);
+    // The part as written, then (when it starts with a clause label) without it, which must land right after a clause label of the same rule.
+    const tries = [{ text: part, lead: lead?.[1], re: wordsRegex(part) }];
+    if (lead) tries.push({ text: lead[2], draft: lead[1], re: new RegExp(`(?<=(?:^|\\s)\\d{3}\\.\\d+ )${wordsRegex(lead[2]).source}`) });
     let found = null;
     for (const t of tries) {
-      const m = wordsRegex(t.text).exec(ownPlain);
+      const m = t.re.exec(ownPlain);
       if (!m) continue;
+      const landed = t.lead ?? labelBefore(ownPlain, m.index);
+      if (t.draft && landed.slice(0, 3) !== t.draft.slice(0, 3)) continue;
+      // The clause as it stood: the draft's own number for it, else the one it lands in (else the one unlabelled text).
+      const orig = [t.draft, landed].map((l) => l && clauses.get(l)).find((x) => x !== undefined) ?? (clauses.size === 1 && clauses.has("") ? clauses.get("") : undefined);
+      const origGaps = orig === undefined ? [] : gapsOf(orig);
       // What the check looked past: the tags and citations in the matched text that the draft didn't have.
-      const extra = [...m[0].matchAll(new RegExp(GAP_SRC, "g"))].map((x) => tagKey(x[0]));
-      const had = countBy([...t.text.matchAll(new RegExp(CITE_SRC, "g"))].map((x) => norm(x[0])).concat(hadTags[at]));
-      const inserted = extra.filter((x) => { const n = had.get(x) ?? 0; if (n > 0) { had.set(x, n - 1); return false; } return true; });
-      const bad = inserted.filter((x) => !x.startsWith("[") && (!beforePlain.includes(x) || !(x.match(/\d{3}(?:\.\d+)?/g) ?? []).every((d) => known.has(d))));
+      const had = countBy([...t.text.matchAll(new RegExp(CITE_SRC, "g"))].map((x) => norm(x[0])).concat(hadTags[i]));
+      const inserted = gapsOf(t.lead ? m[0].replace(/^\d{3}\.\d+\s+/, "") : m[0]).filter((x) => { const n = had.get(x.key) ?? 0; if (n > 0) { had.set(x.key, n - 1); return false; } return true; });
+      const bad = inserted.filter((x) => {
+        const there = origGaps.some((o) => o.key === x.key && o.prev === x.prev);
+        if (x.key.startsWith("[")) return !(there || setKeys.has(x.key.slice(10, -1)));
+        return !(there && (x.key.match(/\d{3}(?:\.\d+)?/g) ?? []).every((d) => known.has(d)));
+      });
       if (bad.length) continue;
-      found = { m, inserted, renumbered: t.renumbered };
+      found = { m, inserted, renumbered: t.draft ? landed : null };
       break;
     }
     if (!found) return { ok: false, repairs: [], rest: "" };
     ranges.push([found.m.index, found.m.index + found.m[0].length]);
     for (const x of found.inserted) {
-      if (x.startsWith("[")) repairs.push({ what: `kept the ${x} tag in the rule's text`, why: "the drafter writes the words without setting tags; the tag ties them to the settings file (rule 109.2)" });
-      else repairs.push({ what: `kept the citation ${x} that the clause had before`, why: "the draft left it out and the words around it are the ones you voted on" });
+      if (x.key.startsWith("[")) repairs.push({ what: `kept the ${x.key} tag in the rule's text`, why: "the drafter writes the words without setting tags; the tag ties them to the settings file (rule 109.2)" });
+      else repairs.push({ what: `kept the citation ${x.key} that the clause had before`, why: "the draft left it out and the words around it are the ones you voted on" });
     }
-    if (found.renumbered) {
-      const num = /(\d{3}\.\d+) $/.exec(ownPlain.slice(0, found.m.index))?.[1];
-      repairs.push({ what: `set the clause number${num ? ` to ${num}` : ""}`, why: "the draft numbered the clause differently from where it goes; the words are as voted" });
-    }
+    if (found.renumbered) repairs.push({ what: `set the clause number to ${found.renumbered}`, why: "the draft numbered the clause differently from where it goes; the words are as voted" });
   }
   // What is left of the rule's text once the voted words are taken out (for a move: nothing but the moved rule's own words).
   let rest = ownPlain;
@@ -301,7 +330,7 @@ export function scopeProblems({ beforeMd, afterMd, beforeSettings, afterSettings
   if (p.after_text && !p.redraft && !markChange) {
     // The drafter writes after_text without [setting: key] tags (src/lib/proposals.js) while the rule keeps them (109.2): the night compares the
     // voted words, looking past the markup it may repair (rule 107.9, votedWords), and reports what it looked past.
-    const vw = votedWords({ afterText: p.after_text, own: [...rules].map((n) => b[`r${n}`] ?? "").join("\n"), before: [...rules].map((n) => a[`r${n}`] ?? "").join("\n"), known: knownNumbers(afterMd) });
+    const vw = votedWords({ afterText: p.after_text, own: [...rules].map((n) => b[`r${n}`] ?? "").join("\n"), before: [...rules].map((n) => a[`r${n}`] ?? "").join("\n"), known: knownNumbers(afterMd), settings: Object.keys(p.settings ?? {}) });
     if (!vw.ok) out.push("the draft that was voted on is not in the rule it changes, word for word");
     else {
       repairs.push(...vw.repairs);

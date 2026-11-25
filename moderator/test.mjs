@@ -889,6 +889,12 @@ const rulingCalls = (t) => t.claude.calls().filter((c) => c.escalation !== null)
   const wrong = md("**202.2** On your turn you can move your piece 3 spaces in any direction, diagonals included [setting: turn.move_distance], and make proposals (103.2). You can do both, in either order, and you move at most once a day.");
   const probs2 = scopeProblems({ beforeMd: before, afterMd: wrong, beforeSettings: { "turn.move_distance": 1 }, afterSettings: { "turn.move_distance": 2 }, changed: ["RULES.md", "settings.json"], p });
   check("scope: leaving tags out of the comparison still catches different words (3 spaces for a voted 2)", probs2.some((x) => /word for word/.test(x)), J(probs2));
+  // Codex's two examples on #113, through the scope check itself (rule 107.9: a repair never changes what was voted on).
+  const rule401 = (c1) => `# Rules\n\n## 400. Points [m]\n\n### 401 Points [m]\n**401.1** ${c1}\n**401.2** You also get 5 points (402.1), whatever happens.\n\n### 402 Eras [m]\n**402.1** The Era.\n`;
+  const sp = (pp, afterMd) => scopeProblems({ beforeMd: rule401("You get 10 points."), afterMd, beforeSettings: {}, afterSettings: {}, changed: ["RULES.md"], p: { kind: "amend", scope: "clause", target: "401.1", ...pp } });
+  check("scope: a voted '100.5 points a day.' is not applied as '3.5 points a day.' under a numbering repair", sp({ after_text: "100.5 points a day." }, rule401("3.5 points a day.")).some((x) => /word for word/.test(x)));
+  check("scope: a citation only 401.2 had (402.1) is not restored into the amended 401.1", sp({ after_text: "You get 15 points." }, rule401("You get 15 points (402.1).")).some((x) => /word for word/.test(x)));
+  check("scope: the same amendment with no invented citation applies", !sp({ after_text: "You get 15 points." }, rule401("You get 15 points.")).length);
 }
 
 // ---- rule 107.9: the moderator repairs how Starling or Gremlin wrote a draft, never what it says ---------------------------------
@@ -913,6 +919,21 @@ const rulingCalls = (t) => t.claude.calls().filter((c) => c.escalation !== null)
   check("107.9 words: a draft's clause number can differ from where it goes (reported), the words may not", v5.ok && v5.repairs.some((r) => /clause number to 202\.2/.test(r.what)) && !vw(`**202.3** ${words.replace("2 spaces", "3 spaces")}`).ok, J(v5));
   check("107.9 words: a leading decimal that is a number in the words is never taken for a clause number (2.5 for a voted 3.5)", !votedWords({ afterText: "2.5 points a day", own: "**401.1** 3.5 points a day", before: "", known: KNOWN }).ok && !votedWords({ afterText: "100.5 points a day", own: "**401.1** 100.5 points a day extra", before: "", known: KNOWN }).rest === false);
   check("107.9 words: the words the draft has but the rule dropped are refused", !vw(words + " And you can fly.").ok);
+  // Codex's two findings on #113 (round 2): a repair never changes a word, a number or a citation the voters didn't see.
+  const v6 = votedWords({ afterText: "100.5 points a day.", own: "**401.1** 3.5 points a day.", before: "", known: KNOWN });
+  check("107.9 words: a voted decimal (100.5 points) is never stripped as a clause label, so 3.5 points a day is refused", !v6.ok && !v6.repairs.length, J(v6));
+  check("107.9 words: a label that is another rule's number, or is followed by words that are not the rule's, is never stripped", !votedWords({ afterText: "402.1 points a day.", own: "**401.1** points a day.", before: "", known: KNOWN }).ok && !votedWords({ afterText: "401.5 points a day.", own: "**401.1** 9 points a day.", before: "", known: KNOWN }).ok);
+  const two = "### 401 Points [m]\n**401.1** You get 10 points.\n**401.2** You also get 5 points (402.1), whatever happens.";
+  const twoBefore = two, twoAfter = two.replace("You get 10 points.", "You get 15 points (402.1).");
+  const v7 = votedWords({ afterText: "You get 15 points.", own: twoAfter, before: twoBefore, known: new Set(["401", "401.1", "401.2", "402.1"]) });
+  check("107.9 words: a citation that only another clause had (402.1 in 401.2) is not restored into 401.1", !v7.ok, J(v7));
+  const v8 = votedWords({ afterText: "You also get 5 points, whatever happens.", own: two, before: twoBefore, known: new Set(["401", "401.1", "401.2", "402.1"]) });
+  check("107.9 words: the same citation in its own clause, at its own place, is still restored (the true repair)", v8.ok && v8.repairs.some((r) => /\(402\.1\)/.test(r.what)), J(v8));
+  const moved = two.replace("5 points (402.1), whatever happens.", "5 points, whatever happens (402.1).");
+  const v9 = votedWords({ afterText: "You also get 5 points, whatever happens.", own: moved, before: twoBefore, known: new Set(["401", "401.1", "401.2", "402.1"]) });
+  check("107.9 words: the citation at a different place in its clause than it had is not a repair", !v9.ok, J(v9));
+  const v10 = votedWords({ afterText: "You get 15 points.", own: "### 401 Points [m]\n**401.1** You get 15 [setting: points.per_win] points.", before: twoBefore, known: new Set(["401", "401.1"]) });
+  check("107.9 words: a [setting] tag the clause never had is not a repair (unless the proposal sets that setting)", !v10.ok && votedWords({ afterText: "You get 15 points.", own: "### 401 Points [m]\n**401.1** You get 15 [setting: points.per_win] points.", before: twoBefore, known: new Set(["401", "401.1"]), settings: ["points.per_win"] }).ok, J(v10));
   const rb = repairsBlock([{ what: "kept the [setting: a.b] tag in the rule's text", why: "x" }, { what: "set the clause number to 202.2", why: "" }]);
   check("107.9 report: the commit's repairs block names rule 107.9 and 301, and reads back", /rule 107\.9/.test(rb) && /rule 301/.test(rb) && repairsOfBody(`P4: t (day 1, 4-1)\n\n${rb}Proposal: P4`).length === 2 && repairsOfBody(`P4: t\n\nProposal: P4`).length === 0, rb);
   const rn = repairNote(4, v2.repairs);
