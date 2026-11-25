@@ -17,7 +17,8 @@ import * as A from "../src/lib/art.js";
 import { answerSchema, readMakeItem, systemStatic } from "../src/lib/gremlin.js";
 
 let pass = 0, fail = 0;
-const check = (name, ok, detail = "") => { if (ok) { pass++; console.log(`  ok    ${name}`); } else { fail++; console.log(`  FAIL  ${name}${detail ? "  -> " + detail : ""}`); } };
+// detail may be a function, evaluated only on a failure (for details that cost a query).
+const check = (name, ok, detail = "") => { if (ok) { pass++; console.log(`  ok    ${name}`); } else { fail++; const d = typeof detail === "function" ? detail() : detail; console.log(`  FAIL  ${name}${d ? "  -> " + d : ""}`); } };
 const J = JSON.stringify;
 const sha = (b) => createHash("sha256").update(b).digest("hex");
 
@@ -265,7 +266,12 @@ try {
   const mine = await bytesOf(Ana, h1);
   const body = mine.buf;
   check("the requester gets it: a PNG whose SHA-256 is the key, private and not stored by a cache", mine.status === 200 && mine.headers.get("content-type") === "image/png" && sha(body) === h1 && mine.headers.get("cache-control") === "private, no-store" && /sandbox/.test(mine.headers.get("content-security-policy")));
-  check("another player and a visitor get a 404: the draft is private", (await Bo.req("GET", `${ART}/${h1}`)).status === 404 && (await visitor.req("GET", `${ART}/${h1}`)).status === 404);
+  // Flaked once on CI (run 45473787007, PR #100) and never locally in 22 runs; the old line printed no detail. On a failure
+  // this prints both statuses and every row that names the hash, so the next one says which request answered what and why.
+  const boSee = (await Bo.req("GET", `${ART}/${h1}`)).status, visSee = (await visitor.req("GET", `${ART}/${h1}`)).status;
+  check("another player and a visitor get a 404: the draft is private", boSee === 404 && visSee === 404,
+    () => J({ bo: boSee, visitor: visSee, refs: d1(state, `SELECT ticket_id, entry_name, saved, is_default FROM art_refs WHERE hash = '${h1}'`),
+      tickets: d1(state, `SELECT number, state, player_id FROM tickets WHERE id IN (SELECT ticket_id FROM art_refs WHERE hash = '${h1}')`) }));
   const NOPE = ["", "x", h1.toUpperCase(), h1.slice(1), h1 + "0", "..%2F..%2Fetc%2Fpasswd", "tmp%2F" + h1, h1 + "/x"];
   const bads = [];
   for (const p of NOPE) bads.push((await Ana.req("GET", `${ART}/${p}`)).status);
