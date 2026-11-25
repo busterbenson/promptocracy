@@ -219,6 +219,17 @@ try {
     check("an on-hold ticket can be cancelled too: Shelved, the hold flag cleared, nothing paid", ch.status === 200 && tk(6).state === "Shelved" && tk(6).held_at === null && tk(6).paid_at === null && score("Bo") === bs && J(logs(6)) === J(["held: Put on hold by its requester.", "shelved: Cancelled by its requester."]), J(tk(6)));
   }
 
+  console.log("801.9: a dead player and a Ghost can still hold, resume and cancel their own ticket (no rule says otherwise)");
+  {
+    seed(12, "Bo", "Ready", { price: 9 }); seed(13, "Bo", "Ready", { price: 9 });
+    d1(state, `UPDATE players SET dead_day = 1 WHERE id = '${id.Bo}'`);
+    const dead = [await Bo.post(`${T}/W12/hold`, {}), await Bo.post(`${T}/W12/resume`, {}), await Bo.post(`${T}/W12/hold`, {})];
+    d1(state, `UPDATE players SET ghost_day = 2 WHERE id = '${id.Bo}'`);
+    const ghost = [await Bo.post(`${T}/W12/resume`, {}), await Bo.post(`${T}/W13/cancel`, {})];
+    check("dead: hold, resume, hold again all 200; as a Ghost: resume and cancel are 200 too", [...dead, ...ghost].every((r) => r.status === 200) && tk(12).state === "Ready" && tk(12).held_at === null && tk(13).state === "Shelved", J([...dead, ...ghost].map((r) => r.status + r.text.slice(0, 80))));
+    d1(state, `UPDATE players SET dead_day = NULL, ghost_day = NULL WHERE id = '${id.Bo}'`);
+  }
+
   console.log("MCP: hold_ticket, resume_ticket, cancel_ticket");
   {
     seed(7, "Ana", "Ready", { price: 8 }); seed(8, "Ana", "Ready", { price: 8 });
