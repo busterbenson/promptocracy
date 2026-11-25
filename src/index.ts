@@ -187,6 +187,7 @@ async function route(request: Request, env: Env, execCtx: ExecutionContext): Pro
   }
   if (sub === ".well-known" && segs.length === 3 && segs[2] === "oauth-authorization-server") return method === "OPTIONS" ? preflight() : run({ get: oauthMeta.authorizationServer }, method, ctx);
   if (sub === "api" && segs.length === 3) return run(API[segs[2]] && Object.hasOwn(API, segs[2]) ? API[segs[2]] : undefined, method, ctx);
+  if (sub === "api" && segs.length === 4 && segs[2] === "me" && segs[3] === "items") return run({ get: apiMe.items }, method, ctx);
   if (sub === "api" && segs.length === 4 && segs[2] === "notifications" && segs[3] === "read") return run(apiNotificationsRead, method, ctx);
   // The moderator's routes (bearer token; src/routes/api-moderator.ts)
   if (sub === "api" && segs.length === 4 && segs[2] === "moderator" && segs[3] === "pending") return run({ get: apiModerator.pending }, method, ctx);
