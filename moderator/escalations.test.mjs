@@ -35,7 +35,7 @@ const server = createServer(async (req, res) => {
     world.modelCalls.push({ body, key: req.headers["x-api-key"] });
     if (req.headers["x-api-key"] !== KEY) return send(401, { error: "bad key" });
     if (world.modelMode === "error" || (world.modelMode === "poison" && JSON.stringify(body).includes("POISON"))) return send(500, { error: "overloaded" });
-    return send(200, { content: [{ type: "text", text: world.modelText }], stop_reason: "end_turn", usage: { input_tokens: 1200, output_tokens: 80 } });
+    return send(200, { content: [{ type: "text", text: world.modelText }], stop_reason: world.stopReason || "end_turn", usage: { input_tokens: 1200, output_tokens: 80 } });
   }
   if (url.pathname === `/${SLUG}/api/rules` && world.rulesDown) return send(502, "down", "text/plain");
   if (url.pathname === `/${SLUG}/api/rules`) return send(200, "# Rickshaw rules\n\n101. Rules are the game.\n", "text/markdown");
@@ -143,6 +143,18 @@ console.log("an escalation the model keeps failing on cannot starve the others")
   const r2 = await run(D);
   check("pass 2 puts the failing one last, so the two that were waiting are answered; only the failing one stays open", r2.answered === 2 && world.escalations.filter((e) => !e.answered).map((e) => e.id).join() === "1", JSON.stringify(r2));
   check("the file that remembers failures holds ids and counts only", !readFileSync(join(D.stateDir, `${SLUG}.escalations.state.json`), "utf8").includes("POISON"));
+}
+
+console.log("an answer the model stopped mid-way (max_tokens) is not posted");
+{
+  reset();
+  world.escalations = [ticketEsc(1)];
+  world.modelText = "Christin, yes, it can be done, but not as a majority rule on the side. Instead, the pro";
+  world.stopReason = "max_tokens";
+  const r = await run(dirsOf("pcut"));
+  world.stopReason = undefined;
+  check("a cut-off answer is not posted, and the escalation stays open for the next pass", world.answers.length === 0 && r.answered === 0, JSON.stringify({ r, answers: world.answers }));
+  check("the model is given room to finish: max_tokens is 4000", world.modelCalls.length > 0 && world.modelCalls[0].body.max_tokens === 4000, JSON.stringify(world.modelCalls.map((c) => c.body.max_tokens)));
 }
 
 console.log("a ruling, an empty answer, and a refused key");

@@ -31,7 +31,8 @@ export const ANSWER_MAX = 2000;
 export const RULING_ANSWER = "Chalant will rule on this tonight.";
 export const MAX_ANSWERS_PER_PASS = 20;
 export const MAX_PAGES = 10;
-export const MODEL_TIMEOUT_MS = 60_000, MODEL_MAX_TOKENS = 700, API_TIMEOUT_MS = 20_000;
+// 700 was too few: the model's own reasoning counts against it, and on 2026-11-24 an answer stopped at 203 characters mid-sentence
+export const MODEL_TIMEOUT_MS = 60_000, MODEL_MAX_TOKENS = 4_000, API_TIMEOUT_MS = 20_000;
 export const LIST_RETRY_MS = 5_000; // the list fetch is tried once more after this long before the pass fails (a dropped connection)
 const POST_CLIP = 700, THREAD_SHOWN = 30, RULES_CLIP = 120_000;
 
@@ -105,6 +106,7 @@ export async function askModel({ apiKey, base = "https://api.anthropic.com", sys
   try { body = await res.json(); } catch { /* unreadable */ }
   if (!body) return { ok: false, reason: "unreadable" };
   if (body.stop_reason === "refusal") return { ok: false, reason: "refusal" };
+  if (body.stop_reason === "max_tokens") return { ok: false, reason: "cut off" };   // never post half an answer: the next pass tries again
   const text = Array.isArray(body.content) ? body.content.filter((b) => b?.type === "text").map((b) => b.text).join("") : "";
   const n = (x) => (Number.isInteger(x) && x >= 0 ? x : 0);
   const u = body.usage ?? {};
