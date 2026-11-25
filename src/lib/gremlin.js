@@ -13,7 +13,7 @@ import { LIMITS, readFields } from "./tickets.js";
 export const MODEL = "claude-sonnet-5-5";
 export const EXCUSE_MODEL = "claude-haiku-5-5";
 // The per-call budgets (docs/step2-plan.md 2.2): the history is trimmed from its oldest day first; the rulebook and the player's message never are.
-export const INPUT_CAP_TOKENS = 24_000, OUTPUT_CAP_TOKENS = 1_500, CHAT_TIMEOUT_MS = 30_000;
+export const INPUT_CAP_TOKENS = 24_000, OUTPUT_CAP_TOKENS = 4_000, CHAT_TIMEOUT_MS = 30_000;
 export const EXCUSE_INPUT_CAP_TOKENS = 2_000, EXCUSE_OUTPUT_CAP_TOKENS = 120, EXCUSE_TIMEOUT_MS = 8_000;
 export const SAY_MAX = 1_200, PRICE_REASON_MAX = 140, REFUSAL_MAX = 300;
 export const MESSAGE_MAX = 2_000;
