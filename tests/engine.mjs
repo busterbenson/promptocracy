@@ -13,6 +13,8 @@ import { checkRulebook, citedRules, parseRulesMd } from "../src/engine/rulesmd.j
 import { DEFAULT_SETTINGS, validateSettings } from "../src/lib/settings.js";
 import { BundleError, bundleGames, checkTree, latestDayTag, runNode, runSandboxed } from "../scripts/bundle-games.mjs";
 import * as api from "../src/engine/api.js";
+import { applyBoard } from "../src/engine/board-night.js";
+import * as H from "../src/lib/history-lines.js";
 import { checkFileClaims, claimMap, findFunctions, hookClaimProblems, knownNumbers, overClaimed, worksWith } from "../src/engine/claims.js";
 import { runClaimsCheck, todoDoc } from "../scripts/check-rule-claims.mjs";
 import { addDays, dayGate, isLocked, localDate, lockMessage, nextMidnight, startOfDate } from "../src/lib/day-gate.js";
@@ -615,6 +617,28 @@ check("the real manifest lists Rickshaw Game 1 at busterbenson/promptocracy-rick
   return mf.engine === 1 && J(mf.games) === J({ "rickshaw-1": { repo: "busterbenson/promptocracy-rickshaw" } });
 })());
 check("src/generated is gitignored (it is built, never committed)", /^src\/generated\/$/m.test(readFileSync(pjoin(ROOT, ".gitignore"), "utf8")));
+
+console.log("\nHistory (rule 101.2): every board op has a line");
+{
+  // Every op applyBoard can emit must have an entry in host.ts's BOARD_LINE table, which throws on an op it doesn't know: a new op can't ship without a History line.
+  const ops = [...new Set([...readFileSync(pjoin(ROOT, "src/engine/board-night.js"), "utf8").matchAll(/ops\.push\(\{ op: "(\w+)"/g)].map((m) => m[1]))].sort();
+  const host = readFileSync(pjoin(ROOT, "src/engine/host.ts"), "utf8");
+  const table = host.slice(host.indexOf("const BOARD_LINE"), host.indexOf("for (const op of res.ops)"));
+  const have = [...table.matchAll(/^    (\w+): \(op\) => \{/gm)].map((m) => m[1]).sort();
+  check("every op board-night.js emits has a BOARD_LINE entry, and the table has nothing else", ops.length >= 7 && J(ops) === J(have), J([ops, have]));
+  check("an op with no entry throws instead of being dropped", /has no History line for the \$\{op\.op\} op/.test(host));
+  // The bite effect names its biter (optional); the op carries it into the line's args.
+  const tiles = makeTiles([0, 1, 2].flatMap((x) => [0, 1, 2].map((y) => ({ x, y, z: 0 }))));
+  const catalog = [{ id: "C1", kind: "creature", attrs: { temper: "hostile", hearts: 2 } }];
+  const bit = applyBoard({ n: 1, effects: [effects.bite({ player: "a" }, 1, 7), effects.bite({ creature: 1 }, 2, 9), effects.bite({ player: "a" }, 1)], tiles, catalog, nextId: 2,
+    players: [{ ref: "a", x: 0, y: 0, z: 0, hearts: 3, state: "living" }], creatures: [{ id: 1, entry: "C1", x: 2, y: 2, z: 0, hearts: 2, restsNight: null, resting: false }] });
+  check("a bite's `by` is optional: the op has it when the rule gave it and omits it otherwise", bit.ops[0].by === 7 && bit.ops[1].by === 9 && !("by" in bit.ops[2]) && effects.bite({ player: "a" }, 1).by === undefined && validateEffect(effects.bite({ player: "a" }, 1, 7)) === null && validateEffect({ type: "bite", target: { player: "a" }, hearts: 1, by: "x" }) !== null, J(bit.ops));
+  const entryName = () => "Blob";
+  check("the lines say who, what and where, in the game's own words", H.stepped({ id: 1, x: 1, y: 1, z: 0 }, { x: 2, y: 2, z: 0 }, entryName, "C1").text === "Blob stepped from 3N 3E 1U to 2N 2E 1U." &&
+    H.creatureBit(bit.ops[1], entryName, "C1").text === "Blob lost 2 hearts and has 0 left." && H.creatureBit({ creature: 1, hearts: 1, left: 1 }, entryName, "C1").text === "Blob lost 1 heart and has 1 left." &&
+    H.gone({ id: 1 }, entryName, "C1", { x: 2, y: 2, z: 0 }).text === "Blob died and left the board." && H.rests({ id: 1, night: 3 }, entryName, "C1").text === "Blob rests on night 3." &&
+    H.bit(bit.ops[0], "Ada").args.creature === 7 && !("creature" in H.bit(bit.ops[2], "Ada").args));
+}
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

@@ -238,6 +238,7 @@ export function validateEffect(e) {
     case "bite": {
       const t = e.target;
       const okTarget = t && typeof t === "object" && ((isStr(t.player, 100) && t.creature === undefined) || (isInt(t.creature) && t.player === undefined));
+      if (e.by !== undefined && !isInt(e.by)) return "bite's by is the biting creature's id, a whole number";
       return okTarget && isInt(e.hearts) && e.hearts >= 1 ? null : "bite needs a target ({player} or {creature}) and a whole number of hearts, at least 1";
     }
     case "rest":
@@ -270,8 +271,8 @@ export const effects = Object.freeze({
   appear: (entry, tile) => ({ type: "appear", entry, tile: { x: tile.x, y: tile.y, z: tile.z ?? 0 } }),
   /** @rule 602.4 */
   step: (creature, to) => ({ type: "step", creature, to: { x: to.x, y: to.y, z: to.z ?? 0 } }),
-  /** @rule 602.5 */
-  bite: (target, hearts) => ({ type: "bite", target, hearts }),
+  /** `by` is the biting creature's id, written in the history (101.2). @rule 602.5 */
+  bite: (target, hearts, by) => ({ type: "bite", target, hearts, ...(by === undefined ? {} : { by }) }),
   /** @rule 602.5 */
   rest: (creature) => ({ type: "rest", creature }),
   /** @rule 603.3 */

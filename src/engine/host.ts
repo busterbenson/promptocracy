@@ -11,7 +11,8 @@ import { GONE_REASON } from "../lib/votes.js";
 import { Env, nowIso, who } from "../lib/util";
 import { applyBoard } from "./board-night.js";
 import { endGameStatements } from "../lib/end";
-import { tileLabel } from "../lib/geometry.js";
+import * as H from "../lib/history-lines.js";
+import { NEXT_NIGHT_SEQ } from "../lib/history-lines.js";
 import { APPLIED_EFFECTS, RuleError, assembleRules, cryptoRng, makeContext, makeTiles } from "./hooks.js";
 
 export { RuleError };
@@ -136,11 +137,15 @@ export function checkGiveHeart(game: any, ctx: any, giver: { ref: string }, targ
 
 // Runs the game's afterAction hooks and turns the effects into D1 statements for the action's own batch.
 /** @rule 504 */
-export function afterActionStatements(env: Env, game: any, ctx: any, actor: { ref: string }, action: any, now = nowIso()) {
+// `charted`, when given, is filled with the tiles this action charts that were not charted before (the history line says them, rule 101.2).
+export function afterActionStatements(env: Env, game: any, ctx: any, actor: { ref: string }, action: any, now = nowIso(), charted: { x: number; y: number; z: number }[] = []) {
   const stmts: any[] = [];
   for (const e of rulesFor(game).afterAction(ctx, actor, action)) {
     if (!APPLIED_EFFECTS.includes(e.type)) throw new RuleError(0, "afterAction", new Error(`the ${e.type} effect is not applied yet`));
-    for (const t of e.tiles) stmts.push(chartTile(env, game.id, t.x, t.y, t.z, now));
+    for (const t of e.tiles) {
+      stmts.push(chartTile(env, game.id, t.x, t.y, t.z, now));
+      if (!ctx.tiles.has(t.x, t.y, t.z) && !charted.some((c) => c.x === t.x && c.y === t.y && c.z === t.z)) charted.push({ x: t.x, y: t.y, z: t.z });
+    }
   }
   return stmts;
 }
@@ -179,7 +184,7 @@ export async function orderPassed<T extends { number: number }>(env: Env, game: 
 // The next place in day n's night sequence (events.night_seq): 1 + the highest so far. Every event the night writes
 // takes one, so the night reads back in execution order whichever batch wrote it. Binds (game_id, day).
 /** @rule 107.2 */
-export const NEXT_NIGHT_SEQ = "(SELECT COALESCE(MAX(night_seq), 0) + 1 FROM events WHERE game_id = ? AND day = ?)";
+export { NEXT_NIGHT_SEQ };
 
 // The Era ends (rule 402.3): the winner is crowned Champion, the Era's final scores are kept, everyone's points go back to
 // 0, the next Era opens the next day, and History says so. The statements for the night's batch, in this order (each one
@@ -240,7 +245,7 @@ function actionRecord(env: Env, game: any, n: number, q: any, act: any, now: str
   return env.DB.prepare(
     `INSERT INTO events (game_id, kind, text, created_at, day, phase, template, args, player_id, night_seq)
      SELECT ?, 'action', ?, ?, ?, 'night', 'action', json(?), ?, ${NEXT_NIGHT_SEQ} WHERE ${stillPassed}`,
-  ).bind(game.id, `P${q.number} was applied: ${act.name}, ${act.shown.map(([l, v]: string[]) => `${l.toLowerCase()} ${v}`).join(", ")}.`, now, n, JSON.stringify({ proposal: q.number, type: act.type, name: act.name, rule: act.rule, shown: act.shown }), q.player_id, game.id, n, q.id);
+  ).bind(game.id, `P${q.number} was applied: ${act.name}, ${act.shown.map(([l, v]: string[]) => `${l.toLowerCase()} ${v}`).join(", ")}.`, now, n, JSON.stringify({ proposal: q.number, type: act.type, name: act.name, rule: act.rule, shown: act.shown, params: act.params }), q.player_id, game.id, n, q.id);
 }
 
 // The night takes effect (the deployed rules are the claimed commit): each applied proposal is enacted in the order
@@ -252,7 +257,7 @@ function actionRecord(env: Env, game: any, n: number, q: any, act: any, now: str
 /** @rule 107.2, 401, 402 */
 export async function enactStatements(env: Env, game: any, n: number, nowMs: number) {
   // A proposal claimed before apply_seq existed (NULL) goes in P-number order, after any that have one.
-  const changes = (await env.DB.prepare("SELECT id, number, player_id, target, kind, action FROM proposals WHERE game_id = ? AND day_ballot = ? AND status = 'passed' AND commit_sha IS NOT NULL ORDER BY apply_seq IS NULL, apply_seq, number").bind(game.id, n).all()).results as any[];
+  const changes = (await env.DB.prepare("SELECT id, number, player_id, target, kind, action, new_num, commit_sha, apply_seq FROM proposals WHERE game_id = ? AND day_ballot = ? AND status = 'passed' AND commit_sha IS NOT NULL ORDER BY apply_seq IS NULL, apply_seq, number").bind(game.id, n).all()).results as any[];
   // The night's passed actions (rule 103.8) are applied after the rule changes, so they act on the rules as they stand tonight, in the
   // order the game's rule for it gives (107.2). The moderator never sees them: they have no commit.
   const actionRows = (await env.DB.prepare("SELECT id, number, player_id, target, kind, action FROM proposals WHERE game_id = ? AND day_ballot = ? AND status = 'passed' AND kind = 'action'").bind(game.id, n).all()).results as any[];
@@ -266,7 +271,21 @@ export async function enactStatements(env: Env, game: any, n: number, nowMs: num
   const given: { player: string; delta: number; reason: string; number: number }[] = [];
   const stmts: any[] = [];
   const stillPassed = "EXISTS (SELECT 1 FROM proposals WHERE id = ? AND status = 'passed')";
+  // The revision each enacted rule change gets, worked out as the UPDATE below does (1 + the changes enacted on that rule before), so the history line can say it.
+  /** @rule 107.2 */
+  const ruleOf = (q: any) => { const r = Math.trunc(Number(q.kind === "add" ? q.new_num : q.target)); return Number.isFinite(r) ? r : null; };
+  const revs = new Map<number | null, number>();
+  for (const r of (await env.DB.prepare("SELECT CAST(CASE WHEN kind = 'add' THEN new_num ELSE target END AS INTEGER) AS rule, COUNT(*) AS n FROM proposals WHERE game_id = ? AND status = 'enacted' AND kind != 'action' GROUP BY 1").bind(game.id).all()).results as any[]) revs.set(r.rule, r.n);
+  const running: Record<string, number> = { ...before };
   for (const q of ordered) {
+    if (q.kind !== "action") {
+      const rule = ruleOf(q), rev = (revs.get(rule) ?? 0) + 1;
+      revs.set(rule, rev);
+      stmts.push(env.DB.prepare(
+        `INSERT INTO events (game_id, kind, text, created_at, day, phase, template, args, player_id, night_seq)
+         SELECT ?, 'enacted', ?, ?, ?, 'night', 'enacted', json(?), ?, ${NEXT_NIGHT_SEQ} WHERE ${stillPassed}`,
+      ).bind(game.id, H.enactedText(q.number, rule, rev), now, n, JSON.stringify({ proposal: q.number, kind: q.kind, target: q.target ?? null, new_num: q.new_num ?? null, rule, rev, commit: q.commit_sha, seq: q.apply_seq ?? null }), q.player_id, game.id, n, q.id));
+    }
     // An action also does its own thing (rule 103.8): the points its type's rule gives, after the proposal's own (401).
     const act = q.kind === "action" ? JSON.parse(q.action) : null;
     const applied = act ? rules.applyAction(ctx, { type: act.type, params: act.params, number: q.number, player: q.player_id }) : [];
@@ -278,11 +297,12 @@ export async function enactStatements(env: Env, game: any, n: number, nowMs: num
     for (const e of [...rules.onEnacted(ctx, { number: q.number, player: q.player_id, target: q.target, kind: q.kind }), ...done]) {
       if (!known.has(e.player)) continue; // onEnacted can only return points (hooks.js refuses anything else)
       given.push({ player: e.player, delta: e.delta, reason: e.reason, number: q.number });
+      running[e.player] = (running[e.player] ?? 0) + e.delta;
       stmts.push(env.DB.prepare(`UPDATE players SET score = score + ? WHERE game_id = ? AND id = ? AND ${stillPassed}`).bind(e.delta, game.id, e.player, q.id));
       stmts.push(env.DB.prepare(
         `INSERT INTO events (game_id, kind, text, created_at, day, phase, template, args, player_id, night_seq)
-         SELECT ?, 'points', ?, ?, ?, 'night', 'points', json_object('proposal', ?, 'delta', ?, 'rule', ?), ?, ${NEXT_NIGHT_SEQ} WHERE ${stillPassed}`,
-      ).bind(game.id, `+${e.delta}: ${e.reason}`, now, n, q.number, e.delta, e.rule, e.player, game.id, n, q.id));
+         SELECT ?, 'points', ?, ?, ?, 'night', 'points', json_object('proposal', ?, 'delta', ?, 'rule', ?, 'score', ?), ?, ${NEXT_NIGHT_SEQ} WHERE ${stillPassed}`,
+      ).bind(game.id, `+${e.delta}: ${e.reason}`, now, n, q.number, e.delta, e.rule, running[e.player], e.player, game.id, n, q.id));
     }
   }
   const champ = rules.dayEnd(ctx, { before, given: given.map(({ player, delta }) => ({ player, delta })), enacted: ordered.map((q) => q.number) }).find((e: any) => known.has(e.player)); // dayEnd can only return a champion
@@ -344,8 +364,6 @@ export async function nightBoardStatements(env: Env, game: any, n: number, nowMs
   const pn = (ref: string) => { const p = names.get(ref); return p ? who(p.name, p.color) : "A player"; };
   /** @rule 602.3 */
   const entryName = (id: string) => ((bundleFor(game).bundle as any).catalog ?? []).find((e: any) => e.id === id)?.name ?? id;
-  /** @rule 602.3 */
-  const tileOf = (x: number, y: number, z: number) => tileLabel(x, y, z);
   const open = BOARD_OPEN, ob = [game.id, n, game.id];
   const stmts: any[] = [];
   /** @rule 603.1 */
@@ -354,30 +372,63 @@ export async function nightBoardStatements(env: Env, game: any, n: number, nowMs
       `INSERT INTO events (game_id, kind, text, created_at, day, phase, template, args, player_id, night_seq)
        SELECT ?, ?, ?, ?, ?, 'night', ?, json(?), ?, ${NEXT_NIGHT_SEQ} WHERE ${open}`,
     ).bind(game.id, kind, text, now, n, template, JSON.stringify(args), player, game.id, n, ...ob));
-  const byId = new Map<number, any>();
-  for (const op of res.ops) {
-    if (op.op === "appear") {
-      byId.set(op.id, op);
+  // Where each creature stands as the ops go (a step's `from`), and what each is (a line names it).
+  const creature = new Map<number, { entry: string; x: number; y: number; z: number }>(rows.map((c) => [c.id, { entry: c.entry_id, x: c.x, y: c.y, z: c.z }]));
+  const piece = new Map<string, { x: number; y: number; z: number }>(ctx.players.map((p: any) => [p.ref, { x: p.x, y: p.y, z: p.z }]));
+  /** Writes a line from history-lines.js (rule 101.2). @rule 101.2 */
+  const line = (l: { kind: string; template: string; text: string; args: any; player: string | null }) => ev(l.kind, l.text, l.template, l.args, l.player);
+  // Every op the board can emit has its state change and its History line here, in one place (rule 101.2): an op with no entry throws, so a new op can't ship without a line.
+  /** @rule 101.2, 602, 603 */
+  const BOARD_LINE: Record<string, (op: any) => void> = {
+    /** @rule 101.2, 602, 603 */
+    appear: (op) => {
+      creature.set(op.id, { entry: op.entry, x: op.x, y: op.y, z: op.z });
       stmts.push(env.DB.prepare(`INSERT INTO creatures (id, game_id, entry_id, x, y, z, hearts, appeared_day) SELECT ?, ?, ?, ?, ?, ?, ?, ? WHERE ${open}`).bind(op.id, game.id, op.entry, op.x, op.y, op.z, op.hearts, n, ...ob));
-      ev("appeared", `${entryName(op.entry)} appeared at ${tileOf(op.x, op.y, op.z)}.`, "appeared", { creature: op.id, entry: op.entry }, null);
-    } else if (op.op === "step") {
+      line(H.appeared(op, entryName));
+    },
+    /** @rule 101.2, 602, 603 */
+    step: (op) => {
+      const from = creature.get(op.id)!;
       stmts.push(env.DB.prepare(`UPDATE creatures SET x = ?, y = ?, z = ? WHERE game_id = ? AND id = ? AND ${open}`).bind(op.x, op.y, op.z, game.id, op.id, ...ob));
-    } else if (op.op === "rest") {
+      line(H.stepped(op, { x: from.x, y: from.y, z: from.z }, entryName, from.entry));
+      creature.set(op.id, { entry: from.entry, x: op.x, y: op.y, z: op.z });
+    },
+    /** @rule 101.2, 602, 603 */
+    rest: (op) => {
       stmts.push(env.DB.prepare(`UPDATE creatures SET rests_night = ? WHERE game_id = ? AND id = ? AND ${open}`).bind(op.night, game.id, op.id, ...ob));
-    } else if (op.op === "bite" && op.player) {
-      stmts.push(env.DB.prepare(`UPDATE players SET hearts = ? WHERE game_id = ? AND id = ? AND ${open}`).bind(op.left, game.id, op.player, ...ob));
-      ev("bit", `${pn(op.player)} was bitten and has ${op.left} of their hearts left.`, "bit", { hearts: op.hearts, left: op.left }, op.player);
-    } else if (op.op === "bite") {
-      stmts.push(env.DB.prepare(`UPDATE creatures SET hearts = ? WHERE game_id = ? AND id = ? AND ${open}`).bind(op.left, game.id, op.creature, ...ob));
-    } else if (op.op === "die") {
+      line(H.rests(op, entryName, creature.get(op.id)!.entry));
+    },
+    /** @rule 101.2, 602, 603 */
+    bite: (op) => {
+      if (op.player) {
+        stmts.push(env.DB.prepare(`UPDATE players SET hearts = ? WHERE game_id = ? AND id = ? AND ${open}`).bind(op.left, game.id, op.player, ...ob));
+        line(H.bit(op, pn(op.player)));
+      } else {
+        stmts.push(env.DB.prepare(`UPDATE creatures SET hearts = ? WHERE game_id = ? AND id = ? AND ${open}`).bind(op.left, game.id, op.creature, ...ob));
+        line(H.creatureBit(op, entryName, creature.get(op.creature)!.entry));
+      }
+    },
+    /** @rule 101.2, 602, 603 */
+    die: (op) => {
       stmts.push(env.DB.prepare(`UPDATE players SET dead_day = ? WHERE game_id = ? AND id = ? AND dead_day IS NULL AND ${open}`).bind(n, game.id, op.player, ...ob));
-      ev("died", `${pn(op.player)} died.`, "died", {}, op.player);
-    } else if (op.op === "gone") {
+      line(H.died(op, pn(op.player), piece.get(op.player)!));
+    },
+    /** @rule 101.2, 602, 603 */
+    gone: (op) => {
+      const at = creature.get(op.id)!;
       stmts.push(env.DB.prepare(`UPDATE creatures SET gone_day = ? WHERE game_id = ? AND id = ? AND ${open}`).bind(n, game.id, op.id, ...ob));
-    } else if (op.op === "rise") {
+      line(H.gone(op, entryName, at.entry, at));
+    },
+    /** @rule 101.2, 602, 603 */
+    rise: (op) => {
       stmts.push(env.DB.prepare(`UPDATE players SET ghost_day = ? WHERE game_id = ? AND id = ? AND dead_day IS NOT NULL AND ghost_day IS NULL AND ${open}`).bind(n, game.id, op.player, ...ob));
-      ev("rose", `${pn(op.player)} rose as a Ghost.`, "rose", {}, op.player);
-    }
+      line(H.rose(op, pn(op.player), piece.get(op.player)!));
+    },
+  };
+  for (const op of res.ops) {
+    const f = Object.hasOwn(BOARD_LINE, op.op) ? BOARD_LINE[op.op] : null;
+    if (!f) throw new Error(`the night's board has no History line for the ${op.op} op (rule 101.2)`);
+    f(op);
   }
   if (res.died.length) {
     const after = makeContext({ day: game.day || null, now, settings: ctx.settings, tiles, rng: cryptoRng(), catalog: ctx.catalog,

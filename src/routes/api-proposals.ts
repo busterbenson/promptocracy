@@ -15,6 +15,7 @@
 // words by a small model (src/lib/drafter.ts).
 import { bundleFor, checkChampionChange, lightContext, rulesFor } from "../engine/host";
 import { getPlayer } from "../lib/auth";
+import * as H from "../lib/history-lines.js";
 import { clockNow, dayOpenBinds, loadToday, settingsOf } from "../lib/day";
 import { championId, changeUsed } from "../lib/eras";
 import { DrafterError, draftRewording, drafterReady } from "../lib/drafter";
@@ -226,9 +227,11 @@ export async function confirm(ctx: Ctx, player: any, id: string, nowMs: number):
     ).bind(mark, now, id, game.day, ...dayOpenBinds(game.day, nowMs, player.id), limit),
     env.DB.prepare(COMMISSION_SNAPSHOT_SQL).bind(id, id, id, now, id),
     env.DB.prepare(
-      `INSERT INTO events (game_id, kind, text, created_at, day, phase, player_id)
-       SELECT ?, 'proposal_confirmed', ?, ?, ?, 'day', ? WHERE EXISTS (SELECT 1 FROM proposals WHERE id = ? AND status = 'confirmed' AND confirmed_at = ?)`,
-    ).bind(game.id, `${who(player.display_name, player.color)} proposed a change.`, now, game.day, player.id, id, now),
+      `INSERT INTO events (game_id, kind, text, created_at, day, phase, template, args, player_id)
+       SELECT ?, 'proposal_confirmed', ?, ?, ?, 'day', 'proposed',
+              json_object('proposal', q.number, 'kind', q.kind, 'target', q.target, 'mark', q.mark, 'champion', q.champion, 'ticket', (SELECT t.number FROM tickets t WHERE t.proposal_id = q.id)), ?
+       FROM proposals q WHERE q.id = ? AND q.status = 'confirmed' AND q.confirmed_at = ?`,
+    ).bind(game.id, H.proposedText(who(player.display_name, player.color)), now, game.day, player.id, id, now),
   ]);
   if (!(res[0]?.meta?.changes > 0)) {
     // Nothing was confirmed: the limit (another confirm of yours landed first) or the day itself moved.
@@ -267,9 +270,10 @@ export async function withdraw(ctx: Ctx, player: any, id: string, nowMs: number)
       WITHDRAW_SQL,
     ).bind(now, id, game.day, ...dayOpenBinds(game.day, nowMs, player.id)),
     env.DB.prepare(
-      `INSERT INTO events (game_id, kind, text, created_at, day, phase, player_id)
-       SELECT ?, 'proposal_withdrawn', ?, ?, ?, 'day', ? WHERE EXISTS (SELECT 1 FROM proposals WHERE id = ? AND status = 'withdrawn' AND withdrawn_at = ?)`,
-    ).bind(game.id, `${who(player.display_name, player.color)} withdrew their proposal.`, now, game.day, player.id, id, now),
+      `INSERT INTO events (game_id, kind, text, created_at, day, phase, template, args, player_id)
+       SELECT ?, 'proposal_withdrawn', ?, ?, ?, 'day', 'withdrawn', json_object('proposal', q.number, 'ticket', (SELECT t.number FROM tickets t WHERE t.proposal_id = q.id)), ?
+       FROM proposals q WHERE q.id = ? AND q.status = 'withdrawn' AND q.withdrawn_at = ?`,
+    ).bind(game.id, H.withdrewText(who(player.display_name, player.color)), now, game.day, player.id, id, now),
     env.DB.prepare(`INSERT INTO ticket_log (ticket_id, day, kind, text, at) SELECT id, ?, 'withdrawn', ?, ? FROM tickets WHERE proposal_id = ? AND state IN ('Proposed', 'Draft') AND ${gone}`).bind(game.day, `Withdrawn from the ballot (P${row.number}). Back to a draft.`, now, id, id, now),
     env.DB.prepare(`UPDATE tickets SET state = 'Draft', proposal_id = NULL, proposed_at = NULL, updated_at = ? WHERE proposal_id = ? AND state IN ('Proposed', 'Draft') AND ${gone}`).bind(now, id, id, now),
   ]);

@@ -60,7 +60,7 @@ export function applyBoard({ n, effects, players, creatures, catalog, tiles, nex
           if (!p) throw new Error(`bite: no player ${t.player}`);
           if (p.state !== "living") break; // the dead take no more bites (601.3)
           const left = Math.max(0, p.hearts - e.hearts);
-          ops.push({ op: "bite", player: p.ref, hearts: p.hearts - left, left });
+          ops.push({ op: "bite", player: p.ref, hearts: p.hearts - left, left, ...(e.by === undefined ? {} : { by: e.by }) });
           p.hearts = left;
           if (left === 0) { p.state = "dead"; p.deadDay = n; died.push(p.ref); ops.push({ op: "die", player: p.ref }); }
         } else {
@@ -68,7 +68,7 @@ export function applyBoard({ n, effects, players, creatures, catalog, tiles, nex
           if (!c) break; // already gone tonight
           if (c.hearts === null) break; // a creature with no hearts can't lose any (601.2)
           const left = Math.max(0, c.hearts - e.hearts);
-          ops.push({ op: "bite", creature: c.id, hearts: c.hearts - left, left });
+          ops.push({ op: "bite", creature: c.id, hearts: c.hearts - left, left, ...(e.by === undefined ? {} : { by: e.by }) });
           c.hearts = left;
           if (left === 0) { c.gone = true; ops.push({ op: "gone", id: c.id }); }
         }

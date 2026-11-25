@@ -117,7 +117,7 @@ try {
     d1r.status === 200 && d1r.data.day === 1 && d1r.data.starts_at === "2026-03-08T19:00:00.000Z" && d1r.data.ends_at === "2026-03-09T07:00:00.000Z" && d1r.data.timezone === "America/Los_Angeles" && d1r.data.locked === false && d1r.data.you === null && dayRow(1).electorate === 3 && gameRow().day === 1, d1r.text);
   check("the day's public view lists every player with nothing done yet, and no emails or ids", J(d1r.data.players.map((p) => [p.name, p.moved, p.proposed, p.ended])) === J([["Ana", false, false, false], ["Bo", false, false, false], ["Cy", false, false, false]]) && !d1r.text.includes("@") && !/"id"/.test(d1r.text), d1r.text);
   await client(A).get("/day/api/day");
-  check("day 1 is made once: a second request, and the cron, do not make another or log it twice", (await cron()) === 200 && d1(state, `SELECT COUNT(*) AS n FROM days WHERE game_id = '${gid}'`)[0].n === 1 && J(eventsOf("day_started")) === J([{ text: "Day 1 has begun.", day: 1, phase: "day", template: "dayStarted", args: '{"day":1}' }]), J(eventsOf("day_started")));
+  check("day 1 is made once: a second request, and the cron, do not make another or log it twice", (await cron()) === 200 && d1(state, `SELECT COUNT(*) AS n FROM days WHERE game_id = '${gid}'`)[0].n === 1 && J(eventsOf("day_started")) === J([{ text: "Day 1 has begun.", day: 1, phase: "day", template: "dayStarted", args: '{"day":1,"electorate":3}' }]), J(eventsOf("day_started")));
 
   console.log("one move a day, no turn order");
   const m1 = await ana.post("/day/api/action", stepFor("Ana"));

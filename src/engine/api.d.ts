@@ -45,7 +45,7 @@ export type Effect =
   | { type: "champion"; player: string; reason: string }
   | { type: "appear"; entry: string; tile: Tile }
   | { type: "step"; creature: number; to: Tile }
-  | { type: "bite"; target: { player: string } | { creature: number }; hearts: number }
+  | { type: "bite"; target: { player: string } | { creature: number }; hearts: number; by?: number }
   | { type: "rest"; creature: number }
   | { type: "rise"; player: string }
   | { type: "game_over"; ending: "paradox" | "last_standing" | "everyone_dead"; player: string | null; reason: string };
@@ -101,7 +101,8 @@ export const effects: {
   champion(player: string, reason: string): Effect;
   appear(entry: string, tile: { x: number; y: number; z?: number }): Effect;
   step(creature: number, to: { x: number; y: number; z?: number }): Effect;
-  bite(target: { player: string } | { creature: number }, hearts: number): Effect;
+  /** `by` is the id of the creature that bit; the history says so (rule 101.2). Optional. */
+  bite(target: { player: string } | { creature: number }, hearts: number, by?: number): Effect;
   rest(creature: number): Effect;
   rise(player: string): Effect;
   gameOver(ending: "paradox" | "last_standing" | "everyone_dead", player: string | null, reason: string): Effect;

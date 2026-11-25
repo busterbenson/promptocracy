@@ -83,9 +83,9 @@ export const post = async (ctx: Ctx) => {
          AND EXISTS (SELECT 1 FROM games g WHERE g.id = eras.game_id AND ${dayOpenSql})`,
     ).bind(name, player.id, game.id, era.n, player.id, ...dayOpenBinds(game.day, nowMs, player.id)),
     env.DB.prepare(
-      `INSERT INTO events (game_id, kind, text, created_at, day, phase, player_id)
-       SELECT ?, 'era_named', ?, ?, ?, 'day', ? WHERE ${named}`,
-    ).bind(game.id, line, now, game.day, player.id, game.id, era.n, name, player.id, game.id, game.day, player.id, line),
+      `INSERT INTO events (game_id, kind, text, created_at, day, phase, template, args, player_id)
+       SELECT ?, 'era_named', ?, ?, ?, 'day', 'eraNamed', json_object('era', ?, 'name', ?), ? WHERE ${named}`,
+    ).bind(game.id, line, now, game.day, era.n, name, player.id, game.id, era.n, name, player.id, game.id, game.day, player.id, line),
   ]);
   if (!(res[0]?.meta?.changes > 0)) return json({ error: "The day changed under you. Reload and try again." }, 409);
   return json({ ok: true, era: { n: era.n, name } });

@@ -354,6 +354,13 @@ export async function reopen(ctx: Ctx, player: any, raw: unknown, nowMs: number)
   const res = await env.DB.batch([
     env.DB.prepare(REOPEN_SQL).bind(now, t.id, player.id, ...dayOpenBinds(game.day, nowMs, player.id)),
     env.DB.prepare("INSERT INTO ticket_log (ticket_id, day, kind, text, at) SELECT id, ?, 'reopened', 'Reopened.', ? FROM tickets WHERE id = ? AND state = 'Draft' AND updated_at = ? AND NOT EXISTS (SELECT 1 FROM ticket_log l WHERE l.ticket_id = tickets.id AND l.kind = 'reopened' AND l.at = ?)").bind(game.day, now, t.id, now, now),
+    // History says it (rule 101.2), but only for a ticket that was on a ballot: one refused at drafting was never public.
+    env.DB.prepare(
+      `INSERT INTO events (game_id, kind, text, created_at, day, phase, template, args, player_id)
+       SELECT t.game_id, 'ticket_reopened', 'W' || t.number || ' is a draft again.', ?, ?, 'day', 'ticketReopened', json_object('ticket', t.number), t.player_id
+       FROM tickets t WHERE t.id = ? AND t.state = 'Draft' AND t.updated_at = ? AND EXISTS (SELECT 1 FROM ticket_log l WHERE l.ticket_id = t.id AND l.kind = 'proposed')
+         AND NOT EXISTS (SELECT 1 FROM events e WHERE e.game_id = t.game_id AND e.kind = 'ticket_reopened' AND e.created_at = ? AND json_extract(e.args, '$.ticket') = t.number)`,
+    ).bind(now, game.day, t.id, now, now),
   ]);
   if (!(res[0]?.meta?.changes > 0)) return out({ error: "The day changed under you. Reload and try again." }, 409);
   const fresh = await findTicket(env, game.id, t.number);
