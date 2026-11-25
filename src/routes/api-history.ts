@@ -20,8 +20,11 @@ export const get = async (ctx: Ctx) => {
   const player = await getPlayer(env, request, game);
   const q = new URL(request.url).searchParams;
   const asInt = (v: string | null) => (v && /^\d{1,6}$/.test(v) ? Number(v) : null);
-  // never the day being played (its ballot is not counted); a game that has ended plays no next day, so its last day was counted (finalizeDay)
-  const last = (game.day ?? 0) + (game.status === "over" ? 1 : 0);
+  // never the day being played while its ballot is uncounted; once the count has run (the night is locked, processing or deploying) games.day
+  // still names that day until the night is finalized, and its counted proposals are History's already: a notification's target must
+  // resolve during the night (issue #126). A game that has ended plays no next day, so its last day was counted (finalizeDay).
+  const counting: any = await env.DB.prepare("SELECT 1 AS x FROM days WHERE game_id = ? AND n = ? AND status IN ('locked', 'processing', 'deploying')").bind(game.id, game.day ?? 0).first();
+  const last = (game.day ?? 0) + (game.status === "over" || counting ? 1 : 0);
   const before = Math.min(asInt(q.get("before")) ?? Infinity, last);
   const n = Math.min(Math.max(asInt(q.get("days")) ?? DAYS_DEFAULT, 1), DAYS_MAX);
   const statuses = HISTORY_STATUSES.map((s: string) => `'${s}'`).join(", ");

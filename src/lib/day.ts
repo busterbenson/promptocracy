@@ -45,7 +45,7 @@ export async function clockNow(env: Env): Promise<number> {
 // ---- midnights, the gate, its SQL: src/lib/day-gate.js (plain JS, shared with the tests) ---------------------------------
 export { addDays, dayGate, dayOpenBinds, dayOpenSql, isLocked, localDate, lockMessage, nextMidnight, startOfDate } from "./day-gate.js";
 import { deadlineAfter, nextMidnight } from "./day-gate.js";
-import { HISTORY_STATUSES, noticeLink, readyApprovedNotice, resultNotice } from "./history.js";
+import { HISTORY_STATUSES, noticeLink, outcomeNotice, readyApprovedNotice, resultNotice } from "./history.js";
 import { parseBook } from "./proposals.js";
 import { commissionsFor } from "./ticket-view";
 import { countTicketStatements, readyIds, readyStatements } from "./tickets.js";
@@ -234,6 +234,30 @@ export async function announceCount(env: Env, game: any, n: number, nowMs: numbe
   }));
 }
 
+// Every player is told how each passed proposal ended up, once the night has decided it: in the rules (rule 107.2) or not applied, with the
+// moderator's reason (rule 107.7). One in-game notification each (no email), the same words and the same link as the count's (outcomeNotice,
+// noticeLink). Written from what is stored, at the end of the night's steps, so a retried night (or a report that landed twice) writes nothing
+// twice: a proposal that has any is skipped, and the ids (outcome-<proposal>-<player>) make a second write a no-op. A proposal not applied is
+// already told to its proposer with the reason and a suggestion (returnedBody), so it is not told to them again here.
+/** @rule 107.2, 107.7 */
+export async function announceOutcomes(env: Env, game: any, n: number, nowMs: number) {
+  const rows = (await env.DB.prepare(
+    `SELECT q.*, p.display_name AS name FROM proposals q JOIN players p ON p.game_id = q.game_id AND p.id = q.player_id
+     WHERE q.game_id = ? AND q.day_ballot = ? AND q.status IN ('enacted', 'not_applied')
+       AND NOT EXISTS (SELECT 1 FROM notifications x WHERE x.game_id = q.game_id AND x.kind = 'proposal_outcome' AND x.id LIKE 'outcome-' || q.id || '-%')
+     ORDER BY q.number`,
+  ).bind(game.id, n).all()).results as any[];
+  if (!rows.length) return;
+  const book = rows.some((r) => r.kind === "mark") ? parseBook(bundleFor(game).bundle.rulesMd) : null;
+  const now = nowIso(nowMs);
+  await env.DB.batch(rows.map((r) => env.DB.prepare(
+    `INSERT OR IGNORE INTO notifications (id, game_id, player_id, kind, body, link, created_at)
+     SELECT 'outcome-' || ? || '-' || p.id, p.game_id, p.id, 'proposal_outcome', ?, ?, ? FROM players p
+     WHERE p.game_id = ? AND p.id != ? AND EXISTS (SELECT 1 FROM proposals WHERE id = ? AND status IN ('enacted', 'not_applied'))`,
+  ).bind(r.id, outcomeNotice(r, null, { block: r.kind === "mark" && book?.byNum[r.target]?.kind === "block" }), noticeLink(game.slug, r, null), now, game.id,
+    r.status === "not_applied" ? r.player_id : "", r.id)));
+}
+
 // What the bell says about each ticket that was waiting (Ready) if the count approves it tonight: read before the count's batch; it is written only
 // if the batch did approve it.
 /** @rule 801.4, 803.1 */
@@ -382,6 +406,7 @@ export const NIGHT_STEPS: NightStep[] = [
   { name: "the count", run: countBallot },
   { name: "the moderator", run: awaitModerator },
   { name: "the board", run: nightBoard },
+  { name: "the notices", run: async (env, game, day, nowMs) => { await announceOutcomes(env, game, day.n, nowMs); return "done"; } },
 ];
 
 // The cron: every playing game, one at a time, each in its own try so one bad game cannot stop the others.

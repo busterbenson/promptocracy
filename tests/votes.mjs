@@ -321,6 +321,9 @@ try {
   const note = (notes.notifications ?? notes).find?.((n) => n.kind === "not_applied");
   check("it goes back to Ana, its proposer: an in-app notification with the reason and the suggestion to split or simplify it; nobody else gets one",
     !!note && note.body === returnedBody(1, DEADLINE_REASON) && d1(state, `SELECT player_id FROM notifications WHERE game_id = '${gid}' AND kind = 'not_applied'`).map((r) => r.player_id).join() === idOf("Ana"), J(notes).slice(0, 300));
+  const outc = d1(state, `SELECT player_id, body, link FROM notifications WHERE game_id = '${gid}' AND kind = 'proposal_outcome' AND id LIKE 'outcome-' || (SELECT id FROM proposals WHERE game_id = '${gid}' AND number = 1) || '-%'`);
+  check("and every OTHER player is told it was not applied, once, with the same reason (5 of the 6: Ana already has the note above) and a link to its card",
+    outc.length === 5 && !outc.some((r) => r.player_id === idOf("Ana")) && outc.every((r) => r.body === `P1 by Ana. A repeal of rule 403. Passed, not applied: ${DEADLINE_REASON}.` && r.link === "/vote/#p-P1"), J(outc).slice(0, 300));
   check("no points: Ana's score is unchanged", d1(state, `SELECT score FROM players WHERE id = '${idOf("Ana")}'`)[0].score === scoreBefore);
   const d3 = dayRow(3);
   check("the lock always ends: day 2 timed_out, day 3 open (from day 2's midnight to the next), the game unlocked on the old rules (rules_day unchanged)",
