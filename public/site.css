@@ -806,6 +806,7 @@ button.pill[aria-pressed="true"]{background:color-mix(in srgb,var(--accent) 16%,
 button[aria-busy="true"]:disabled{cursor:progress;opacity:.7}
 button[aria-busy="true"]::after{content:"";display:inline-block;box-sizing:border-box;width:.85em;height:.85em;margin-left:.55em;vertical-align:-.1em;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:busyspin .7s linear infinite}
 .chat .send[aria-busy="true"]:disabled{cursor:progress;opacity:.7}
+.chat .ch-row .it[aria-busy="true"]:disabled{cursor:progress;opacity:.7}
 .chat .send[aria-busy="true"] svg{display:none}
 .chat .send[aria-busy="true"]::after{margin:0;width:18px;height:18px}
 @keyframes busyspin{to{transform:rotate(360deg)}}
