@@ -32,7 +32,7 @@
       },
       "known_fail": {
         "since": "2026-11-24",
-        "why": "The drafter's text for 202.2 leaves out its [setting: turn.move_distance] tag. Chat: Starling's quote of 202.2 is dropped as 'not the rule's words'. Night: the voted draft must be in the rule word for word, but the checks require the tag to stay, so the night cannot apply it (3 attempts, 2026-11-24)."
+        "why": "Chat: Starling's quote of the tagged clause 202.2 is dropped as 'not the rule's words' (promptocracy#111). Night: the setting-tag apply failure is fixed by promptocracy#110; once #110 is on main this case's night should apply, and only the chat check keeps it a known fail."
       }
     },
     {
@@ -87,7 +87,10 @@
         "drafts_max": 1,
         "night": "applied"
       },
-      "known_fail": null
+      "known_fail": {
+        "since": "2026-11-24",
+        "why": "Night: rickshaw rules/rulebook.test.ts line 184 pins 401.1 at \"gets 10 points\", so any amendment of 401 fails the game repo's tests and cannot apply (run 2026-11-24-1849-night). Fix is in the game repo, not the harness."
+      }
     },
     {
       "id": "s-action-grant",
