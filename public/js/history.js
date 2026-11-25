@@ -30,6 +30,8 @@ export function createHistory({ api, pill, rpill, pPill, wPill }) {
   /** The P-pill: an enacted new rule opens the rule under its new number (its P-number's card is gone once it is in the rules). */
   function pillOf(p) {
     if (p.kind === "add" && p.status === "enacted" && p.new_num) return `<button type="button" class="ppill" data-seecard="${esc(String(p.new_num).split(".")[0])}" aria-label="Open rule ${esc(p.new_num)}">${esc(p.n)}</button>`;
+    // a new rule that never made it into the rules has no card to open (its ghost card only lives while it's on the ballot): a plain pill, its sentence says what it was
+    if (p.kind === "add") return `<span class="ppill">${esc(p.n)}</span>`;
     return pPill(p);
   }
   /** @rule 104.4, 801.2 */

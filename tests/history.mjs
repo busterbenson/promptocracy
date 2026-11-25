@@ -72,6 +72,11 @@ try {
   const v = await visitor.get("/hy/api/history");
   check("a visitor sees the same list, none of it theirs", v.status === 200 && v.data.days.length === 2 && v.data.days.every((x) => x.items.every((p) => p.mine === false)));
   check("it is read-only: a POST is not a route", (await Ada.post("/hy/api/history", {})).status === 404);
+  // a game that ended on night 5 doesn't open day 6, so day 5 (counted) is the last day and must show (the early P7 is counted, the
+  // still-on-ballot P5 is not)
+  d1(state, `UPDATE games SET status = 'over' WHERE id = '${gid}'`);
+  const over = await visitor.get("/hy/api/history");
+  check("a game that has ended shows its last counted day too", J(over.data.days.map((x) => x.day)) === "[5,3,2]" && over.data.days[0].items.map((p) => p.n).join() === "P7" && !/"P5"/.test(over.text), over.text.slice(0, 200));
 } finally {
   if (srv) await srv.stop();
   if (stub) await stub.stop();
