@@ -111,7 +111,7 @@ export function answerKey(verdictsFile, runsDir, caseId) {
   if (!verdictsFile || !existsSync(verdictsFile)) return [];
   const latest = new Map();
   for (const line of readFileSync(verdictsFile, "utf8").split("\n")) {
-    try { const v = JSON.parse(line); if (v && v.verdict) latest.set(`${v.run}|${v.case}`, v); } catch { /* skip a bad line */ }
+    try { const v = JSON.parse(line); /* a cleared verdict (null) replaces the earlier one; it is filtered out below */ if (v && v.run && v.case) latest.set(`${v.run}|${v.case}`, v); } catch { /* skip a bad line */ }
   }
   const all = [...latest.values()].filter((v) => v.verdict === "good" || v.verdict === "bad").sort((a, b) => String(b.ts).localeCompare(String(a.ts)));
   const pick = [...all.filter((v) => v.case === caseId).slice(0, 3), ...all.filter((v) => v.case !== caseId).slice(0, 3)];

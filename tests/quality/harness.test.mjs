@@ -8,9 +8,9 @@ import { fileURLToPath } from "node:url";
 import { applyOne, git } from "../../moderator/process-day.mjs";
 import { parseBook } from "../../src/lib/proposals.js";
 import { runChatCase } from "./chat.mjs";
-import { caseStatus, codeChecks } from "./grade.mjs";
+import { answerKey, caseStatus, codeChecks } from "./grade.mjs";
 import { BlockedHost, CapReached, Meter, ROOT, assertNoKeys, assertScratch, guardFetch, loadKeys, makeRunTmp, scrubEnv } from "./lib.mjs";
-import { parseClaude, runNight } from "./night.mjs";
+import { nightCapped, parseClaude, runNight } from "./night.mjs";
 import { esc, renderPage } from "./page.mjs";
 import { cloneCase, scratchFromDir } from "./scratch.mjs";
 
@@ -120,6 +120,14 @@ check("cap: the daily ceiling in the cross-run ledger stops a second run", await
 const cc = new Meter({ maxClaudeCalls: 1 });
 cc.addClaude(1);
 check("cap: the night's claude call cap stops the next claude call", await throws(() => cc.guardClaude()));
+{
+  const capNight = { status: "error", reason: "cap: claude calls" };
+  check("cap: a night the cap stopped reads as not run (run.mjs fails the case even with known_fail); other errors do not", nightCapped(capNight) === "cap: claude calls" && nightCapped({ status: "error", reason: "boom" }) === null && nightCapped(null) === null);
+  const vf = join(T, "verdicts-cleared.jsonl");
+  writeFileSync(vf, [{ run: "r1", case: "c1", verdict: "good", ts: "1" }, { run: "r1", case: "c1", verdict: null, ts: "2" }, { run: "r2", case: "c2", verdict: "bad", ts: "3" }].map((v) => JSON.stringify(v)).join("\n"));
+  const key = answerKey(vf, T, "c1");
+  check("answer key: a cleared verdict drops the case", key.length === 1 && key[0].case === "c2");
+}
 const ok = new Meter({ capUsd: 1 });
 const fOk = ok.fetch(async () => new Response(JSON.stringify({ usage: { input_tokens: 1000, output_tokens: 100 } })));
 await fOk("https://api.anthropic.com/v1/messages", { body: JSON.stringify({ model: "claude-sonnet-5-5" }) });

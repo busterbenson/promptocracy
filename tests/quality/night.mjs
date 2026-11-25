@@ -52,6 +52,9 @@ export function nightSkip(c, res) {
 }
 
 /** One case's night. `x`: {runTmp, bare, meter, claudeLog, libraryDir, model?}. */
+/** A night the caps stopped (the reason runNight wrote) did not run: the case fails, a known_fail never masks it. */
+export function nightCapped(night) { return night && night.status === "error" && /^cap:/.test(night.reason || "") ? night.reason : null; }
+
 export async function runNight(c, res, i, x) {
   const skip = nightSkip(c, res);
   if (skip) return { status: "n/a", reason: skip };

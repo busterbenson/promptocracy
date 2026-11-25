@@ -15,6 +15,7 @@ import { git } from "../../moderator/process-day.mjs";
 import { parseBook } from "../../src/lib/proposals.js";
 import { runChatCase } from "./chat.mjs";
 import { caseStatus, codeChecks, digestOf, geminiGrade, ruleTextOf } from "./grade.mjs";
+import { nightCapped } from "./night.mjs";
 import { CapReached, Meter, ROOT, assertNoKeys, bundleAgents, loadKeys, makeRunTmp, scrubEnv } from "./lib.mjs";
 import { runNight } from "./night.mjs";
 import { agreementLine, renderPage } from "./page.mjs";
@@ -146,6 +147,7 @@ try {
       night = await runNight(def, res, i, { runTmp, bare, meter, claudeLog, libraryDir: null });
     }
     res.night = night;
+    if (!res.notRun && nightCapped(night)) res.notRun = nightCapped(night);
     res.checks = codeChecks(def, res, night);
     res.status = res.notRun ? "fail" : caseStatus(def, res.checks);
     res.digest = digestOf(res, night);
