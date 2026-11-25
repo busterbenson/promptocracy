@@ -4,9 +4,10 @@
 //   POST /<slug>/api/proposals/<id>/confirm   one of the day's proposals (rule 103.2): numbered P1, P2... in confirm order,
 //                                             on the next day's ballot, its mark fixed now (rule 105.4)
 //   POST /<slug>/api/proposals/<id>/withdraw  until midnight or End turn (rule 103.3)
-//   GET  /<slug>/api/proposals[?rule=402]     the proposals anyone may see: every one that has reached a ballot, and your
-//                                             own confirmed one ("mine"). Another player's proposal is hidden until it
-//                                             is on the ballot. Votes and totals only once it is counted (rule 104.4).
+//   GET  /<slug>/api/proposals[?rule=402]     the proposals anyone may see: every one that has reached a ballot, and every
+//                                             one locked in today (status confirmed, proposed today), anyone's: shown the
+//                                             day it is locked in (Buster, 2026-11-24), withdrawn ones are gone. Drafts are
+//                                             private. Votes and totals only once it is counted (rule 104.4).
 //                                             `draft`: your newest draft from Starling, if it is still a draft made today
 //                                             (the propose bar's dashed slot; never counted, rule 103.1).
 // Every write goes through the day's gate (rule 107.1 the lock, rule 202.4 End turn), in the handler and again in the
@@ -285,8 +286,8 @@ export const action = (what: "confirm" | "withdraw") => async (ctx: Ctx) => {
   return send(await (what === "confirm" ? confirm : withdraw)(ctx, player, ctx.params.id, nowMs));
 };
 
-// GET /api/proposals: every proposal that has reached a ballot, and your own confirmed one. ?rule=N narrows it to one
-// rule (and its clauses).
+// GET /api/proposals: every proposal that has reached a ballot, and every one locked in today. ?rule=N narrows it to
+// one rule (and its clauses).
 /** @rule 103.2 */
 export const get = async (ctx: Ctx) => {
   const { env, request } = ctx;
@@ -295,10 +296,10 @@ export const get = async (ctx: Ctx) => {
   const rule = new URL(request.url).searchParams.get("rule");
   const rows = (await env.DB.prepare(
     `SELECT q.*, p.display_name AS name, p.color FROM proposals q JOIN players p ON p.game_id = q.game_id AND p.id = q.player_id
-     WHERE q.game_id = ? AND (q.status IN ('on_ballot', 'passed', 'failed', 'enacted', 'not_applied', 'approved') OR (q.status = 'confirmed' AND q.player_id = ?))
+     WHERE q.game_id = ? AND (q.status IN ('on_ballot', 'passed', 'failed', 'enacted', 'not_applied', 'approved') OR (q.status = 'confirmed' AND q.day_proposed = ?))
        AND (? IS NULL OR q.target = ? OR substr(q.target, 1, length(?) + 1) = ? || '.')
      ORDER BY q.number`,
-  ).bind(game.id, player?.id ?? "", rule, rule, rule, rule).all()).results as any[];
+  ).bind(game.id, game.day, rule, rule, rule, rule).all()).results as any[];
   const n = await playerCount(env, game.id);
   // The draft the propose bar shows: the one Starling's newest line points at, while it is still a draft made today (not one cancelled in the form).
   const mineDraft: any = player && game.day ? await env.DB.prepare(

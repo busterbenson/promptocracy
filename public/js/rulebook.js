@@ -152,7 +152,7 @@ export function mountRulebook(root, md, { settings = {}, revisions = {}, propose
     const title = r ? r.title : g.title || String(g.after_text || "").split(/\s+/).slice(0, 6).join(" ");
     const ex = r ? previewOf(r) : String(g.after_text || "").replace(/\s+/g, " ").trim();
     const lock = r ? lockedRule(r) : g.mark === "unanimous";
-    const ball = r ? (P ? P.ageChip(r) : "") : `<span class="onb"><span class="bdot"></span>${g.status === "confirmed" ? esc(g.n) + " · yours, tomorrow" : "On the ballot · " + esc(g.n)}</span>`;
+    const ball = r ? (P ? P.ageChip(r) : "") : `<span class="onb"><span class="bdot"></span>${g.status === "confirmed" ? esc(g.n) + (g.mine ? " · yours, tomorrow" : " · tomorrow") : "On the ballot · " + esc(g.n)}</span>`;
     const mine = r && P && P.mineTouches(r) ? `<span class="onb mine">${esc(P.mineTouches(r))} · yours, tomorrow</span>` : "";
     return `<button type="button" class="bcard ${g ? "ghost" : warmOf(it.num)}${ball && !mine || r && P && P.onBallotRule(r) ? " bal" : ""}" data-card="${esc(it.key)}" id="${id(String(it.key))}" aria-haspopup="dialog"><span class="cn">${hl(esc(it.num), q)}${lock ? LOCKSVG(11) : ""}</span><span class="ct">${hl(esc(title), q)}</span><span class="sn2">${hl(esc(clip(ex, 150)), q)}</span><span class="ft">${ball}${mine}<span>${g ? "new rule, not in the book yet" : ageText(it.num)}</span></span></button>`;
   }
