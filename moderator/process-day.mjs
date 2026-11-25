@@ -20,6 +20,7 @@ import { homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { checkTree } from "../scripts/bundle-games.mjs";
+import { knownNumbers } from "../src/engine/claims.js";
 import { isMainRun } from "./schedule.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -155,6 +156,86 @@ export function outline(md) {
 }
 const tagsIn = (t) => [...String(t ?? "").matchAll(/\[setting:\s*([A-Za-z0-9_.]+)\s*\]/g)].map((x) => x[1]);
 
+// ---- the voted words (rules 107.4, 107.9) ----------------------------------------------------------------------------
+// What the players voted on are the WORDS of after_text. Markup the helpers wrote around them is not the words, and the night may
+// repair it (rule 107.9): bold marks, spacing and line wraps, heading marks and a rule's mark are invisible and ignored; and the rule
+// side may carry, between the voted words, only (a) a [setting: key] tag (109.2: Starling's drafter writes plain text) and (b) a
+// parenthesised citation of an existing rule or clause that the text being amended already had and the draft dropped. A draft's
+// leading clause number may differ from the clause it lands in. Each tag, citation or number the check had to look past is returned
+// as a repair, for the night's report. Different words, or a different number, are never tolerated.
+const TAG_SRC = String.raw`\[setting:\s*[A-Za-z0-9_.]+\s*\]`;
+const CITE_SRC = String.raw`\((?:rules?\s+)?\d{3}(?:\.\d+)?(?:\s*(?:,|and|or|&)\s*(?:rules?\s+)?\d{3}(?:\.\d+)?)*\)`;
+const GAP_SRC = `(?:${TAG_SRC}|${CITE_SRC})`;
+const esc = (c) => c.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const stripTags = (t) => String(t ?? "").replace(/\s*\[setting:\s*[A-Za-z0-9_.]+\s*\]/g, "");
+// A regex for `text` that also matches it with a tag or citation between its words (before a space or punctuation mark, or after a space).
+function wordsRegex(text) {
+  let src = "";
+  for (const c of [...text]) {
+    if (/\s/.test(c)) src += `(?:\\s*${GAP_SRC})*\\s+(?:${GAP_SRC}\\s+)*`;
+    else if (/[.,;:!?)]/.test(c)) src += `(?:\\s*${GAP_SRC})*${esc(c)}`;
+    else src += esc(c);
+  }
+  return new RegExp(src + `(?:\\s*${GAP_SRC})*`);
+}
+const tagKey = (x) => (x.startsWith("[") ? `[setting: ${/\[setting:\s*([A-Za-z0-9_.]+)/.exec(x)[1]}]` : norm(x));
+const countBy = (xs) => xs.reduce((m, x) => m.set(x, (m.get(x) ?? 0) + 1), new Map());
+/** @rule 107.9 */
+export function votedWords({ afterText, own, before = "", known = new Set() }) {
+  const ownPlain = plain(own), beforePlain = plain(before);
+  const rawParts = String(afterText ?? "").split(/\n\s*\n/);
+  const parts = rawParts.map((x) => plain(stripTags(x))), hadTags = rawParts.map((x) => [...x.matchAll(new RegExp(TAG_SRC, "g"))].map((m) => tagKey(m[0])));
+  const repairs = [], ranges = [];
+  for (const [at, part] of parts.entries()) {
+    if (!part) continue;
+    const tries = [{ text: part, renumbered: false }];
+    const bare = part.replace(/^\d{3}\.\d+\s+/, "");
+    if (bare !== part && bare) tries.push({ text: bare, renumbered: true });
+    let found = null;
+    for (const t of tries) {
+      const m = wordsRegex(t.text).exec(ownPlain);
+      if (!m) continue;
+      // What the check looked past: the tags and citations in the matched text that the draft didn't have.
+      const extra = [...m[0].matchAll(new RegExp(GAP_SRC, "g"))].map((x) => tagKey(x[0]));
+      const had = countBy([...t.text.matchAll(new RegExp(CITE_SRC, "g"))].map((x) => norm(x[0])).concat(hadTags[at]));
+      const inserted = extra.filter((x) => { const n = had.get(x) ?? 0; if (n > 0) { had.set(x, n - 1); return false; } return true; });
+      const bad = inserted.filter((x) => !x.startsWith("[") && (!beforePlain.includes(x) || !(x.match(/\d{3}(?:\.\d+)?/g) ?? []).every((d) => known.has(d))));
+      if (bad.length) continue;
+      found = { m, inserted, renumbered: t.renumbered };
+      break;
+    }
+    if (!found) return { ok: false, repairs: [], rest: "" };
+    ranges.push([found.m.index, found.m.index + found.m[0].length]);
+    for (const x of found.inserted) {
+      if (x.startsWith("[")) repairs.push({ what: `kept the ${x} tag in the rule's text`, why: "the drafter writes the words without setting tags; the tag ties them to the settings file (rule 109.2)" });
+      else repairs.push({ what: `kept the citation ${x} that the clause had before`, why: "the draft left it out and the words around it are the ones you voted on" });
+    }
+    if (found.renumbered) {
+      const num = /(\d{3}\.\d+) $/.exec(ownPlain.slice(0, found.m.index))?.[1];
+      repairs.push({ what: `set the clause number${num ? ` to ${num}` : ""}`, why: "the draft numbered the clause differently from where it goes; the words are as voted" });
+    }
+  }
+  // What is left of the rule's text once the voted words are taken out (for a move: nothing but the moved rule's own words).
+  let rest = ownPlain;
+  for (const [a, b] of ranges.sort((x, y) => y[0] - x[0])) rest = rest.slice(0, a) + " " + rest.slice(b);
+  return { ok: true, repairs, rest: norm(stripTags(rest)) };
+}
+
+// rules/rulebook.test.ts: do the lines that differ between `before` and `after` all name one of the rules `nums` (its number, or a clause of it)?
+/** @rule 107.4 */
+export function rulebookLinesOk(before, after, nums) {
+  const lines = (t) => String(t ?? "").split("\n").map((l) => l.trim()).filter(Boolean);
+  const count = (ls) => ls.reduce((m, l) => m.set(l, (m.get(l) ?? 0) + 1), new Map());
+  const a = count(lines(before)), b = count(lines(after));
+  const gone = [], came = [];
+  for (const [l, k] of a) if ((b.get(l) ?? 0) < k) gone.push(l);
+  for (const [l, k] of b) if ((a.get(l) ?? 0) < k) came.push(l);
+  const names = (l) => nums.some((n) => new RegExp(`(?<![\\d.])${n}(?![\\d])`).test(l));
+  // A list that gains or loses a rule's number: the line without the numbers is the same on both sides.
+  const without = (l) => nums.reduce((x, n) => x.replace(new RegExp(`,\\s*${n}\\b|\\b${n}\\s*,\\s*|\\b${n}\\b`, "g"), ""), l);
+  const same = (l, others) => others.some((o) => without(o) === without(l));
+  return gone.every((l) => names(l) || same(l, came)) && came.every((l) => names(l) || same(l, gone));
+}
 // Did the model's change stay inside what the proposal may touch? Compares the tree as committed (HEAD) with the
 // candidate. Returns a list of problems (empty = in scope):
 //   - the outline (block headings, which rules sit in which block, in what order, and each heading line with its mark)
@@ -166,7 +247,7 @@ const tagsIn = (t) => [...String(t ?? "").matchAll(/\[setting:\s*([A-Za-z0-9_.]+
 //     nothing under rulings/ (rulings are not made by a proposal, 106.5)
 //   - settings.json changes only the keys the proposal sets, or that the voted draft or the rule as it stood names
 /** @rule 107.4, 108.4 */
-export function scopeProblems({ beforeMd, afterMd, beforeSettings, afterSettings, changed, p, conflictRule, moduleSetChanged = false, rulebookBefore = "", rulebookAfter = "", modulesComeOrGo = [] }) {
+export function scopeProblems({ beforeMd, afterMd, beforeSettings, afterSettings, changed, p, conflictRule, moduleSetChanged = false, rulebookBefore = "", rulebookAfter = "", modulesComeOrGo = [], repairs = [] }) {
   const out = [];
   const { rules, blocks, notes } = touchable(p, conflictRule);
   const a = sections(beforeMd), b = sections(afterMd);
@@ -218,27 +299,27 @@ export function scopeProblems({ beforeMd, afterMd, beforeSettings, afterSettings
     for (const k of new Set([...Object.keys(ca), ...Object.keys(cb)])) if (!own.has(k) && norm(ca[k]) !== norm(cb[k])) out.push(`RULES.md ${k === "head" ? `rule ${n}'s text outside its clauses` : `clause ${k}`} changed`);
   }
   if (p.after_text && !p.redraft && !markChange) {
-    // The drafter writes after_text without [setting: key] tags (src/lib/proposals.js) while the rule keeps them (109.2), so the
-    // words are compared with the tags left out: a tag is markup tying the text to settings.json, not part of what was voted.
-    const untag = (t) => plain(String(t ?? "").replace(/\s*\[setting:\s*[A-Za-z0-9_.]+\s*\]/g, ""));
-    const own = untag([...rules].map((n) => b[`r${n}`] ?? "").join("\n"));
-    const parts = String(p.after_text).split(/\n\s*\n/).map(untag).filter(Boolean);
-    if (!parts.every((x) => own.includes(x))) out.push("the draft that was voted on is not in the rule it changes, word for word");
-    // A move only moves (and renumbers) the rule: its two sections (the rule at its new number, the forwarder) hold the
-    // voted draft and nothing else.
-    else if (p.kind === "move" && parts.reduce((rest, x) => rest.replace(x, ""), own).trim()) out.push("a move changed the rule's text beyond moving it");
+    // The drafter writes after_text without [setting: key] tags (src/lib/proposals.js) while the rule keeps them (109.2): the night compares the
+    // voted words, looking past the markup it may repair (rule 107.9, votedWords), and reports what it looked past.
+    const vw = votedWords({ afterText: p.after_text, own: [...rules].map((n) => b[`r${n}`] ?? "").join("\n"), before: [...rules].map((n) => a[`r${n}`] ?? "").join("\n"), known: knownNumbers(afterMd) });
+    if (!vw.ok) out.push("the draft that was voted on is not in the rule it changes, word for word");
+    else {
+      repairs.push(...vw.repairs);
+      // A move only moves (and renumbers) the rule: its two sections (the rule at its new number, the forwarder) hold the voted draft and nothing else.
+      if (p.kind === "move" && vw.rest) out.push("a move changed the rule's text beyond moving it");
+    }
   }
   for (const f of changed) {
     const m = /^rules\/(\d+)\.(test\.)?ts$/.exec(f);
     if (m) { if (!rules.has(Number(m[1]))) out.push(`${f} belongs to rule ${m[1]}, which this proposal doesn't change`); continue; }
     const moduleOfMine = changed.some((x) => { const m = /^rules\/(\d+)\.ts$/.exec(x); return m && rules.has(Number(m[1])); });
-    if (f === "rules/rulebook.test.ts" && (moduleSetChanged || moduleOfMine) && rulebookAfter) {
-      // a module added or removed changes its lists: only lines that name that module may change
+    if (f === "rules/rulebook.test.ts" && rulebookAfter) {
+      // The rulebook test pins the wording and numbers of rules (the game's rulebook.test.ts), so a rule's change, or a module added or
+      // removed, changes the lines that pin it. Only a line that names a rule this proposal changes (or one that comes or goes), or one of
+      // its clauses, may change, in the line as it was or as it is now; every other line stays as it was.
       const nums = [...new Set([...modulesComeOrGo, ...rules])];
-      const without = (t) => nums.reduce((x, n) => x.replace(new RegExp(`,\\s*${n}\\b|\\b${n}\\s*,\\s*|\\b${n}\\b`, "g"), ""), t).split("\n").map((l) => l.trim()).filter(Boolean).join("\n");
-      if (without(rulebookBefore) === without(rulebookAfter)) continue;
-      out.push("rules/rulebook.test.ts changed beyond the lines for the rules this proposal changes");
-      continue;
+      if (nums.length && rulebookLinesOk(rulebookBefore, rulebookAfter, nums)) continue;
+      if (moduleSetChanged || moduleOfMine || nums.length) { out.push("rules/rulebook.test.ts changed beyond the lines for the rules this proposal changes"); continue; }
     }
     if (f.startsWith("rules/") || f.startsWith("rulings/") || f === "catalog.json") out.push(`${f} is not part of the rule this proposal changes`);
   }
@@ -429,6 +510,9 @@ export async function applyOne({ dir, job, p, tonight, budgetMs, model = runMode
       if (Array.isArray(result?.library) && result.library.length) log?.({ event: "library", number: p.number, attempt, pages: result.library.filter((x) => typeof x === "string").slice(0, 10).map((x) => x.slice(0, 200)) });
       // The clauses the draft repeats from another clause (rules voice 8, guidance): enacted as voted, named in the night log for the operator.
       if (Array.isArray(result?.restates) && result.restates.length) log?.({ event: "restates", number: p.number, attempt, clauses: result.restates.filter((x) => typeof x === "string").slice(0, 10).map((x) => x.slice(0, 40)) });
+      // The repairs the model made to how the draft was written (rule 107.9). The words are checked by code (scopeProblems), so a model that
+      // changes words and calls it a repair is refused there; what it lists here is for the night's report.
+      const modelRepairs = repairList(result?.repairs);
       if (!r.ok && !result) { discard(dir); return { applied: false, error: true, reason: "the moderator could not run", detail: r.out.slice(-500) }; }
       if (result?.outcome === "not_applied") { discard(dir); return { applied: false, reason: clean(result.reason) || "it no longer makes sense (rule 107.3)" }; }
       const strays = syncBack(copy, dir);
@@ -468,7 +552,8 @@ export async function applyOne({ dir, job, p, tonight, budgetMs, model = runMode
       let rulebookAfter = "";
       try { rulebookAfter = readFileSync(join(dir, "rules", "rulebook.test.ts"), "utf8"); } catch {}
       const moduleSetChanged = mods((git(["ls-tree", "--name-only", "HEAD", "rules/"], dir, { allowFail: true }) ?? "").split("\n").map((f) => f.replace(/^rules\//, ""))) !== mods(existsSync(join(dir, "rules")) ? readdirSync(join(dir, "rules")) : []);
-      const scope = scopeProblems({ beforeMd, afterMd, moduleSetChanged, modulesComeOrGo, rulebookBefore: head("rules/rulebook.test.ts"), rulebookAfter, beforeSettings, afterSettings, changed: paths, p: { ...p, redraft: earlier.length > 0 }, conflictRule });
+      const codeRepairs = [];
+      const scope = scopeProblems({ beforeMd, afterMd, moduleSetChanged, modulesComeOrGo, rulebookBefore: head("rules/rulebook.test.ts"), rulebookAfter, beforeSettings, afterSettings, changed: paths, p: { ...p, redraft: earlier.length > 0 }, conflictRule, repairs: codeRepairs });
       if (scope.length) {
         log?.({ event: "scope", number: p.number, attempt, problems: scope });
         lastScope = scope.join("; ").slice(0, 300);
@@ -481,10 +566,12 @@ export async function applyOne({ dir, job, p, tonight, budgetMs, model = runMode
       log?.({ event: "check", number: p.number, attempt, ok: chk.ok, out: chk.out.slice(-800) });
       if (chk.ok && Date.now() - started > budgetMs) { discard(dir); return over(); } // the checks ran past the budget
       if (chk.ok) {
-        const msg = `P${p.number}: ${oneLine(p.title || p.draft_head)} (day ${job.day}, ${p.yes}-${p.no})\n\n${earlier.length ? `Redrafted onto ${earlier.map((t) => `P${t.number}`).join(", ")} (rule 107.3).\n\n` : ""}Proposal: P${p.number}`;
+        const repairs = repairList([...codeRepairs, ...modelRepairs]);
+        if (repairs.length) log?.({ event: "repairs", number: p.number, attempt, repairs });
+        const msg = `P${p.number}: ${oneLine(p.title || p.draft_head)} (day ${job.day}, ${p.yes}-${p.no})\n\n${earlier.length ? `Redrafted onto ${earlier.map((t) => `P${t.number}`).join(", ")} (rule 107.3).\n\n` : ""}${repairsBlock(repairs)}Proposal: P${p.number}`;
         git(["add", "-A"], dir);
         git(["commit", "-q", "-m", msg], dir);
-        return { applied: true, commit: git(["rev-parse", "HEAD"], dir).trim(), redrafted: earlier.length > 0 };
+        return { applied: true, commit: git(["rev-parse", "HEAD"], dir).trim(), redrafted: earlier.length > 0, repairs };
       }
       feedback = chk.out;
       lastScope = null;
@@ -495,6 +582,43 @@ export async function applyOne({ dir, job, p, tonight, budgetMs, model = runMode
 }
 const oneLine = (s) => String(s ?? "").replace(/\s+/g, " ").trim().slice(0, 100);
 const clean = (s) => oneLine(s).replace(/[.\s]+$/, "").slice(0, 300);
+
+// ---- repairs (rule 107.9) ---------------------------------------------------------------------------------------
+// If a passed proposal can't be applied as written because of how Starling or Gremlin wrote it, the moderator repairs that and applies it,
+// and each repair is listed in the night's report (the commit message in the game's repo, and a note to the proposer) so it can be
+// appealed (301). A repair never changes what the proposal says: that is votedWords' check, in code, whatever the model claims.
+const REPAIR_MAX = 10;
+const repairClean = (s, n) => String(s ?? "").replace(/\s+/g, " ").trim().replace(/\(because /g, "(").slice(0, n);
+/** [{what, why}] from the model's result file or the code's checks: strings only, tidy, no repeats. @rule 107.9 */
+export function repairList(list) {
+  const seen = new Set(), out = [];
+  for (const r of Array.isArray(list) ? list : []) {
+    if (typeof r?.what !== "string") continue;
+    const what = repairClean(r.what, 160), why = typeof r.why === "string" ? repairClean(r.why, 200) : "";
+    if (!what || seen.has(what.toLowerCase())) continue;
+    seen.add(what.toLowerCase());
+    out.push({ what, why });
+    if (out.length >= REPAIR_MAX) break;
+  }
+  return out;
+}
+/** The part of a commit message that lists the repairs. @rule 107.9 */
+export function repairsBlock(repairs) {
+  if (!repairs?.length) return "";
+  return `Repairs (rule 107.9; each can be appealed under rule 301):\n${repairs.map((r) => `- ${r.what}${r.why ? ` (because ${r.why})` : ""}`).join("\n")}\n\n`;
+}
+/** The repairs listed in a commit message (a night resumed after a crash reports what the first pass did). @rule 107.9 */
+export function repairsOfBody(body) {
+  const m = /^Repairs \(rule 107\.9[^\n]*\n((?:- .*(?:\n|$))+)/m.exec(String(body ?? ""));
+  if (!m) return [];
+  return repairList(m[1].split("\n").filter(Boolean).map((l) => { const x = /^- (.*?)(?: \(because (.*)\))?$/.exec(l); return { what: x?.[1], why: x?.[2] ?? "" }; }));
+}
+/** The note a proposer gets about a proposal's repairs; the claim's notes carry it, and a note is at most 600 characters. @rule 107.9 */
+export function repairNote(number, repairs, max = 300) {
+  const head = `P${number} was repaired before it was applied (rule 107.9): `, tail = " What you voted on is unchanged. You can appeal a repair (rule 301).";
+  const items = repairs.map((r) => `${r.what}${r.why ? ` (${r.why})` : ""}`).join("; ");
+  return `${head}${items.length > max ? `${items.slice(0, max - 1)}…` : items}.${tail}`;
+}
 
 // ---- the drafter audit (rule 106.6) -----------------------------------------------------------------------------
 // One model call on the proposer's own words and the voted draft, read-only (no tools), JSON out:
@@ -1057,7 +1181,7 @@ const lastDay = Math.max(0, ...processed.map((d) => d.n));
     for (const p of job.passed) {
       const prior = already.get(p.number);
       if (prior && new RegExp(`\\(day ${job.day}, `).test(prior.body) && !reverted.has(p.number)) {
-        tonight.push({ number: p.number, target: p.target, applied: true, commit: prior.sha, resumed: true });
+        tonight.push({ number: p.number, target: p.target, applied: true, commit: prior.sha, resumed: true, repairs: repairsOfBody(prior.body) });
         continue;
       }
       const left = deadline - CLAIM_MARGIN_MIN * 60_000 - now();
@@ -1086,6 +1210,14 @@ const lastDay = Math.max(0, ...processed.map((d) => d.n));
           cases.push(auditCase(slug, job.day, p, a));
         }
       }
+    }
+
+    // The repairs (rule 107.9) go to the proposer in the same note as the audit's, if it has one: the site keeps one note per proposal.
+    for (const t of tonight) {
+      if (!t.applied || !t.repairs?.length) continue;
+      const rn = repairNote(t.number, t.repairs), at = notes.find((x) => x.number === t.number);
+      if (at) at.body = `${at.body.slice(0, Math.max(0, 600 - rn.length - 1))} ${rn}`.trim();
+      else notes.push({ number: t.number, body: rn.slice(0, 600) });
     }
 
     // The night's rulings (rule 106.5), after the proposals: only proposals lose something at 2 am (107.6, 107.7), so they go first.
