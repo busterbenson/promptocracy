@@ -70,6 +70,8 @@ function grade(c, a, plain) {
   if (e.params) for (const [k, v] of Object.entries(e.params)) if (!a.draft || String(a.draft.params?.[k]) !== String(v)) f.push(`draft.params.${k} is ${JSON.stringify(a.draft?.params?.[k])}, not ${JSON.stringify(v)}`);
   if (e.noEscalate && a.escalate) f.push(`escalated (${a.escalate.category}) but the rulebook answers it`);
   if (e.escalate && !a.escalate) f.push("expected an escalation");
+  if (e.handoff && a.handoff !== e.handoff) f.push(`handoff is ${JSON.stringify(a.handoff)}, not ${JSON.stringify(e.handoff)}`);
+  if (!e.handoff && a.handoff) f.push(`handed off to ${a.handoff} but the ask is hers`);
   if (e.draft) {
     if (!a.draft) f.push("expected a draft");
     else for (const [k, v] of Object.entries(e.draft)) if (a.draft[k] !== v) f.push(`draft.${k} is ${JSON.stringify(a.draft[k])}, not ${JSON.stringify(v)}`);

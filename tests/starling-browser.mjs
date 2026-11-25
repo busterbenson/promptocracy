@@ -30,6 +30,8 @@ try {
   const cy = await join(srv.base, "shop", g.code, { email: "cy@example.com", name: "Cy", color: "cobalt" });
   const dee = await join(srv.base, "shop", g.code, { email: "dee@example.com", name: "Dee", color: "jade" });
   const eve = await join(srv.base, "shop", g.code, { email: "eve@example.com", name: "Eve", color: "marigold" });   // no messages: her greeting
+  const gus = await join(srv.base, "shop", g.code, { email: "gus@example.com", name: "Gus", color: "orchid" });   // her last line points to Gremlin
+  const hal = await join(srv.base, "shop", g.code, { email: "hal@example.com", name: "Hal", color: "sky" });   // the same, then he ends his turn
   startPlaying(state, "shop");
   const gid = d1(state, "SELECT id FROM games WHERE slug = 'shop'")[0].id;
   const pid = (n) => d1(state, `SELECT id FROM players WHERE game_id = '${gid}' AND display_name = '${n}'`)[0].id;
@@ -40,6 +42,9 @@ try {
     ok(await c.post(CH, { body: REC["q-withdraw"].message }), `${n} question`);
     ok(await c.post(CH, { rule: "401", body: REC["d-amend"].message }), `${n} draft`);
   }
+  // Gus and Hal ask for a commission: her recorded answer carries handoff: gremlin (rule 106.3). Hal then ends his turn.
+  for (const [c, n] of [[gus, "gus"], [hal, "hal"]]) ok(await c.post(CH, { body: REC["h-commission"].message }), `${n} handoff`);
+  ok(await hal.post("/shop/api/end-turn", {}), "hal end turn");
   // Chalant's answer to an escalated turn, in Ada's and Dee's chats: his own line, named, with his portrait
   d1(state, ["Ada", "Dee"].map((n) => `INSERT INTO chat_messages (game_id, player_id, agent, local_date, day, role, body, at) VALUES ('${gid}', '${pid(n)}', 'starling', '${new Intl.DateTimeFormat("en-CA", { timeZone: "America/Los_Angeles" }).format(new Date())}', 1, 'chalant', 'Chalant here. A reword changes one rule; the drafter keeps the rest as written.', '${new Date().toISOString()}')`).join(";\n"));
   // Cy: three proposals locked in (3 of 3) and a draft beside them: drafting is free, Lock it in is disabled with the reason
@@ -56,7 +61,7 @@ try {
   const r61 = ok(await again(() => bo.post(CH, { body: "one more" })), "bo 61st");
   if (r61.data.out !== "cap") throw new Error("Bo is not at the cap: " + r61.text);
   const cookie = (c) => [...c.jar].find(([k]) => k === "s|/shop")[1];
-  const r = await promisify(execFile)(PYTHON, [ROOT + "/tests/browser-starling.py", srv.base, shots || "-", cookie(ada), cookie(bo), cookie(cy), cookie(dee), cookie(eve)], { timeout: 280000, maxBuffer: 1 << 22 });
+  const r = await promisify(execFile)(PYTHON, [ROOT + "/tests/browser-starling.py", srv.base, shots || "-", cookie(ada), cookie(bo), cookie(cy), cookie(dee), cookie(eve), cookie(gus), cookie(hal), REC["h-commission"].message], { timeout: 280000, maxBuffer: 1 << 22 });
   process.stdout.write(r.stdout);
 } catch (e) {
   failed = true;

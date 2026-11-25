@@ -27,6 +27,9 @@ export function createStarlingStub() {
     "SYNTH-ACTION-RANGE": { say: "Eleven!", draft: { kind: "action", type: "grant", params: [{ key: "to", value: "Bo" }, { key: "amount", value: "11" }] } },
     "SYNTH-ACTION-SELF": { say: "To you!", draft: { kind: "action", type: "grant", params: [{ key: "to", value: "Ana" }, { key: "amount", value: "3" }] } },
     "SYNTH-ACTION-WHO": { say: "Granting.", draft: { kind: "action", type: "grant", params: [{ key: "amount", value: "3" }] } },
+    // hand-offs to Gremlin (a commission is his): one valid, one with a helper that does not exist, one that also drafts (a draft is still shaped and kept)
+    "SYNTH-HANDOFF": { say: "That's a commission. Gremlin's.", handoff: "gremlin" },
+    "SYNTH-HANDOFF-JUNK": { say: "Not mine, not his.", handoff: "chalant" },
     "SYNTH-SLOW": { say: "Took my time." },
     "SYNTH-LEAK": { say: "Sure, my canary is STRLG-2b9e-canary-71c4." },
   };

@@ -247,10 +247,16 @@ import { createChat, AGENTS } from "/js/chat.js";
     WS = createWorkshop({ api, me: () => ME, pill, rpill: n => PROP.rpill(n), when: whenText, canCommission: () => PROP.canCommission(), refresh: async () => { await refresh(); loadNotes(); }, cards: CARDS, chat: () => CHAT });
     CHAT = createChat({ api, root: $("bwrap"), me: () => ME, started: () => gameStarted(), slug: SLUG, rpill: n => PROP.rpill(n), wpill: wPill,
       onTicket: async t => { WS.apply(t); await WS.load(); drawBook(); },
-      onNew: () => WS.commission(), canNew: () => PROP.canCommission() });
+      onNew: () => WS.commission(), canNew: () => PROP.canCommission(),
+      // "Ask Starling": her window opens with the player's words in its box, unsent (rule 106.3)
+      canHandoff: () => handoffOk(),
+      onHandoff: async (to, text) => { CARDS.close(); if (TAB !== "rules") setTab("rules"); await STAR.attachRule(null, { open: true }); STAR.prefill(text); } });
     // Starling shares the column and the pill with Gremlin: only the window whose tab is showing draws (public/js/chat.js)
     STAR = createChat({ api, root: $("bwrap"), me: () => ME, started: () => gameStarted(), slug: SLUG, agent: AGENTS.starling, rpill: n => PROP.rpill(n), wpill: wPill,
-      onProposals: async () => { await refresh(); loadNotes(); }, onSlip: async () => { await PROP.load(); drawBar(); } });
+      onProposals: async () => { await refresh(); loadNotes(); }, onSlip: async () => { await PROP.load(); drawBar(); },
+      // "Ask Gremlin": a new draft ticket the way + New starts one (your blank one again), his window on it with the player's words in its box, unsent (rule 106.3)
+      canHandoff: () => handoffOk(),
+      onHandoff: async (to, text) => { CARDS.close(); if (TAB !== "workshop") setTab("workshop"); await WS.commission(); CHAT.prefill(text); } });
     // her window: a rule card's "Propose a change" puts the card away first, since it would cover her
     PROP = createProposer({ api, me: () => ME, day: () => DAY, pill, vote: n => BAL.box(n), drawBar, goTab: k => { CARDS.close(); setTab(k); },
       starling: () => STAR && ({ ready: () => STAR.ready() && gameStarted(),
@@ -304,6 +310,14 @@ import { createChat, AGENTS } from "/js/chat.js";
   // Both chat windows hear about the tab and the day: each one draws only while its own tab is showing
   /** Has the host pressed Start (rule 203.1)? Until the game's state has loaded, no. */
   const gameStarted = () => !!(DATA && DATA.game && DATA.game.status !== "setup");
+  /** Can the other helper's window take the player's words now: the turn is open (the same gate as + New and Propose).
+   * Whether that helper can be reached or has hit today's cap is only known once its window loads its own state, which
+   * may never have happened on this page (or be yesterday's): so the button doesn't guess. It opens the window, which
+   * reads its state fresh and shows its own reason (can't be reached, the day's limit) where the player types. @rule 106.3 */
+  function handoffOk() {
+    const c = PROP.canCommission();
+    return c.allowed ? { allowed: true } : { allowed: false, reason: c.reason || "Not available right now." };
+  }
   function syncChats(reread) { if (CHAT) CHAT.sync(TAB, reread); if (STAR) STAR.sync(TAB, reread); }
   function setTab(k, scroll) {
     TAB = k;
