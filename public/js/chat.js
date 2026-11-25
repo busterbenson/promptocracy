@@ -178,7 +178,7 @@ ${sl.kind !== "action" && (sl.after_text || sl.before_text) ? `<div class="tx cd
     if (!t) return "";
     return rowHTML("Today", (t.list || []).map((n) => `<span class="it">${ppill(n)}</span>`), `<span class="n">${esc(Math.max(0, t.limit - t.made))} of ${esc(t.limit)} left</span>`);
   }
-  /** "Tickets  W3 W2  + New": your live tickets with their state; the attached one is selected, and with none attached New is the filled one. @rule 801.6 */
+  /** "Tickets  W3 W2  + New": your tickets not yet voted on, with their state; the attached one is selected, and with none attached New is the filled one. @rule 801.6 */
   function ticketsRow() {
     const can = canNew ? canNew() : { allowed: true };
     const items = (S.tickets || []).map((t) => `<button type="button" class="it" data-c="pick" data-n="${esc(t.n)}" aria-pressed="${S.ticket === t.n}"${S.busy ? " disabled" : ""}><span class="wpill">${esc(t.n)}</span><span class="tt">${esc(t.title || "Untitled")}</span><span class="pill tstate" data-state="${esc(t.state)}">${esc(t.state)}</span></button>`);
@@ -385,7 +385,7 @@ ${sl.kind !== "action" && (sl.after_text || sl.before_text) ? `<div class="tx cd
   /** The row learns what the ticket page says (a new draft, a title he has just written, a state that moved); a ticket that is no longer live leaves it. @rule 801.6 */
   function noteTicket(t) {
     const rest = S.tickets.filter((x) => x.n !== t.n);
-    S.tickets = ["Draft", "Proposed", "Ready", "Approved", "Building"].includes(t.state) ? [...rest, { n: t.n, title: t.title || "", state: t.state }].sort(byDraftThenNewest) : rest;
+    S.tickets = ["Draft", "Proposed"].includes(t.state) ? [...rest, { n: t.n, title: t.title || "", state: t.state }].sort(byDraftThenNewest) : rest;
   }
   /** The ticket on the slip: yours or nothing. `auto`: it was inferred from the history, so it is attached only if it can still be written. @rule 801.2 */
   async function loadSlip(n, auto) {
