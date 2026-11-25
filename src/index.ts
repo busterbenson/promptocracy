@@ -23,6 +23,7 @@ import * as apiMe from "./routes/api-me";
 import * as apiRules from "./routes/api-rules";
 import * as apiTurn from "./routes/api-turn";
 import * as apiProposals from "./routes/api-proposals";
+import * as apiHistory from "./routes/api-history";
 import * as apiCatalog from "./routes/api-catalog";
 import * as apiTickets from "./routes/api-tickets";
 import * as apiChat from "./routes/api-chat";
@@ -61,7 +62,7 @@ type Methods = { get?: Handler; post?: Handler };
 const API: Record<string, Methods> = {
   game: apiGame, me: apiMe, join: apiJoin, login: apiLogin, logout: apiLogout,
   turn: apiTurn, rules: apiRules, notifications: apiNotifications, board: apiBoard, action: apiAction,
-  day: apiDay, "end-turn": apiEndTurn, "give-heart": apiGiveHeart, proposals: apiProposals, tickets: apiTickets, catalog: apiCatalog, votes: apiVotes, ballot: apiBallot, invite: apiInvite, start: apiStart, era: apiEra,
+  day: apiDay, "end-turn": apiEndTurn, "give-heart": apiGiveHeart, proposals: apiProposals, history: apiHistory, tickets: apiTickets, catalog: apiCatalog, votes: apiVotes, ballot: apiBallot, invite: apiInvite, start: apiStart, era: apiEra,
 };
 
 const secure = (res: Response) => {

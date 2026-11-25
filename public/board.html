@@ -85,6 +85,7 @@
 import { rulingsHTML } from "/js/rulings.js";
 import { createWorkshop } from "/js/workshop.js";
   import { createYours } from "/js/yours.js";
+  import { createHistory } from "/js/history.js";
 import { createChat, AGENTS } from "/js/chat.js";
 import { hold } from "/js/busy.js";
  import { commissionHTML, wPill } from "/js/commission.js";
@@ -111,7 +112,7 @@ import { hold } from "/js/busy.js";
   };
   let ME = null, DATA = null, INVITE = null;   // who is looking, and the last /api/game
   let DAY = null, END_ASK = false, START_ASK = false, DAY_AT = 0, DAY_TIMER = 0, DAY_TICK = 0;   // the last /api/day, the End turn confirm, when it was fetched
-  let PROP = null, BAL = null, BOOK = null, CARDS = null, WS = null, CHAT = null, STAR = null, YOURS = null;   // the proposal controller (propose.js), the mounted rulebook, the card host
+  let PROP = null, BAL = null, BOOK = null, CARDS = null, WS = null, CHAT = null, STAR = null, YOURS = null, HIST = null;   // the proposal controller (propose.js), the mounted rulebook, the card host
   let BOARD = null, SEL = null, VIEW = null;   // the last /api/board, the selected tile {x,y}, the drawn board
   let TAB = "summary", BOARD_OPEN = true, LASTMOVE = null, NOTES = { list: [], unread: 0 }, RULES_OK = false;
   ensureDefs();
@@ -269,6 +270,7 @@ import { hold } from "/js/busy.js";
         open: async n => { CARDS.close(); if (TAB !== "workshop") setTab("workshop"); await WS.open(n, false); } }),
       refresh: async () => { await refresh(); loadNotes(); } });
     YOURS = createYours({ api, me: () => ME, cardKey: p => PROP.cardKey(p) });
+    HIST = createHistory({ api, pill, rpill: n => PROP.rpill(n), pPill: p => PROP.pPill(p), wPill });
     drawTabs(); drawBook();
     loadMe();
     const [g] = await Promise.all([api("/api/game"), loadDay()]);
@@ -326,7 +328,14 @@ import { hold } from "/js/busy.js";
     TAB = k;
     for (const t of ["summary", "rules", "workshop", "history", "yours"]) $("p-" + t).hidden = t !== k;
     drawTabs(); drawBook(); syncChats();
+    if (k === "history") loadHistory();
     if (scroll) $("book").scrollIntoView({ block: "start", behavior: reduced() ? "auto" : "smooth" });
+  }
+  /** History's per-day list (history.js): read when the tab opens and on every refresh while it shows. */
+  async function loadHistory(more) {
+    if (!HIST) return;
+    await (more ? HIST.more() : HIST.load());
+    if (TAB === "history") drawBook();
   }
   /** The Yours page: your own proposals and tickets in every state (yours.js), reached from the account menu. */
   async function openYours() {
@@ -375,7 +384,7 @@ import { hold } from "/js/busy.js";
     if (TAB === "summary") $("p-summary").innerHTML = summaryHTML();
     else if (TAB === "workshop") $("p-workshop").innerHTML = WS ? WS.tabHTML() : "";
     else if (TAB === "yours") $("p-yours").innerHTML = YOURS ? YOURS.html() : "";
-    else if (TAB === "history") $("p-history").innerHTML = `<div class="hdays">${rulingsHTML(DATA && DATA.rulings, { esc, rpill: n => PROP.rpill(n) })}<div class="slot" data-slot="history-days"></div><ul class="log" id="log">${((DATA && DATA.events) || []).map(e => `<li><b>${esc(whenText(e.created_at) || String(e.created_at || "").slice(0, 10))}</b> · ${esc(e.text)}</li>`).join("")}</ul></div>`;
+    else if (TAB === "history") $("p-history").innerHTML = `<div class="hdays">${rulingsHTML(DATA && DATA.rulings, { esc, rpill: n => PROP.rpill(n) })}<div class="slot" data-slot="history-days">${HIST ? HIST.html() : ""}</div><ul class="log" id="log">${((DATA && DATA.events) || []).map(e => `<li><b>${esc(whenText(e.created_at) || String(e.created_at || "").slice(0, 10))}</b> · ${esc(e.text)}</li>`).join("")}</ul></div>`;
   }
 
   // ---- the day: the strip at the top of the Summary --------------------------------------------------------------------
@@ -636,7 +645,7 @@ import { hold } from "/js/busy.js";
     if (d.ok) { DAY = d.data; DAY_AT = Date.now(); }
     if (g.ok) { DATA = g.data; }
     if (b.ok) { BOARD = b.data; if (VIEW) VIEW.setData(b.data, myKey()); }
-    await Promise.all([PROP ? PROP.load() : 0, BAL ? BAL.load() : 0, WS ? WS.load() : 0, YOURS && TAB === "yours" ? YOURS.load() : 0]);
+    await Promise.all([PROP ? PROP.load() : 0, BAL ? BAL.load() : 0, WS ? WS.load() : 0, YOURS && TAB === "yours" ? YOURS.load() : 0, HIST && TAB === "history" ? HIST.load() : 0]);
     drawWho(); if (g.ok) drawGame(g.data); if (b.ok) drawBoard(b.data); drawTabs(); drawDay(); drawBook(); drawMoveBar(); syncChats(true);   // the day or the lock changed: the chats read their state again
     if (BOOK) BOOK.redraw();
     if (CARDS && CARDS.isOpen()) CARDS.redraw();
@@ -662,6 +671,7 @@ import { hold } from "/js/busy.js";
   document.addEventListener("click", async e => {
     const t = e.target;
     if (PROP && !t.closest("#pzone .tkstep.pr")) PROP.closeMenu();   // a click anywhere else puts the Propose menu away (first, so a vote or a tab click does too)
+    if (t.closest("[data-hmore]")) { await loadHistory(true); return; }
     if (t.closest("[data-yours]")) { await closePanels(); await openYours(); return; }
     const tab = t.closest("[data-tab]");
     if (tab && !tab.disabled) { setTab(tab.dataset.tab, !tab.closest(".btabs")); return; }
