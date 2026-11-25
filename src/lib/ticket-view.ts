@@ -1,20 +1,22 @@
 // What a ticket looks like outside its own routes: the list, a ticket page's top, and a commission's row on the ballot.
 // Kept apart from src/routes/api-tickets.ts so the proposals' and the ballot's routes can use it without a cycle.
 import { Ctx, colorOf } from "./util";
+import { shownState } from "./tickets.js";
 
 export const FROM = `FROM tickets t JOIN players p ON p.game_id = t.game_id AND p.id = t.player_id LEFT JOIN proposals q ON q.id = t.proposal_id`;
 // `escalated`: an open escalation on the ticket (rule 106.4), derived from the escalations table; it is not a ticket state.
 export const COLS = `t.*, p.display_name AS name, p.color, q.number AS pnumber, q.status AS pstatus, EXISTS (SELECT 1 FROM escalations e WHERE e.ticket_id = t.id AND e.answered_at IS NULL) AS escalated`;
 
 // A ticket as the list and the ballot row show it. A whitelist: no row id, no player id.
-/** @rule 801.2, 801.4, 801.7, 803.1 */
+/** @rule 801.2, 801.4, 801.7, 801.9, 803.1 */
 export function ticketView(r: any, viewerId?: string | null) {
   return {
     n: `W${r.number}`, number: r.number,
     title: r.title, brief: r.brief, makes: JSON.parse(r.makes || "[]"),
     estimate: r.estimate, running_cost: r.running_cost,
     price: r.price, price_reason: r.price_reason, paid: r.paid ?? null,
-    state: r.state,
+    state: shownState(r),   // "On hold" for a Ready ticket that is held (rule 801.9); the stored state is still Ready
+    held: r.state === "Ready" && !!r.held_at,
     drafted: !!r.drafted || r.state !== "Draft",   // Gremlin has drafted it (rule 801.7); a ticket past Draft always has
     escalated: !!r.escalated,
     proposal: r.pnumber ? `P${r.pnumber}` : null,

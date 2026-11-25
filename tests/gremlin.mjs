@@ -68,10 +68,10 @@ console.log("the prompt: static first, per-day second with the breakpoint, histo
   check("what was rejected last turn is in the tail for him to fix, and what was saved with a change is said differently", J(G.gremlinRequest({ ...base, rejected: ["makes[0]: size must be W×H"] }).messages).includes("not saved: makes[0]: size must be W×H") && J(G.gremlinRequest({ ...base, notes: ["price: kept, but at the ceiling of 25 points."] }).messages).includes("saved with a change: price: kept"));
 }
 
-console.log("the template pins rule 801.7 and 801.8 (the refusals cite 801.7; the game's own RULES.md carries the same text)");
+console.log("the template pins rules 801.7 to 801.10 (the refusals cite 801.7; the game's own RULES.md carries the same text)");
 {
   const flat = readFileSync(pjoin(ROOT, "templates/RULES.md"), "utf8").replace(/\s+/g, " ");
-  check("801.7 and 801.8 are in the template, word for word, right after 801.6", flat.includes("**801.7** Gremlin sets a commission's nights, price, running cost, tasks and the rules it makes, and you change them by talking to him. You can lock it in once he has drafted it (103.1). **801.8** You can discard your commission while it's still a draft. ### 802") && flat.indexOf("**801.6**") < flat.indexOf("**801.7**"));
+  check("801.7 to 801.10 are in the template, word for word, right after 801.6, and 801.4 points at the hold", flat.includes("**801.7** Gremlin sets a commission's nights, price, running cost, tasks and the rules it makes, and you change them by talking to him. You can lock it in once he has drafted it (103.1). **801.8** You can discard your commission while it's still a draft. **801.9** You can put your Ready commission on hold, and take it off hold. While it's on hold it isn't paid and doesn't join the queue. **801.10** You can cancel your commission while it's Ready or on hold. Nothing is paid and it isn't built. ### 802") && flat.indexOf("**801.6**") < flat.indexOf("**801.7**") && flat.includes("you pay on the first night you can (803.1), unless it's on hold (801.9). Points you pay no longer count toward winning (402.2)."));
 }
 console.log("his mood and his excuses");
 {

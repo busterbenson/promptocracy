@@ -10,8 +10,8 @@ import { points, pointsOf } from "./commission.js";
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 // proposals.status in the order a proposal goes through them; the words are the ones the proposal stamps use (chat.js STAMPS)
 export const PROPOSAL_STATES = [["draft", "Draft"], ["confirmed", "Locked"], ["on_ballot", "On the ballot"], ["passed", "Passed"], ["enacted", "In the rules"], ["not_applied", "Not applied"], ["approved", "Approved"], ["failed", "Failed"], ["withdrawn", "Unlocked"]];
-// tickets.state (src/lib/tickets.js STATES)
-export const TICKET_STATES = ["Draft", "Proposed", "Ready", "Approved", "Building", "Done", "Refused", "Failed", "Shelved"];
+// the states a ticket shows (src/lib/tickets.js SHOWN_STATES): tickets.state, with On hold (rule 801.9) after Ready
+export const TICKET_STATES = ["Draft", "Proposed", "Ready", "On hold", "Approved", "Building", "Done", "Refused", "Failed", "Shelved"];
 
 export function createYours({ api, me, cardKey }) {
   const S = { data: null, err: "", loading: false };
@@ -33,9 +33,9 @@ export function createYours({ api, me, cardKey }) {
     const main = p.n && key ? `<button type="button" class="tlink" data-seecard="${esc(key)}" aria-haspopup="dialog" aria-label="Open proposal ${esc(p.n)}">${inner}</button>` : `<span class="tlink">${inner}</span>`;
     return `<li class="trow"><span class="tmain">${main}</span></li>`;
   }
-  /** A Ready ticket waits to be paid (rule 801.4): its price, and the points you have. @rule 801.2, 801.4 */
+  /** A Ready ticket, or one on hold (rule 801.9), waits to be paid (rule 801.4): its price, and the points you have. @rule 801.2, 801.4, 801.9 */
   function ticketRow(t, score) {
-    const have = t.state === "Ready" ? `<span class="tnum mono">You have ${esc(points(score))}</span>` : "";
+    const have = t.state === "Ready" || t.state === "On hold" ? `<span class="tnum mono">You have ${esc(points(score))}</span>` : "";
     return `<li class="trow"><span class="tmain"><button type="button" class="tlink" data-ticket="${esc(t.n)}" aria-haspopup="dialog"><span class="wpill">${esc(t.n)}</span><span class="tt">${esc(t.title || "Untitled")}</span></button></span><span class="tmeta"><span class="tnum mono">${esc(pointsOf(t))}</span>${have}</span></li>`;
   }
   function group(label, rows) {

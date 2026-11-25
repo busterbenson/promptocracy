@@ -2,7 +2,7 @@
 // A real `wrangler dev` on a throwaway LOCAL D1; the rows are written straight to it. Run: node tests/yours.mjs
 import { readdirSync, readFileSync } from "node:fs";
 import { PROPOSAL_STATES, TICKET_STATES } from "../public/js/yours.js";
-import { STATES } from "../src/lib/tickets.js";
+import { SHOWN_STATES as STATES } from "../src/lib/tickets.js";
 import { client, createGame, d1, freePort, join, migrate, newState, startPlaying, startRulesStub, startServer } from "./lib.mjs";
 
 let pass = 0, fail = 0;
@@ -43,7 +43,7 @@ try {
   prop("Ana", "passed", { kind: "commission" });            // a commission proposal is its ticket: not listed under the proposals
   for (const s of statuses) prop("Bo", s);
   let t = 0;
-  const tix = (who, s) => { const n = ++t; d1(state, `INSERT INTO tickets (id, game_id, number, player_id, title, state, price, created_at, updated_at) VALUES ('t${n}', '${gid}', ${n}, '${pid(who)}', 'Ticket ${n} ${s}', '${s}', ${s === "Ready" ? 12 : 3}, '2026-11-1${n % 10}T00:00:00.000Z', '2026-11-1${n % 10}T00:00:00.000Z')`); return n; };
+  const tix = (who, s) => { const n = ++t, held = s === "On hold"; d1(state, `INSERT INTO tickets (id, game_id, number, player_id, title, state, held_at, price, created_at, updated_at) VALUES ('t${n}', '${gid}', ${n}, '${pid(who)}', 'Ticket ${n} ${s}', '${held ? "Ready" : s}', ${held ? "'2026-11-1" + (n % 10) + "T00:00:00.000Z'" : "NULL"}, ${s === "Ready" || held ? 12 : 3}, '2026-11-1${n % 10}T00:00:00.000Z', '2026-11-1${n % 10}T00:00:00.000Z')`); return n; };
   for (const s of STATES) tix("Ana", s);
   for (const s of STATES) tix("Bo", s);
   d1(state, `UPDATE players SET score = 5 WHERE id = '${pid("Ana")}'`);
