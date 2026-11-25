@@ -13,6 +13,7 @@ import { clockNow, settingsOf, timeZoneOf } from "./day";
 import { localDate, lockOpenBinds, lockOpenSql } from "./day-gate.js";
 import { escalate } from "./escalate.js";
 import { MODEL, THREAD_OUTPUT_CAP_TOKENS, THREAD_TIMEOUT_MS, THREAD_POSTS_SHOWN, moodOf, readThreadAnswer, threadAnswerSchema, threadRequest, threadSystemStatic } from "./gremlin.js";
+import { shownState } from "./tickets.js";
 import { Env, nowIso } from "./util";
 import { bookFor } from "../routes/api-proposals";
 
@@ -67,7 +68,7 @@ export async function finishReply(env: Env, game: any, player: { id: string }, t
     const { md: rulesMd } = await bookFor(game);
     const req = threadRequest({
       rulesMd, mood: moodOf(game.id, date), localDate: date,
-      ticket: { number: ticket.number, title: ticket.title, brief: ticket.brief, state: ticket.state, makes: JSON.parse(ticket.makes || "[]"), estimate: ticket.estimate, price: ticket.price, price_reason: ticket.price_reason },
+      ticket: { number: ticket.number, title: ticket.title, brief: ticket.brief, state: shownState(ticket), makes: JSON.parse(ticket.makes || "[]"), estimate: ticket.estimate, price: ticket.price, price_reason: ticket.price_reason },
       posts: rows, post: { by: mine.name, body: mine.body },
     });
     const r = await callModel(env, { model: MODEL, system: req.system, messages: req.messages, maxTokens: THREAD_OUTPUT_CAP_TOKENS, timeoutMs: THREAD_TIMEOUT_MS, schema: threadAnswerSchema(), effort: "low" });

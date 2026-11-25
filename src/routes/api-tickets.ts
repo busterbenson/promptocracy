@@ -13,13 +13,17 @@
 //                                            confirm as any proposal: P-numbered, on tomorrow's ballot, voted at rule 801's mark)
 //   POST /<slug>/api/tickets/<W3>/reopen     a refused or failed ticket of yours becomes a draft again, same number (rule 801.5)
 //   POST /<slug>/api/tickets/<W3>/post       {body}: a post in the discussion (rule 804.1)
+//   POST /<slug>/api/tickets/<W3>/hold       your own Ready ticket goes on hold: the night does not pay it or queue it (rule 801.9)
+//   POST /<slug>/api/tickets/<W3>/resume     it comes off hold: Ready again (rule 801.9)
+//   POST /<slug>/api/tickets/<W3>/cancel     your own Ready or on-hold ticket closes unpaid, as Shelved (rule 801.10)
+// An on-hold ticket is Ready with held_at set (migration 0022); every list, count, filter and page shows it as "On hold".
 // Every write the Workshop adds goes through the day's gate, in the handler and in the SQL: the lock (rule 107.1) stops all of them,
 // and End turn (rule 202.4) also stops the ones that are your proposals (open, edit, confirm), not a post.
 // The price is 0 until Gremlin sets it (a later step).
 import { getPlayer } from "../lib/auth";
 import { clockNow, dayOpenBinds, dayOpenSql, isLocked, loadToday, lockMessage, timeZoneOf } from "../lib/day";
 import { lockOpenBinds, lockOpenSql } from "../lib/day-gate.js";
-import { CLOSED_STATES, COMMISSION_DRAFT_SQL, EDIT_GUARD, NOT_DRAFTED, LIVE_STATES, OPEN_DRAFT_SQL, PAGE, RECENT_CLOSED, REOPEN_SQL, STATES, UNLINK_STRAY_SQL, WORKSHOP_RULE, canPost, confirmProblem, handEditRefusal, readCursor, readFields, readPost, ticketNumber } from "../lib/tickets.js";
+import { CANCEL_SQL, CLOSED_STATES, COMMISSION_DRAFT_SQL, EDIT_GUARD, HELD, HOLD_SQL, NOT_DRAFTED, LIVE_STATES, OPEN_DRAFT_SQL, PAGE, RECENT_CLOSED, REOPEN_SQL, RESUME_SQL, SHOWN_SQL, SHOWN_STATES, UNLINK_STRAY_SQL, WORKSHOP_RULE, canPost, confirmProblem, handEditRefusal, readCursor, readFields, readPost, shownState, shownWhere, ticketNumber } from "../lib/tickets.js";
 import { NO_BUILD_REASON, hasBuild } from "../lib/gremlin.js";
 import { refusalBody, turnBlock } from "../lib/turn";
 import { COLS, FROM, ticketView } from "../lib/ticket-view";
@@ -54,19 +58,19 @@ export const get = async (ctx: Ctx) => {
   const url = new URL(request.url);
   const me = player?.id ?? "";
   const seen = "(NOT (t.state = 'Shelved' AND t.proposed_at IS NULL) AND (t.state != 'Draft' OR t.player_id = ?))"; // other players' drafts are never listed, and a discarded draft is listed for no one (its own requester can still open it by its number)
-  const counted = (await env.DB.prepare(`SELECT t.state AS state, COUNT(*) AS n FROM tickets t WHERE t.game_id = ? AND ${seen} GROUP BY t.state`).bind(game.id, me).all()).results as any[];
+  const counted = (await env.DB.prepare(`SELECT ${SHOWN_SQL} AS state, COUNT(*) AS n FROM tickets t WHERE t.game_id = ? AND ${seen} GROUP BY 1`).bind(game.id, me).all()).results as any[];
   const counts: Record<string, number> = {};
   for (const r of counted) counts[r.state] = r.n;
   const total = counted.reduce((s, r) => s + r.n, 0);
   if (url.searchParams.get("all")) {
     // every ticket, newest change first, one page at a time (never the whole table)
     const state = url.searchParams.get("state");
-    if (state && !STATES.includes(state)) return json({ error: "There is no such state." }, 400);
+    if (state && !SHOWN_STATES.includes(state)) return json({ error: "There is no such state." }, 400);
     const raw = url.searchParams.get("cursor");
     const cur = raw ? readCursor(raw) : null;
     if (raw && !cur) return json({ error: "That is not a place in the list." }, 400);
     const where = [`t.game_id = ?`, seen], binds: unknown[] = [game.id, me];
-    if (state) { where.push("t.state = ?"); binds.push(state); }
+    if (state) where.push(shownWhere(state));   // On hold is a Ready ticket that is held (rule 801.9)
     if (cur) { where.push("(t.updated_at < ? OR (t.updated_at = ? AND t.number < ?))"); binds.push(cur.at, cur.at, cur.number); }
     const rows = (await env.DB.prepare(`SELECT ${COLS} ${FROM} WHERE ${where.join(" AND ")} ORDER BY t.updated_at DESC, t.number DESC LIMIT ${PAGE + 1}`).bind(...binds).all()).results as any[];
     const page = rows.slice(0, PAGE);
@@ -75,7 +79,7 @@ export const get = async (ctx: Ctx) => {
   }
   const live = (await env.DB.prepare(
     `SELECT ${COLS} ${FROM} WHERE t.game_id = ? AND ${seen} AND t.state IN (${LIVE_STATES.map((s) => `'${s}'`).join(",")})
-     ORDER BY CASE t.state ${LIVE_STATES.map((s, i) => `WHEN '${s}' THEN ${i}`).join(" ")} END, t.number DESC LIMIT 100`,
+     ORDER BY CASE ${SHOWN_SQL} ${SHOWN_STATES.filter((s) => s === HELD || LIVE_STATES.includes(s)).map((s, i) => `WHEN '${s}' THEN ${i}`).join(" ")} END, t.number DESC LIMIT 100`,
   ).bind(game.id, me).all()).results as any[];
   const closed = (await env.DB.prepare(
     `SELECT ${COLS} ${FROM} WHERE t.game_id = ? AND ${seen} AND t.state IN (${CLOSED_STATES.map((s) => `'${s}'`).join(",")}) ORDER BY t.updated_at DESC, t.number DESC LIMIT ${RECENT_CLOSED}`,
@@ -137,6 +141,18 @@ async function page(ctx: Ctx, r: any, player: any, nowMs: number) {
     const b = turnBlock(g, day, turn, player, "propose", nowMs);
     reopen = b ? { allowed: false, reason: b.error } : { allowed: true };
   }
+  // Hold, resume and cancel (rules 801.9, 801.10): your own Ready ticket. Only the lock and the end of the game stop them (not End turn: they are
+  // not a move, a vote or a proposal), and the lock says why in its own sentence, as a post does.
+  const none = { allowed: false };
+  let hold: { allowed: boolean; reason?: string } = none, resume = hold, cancel = hold;
+  if (player && r.player_id === player.id && r.state === "Ready") {
+    const { game: g, day } = await loadToday(env, game, nowMs);
+    const why = ownReadyGate(g, day, nowMs);
+    const can = why ? { allowed: false, reason: why.error } : { allowed: true };
+    hold = r.held_at ? none : can;
+    resume = r.held_at ? can : none;
+    cancel = can;
+  }
   // Unlock: a commission you locked in can be withdrawn until it goes on the ballot (rule 103.3), from its ticket too, not only from the
   // Propose row (Buster, day 1: "I can't unlock a commission ticket"). The proposal route does the withdrawing and its own checks.
   let unlock: { allowed: boolean; reason?: string } = { allowed: false };
@@ -176,7 +192,7 @@ async function page(ctx: Ctx, r: any, player: any, nowMs: number) {
       id: x.id, at: x.at, body: x.body, author: x.author_kind, reply_to: x.reply_to ?? null,
       by: x.author_kind === "player" && x.name ? { name: x.name, color: colorOf(x.color) } : undefined,
     })),
-    can: { edit, confirm, discard, post, reopen, unlock },
+    can: { edit, confirm, discard, post, reopen, unlock, hold, resume, cancel },
     ...(unlockId ? { unlock_id: unlockId } : {}),   // the requester's own proposal, for Unlock only
   };
 }
@@ -385,6 +401,59 @@ export async function discard(ctx: Ctx, player: any, raw: unknown, nowMs: number
   return out({ ok: true, ticket: await page(ctx, fresh, player, nowMs) });
 }
 
+// Hold, resume and cancel (rules 801.9, 801.10): the requester's own Ready ticket. Like every write of the day they are refused during the
+// midnight lock, here and again in the write itself; End turn does not stop them. A ticket on hold is Ready with held_at set.
+/** The refusal for the game's state or the lock, or null (rules 107.1, 801.9, 801.10). @rule 107.1, 801.9, 801.10 */
+function ownReadyGate(game: any, day: any, nowMs: number): { status: number; error: string; processing_day?: number } | null {
+  if (game.status === "over") return { status: 409, error: "The game is over." };
+  if (game.status === "playing" && day && isLocked(game, day, nowMs)) return { status: 423, error: lockMessage(day.n), processing_day: day.n };
+  return null;
+}
+/** How a ticket's state reads in a refusal: "on the ballot", "on hold", "ready"... @rule 801.9 */
+const saying = (r: any) => (r.state === "Proposed" ? "on the ballot" : shownState(r).toLowerCase());
+
+/** @rule 801.9, 801.10, 107.1 */
+async function changeReady(ctx: Ctx, player: any, raw: unknown, what: "hold" | "resume" | "cancel", nowMs: number): Promise<Out> {
+  const { env } = ctx;
+  const { game, day } = await loadToday(env, ctx.data.game!, nowMs);
+  const gate = ownReadyGate(game, day, nowMs);
+  if (gate) return out(refusalBody(gate), gate.status);
+  const t = await findTicket(env, game.id, raw);
+  if (!t || t.player_id !== player.id) return out({ error: "There is no such ticket of yours." }, 404);
+  const wrong = what === "hold" ? "Only a Ready ticket can be put on hold." : what === "resume" ? "Only a ticket on hold can be taken off hold." : "Only a Ready or on-hold ticket can be cancelled.";
+  if (t.state !== "Ready" || (what === "resume" && !t.held_at)) return out({ error: `W${t.number} is ${saying(t)}. ${wrong}` }, 409);
+  if (what === "hold" && t.held_at) return out({ error: `W${t.number} is already on hold.` }, 409);
+  const now = nowIso(nowMs), lock = lockOpenBinds(nowMs);
+  /** @rule 801.9, 801.10 */
+  const log = (kind: string, text: string, done: string, ...bind: unknown[]) =>
+    env.DB.prepare(`INSERT INTO ticket_log (ticket_id, day, kind, text, at) SELECT id, ?, ?, ?, ? FROM tickets WHERE id = ? AND ${done} AND NOT EXISTS (SELECT 1 FROM ticket_log l WHERE l.ticket_id = tickets.id AND l.kind = ? AND l.at = ?)`)
+      .bind(game.day, kind, text, now, t.id, ...bind, kind, now);
+  // History says it too (rule 101.2): a Ready ticket was on a ballot, so it is public. Same batch, same guard as the ticket's own log row, once.
+  /** @rule 101.2, 801.9, 801.10 */
+  const line = (kind: string, rest: string, template: string, done: string, ...bind: unknown[]) =>
+    env.DB.prepare(
+      `INSERT INTO events (game_id, kind, text, created_at, day, phase, template, args, player_id)
+       SELECT game_id, ?, 'W' || number || ?, ?, ?, 'day', ?, json_object('ticket', number), player_id FROM tickets
+       WHERE id = ? AND ${done} AND NOT EXISTS (SELECT 1 FROM events e WHERE e.game_id = tickets.game_id AND e.kind = ? AND e.created_at = ? AND json_extract(e.args, '$.ticket') = tickets.number)`,
+    ).bind(kind, rest, now, game.day, template, t.id, ...bind, kind, now);
+  const res = await env.DB.batch(
+    what === "hold"
+      ? [env.DB.prepare(HOLD_SQL).bind(now, now, t.id, player.id, ...lock), log("held", "Put on hold by its requester.", "state = 'Ready' AND held_at = ?", now), line("ticket_held", " is on hold.", "ticketHeld", "state = 'Ready' AND held_at = ?", now)]
+      : what === "resume"
+        ? [env.DB.prepare(RESUME_SQL).bind(now, t.id, player.id, ...lock), log("resumed", "Taken off hold by its requester.", "state = 'Ready' AND held_at IS NULL AND updated_at = ?", now), line("ticket_resumed", " is off hold.", "ticketResumed", "state = 'Ready' AND held_at IS NULL AND updated_at = ?", now)]
+        : [env.DB.prepare(CANCEL_SQL).bind(now, now, t.id, player.id, ...lock), log("shelved", "Cancelled by its requester.", "state = 'Shelved' AND updated_at = ?", now), line("ticket_cancelled", " was cancelled.", "ticketCancelled", "state = 'Shelved' AND updated_at = ?", now)],
+  );
+  if (!(res[0]?.meta?.changes > 0)) {
+    // The write found the lock closed, or the ticket moved under the request (a second tap, or the night): say which.
+    const { game: g, day: d } = await loadToday(env, ctx.data.game!, nowMs);
+    const late = ownReadyGate(g, d, nowMs);
+    if (late) return out(refusalBody(late), late.status);
+    const now2 = await findTicket(env, game.id, t.number);
+    return out({ error: `W${t.number} is ${saying(now2)} now. Reload and look again.` }, 409);
+  }
+  const fresh = await findTicket(env, game.id, t.number);
+  return out({ ok: true, ticket: await page(ctx, fresh, player, nowMs) });
+}
 // POST /api/tickets/<W3>/post: anyone in the game (rule 804.1).
 /** @rule 804.1, 107.1 */
 export async function addPost(ctx: Ctx, player: any, raw: unknown, body: any, nowMs: number): Promise<Out> {
@@ -425,13 +494,14 @@ export const post = async (ctx: Ctx) => {
   return send(await open(ctx, player, await clockNow(ctx.env)));
 };
 
-// POST /api/tickets/<W3>/(edit|confirm|post|reopen|discard)
-/** @rule 801.1, 801.2, 801.5, 801.8, 804.1 */
-export const action = (what: "edit" | "confirm" | "post" | "reopen" | "discard") => async (ctx: Ctx) => {
+// POST /api/tickets/<W3>/(edit|confirm|post|reopen|discard|hold|resume|cancel)
+/** @rule 801.1, 801.2, 801.5, 801.8, 801.9, 801.10, 804.1 */
+export const action = (what: "edit" | "confirm" | "post" | "reopen" | "discard" | "hold" | "resume" | "cancel") => async (ctx: Ctx) => {
   const player = await need(ctx);
   if (!player) return json({ error: what === "post" ? "Log in to post." : "Log in to commission something." }, 401);
   const body = await readJson(ctx.request);
   const nowMs = await clockNow(ctx.env);
   const n = ctx.params.n;
+  if (what === "hold" || what === "resume" || what === "cancel") return send(await changeReady(ctx, player, n, what, nowMs));
   return send(await (what === "edit" ? edit(ctx, player, n, body, nowMs) : what === "post" ? addPost(ctx, player, n, body, nowMs) : what === "reopen" ? reopen(ctx, player, n, nowMs) : what === "discard" ? discard(ctx, player, n, nowMs) : confirm(ctx, player, n, nowMs)));
 };

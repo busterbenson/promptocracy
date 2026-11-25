@@ -32,7 +32,7 @@ import { catalogFor } from "./api-catalog";
 import { bookFor, catalogOf, draft } from "./api-proposals";
 import { slipsOf, todayOf } from "./slips";
 import { gremlinWrite, open as openTicket, pageOf } from "./api-tickets";
-import { STRIP_STATES } from "../lib/tickets.js";
+import { STRIP_STATES, shownState } from "../lib/tickets.js";
 import { queueNew } from "../lib/art";
 
 export type Out = { status: number; body: any };
@@ -274,7 +274,7 @@ async function ticketTurn(T: Turn, ticket: any, moved: boolean): Promise<Out> {
   try { const m = last ? JSON.parse(last.meta || "{}") : {}; rejected = m.rejected || []; notes = m.notes || []; } catch { rejected = []; notes = []; }
   // what he can write this turn: the same gate the player's own edit meets, so he tells them when nothing will land
   let noWrite: string | null = null;
-  if (ticket.state !== "Draft") noWrite = `W${ticket.number} is ${ticket.state === "Proposed" ? "on the ballot" : ticket.state.toLowerCase()}`;
+  if (ticket.state !== "Draft") noWrite = `W${ticket.number} is ${ticket.state === "Proposed" ? "on the ballot" : shownState(ticket).toLowerCase()}`;
   else { const b = turnBlock(game, day, playerTurn, player, "propose", nowMs); if (b) noWrite = b.error; }
   const { system, messages } = gremlinRequest({
     ceiling, rulesMd, mood: moodOf(game.id, date), localDate: date, catalog: catalogFor(game), history: hist,
@@ -331,9 +331,9 @@ async function ticketTurn(T: Turn, ticket: any, moved: boolean): Promise<Out> {
   const line = await storeLine(T, ticket, r, later, "agent", a.say, meta, a.refusal ? "refused" : "ok", a.refusal ? "commission refused" : [moved ? "moved from general" : "", a.clamped ? "price clamped" : "", a.unbuiltPrice ? "price set to 0: nothing to build" : "", escNote].filter(Boolean).join("; ") || null);
   lines.push(line.view);
   if (wrote.length && !saved) {
-    const fresh: any = await env.DB.prepare("SELECT state FROM tickets WHERE id = ?").bind(ticket.id).first();
+    const fresh: any = await env.DB.prepare("SELECT state, held_at FROM tickets WHERE id = ?").bind(ticket.id).first();
     const again = await loadToday(env, ctx.data.game!, later, player.id);
-    const why = fresh?.state !== "Draft" ? `W${ticket.number} is ${fresh?.state === "Proposed" ? "on the ballot" : String(fresh?.state ?? "closed").toLowerCase()}, so it can't be changed.`
+    const why = fresh?.state !== "Draft" ? `W${ticket.number} is ${fresh?.state === "Proposed" ? "on the ballot" : String(fresh ? shownState(fresh) : "closed").toLowerCase()}, so it can't be changed.`
       : turnBlock(again.game, again.day, again.turn, player, "propose", later)?.error ?? "the day changed under you.";
     const res = await env.DB.prepare("INSERT INTO chat_messages (game_id, player_id, agent, local_date, day, role, body, ticket_id, meta, at) VALUES (?, ?, ?, ?, ?, 'event', ?, ?, '{}', ?)")
       .bind(game.id, player.id, AGENT, date, game.day || null, `Nothing was saved: ${why}`, ticket.id, nowIso(nowMs)).run();

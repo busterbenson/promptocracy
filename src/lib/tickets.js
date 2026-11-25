@@ -3,9 +3,20 @@
 // the SQL the count runs when a commission passes or fails (rules 801.4, 803.1). src/routes/api-tickets.ts is the routes.
 import { nightSeqSql } from "./history-lines.js";
 import { readEntryDraft } from "./catalog.js";
-import { dayOpenSql } from "./day-gate.js";
+import { dayOpenSql, lockOpenSql } from "./day-gate.js";
 
 export const STATES = ["Draft", "Proposed", "Ready", "Approved", "Building", "Done", "Refused", "Failed", "Shelved"];
+// "On hold" (rule 801.9) is not a stored state: tickets.state keeps its CHECK. It is a Ready ticket whose held_at is set (migration 0022),
+// and it is what every list, count, filter and page shows in its place.
+export const HELD = "On hold";
+/** The states a player sees, in the order a ticket goes through them: the stored ones, with On hold after Ready (rule 801.9). */
+export const SHOWN_STATES = ["Draft", "Proposed", "Ready", HELD, "Approved", "Building", "Done", "Refused", "Failed", "Shelved"];
+/** The state a ticket row shows (rule 801.9): On hold for a Ready ticket that is held, else the stored state. @rule 801.9 */
+export const shownState = (row) => (row.state === "Ready" && row.held_at ? HELD : row.state);
+/** The same in SQL, on a ticket aliased t (rule 801.9). @rule 801.9 */
+export const SHOWN_SQL = `CASE WHEN t.state = 'Ready' AND t.held_at IS NOT NULL THEN '${HELD}' ELSE t.state END`;
+/** A shown state as a condition on a ticket aliased t: On hold is Ready and held, Ready is Ready and not held, any other is its stored state. @rule 801.9 */
+export const shownWhere = (s) => (s === HELD ? "(t.state = 'Ready' AND t.held_at IS NOT NULL)" : s === "Ready" ? "(t.state = 'Ready' AND t.held_at IS NULL)" : `t.state = '${String(s).replace(/'/g, "''")}'`);
 export const LIMITS = { title: 80, brief: 2000, makeName: 60, makes: 12, tasks: 20, task: 200, running_cost: 200, estimate: 99, post: 2000 };
 // The block a commission is filed under, the one rule a game needs for a workshop at all, and the rule whose mark it is voted at (rule 105.4).
 export const WORKSHOP_BLOCK = "800";
@@ -296,9 +307,9 @@ export function countTicketStatements(db, game, q, result, day, now) {
   ];
 }
 
-/** The ids of the Ready tickets, oldest pass first (the order they are paid in), read just before the count's batch. @rule 801.4, 803.1 */
+/** The ids of the Ready tickets that are not on hold, oldest pass first (the order they are paid in), read just before the count's batch. A ticket on hold is not paid and does not join the queue (rule 801.9). @rule 801.4, 801.9, 803.1 */
 export async function readyIds(db, gameId) {
-  const rows = await db.prepare(`SELECT t.id FROM tickets t LEFT JOIN proposals q ON q.id = t.proposal_id WHERE t.game_id = ? AND t.state = 'Ready' ORDER BY t.decided_at, q.number`).bind(gameId).all();
+  const rows = await db.prepare(`SELECT t.id FROM tickets t LEFT JOIN proposals q ON q.id = t.proposal_id WHERE t.game_id = ? AND t.state = 'Ready' AND t.held_at IS NULL ORDER BY t.decided_at, q.number`).bind(gameId).all();
   return rows.results.map((r) => r.id);
 }
 
@@ -306,12 +317,13 @@ export async function readyIds(db, gameId) {
  * What the count writes for the tickets that were Ready (rules 801.4, 803.1), in the order given (oldest pass first), after the
  * night's new approvals so they queue behind them. One at a time, each guarded by Ready and by the requester's points at that
  * moment (so the one before it has already paid): a ticket whose requester can now pay the whole price pays it once and goes
- * Approved with the next place in the queue; any other stays Ready, untouched. A ticket that is no longer Ready changes nothing.
- * @rule 801.4, 803.1
+ * Approved with the next place in the queue; any other stays Ready, untouched. A ticket that is no longer Ready, or that was put on hold
+ * after the ids were read (rule 801.9), changes nothing.
+ * @rule 801.4, 801.9, 803.1
  */
 export function readyStatements(db, game, ids, day, now, notices = new Map()) {
   return ids.flatMap((id) => [
-    db.prepare(`UPDATE tickets SET state = 'Approved', approved_at = ?, updated_at = ?, paid = COALESCE(paid, price), queue_pos = ${NEXT_PLACE} WHERE id = ? AND state = 'Ready' AND ${CAN_PAY}`).bind(now, now, id),
+    db.prepare(`UPDATE tickets SET state = 'Approved', approved_at = ?, updated_at = ?, paid = COALESCE(paid, price), queue_pos = ${NEXT_PLACE} WHERE id = ? AND state = 'Ready' AND held_at IS NULL AND ${CAN_PAY}`).bind(now, now, id),
     ...payStatements(db, "id = ?", [id], game, `'Approved: ' || (SELECT display_name FROM players WHERE game_id = t.game_id AND id = t.player_id) || ' can pay now. ' || CASE WHEN t.paid_at = '${now}' THEN 'Paid ' || ${pts("t.paid")} || '. ' ELSE '' END || 'Place ' || t.queue_pos || ' in the queue.'`, day, now),
     // Every player is told, once: the id is the ticket and the player, and it lands only if THIS run approved the ticket.
     ...(notices.has(id) ? [db.prepare(
@@ -321,3 +333,18 @@ export function readyStatements(db, game, ids, day, now, notices = new Map()) {
     ).bind(id, notices.get(id).body, notices.get(id).link, now, game.id, id, now)] : []),
   ]);
 }
+
+// ---- hold, resume, cancel (rules 801.9, 801.10) ----------------------------------------------------------------------------
+// The requester's own Ready ticket (a held one is Ready with held_at set). Each write is guarded by the stored state and by the lock
+// IN THE WRITE (rule 107.1: a write that races midnight cannot land after it); End turn does not stop them (they are not a move, a vote or
+// a proposal). The ticket table is unaliased (tickets); the game row is g. Binds, in order: the SET values, ticket id, player id, then
+// lockOpenBinds(nowMs). A cancelled ticket was paid nothing (a ticket that has paid is never Ready, 801.4), and the guard says so.
+const OWN_READY = `id = ? AND player_id = ? AND state = 'Ready' AND paid_at IS NULL AND queue_pos IS NULL
+  AND EXISTS (SELECT 1 FROM games g WHERE g.id = tickets.game_id AND g.status = 'playing' AND ${lockOpenSql})`;
+/** Put your Ready ticket on hold: the night does not pay it or queue it. Binds: held_at, updated_at, id, player id, lockOpenBinds. @rule 801.9, 107.1 */
+export const HOLD_SQL = `UPDATE tickets SET held_at = ?, updated_at = ? WHERE ${OWN_READY} AND held_at IS NULL`;
+/** Take it off hold: Ready again, paid the next night its requester can (801.4). Binds: updated_at, id, player id, lockOpenBinds. @rule 801.9, 107.1 */
+export const RESUME_SQL = `UPDATE tickets SET held_at = NULL, updated_at = ? WHERE ${OWN_READY} AND held_at IS NOT NULL`;
+/** Cancel your Ready or on-hold ticket: it closes as Shelved, nothing paid, never built (the same closed state a discarded draft has). decided_at is the day it
+ *  closed, which the art sweep counts its 30 days from. Binds: decided_at, updated_at, id, player id, lockOpenBinds. @rule 801.10, 107.1 */
+export const CANCEL_SQL = `UPDATE tickets SET state = 'Shelved', held_at = NULL, decided_at = ?, updated_at = ? WHERE ${OWN_READY}`;
