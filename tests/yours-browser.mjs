@@ -34,6 +34,9 @@ try {
   prop("Ada", "passed", "402", "Name the Champion");
   prop("Ada", "failed", "403", "Repeal Paradox");
   prop("Bo", "confirmed", "402.3", "Bos own proposal");
+  // an enacted new rule: its row opens the rule under its new number (the P-number's ghost card is gone once it is in the rules)
+  d1(state, `INSERT INTO proposals (id, game_id, number, player_id, day_proposed, day_ballot, kind, scope, target, new_num, draft_head, drafted_by, base_sha, mark, status, created_at, confirmed_at, title)
+    VALUES ('qAdaenactedadd', '${gid}', ${++num}, '${pid("Ada")}', ${day}, ${day + 1}, 'add', 'rule', '200', '204', 'Add rule 204:', 'code', 's', 'majority', 'enacted', '2026-11-29T00:00:00.000Z', 'x', 'Connect an AI')`);
   let t = 0;
   const tix = (who, s, title, price) => { const n = ++t; d1(state, `INSERT INTO tickets (id, game_id, number, player_id, title, brief, state, price, created_at, updated_at) VALUES ('t${n}', '${gid}', ${n}, '${pid(who)}', '${title}', 'A brief.', '${s}', ${price}, '2026-11-2${n}T00:00:00.000Z', '2026-11-2${n}T00:00:00.000Z')`); };
   tix("Ada", "Draft", "A low stone wall", 0); tix("Ada", "Proposed", "A humming lantern", 3); tix("Ada", "Ready", "A bell for the dead", 6);

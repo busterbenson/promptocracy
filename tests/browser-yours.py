@@ -54,8 +54,8 @@ with sync_playwright() as p:
             check(f"{tag}: the Yours panel shows and the other panels are away", page.locator("#p-yours").is_visible() and not page.locator("#p-summary").is_visible() and page.locator("#tab-yours[aria-selected=true]").count() == 1)
             body = text(page, "#p-yours")
             heads = [x.strip() for x in page.locator("#p-yours h2").all_inner_texts()]
-            check(f"{tag}: the groups are Proposals (Draft, Locked, Passed, Failed) then Tickets (Draft, Proposed, Ready, Building, Done); empty groups are left out",
-                  heads == ["Proposals", "Draft", "Locked", "Passed", "Failed", "Tickets", "Draft", "Proposed", "Ready", "Building", "Done"], str(heads))
+            check(f"{tag}: the groups are Proposals (Draft, Locked, Passed, In the rules, Failed) then Tickets (Draft, Proposed, Ready, Building, Done); empty groups are left out",
+                  heads == ["Proposals", "Draft", "Locked", "Passed", "In the rules", "Failed", "Tickets", "Draft", "Proposed", "Ready", "Building", "Done"], str(heads))
             check(f"{tag}: only Ada's own rows (Bo's proposal and ticket are not there)", "Bos" not in body and "Eras end sooner" in body and "A bell for the dead" in body)
             ready = text(page, '#p-yours section[aria-label="Ready"]')
             check(f"{tag}: the Ready ticket shows its price and her points", "6 points" in ready and "You have 4 points" in ready, ready)
@@ -78,6 +78,12 @@ with sync_playwright() as p:
             card = text(page, "#mroot .mcard")
             check(f"{tag}: a proposal row opens the card of the rule it changes (402)", "402" in card and "Era" in card, card[:200])
             shot(page, f"yours-proposal-card-{tag}")
+            close_card(page)
+            # an enacted new rule opens the rule under its new number (204), not its P-number
+            page.click('#p-yours [data-seecard]:has-text("Connect an AI")')
+            page.wait_for_selector("#mroot .mcard")
+            card = text(page, "#mroot .mcard")
+            check(f"{tag}: an enacted new rule's row opens that rule's card (204)", "204" in card and "AI" in card, card[:200])
             close_card(page)
             # the draft has no card, so no button
             check(f"{tag}: today's draft is listed and has no card to open", page.locator('#p-yours section[aria-label="Draft"] [data-seecard]').count() == 0 and "Shorter Eras" in body)

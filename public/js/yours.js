@@ -27,7 +27,8 @@ export function createYours({ api, me, cardKey }) {
 
   /** @rule 103.2 */
   function proposalRow(p) {
-    const key = cardKey ? cardKey(p) : null, text = p.title || p.head || "";
+    // an enacted new rule is in the rulebook under its own number now, not its P-number (the ghost card is gone)
+    const key = p.kind === "add" && p.status === "enacted" && p.new_num ? String(p.new_num).split(".")[0] : cardKey ? cardKey(p) : null, text = p.title || p.head || "";
     const inner = `${p.n ? `<span class="ppill">${esc(p.n)}</span>` : ""}<span class="tt">${esc(text)}</span>`;
     const main = p.n && key ? `<button type="button" class="tlink" data-seecard="${esc(key)}" aria-haspopup="dialog" aria-label="Open proposal ${esc(p.n)}">${inner}</button>` : `<span class="tlink">${inner}</span>`;
     return `<li class="trow"><span class="tmain">${main}</span></li>`;
