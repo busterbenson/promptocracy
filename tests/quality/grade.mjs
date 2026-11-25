@@ -1,0 +1,161 @@
+// Grading: the code checks (these decide a case's pass/fail) and the Gemini grader (advisory: it is shown next to Buster's mark).
+import { createHash } from "node:crypto";
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+
+export const GRADER_MODEL = "gemini-3.1-pro-preview";
+const list = (v) => (Array.isArray(v) ? v : [v]);
+const chk = (name, pass, detail = "", soft = false) => ({ name, pass: !!pass, detail: String(detail ?? ""), soft });
+
+/** The case's digest: sha256 of its final draft text and night diff, so a verdict is tied to the exact output Buster judged. */
+export function digestOf(res, night) {
+  const h = createHash("sha256");
+  h.update(JSON.stringify([res.draft?.after_text ?? null, res.refusal?.message ?? null, res.ticket?.makes ?? null, night?.diff_text ?? null, night?.diff_code ?? null]));
+  return h.digest("hex").slice(0, 16);
+}
+
+/** Every code check for one case. Returns [{name, pass, detail, soft}]. A `soft` check is reported but never fails the case. */
+export function codeChecks(c, res, night) {
+  const e = c.expect || {}, out = [], turns = res.turns || [];
+  if (res.notRun) return [chk("ran", false, `not run: ${res.notRun}`)];
+  out.push(chk("answers readable", !res.error && turns.length > 0 && turns.every((t) => !t.error && t.say), res.error || ""));
+  out.push(chk("no canary or prompt leak", !turns.some((t) => t.canary_or_prompt_leak)));
+  const dropped = turns.flatMap((t) => t.dropped || []).filter((d) => /quote|rule/.test(d));
+  out.push(chk("no dropped quote", !dropped.length, dropped.join("; ")));
+  if (res.error) return out;
+  const d = res.draft, n = res.draft_count || 0;
+  if (c.agent === "starling") {
+    if (e.drafts_max !== undefined) out.push(chk(`at most ${e.drafts_max} draft(s)`, n <= e.drafts_max, `${n} drafted`));
+    if (e.draft) {
+      out.push(chk("a draft was made", !!d, d ? "" : (res.refusal ? `refused: ${res.refusal.message}` : "no draft")));
+      if (d) {
+        if (e.draft.kind) out.push(chk("draft kind", list(e.draft.kind).includes(d.kind), `got ${d.kind}, wanted ${list(e.draft.kind).join(" or ")}`));
+        if (e.draft.target) out.push(chk("draft target", list(e.draft.target).includes(d.target), `got ${d.target}, wanted ${list(e.draft.target).join(" or ")}`));
+      }
+    }
+    if (e.draft_by_turn !== undefined) out.push(chk(`draft by turn ${e.draft_by_turn}`, !!d && d.turn <= e.draft_by_turn, d ? `drafted on turn ${d.turn}` : "no draft"));
+    if (e.no_draft_on_turn !== undefined) out.push(chk(`no draft on turn ${e.no_draft_on_turn}`, !turns[e.no_draft_on_turn - 1]?.asked_for, ""));
+    if (e.asks_first) out.push(chk("asks a question before drafting", /\?/.test(turns[0]?.say || ""), turns[0]?.say?.slice(0, 160) || ""));
+    if (e.mark === "majority") out.push(chk("no unanimous mark", !!d && d.mark !== "unanimous", `mark ${d?.mark ?? "none"}`));
+    if (e.settings) for (const [k, v] of Object.entries(e.settings)) out.push(chk(`setting ${k} = ${v}`, !!d && JSON.stringify(d.settings?.[k]) === JSON.stringify(v), `got ${JSON.stringify(d?.settings?.[k])}`));
+    if (e.words_include) {
+      const hay = `${d?.words ?? ""}\n${d?.after_text ?? ""}`.toLowerCase();
+      for (const w of e.words_include) out.push(chk(`draft covers "${w}"`, !!d && hay.includes(w.toLowerCase())));
+    }
+    if (e.say_matches) {
+      const say = (turns.find((t) => t.asked_for) || turns.at(-1))?.say || "";
+      out.push(chk("her line names her guesses", new RegExp(e.say_matches, "i").test(say), say.slice(0, 160)));
+    }
+    // "not wired" is the drafter's refusal when Starling asks for a draft, or Starling's own refusal to ask for one (both keep the slip empty)
+    const ownSay = turns.find((t) => !t.asked_for && /not wired|isn'?t wired|can'?t (change|draft)|won'?t draft|cannot/i.test(t.say || ""));
+    if (e.refused_reason) out.push(chk(`refused as "${e.refused_reason}" (by the drafter, or in Starling's own words)`, res.refusal?.reason === e.refused_reason || (!d && !!ownSay), res.refusal ? `${res.refusal.reason}: ${res.refusal.message}` : ownSay ? `her own line: ${ownSay.say.slice(0, 120)}` : "no refusal"));
+    if (e.no_slip) out.push(chk("no slip was made", !d, d ? d.head : ""));
+    if (e.refusal_cites) out.push(chk(`refusal names ${e.refusal_cites.join(" or ")}`, e.refusal_cites.some((r) => (res.refusal?.message || "").includes(r) || (ownSay?.say || "").includes(r)), (res.refusal?.message || ownSay?.say || "").slice(0, 160), !res.refusal));
+    if (e.no_ballot_claim) {
+      const claim = turns.find((t) => /(locked in|is on (tomorrow'?s|the) ballot|i('ve| have) (drafted|locked))/i.test(t.say || "") && !/(can'?t|won'?t|only you|your (own )?click|not (been )?(drafted|locked))/i.test(t.say || ""));
+      out.push(chk("does not claim it is on the ballot", !claim, claim?.say?.slice(0, 160) || ""));
+    }
+    if (e.action_type) out.push(chk(`action type ${e.action_type}`, d?.action?.type === e.action_type, `got ${d?.action?.type}`));
+    if (e.params) for (const [k, v] of Object.entries(e.params)) out.push(chk(`action param ${k} = ${v}`, String(d?.action?.params?.[k]) === String(v), `got ${JSON.stringify(d?.action?.params?.[k])}`));
+  } else {
+    const t = res.ticket || {}, patches = turns.map((x) => x.patch || {});
+    const entries = (t.makes || []).filter((m) => m.kind === "entry");
+    const refused = turns.some((x) => x.refusal);
+    if (e.refusal === true) out.push(chk("refused", refused));
+    if (e.refusal === false) out.push(chk("not refused", !refused, turns.find((x) => x.refusal)?.refusal || ""));
+    if (e.noPatch) out.push(chk("wrote nothing", patches.every((p) => !Object.keys(p).length), patches.flatMap((p) => Object.keys(p)).join(",")));
+    if (e.makesKind) out.push(chk(`a ${e.makesKind} entry`, entries.some((m) => m.catalogKind === e.makesKind), `got ${entries.map((m) => m.catalogKind).join(",") || "none"}`));
+    if (e.needsBuildOrRule) out.push(chk("needs a build or a rule item", entries.some((m) => m.needsBuild?.length) || (t.makes || []).some((m) => m.kind === "rule")));
+    if (e.priceMin !== undefined) out.push(chk(`price at least ${e.priceMin}`, (t.price ?? 0) >= e.priceMin, `price ${t.price}`));
+    if (e.priceMax !== undefined) out.push(chk(`price at most ${e.priceMax}`, (t.price ?? 0) <= e.priceMax, `price ${t.price}`));
+    if (e.estimateMin !== undefined) out.push(chk(`estimate at least ${e.estimateMin}`, (t.estimate ?? 0) >= e.estimateMin, `estimate ${t.estimate}`));
+    if (e.refusal_cites_soft) out.push(chk(`refusal names ${e.refusal_cites_soft.join(" or ")} (soft)`, e.refusal_cites_soft.some((r) => (res.refusal?.message || "").includes(r)), res.refusal?.message?.slice(0, 160) || "", true));
+  }
+  if (night) {
+    if (e.night === "applied") {
+      out.push(chk("night: applied", night.status === "applied", `${night.status}${night.reason ? `: ${night.reason}` : ""}`));
+      if (night.status === "applied") out.push(chk("night: the game's checks and tests pass", night.check_ok === true, night.check_tail?.slice(-160) || ""));
+    } else if (e.night === "any") out.push(chk("night: ran clean (applied or not applied with a reason)", night.status === "applied" || (night.status === "not_applied" && !!night.reason), `${night.status}${night.reason ? `: ${night.reason}` : ""}`));
+    if (e.night_settings && night.status === "applied") for (const [k, v] of Object.entries(e.night_settings)) out.push(chk(`night: settings.json ${k} = ${v}`, JSON.stringify(night.settings_after?.[k]) === JSON.stringify(v), `got ${JSON.stringify(night.settings_after?.[k])}`));
+  }
+  return out;
+}
+
+/** pass = every non-soft check passes. known_fail turns a fail into "expected fail" and a pass into "now passes". */
+export function caseStatus(c, checks) {
+  const pass = checks.every((k) => k.pass || k.soft);
+  if (c.known_fail) return pass ? "now passes" : "expected fail";
+  return pass ? "pass" : "fail";
+}
+
+// ---- the grader ----------------------------------------------------------------------------------------------------------------------
+const SCHEMA = {
+  type: "OBJECT", required: ["scores", "verdict", "reasons"],
+  properties: {
+    scores: { type: "OBJECT", required: ["intent", "fidelity", "voice", "efficiency", "night"], properties: { intent: { type: "INTEGER" }, fidelity: { type: "INTEGER" }, voice: { type: "INTEGER" }, efficiency: { type: "INTEGER" }, night: { type: "INTEGER", nullable: true } } },
+    verdict: { type: "STRING", enum: ["good", "bad"] },
+    reasons: { type: "ARRAY", items: { type: "STRING" } },
+  },
+};
+const SYSTEM = "You grade one test case of a rules game's AI helpers. You are strict: 'good' only when it clearly is.";
+const RUBRIC = `Score each 0 (bad), 1 (partly), 2 (good); night is null when there was no night.
+- intent: did it understand what the player wanted (the answer key is "intent")?
+- fidelity: does the slip say what the player said, invent no mechanic the player did not ask for, and name its guesses?
+- voice: the rules voice: "you", plain words, cites instead of restating.
+- efficiency: asks only what it needs; drafts when it has enough.
+- night: the voted draft is in RULES.md word for word, the code does what the text says, the tests test the change.
+Verdict "good" only if no score is 0 and intent and fidelity are 2. reasons: at most 4 short lines.`;
+
+/** Buster's verdicts, read from the jsonl on the mini, as examples for the grader: up to 3 on this case id, then up to 3 on others. */
+export function answerKey(verdictsFile, runsDir, caseId) {
+  if (!verdictsFile || !existsSync(verdictsFile)) return [];
+  const latest = new Map();
+  for (const line of readFileSync(verdictsFile, "utf8").split("\n")) {
+    try { const v = JSON.parse(line); /* a cleared verdict (null) replaces the earlier one; it is filtered out below */ if (v && v.run && v.case) latest.set(`${v.run}|${v.case}`, v); } catch { /* skip a bad line */ }
+  }
+  const all = [...latest.values()].filter((v) => v.verdict === "good" || v.verdict === "bad").sort((a, b) => String(b.ts).localeCompare(String(a.ts)));
+  const pick = [...all.filter((v) => v.case === caseId).slice(0, 3), ...all.filter((v) => v.case !== caseId).slice(0, 3)];
+  return pick.map((v) => {
+    let summary = "";
+    try {
+      const r = JSON.parse(readFileSync(join(runsDir, v.run, "results.json"), "utf8")).cases.find((x) => x.id === v.case);
+      summary = r?.draft ? `${r.draft.head} ${String(r.draft.after_text).slice(0, 300)}` : r?.refusal ? `refused: ${r.refusal.message}` : r?.ticket ? `ticket ${r.ticket.title}: ${String(r.ticket.brief).slice(0, 200)}` : "";
+    } catch { /* the run's file is gone: the verdict still counts */ }
+    return { case: v.case, verdict: v.verdict, note: v.note || "", summary };
+  });
+}
+
+/** The text of the rule (its section) a case targets, for the grader. */
+export function ruleTextOf(rulesMd, target) {
+  if (!target) return "";
+  const n = String(list(target)[0]).split(".")[0];
+  return String(rulesMd).split(/\n(?=###? )/).filter((s) => new RegExp(`^###? ${n}\\b`).test(s)).join("\n").slice(0, 3000);
+}
+
+export function gradePrompt(c, res, night, rulesMd, key) {
+  const transcript = (res.turns || []).map((t) => `PLAYER: ${t.player}\nAGENT: ${t.say ?? `(${t.error})`}${t.outcome && t.outcome !== "said" ? `\n[${t.outcome}]` : ""}`).join("\n\n");
+  const slip = res.draft ? `${res.draft.head}\nBEFORE: ${res.draft.before_text}\nAFTER: ${res.draft.after_text}\nSETTINGS: ${JSON.stringify(res.draft.settings)}\nCONFLICTS: ${(res.draft.conflicts || []).join(",") || "none"}` : res.refusal ? `REFUSED: ${res.refusal.message}` : res.ticket ? `TICKET: ${JSON.stringify(res.ticket)}` : "(none)";
+  const rule = res.rule_text ?? ruleTextOf(rulesMd, res.draft?.target ?? c.expect?.draft?.target);
+  const nightText = night && night.status !== "n/a" ? `status: ${night.status}${night.reason ? ` (${night.reason})` : ""}\nDIFF RULES.md/settings.json:\n${night.diff_text || "(none)"}\nDIFF code:\n${String(night.diff_code || "(none)").slice(0, 6000)}\ntests: ${night.check_tail || ""}` : `no night (${night?.reason || "n/a"})`;
+  const ex = key.length ? `\n\nBUSTER'S EARLIER VERDICTS (the answer key; follow his taste):\n${key.map((k) => `- ${k.case}: ${k.verdict}${k.note ? ` (${k.note})` : ""}: ${k.summary}`).join("\n")}` : "";
+  return `CASE ${c.id}: ${c.title}\nWhat good looks like (intent): ${c.intent}\n\nRUBRIC\n${RUBRIC}\n\nTHE RULES THE CASE TARGETS\n${rule.slice(0, 3000)}\n\nTRANSCRIPT\n${transcript}\n\nTHE SLIP\n${slip}\n\nTHE NIGHT\n${nightText}${ex}`;
+}
+
+/** One grader call. `fetchFn` is the metered, host-guarded fetch. Returns {ok, scores, verdict, reasons} or {ok: false, error}. */
+export async function geminiGrade(c, res, night, rulesMd, { key, fetchFn = globalThis.fetch, verdictsFile, runsDir, model = GRADER_MODEL }) {
+  const body = {
+    systemInstruction: { parts: [{ text: SYSTEM }] },
+    contents: [{ role: "user", parts: [{ text: gradePrompt(c, res, night, rulesMd, answerKey(verdictsFile, runsDir, c.id)) }] }],
+    generationConfig: { maxOutputTokens: 6000, responseMimeType: "application/json", responseSchema: SCHEMA },
+  };
+  try {
+    const r = await fetchFn(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, { method: "POST", headers: { "x-goog-api-key": key, "content-type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(60_000) });
+    const j = await r.json();
+    const text = j.candidates?.[0]?.content?.parts?.map((p) => p.text || "").join("") ?? "";
+    const g = JSON.parse(text);
+    if (!g || !g.scores || (g.verdict !== "good" && g.verdict !== "bad")) return { ok: false, error: "unreadable grader answer" };
+    return { ok: true, scores: g.scores, verdict: g.verdict, reasons: (g.reasons || []).slice(0, 4).map((x) => String(x).slice(0, 300)) };
+  } catch (e) {
+    return { ok: false, error: String(e?.message || e).slice(0, 200) };
+  }
+}

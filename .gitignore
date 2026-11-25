@@ -7,3 +7,4 @@ src/generated/
 .starling-live-ledger.json
 wrangler.test.toml
 __pycache__/
+.quality-live-ledger.json
