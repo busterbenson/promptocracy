@@ -33,6 +33,8 @@ console.log("the prompt: static first, per-day second with the breakpoint, histo
   const base = { ceiling: 25, rulesMd: rules, mood, localDate: "2026-11-20", history: [], ticket: null, posts: [], queueDepth: 0, rejected: [], label: "Ada", message: "a lantern", noWrite: null };
   const a = G.gremlinRequest(base);
   const b = G.gremlinRequest({ ...base, label: "Bo", message: "a dragon", queueDepth: 4, ticket: { number: 2, title: "T", brief: "B", makes: [], estimate: 1, running_cost: "", tasks: [], price: 0, price_reason: "" } });
+  check("his prompt carries the nights scale (1 night for drawings and up to 2 small rules, 2 for 3-4 rules, 3+ only for big contraptions; fewer nights, lower price) and the Lock it in submit line, with the 1..estimate bound kept",
+    /1 night: drawings, and anything with up to 2 small rules/.test(a.system[0].text) && /2 nights: 3 or 4 rules/.test(a.system[0].text) && /3 or more: only a big multi-part contraption/.test(a.system[0].text) && /fewer the nights, the lower the price/.test(a.system[0].text) && /from 1 to \d+; the scale/.test(a.system[0].text) && /SUBMITTING[^]*Lock it in[^]*tomorrow's ballot/.test(a.system[0].text));
   check("two blocks: the first is the same for every player and carries no date, mood or player; the second carries the day's mood and the rulebook and ends in the cache breakpoint",
     a.system.length === 2 && J(a.system[0]) === J(b.system[0]) && !/2026-11-20/.test(a.system[0].text) && !a.system[0].text.includes(mood[1]) && !("cache_control" in a.system[0]) &&
     a.system[1].text.includes(mood[1]) && a.system[1].text.includes("<rulebook>") && a.system[1].cache_control?.type === "ephemeral");
@@ -269,11 +271,11 @@ console.log("the caller (src/lib/agent.ts), with fetch captured");
     try { return { seen, result: await agent.callModel(key ? { MODEL_API_KEY: key, MODEL_BASE_URL: "http://stub.local/" } : {}, call) }; } finally { globalThis.fetch = real; console.error = err; }
   };
   const okBody = { content: [{ type: "text", text: '{"say":"hi"}' }], stop_reason: "end_turn", usage: { input_tokens: 10, output_tokens: 5, cache_read_input_tokens: 7000, cache_creation_input_tokens: 0 } };
-  const call = { model: G.MODEL, system: sys, messages: msgs, maxTokens: 1500, timeoutMs: 30000, schema: G.answerSchema(), effort: "low" };
+  const call = { model: G.MODEL, system: sys, messages: msgs, maxTokens: 4000, timeoutMs: 30000, schema: G.answerSchema(), effort: "low" };
   const a = await spy([{ body: okBody }], call);
   check("the request: Sonnet 5.5, effort low, the schema as output_config.format, the system blocks with their breakpoint, no thinking; the key only in x-api-key; the base URL's slash is trimmed",
     a.seen[0].url === "http://stub.local/v1/messages".replace("//v1", "/v1") && a.seen[0].body.model === "claude-sonnet-5-5" && a.seen[0].body.output_config.effort === "low" && a.seen[0].body.output_config.format.type === "json_schema" &&
-    a.seen[0].body.system[0].cache_control.type === "ephemeral" && !("thinking" in a.seen[0].body) && a.seen[0].init.headers["x-api-key"] === "stub-key-not-real" && !a.seen[0].init.body.includes("stub-key-not-real") && a.seen[0].body.max_tokens === 1500);
+    a.seen[0].body.system[0].cache_control.type === "ephemeral" && !("thinking" in a.seen[0].body) && a.seen[0].init.headers["x-api-key"] === "stub-key-not-real" && !a.seen[0].init.body.includes("stub-key-not-real") && a.seen[0].body.max_tokens === 4000);
   check("an answer: the text and the usage (cache reads included)", a.result.ok && a.result.text === '{"say":"hi"}' && a.result.usage.cache_read_input_tokens === 7000 && !J(a.result).includes("stub-key-not-real"));
   // each of these has its own schema: a refused schema is remembered per schema (below), and must not carry over to the next test
   const own = (n) => ({ ...call, schema: { type: "object", properties: { [n]: { type: "string" } }, required: [n], additionalProperties: false } });

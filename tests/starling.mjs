@@ -25,6 +25,7 @@ console.log("the prompt: static first, per-day second with the breakpoint, histo
   const base = { rulesMd, localDate: "2026-11-20", perDay: 3, history: [], label: "Ada", message: "can I withdraw?", rule: null, slip: null, drafted: null, made: 1, limit: 3, noDraft: null };
   const a = S.starlingRequest(base);
   const b = S.starlingRequest({ ...base, label: "Bo", message: "a new rule", made: 2, rule: { num: "401", title: "Points", text: "A player whose proposal passes gets 10 points." } });
+  check("her prompt says how to submit a new or changed draft in her own voice (the Lock it in button, tomorrow's ballot, nothing submitted before it), once per draft", /SUBMITTING[^]*Lock it in[^]*tomorrow's ballot[^]*nothing has been submitted[^]*not on every reply of a long conversation/.test(a.system[0].text));
   check("two blocks: the first is the same for every player and carries no date or player; the second carries the day and the rulebook and ends in the cache breakpoint",
     a.system.length === 2 && J(a.system[0]) === J(b.system[0]) && !/2026-11-20/.test(a.system[0].text) && !("cache_control" in a.system[0]) &&
     a.system[1].text.includes("<rulebook>") && a.system[1].text.includes("2026-11-20") && a.system[1].cache_control?.type === "ephemeral");

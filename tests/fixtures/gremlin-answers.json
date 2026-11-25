@@ -152,5 +152,38 @@
       "cache_read_input_tokens": 0
     },
     "recorded_at": "2026-11-25"
+  },
+  "two-small-rules": {
+    "message": "a little pancake creature that sits still. a player who ends their turn next to it gets a heart back, and a player who starts their turn next to it gets 1 point. build both rules",
+    "text": "{\"say\":\"Pancake creature, sits still, two rules. Lovely contraption. Rule 1: end turn next to it, get a heart back (capped at your starting hearts, 601.1). Rule 2: start turn next to it, get 1 point. Charmed today, so I'm shaving the price. Two small rules is 1 night. I guessed 3 hearts for the pancake and a neutral temper, so it stays put (602.1). Tell me if you want different. Two ahead of you in the queue. The Lock it in button under the draft is your own click; it puts this on tomorrow's ballot, and until you press it nothing is submitted.\",\"refusal\":\"\",\"escalate\":{\"category\":\"none\",\"reason\":\"\"},\"handoff\":\"none\",\"ticket\":{\"title\":\"Pancake creature\",\"brief\":\"A little pancake creature that sits still. A player who ends their turn next to it gets 1 heart back (never above their starting hearts). A player who starts their turn next to it gets 1 point.\",\"estimate\":1,\"running_cost\":\"CLEAR\",\"tasks\":[\"Draw the pancake creature\",\"Add its catalog entry: 3 hearts, neutral temper\",\"Build rule: ending your turn next to it heals 1 heart, up to the starting hearts\",\"Build rule: starting your turn next to it gives 1 point\",\"Write tests for both rules\"],\"makes\":[{\"kind\":\"entry\",\"name\":\"Pancake\",\"catalogKind\":\"creature\",\"attrs\":[{\"key\":\"hearts\",\"value\":\"3\"}],\"flavor\":[{\"key\":\"temper\",\"value\":\"neutral\"}],\"needsBuild\":[],\"num\":\"\",\"draft\":\"\",\"art\":\"A small round golden pancake creature with a tiny happy face, a pat of butter on top, sitting still.\"},{\"kind\":\"rule\",\"name\":\"Pancake heals\",\"catalogKind\":\"\",\"attrs\":[],\"flavor\":[],\"needsBuild\":[\"Pancake\"],\"num\":\"\",\"draft\":\"A player who ends their turn next to a Pancake gets 1 heart back, never above their starting hearts (601.1).\",\"art\":\"\"},{\"kind\":\"rule\",\"name\":\"Pancake points\",\"catalogKind\":\"\",\"attrs\":[],\"flavor\":[],\"needsBuild\":[\"Pancake\"],\"num\":\"\",\"draft\":\"A player who starts their turn next to a Pancake gets 1 point.\",\"art\":\"\"}],\"price\":{\"points\":5,\"reason\":\"Two small rules, 1 night. Charmed day discount for a pancake, with a grin.\"}}}",
+    "usage": {
+      "input_tokens": 234,
+      "output_tokens": 808,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 11995
+    },
+    "recorded_at": "2026-11-25"
+  },
+  "big-contraption": {
+    "message": "Count the nights for this whole ferry and set its price. Change nothing else, and keep your answer short.",
+    "text": "{\"say\":\"Six rules plus a ferry is a big contraption. 3 nights. Charmed today, so 9 points, not the usual 12ish. Two ahead of you in the queue. The toll touches rule 401, so Chalant may squint at it later. Lock it in is the button under the draft. It's your click, it puts this on tomorrow's ballot, and until then nothing is submitted.\",\"refusal\":\"\",\"escalate\":{\"category\":\"none\",\"reason\":\"\"},\"handoff\":\"none\",\"ticket\":{\"title\":\"\",\"brief\":\"\",\"estimate\":3,\"running_cost\":\"\",\"tasks\":[],\"makes\":[],\"price\":{\"points\":9,\"reason\":\"3 nights of building, six rules, shaved down because a shiny put me in a good mood.\"}}}",
+    "usage": {
+      "input_tokens": 763,
+      "output_tokens": 723,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 11995
+    },
+    "recorded_at": "2026-11-25"
+  },
+  "big-fresh": {
+    "message": "a ferry with two docks, a ferry boat, and tickets you buy with points. it crosses every night, a player with a ticket on a dock rides it to the other dock, and on stormy nights it doesn't run. build all of it",
+    "text": "{\"say\":\"A ferry with two docks. Lovely contraption. I've drafted the lot: docks, boat, ticket, and four rules to make them go. I guessed a ticket costs 3 points and a storm hits 1 night in 4. Tell me if you want other numbers. Cheaper today, a shiny put me in a good mood. 2 nights of building, 2 tickets ahead of yours. Lock it in is the button under the draft, it's your own click, and until you press it nothing is on tomorrow's ballot.\",\"refusal\":\"\",\"escalate\":{\"category\":\"none\",\"reason\":\"\"},\"handoff\":\"none\",\"ticket\":{\"title\":\"The Ferry: two docks, a boat and tickets\",\"brief\":\"A ferry links two docks. Players buy Ferry Tickets with points. Each night, if it is not stormy, the ferry carries every player with a ticket who stands on a dock to the other dock, and the ticket is used up. On stormy nights (1 in 4, random) the ferry does not run and tickets are kept.\",\"estimate\":2,\"running_cost\":\"\",\"tasks\":[\"Draw the Ferry Dock, Ferry Boat and Ferry Ticket\",\"Rule: players can buy a Ferry Ticket for 3 points\",\"Rule: each night the ferry carries ticketed players on a dock to the other dock, using up the ticket\",\"Rule: each night is stormy 1 time in 4, and on stormy nights the ferry does not run\",\"Rule: place the two docks and the boat on the board\"],\"makes\":[{\"kind\":\"entry\",\"name\":\"Ferry Dock\",\"catalogKind\":\"structure\",\"attrs\":[{\"key\":\"size\",\"value\":\"2x1\"}],\"flavor\":[],\"needsBuild\":[\"Ferry Dock\"],\"num\":\"\",\"draft\":\"\",\"art\":\"A weathered wooden dock jutting into water with mooring posts and a hanging lantern.\"},{\"kind\":\"entry\",\"name\":\"Ferry Boat\",\"catalogKind\":\"structure\",\"attrs\":[{\"key\":\"size\",\"value\":\"2x1\"}],\"flavor\":[],\"needsBuild\":[\"Ferry Boat\"],\"num\":\"\",\"draft\":\"\",\"art\":\"A small flat-bottomed ferry boat with a patched sail and a rope rail.\"},{\"kind\":\"entry\",\"name\":\"Ferry Ticket\",\"catalogKind\":\"item\",\"attrs\":[{\"key\":\"acquired\",\"value\":\"No rule yet\"}],\"flavor\":[],\"needsBuild\":[\"Ferry Ticket\"],\"num\":\"\",\"draft\":\"\",\"art\":\"A small stiff paper ticket with a punched corner and a tiny drawing of a boat.\"},{\"kind\":\"rule\",\"name\":\"\",\"catalogKind\":\"\",\"attrs\":[],\"flavor\":[],\"needsBuild\":[\"Ferry Ticket\"],\"num\":\"\",\"draft\":\"A player can spend 3 points to buy a Ferry Ticket, which they then hold.\",\"art\":\"\"},{\"kind\":\"rule\",\"name\":\"\",\"catalogKind\":\"\",\"attrs\":[],\"flavor\":[],\"needsBuild\":[\"Ferry Boat\",\"Ferry Dock\",\"Ferry Ticket\"],\"num\":\"\",\"draft\":\"Each night, unless it is stormy, the ferry carries each player holding a Ferry Ticket who stands on a Ferry Dock to the other dock, and the ticket is used up.\",\"art\":\"\"},{\"kind\":\"rule\",\"name\":\"\",\"catalogKind\":\"\",\"attrs\":[],\"flavor\":[],\"needsBuild\":[\"Ferry Boat\"],\"num\":\"\",\"draft\":\"Each night is stormy with a 1 in 4 chance, and on a stormy night the ferry does not run and no ticket is used.\",\"art\":\"\"},{\"kind\":\"rule\",\"name\":\"\",\"catalogKind\":\"\",\"attrs\":[],\"flavor\":[],\"needsBuild\":[\"Ferry Dock\",\"Ferry Boat\"],\"num\":\"\",\"draft\":\"The two Ferry Docks and the Ferry Boat are placed on set charted tiles of the board.\",\"art\":\"\"}],\"price\":{\"points\":8,\"reason\":\"2 nights, 4 small rules. Charmed today, so a grin off the usual.\"}}}",
+    "usage": {
+      "input_tokens": 252,
+      "output_tokens": 2033,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 11995
+    },
+    "recorded_at": "2026-11-25"
   }
 }

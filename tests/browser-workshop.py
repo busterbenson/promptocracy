@@ -24,6 +24,10 @@ def shot(page, name, **kw):
 
 # Gremlin's open window floats over the page's right side, where Commission something is (the window opens on the Workshop tab): a player minimizes it
 # first, and so do the tests. On a phone there is no open window, only the pill.
+def look(page, sel):
+    return page.evaluate("""(sel) => { const e = document.querySelector(sel), r = e.getBoundingClientRect(), s = getComputedStyle(e); return { h: r.height, w: r.width, bg: s.backgroundColor, ghost: e.classList.contains("ghost") }; }""", sel)
+def filled(l): return l["bg"] not in ("rgba(0, 0, 0, 0)", "transparent") and not l["ghost"]
+
 def unblock(page):
     page.wait_for_timeout(300)
     if page.locator('#chatcol [data-c="min"]').is_visible(): page.click('#chatcol [data-c="min"]'); page.wait_for_timeout(100)
@@ -92,6 +96,8 @@ with sync_playwright() as p:
         check(f"{tag}: a draft Gremlin has not drafted shows a dash for its nights and price (not '1 night' and '0 points'), and Lock it in is disabled with the reason next to it",
               facts.get("nights") == "—" and facts.get("price") == "—" and "1 night" not in text(page, "#mroot .mcard") and "0 points" not in text(page, "#mroot .mcard")
               and page.locator('[data-w="confirm"]').is_disabled() and NOT_DRAFTED in text(page, '#mroot .mcard .row:has([data-w="confirm"])'), str(facts))
+        lk, sv, dc = look(page, '[data-w="confirm"]'), look(page, '[data-w="save"]'), look(page, '[data-w="discard"]')
+        check(f"{tag}: Lock it in is the primary on the ticket card: filled, normal size (44 px), taller than Save and Discard draft, which are ghost buttons", filled(lk) and lk["h"] >= 43 and lk["h"] > sv["h"] and lk["h"] > dc["h"] and not filled(sv) and not filled(dc), f"{lk} {sv} {dc}")
         check(f"{tag}: Discard draft is there and enabled, next to Save, and says nothing else", page.locator('[data-w="discard"]').is_enabled() and page.locator('[data-w="discard"]').inner_text() == "Discard draft")
         page.locator('[data-w="confirm"]').scroll_into_view_if_needed(); page.wait_for_timeout(200)
         shot(page, f"draft-dialog-bottom-{tag}"); sideways(page, w, f"{tag} draft dialog")

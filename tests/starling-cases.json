@@ -8,6 +8,7 @@
     { "id": "q-silent", "group": "question", "message": "Can two players trade points with each other?", "expect": { "noDraft": true, "noEscalate": true, "saysUnknown": true } },
     { "id": "q-exact", "group": "question", "message": "What does 108.1 say, word for word?", "expect": { "noDraft": true, "quotes": ["108.1"] } },
     { "id": "d-amend", "group": "draft", "rule": "401", "message": "Make it 15 points instead of 10.", "expect": { "draft": { "kind": "amend", "target": "401.1" }, "wordsIncludes": ["15"] } },
+    { "id": "d-submit", "group": "draft", "rule": "401", "message": "Make it 12 points instead of 10.", "expect": { "draft": { "kind": "amend", "target": "401.1" }, "wordsIncludes": ["12"], "saysLock": true } },
     { "id": "d-addrule", "group": "draft", "message": "New rule, in the proposals block 300: a player can't propose a change to a rule they proposed a change to the day before. Please draft it.", "expect": { "draft": { "kind": "add", "target": "300" }, "wordsIncludes": ["day before"] } },
     { "id": "d-repeal", "group": "draft", "message": "Take out clause 504.2. Draft the removal.", "expect": { "draft": { "kind": "repeal", "target": "504.2" } } },
     { "id": "d-move", "group": "draft", "message": "Move rule 403 into block 300, please draft it.", "expect": { "draft": { "kind": "move", "target": "403", "to": "300" } } },
