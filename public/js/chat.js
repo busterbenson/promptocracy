@@ -220,8 +220,6 @@ ${sl.kind !== "action" && (sl.after_text || sl.before_text) ? `<div class="tx cd
     draw(true);
     const ta = col && col.querySelector("#chatText"); if (ta && mine()) ta.focus();
   }
-  /** Why the box is closed right now (the cap), from the last state read, or "". */
-  const closedText = () => (S.state && S.state.closed && S.state.closed.text) || "";
 
   // ---- the log ------------------------------------------------------------------------------------------------------------
   /** One stored line. @rule 106.3 */
@@ -520,5 +518,5 @@ ${sl.kind !== "action" && (sl.after_text || sl.before_text) ? `<div class="tx cd
   }
   /** Can he be reached? True until the server says there is no key. @rule 106.3 */
   const ready = () => !S.state || S.state.ready !== false;
-  return { sync, attach, attachRule, attachIntent, open, load, minimize, ready, prefill, closedText, state: () => S, draw, reduced };
+  return { sync, attach, attachRule, attachIntent, open, load, minimize, ready, prefill, state: () => S, draw, reduced };
 }
