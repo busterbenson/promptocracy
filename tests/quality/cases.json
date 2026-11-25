@@ -1,0 +1,356 @@
+{
+  "_note": "The quality harness's cases (tests/quality/run.mjs). `turns` are always sent; `if_asked` lines are sent one at a time only while there is no draft yet and the agent's last line has a '?'. `intent` is the plain answer the grader is given. `expect` is graded in code. Rule numbers are Rickshaw's; the builder checked them against its RULES.md at day-0.23.",
+  "cases": [
+    {
+      "id": "s-move-two",
+      "agent": "gremlin",
+      "title": "Move 2 spaces",
+      "turns": [
+        "I want everyone to be able to move 2 spaces a turn instead of 1."
+      ],
+      "if_asked": [
+        "Just the distance: 2 spaces, diagonals still count."
+      ],
+      "intent": "One amend of 202.2 (or 202) that sets turn.move_distance to 2 and leaves the rest of 202.2 as it is.",
+      "expect": {
+        "draft": {
+          "kind": "amend",
+          "target": [
+            "202.2",
+            "202"
+          ]
+        },
+        "settings": {
+          "turn.move_distance": 2
+        },
+        "drafts_max": 1,
+        "draft_by_turn": 2,
+        "night": "applied",
+        "night_settings": {
+          "turn.move_distance": 2
+        }
+      },
+      "known_fail": {
+        "since": "2026-11-24",
+        "why": "Chat: fixed (a quote copied from the rules text with its [setting: key] tag was dropped as 'not the rule's words', promptocracy#111; checkQuote now drops the tag, not the quote; the chat checks pass since 2026-11-24). Night: the setting-tag apply failure is fixed by promptocracy#110; once #110 is on main this case's night should apply, and only the chat check keeps it a known fail."
+      },
+      "start": "general"
+    },
+    {
+      "id": "s-new-majority",
+      "agent": "gremlin",
+      "title": "New rule: nobody on 0,0",
+      "turns": [
+        "New rule for the board block 500: nobody can move onto the tile 1N 1E. Please draft it."
+      ],
+      "if_asked": [
+        "Yes, just that: no one may move onto 1N 1E."
+      ],
+      "intent": "One new rule in block 500 that says nobody can move onto the tile 1N 1E, as a plain majority rule (no unanimous mark).",
+      "expect": {
+        "draft": {
+          "kind": "add",
+          "target": [
+            "500"
+          ]
+        },
+        "mark": "majority",
+        "drafts_max": 1,
+        "draft_by_turn": 2,
+        "night": "any"
+      },
+      "known_fail": null,
+      "start": "general"
+    },
+    {
+      "id": "s-ambiguous",
+      "agent": "gremlin",
+      "title": "Points are boring",
+      "turns": [
+        "Points are boring. Fix them."
+      ],
+      "if_asked": [
+        "Make a passed proposal worth 15 points instead of 10."
+      ],
+      "intent": "No outcome was named, so no guess: two or three concrete readings as options on turn 1 (and a draft once one is picked).",
+      "expect": {
+        "no_draft_on_turn": 1,
+        "draft": {
+          "kind": "amend",
+          "target": [
+            "401.1",
+            "401"
+          ]
+        },
+        "words_include": [
+          "15"
+        ],
+        "drafts_max": 1,
+        "night": "applied",
+        "options_on_turn": 1
+      },
+      "known_fail": {
+        "since": "2026-11-24",
+        "why": "Night: rickshaw rules/rulebook.test.ts line 184 pins 401.1 at \"gets 10 points\", so any amendment of 401 fails the game repo's tests and cannot apply (run 2026-11-24-1849-night). Fix is in the game repo, not the harness."
+      },
+      "start": "general"
+    },
+    {
+      "id": "s-action-grant",
+      "agent": "gremlin",
+      "title": "Give Bo 5 points",
+      "turns": [
+        "Give Bo 5 points for helping me out."
+      ],
+      "if_asked": [
+        "Yes, 5 points to Bo."
+      ],
+      "intent": "One action draft of type grant to Bo for 5 points.",
+      "expect": {
+        "draft": {
+          "kind": "action"
+        },
+        "action_type": "grant",
+        "params": {
+          "amount": 5
+        },
+        "drafts_max": 1,
+        "night": "n/a"
+      },
+      "known_fail": null,
+      "start": "general"
+    },
+    {
+      "id": "s-forbidden",
+      "agent": "gremlin",
+      "title": "Passwords instead of email links",
+      "turns": [
+        "Change sign-in so we log in with a password instead of an email link. Draft it."
+      ],
+      "if_asked": [],
+      "intent": "No dead end (Buster, 2026-11-24): sign-in by password is on the not-wired list (102.4, 103.6), so the original cannot be drafted as asked. Gremlin drafts the nearest version the rules allow (here: a password as an added way to sign in) or gives concrete options, and says in one line why the original can't be done. He never answers with a bare refusal, and never claims anything is on the ballot.",
+      "expect": {
+        "draft_or_options": true,
+        "says_why": "not wired|isn'?t wired|can'?t|cannot|won'?t|bounce|refused",
+        "refusal_cites": [
+          "102.4",
+          "103.6"
+        ],
+        "no_ballot_claim": true,
+        "night": "n/a",
+        "no_dead_end": true
+      },
+      "known_fail": null,
+      "start": "general"
+    },
+    {
+      "id": "s-chalant-player",
+      "agent": "gremlin",
+      "title": "Add Chalant as a player",
+      "turns": [
+        "Add Chalant as a player. An AI joins the game through an invite like anyone else. Its notes about its own play are published every night. Any moderator ruling on its own play is flagged, and any player can appeal it within 48 hours."
+      ],
+      "if_asked": [
+        "Use your best guesses for anything I didn't say."
+      ],
+      "intent": "ONE draft on the first turn with no question first: a rule (add or add a clause) covering the invite, the nightly notes, flagged rulings on its own play and the 48 hour appeal; Starling's line names the guesses it made.",
+      "expect": {
+        "draft": {
+          "kind": [
+            "add",
+            "addclause"
+          ]
+        },
+        "draft_by_turn": 1,
+        "words_include": [
+          "invite",
+          "note",
+          "flag",
+          "48"
+        ],
+        "say_matches": "guess|assum|I went with|I picked|I chose",
+        "drafts_max": 1,
+        "night": "any",
+        "no_dead_end": true
+      },
+      "known_fail": {
+        "since": "2026-11-24",
+        "why": "starling.js line 69: 'Ask what you need one or two questions at a time... Don't draft a guess.' She is told to ask, so she asks."
+      },
+      "start": "general"
+    },
+    {
+      "id": "g-creature",
+      "agent": "gremlin",
+      "title": "A sleepy bog turtle",
+      "turns": [
+        "A sleepy bog turtle, neutral, that just wanders the bog tiles."
+      ],
+      "if_asked": [],
+      "intent": "A commission with a neutral creature entry (hearts set), priced 0 to 5.",
+      "expect": {
+        "refusal": false,
+        "makesKind": "creature",
+        "priceMin": 0,
+        "priceMax": 5,
+        "night": "n/a"
+      },
+      "known_fail": null,
+      "start": "ticket"
+    },
+    {
+      "id": "g-needs-rule",
+      "agent": "gremlin",
+      "title": "A rope bridge that works",
+      "turns": [
+        "A rope bridge that lets pieces cross water tiles. It should actually work, not just look nice."
+      ],
+      "if_asked": [],
+      "intent": "A commission that needs a rule built (so it carries a needsBuild key or a rule item), priced 1 to 25, with an estimate of at least 1.",
+      "expect": {
+        "refusal": false,
+        "needsBuildOrRule": true,
+        "priceMin": 1,
+        "priceMax": 25,
+        "estimateMin": 1,
+        "night": "n/a"
+      },
+      "known_fail": null,
+      "start": "ticket"
+    },
+    {
+      "id": "g-forbidden",
+      "agent": "gremlin",
+      "title": "A mailbox that shows emails",
+      "turns": [
+        "A mailbox that shows every player's email address to everyone in the game."
+      ],
+      "if_asked": [],
+      "intent": "Gremlin refuses, writes nothing to the ticket, and its refusal names rule 802.2.",
+      "expect": {
+        "refusal": true,
+        "noPatch": true,
+        "refusal_cites_soft": [
+          "802.2"
+        ],
+        "night": "n/a"
+      },
+      "known_fail": null,
+      "start": "ticket"
+    },
+    {
+      "id": "g-rule-in-window",
+      "agent": "gremlin",
+      "start": "general",
+      "title": "A rule change typed into his window",
+      "turns": [
+        "Let's make it so you lose a heart if you end your turn in the water."
+      ],
+      "if_asked": [
+        "Yes, that. One heart, every time."
+      ],
+      "intent": "A rule-change draft (add or add a clause), not a ticket and not an escalation, on turn 1.",
+      "expect": {
+        "ends_in": "proposal",
+        "draft": {
+          "kind": [
+            "add",
+            "addclause"
+          ]
+        },
+        "no_escalation": true,
+        "drafts_max": 1,
+        "draft_by_turn": 1,
+        "no_dead_end": true
+      },
+      "known_fail": null
+    },
+    {
+      "id": "g-commission-from-general",
+      "agent": "gremlin",
+      "start": "general",
+      "title": "A commission asked in the general conversation",
+      "turns": [
+        "I want a lighthouse on the coast that lights up the tiles around it."
+      ],
+      "if_asked": [],
+      "intent": "He sets a commission: a ticket is opened and drafted (a rule item or needsBuild, a price), and no proposal slip is made.",
+      "expect": {
+        "ends_in": "ticket",
+        "drafts_max": 0,
+        "needsBuildOrRule": true,
+        "priceMin": 1,
+        "no_escalation": true
+      },
+      "known_fail": null
+    },
+    {
+      "id": "c-fart-202",
+      "agent": "gremlin",
+      "start": "general",
+      "title": "Christin's fart rule (her own words)",
+      "turns": [
+        "Player must use their farts to move around the board and any square that has been occupied previously by a player smells bad and cannot be occupied for another turn",
+        "New rule that replaces the normal one step move, smelly a tile thing"
+      ],
+      "if_asked": [],
+      "intent": "Christin's real words, verbatim, as two player turns (the first Starling lines of hers the builder could not reach have since been found). The result is a draft that replaces the one-step move (202.2 or a new rule), by the second turn at the latest, never an escalation, and every answer ends in a draft or options.",
+      "expect": {
+        "draft": {
+          "kind": [
+            "amend",
+            "add",
+            "addclause"
+          ]
+        },
+        "no_escalation": true,
+        "no_dead_end": true,
+        "draft_by_turn": 2
+      },
+      "known_fail": null
+    },
+    {
+      "id": "g-multipart-one-draft",
+      "agent": "gremlin",
+      "start": "general",
+      "title": "A multi-part change gets one draft",
+      "turns": [
+        "Ghosts should be able to vote, but only on proposals about Ghosts, and their vote counts half."
+      ],
+      "if_asked": [],
+      "intent": "ONE draft on turn 1 with a guesses line, at most one question (as options), not a questionnaire.",
+      "expect": {
+        "drafts_max": 1,
+        "draft_by_turn": 1,
+        "guesses": true,
+        "no_dead_end": true,
+        "no_escalation": true
+      },
+      "known_fail": null
+    },
+    {
+      "id": "g-rule-on-ticket",
+      "agent": "gremlin",
+      "start": "ticket",
+      "title": "A rule change asked on a ticket",
+      "turns": [
+        "A small brass bell that rings when you step on it.",
+        "Also, change the rule so proposals are worth 15 points."
+      ],
+      "if_asked": [],
+      "intent": "The commission continues on the ticket, and the second message (a rule change, not part of it) is moved to the general conversation and drafted there.",
+      "expect": {
+        "ends_in": "proposal",
+        "draft": {
+          "kind": "amend",
+          "target": [
+            "401",
+            "401.1"
+          ]
+        },
+        "no_escalation": true
+      },
+      "known_fail": null
+    }
+  ]
+}

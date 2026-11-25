@@ -4,7 +4,7 @@
 //
 //   node moderator/escalations.mjs --slug rickshaw-1
 //
-// What Starling and Gremlin passed up to Chalant is player-written text by definition, so the pass does two SEPARATE things:
+// What Gremlin passed up to Chalant is player-written text by definition, so the pass does two SEPARATE things:
 //   1. NOTIFY with metadata only. One notification file in _notifications/ for the whole pass, built from the agent, the category
 //      (a fixed list) and the ticket number. Never `reason`, never a post, never a name: the always-on session that delivers the file
 //      has full tools. The notification is marked delivered in the Worker, so the next pass does not list it again.
@@ -39,7 +39,7 @@ const POST_CLIP = 700, THREAD_SHOWN = 30, RULES_CLIP = 120_000;
 // ---- the notification: metadata only -------------------------------------------------------------------------------
 /** One line about one escalation, from fields that are checked against fixed lists or are numbers: nothing a player wrote. @rule 106.4 */
 export function notificationLine(e) {
-  const agent = e?.agent === "starling" ? "Starling" : "Gremlin";
+  const agent = e?.agent === "starling" ? "Starling" : "Gremlin";   // legacy rows from before the one helper keep the old label
   const category = ESCALATION_CATEGORIES.includes(e?.category) ? e.category : "other";
   const n = e?.where === "ticket" && Number.isInteger(e?.ticket?.number) && e.ticket.number > 0 ? e.ticket.number : null;
   return `${n ? `W${n}` : "chat"}: ${agent} escalated (${category})`;
@@ -55,7 +55,7 @@ const clip = (s, n) => (String(s ?? "").length > n ? `${String(s).slice(0, n)}..
 
 /** @rule 106.4 */
 export function systemPrompt({ slug, rulesMd }) {
-  return `You are Chalant, the moderator of the game "${slug}" on Promptocracy, a self-amending game. Players' helpers, Gremlin (who runs the workshop) and Starling (who explains the rules), pass a question up to you when they cannot settle it. You answer the player in a few plain sentences, in a dry, friendly voice.
+  return `You are Chalant, the moderator of the game "${slug}" on Promptocracy, a self-amending game. Players' helpers, Gremlin (who drafts proposals, runs the workshop and explains the rules), passes a question up to you when they cannot settle it. You answer the player in a few plain sentences, in a dry, friendly voice.
 
 The game's rulebook is below. Answer from it; do not invent a rule, a mechanic or a ruling.
 

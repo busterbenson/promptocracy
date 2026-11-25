@@ -44,12 +44,12 @@ try {
   const visitor = client(A);
   const id = Object.fromEntries(names.map((n) => [n, d1(state, `SELECT id FROM players WHERE game_id = '${gid}' AND display_name = '${n}'`)[0].id]));
   const T = "/wk/api/tickets", CH = "/wk/api/chat/gremlin";
-  // ---- before Start: nothing is played (rule 203.1: before day 1 the game is being set up), so Gremlin and Starling are shut ----
-  console.log("before Start the chat is closed, for both agents (rules 106.2, 106.3, 203.1)");
+  // ---- before Start: nothing is played (rule 203.1: before day 1 the game is being set up), so Gremlin is shut ----
+  console.log("before Start the chat is closed, for both his conversations (rules 106.2, 106.3, 203.1)");
   const SETUP_GAME = d1(state, `SELECT status FROM games WHERE id = '${gid}'`)[0].status;
   const spent = () => d1(state, "SELECT (SELECT COUNT(*) FROM chat_messages) AS m, (SELECT COUNT(*) FROM agent_calls) AS a")[0];
   const spent0 = spent();
-  const gets = [await Ana.get(CH), await Ana.get("/wk/api/chat/starling")], posts = [await Ana.post(CH, { body: "hello" }), await Ana.post("/wk/api/chat/starling", { body: "hello" })];
+  const gets = [await Ana.get(CH), await Ana.get(CH + "?ticket=none")], posts = [await Ana.post(CH, { body: "hello" }), await Ana.post(CH, { ticket: "none", body: "hello" })];
   check("the game is in setup, Ana joined it", SETUP_GAME === "setup");
   check("a player before Start: both chat reads are 409 'not started', not an empty window", gets.every((r) => r.status === 409 && /not started/i.test(r.data?.error || "")), J(gets.map((r) => [r.status, r.text])));
   check("a player before Start: both chat sends are 409, nothing stored, no call made or logged, the model never reached", posts.every((r) => r.status === 409) && J(spent()) === J(spent0) && calls.length === 0, J(posts.map((r) => r.status)));
@@ -60,14 +60,14 @@ try {
   d1(state, "UPDATE games SET status = 'playing', day = 1, phase = 'open' WHERE slug = 'other'; INSERT OR IGNORE INTO days (game_id, n, starts_at, ends_at, status) SELECT id, 1, '2000-01-01T00:00:00.000Z', '2099-01-01T00:00:00.000Z', 'open' FROM games WHERE slug = 'other'");
   const stranger = client(A); stranger.force = Ana.cookieFor("/wk/api/me");
   check("the stranger's cookie is a real session (it works on the game Ana joined)", (await stranger.get("/wk/api/me")).status === 200);
-  const outs = [await stranger.get("/other/api/chat/gremlin"), await stranger.get("/other/api/chat/starling"), await stranger.post("/other/api/chat/gremlin", { body: "hi" }), await stranger.post("/other/api/chat/starling", { body: "hi" })];
+  const outs = [await stranger.get("/other/api/chat/gremlin"), await stranger.get("/other/api/chat/gremlin?ticket=none"), await stranger.post("/other/api/chat/gremlin", { body: "hi" }), await stranger.post("/other/api/chat/gremlin", { ticket: "none", body: "hi" })];
   check("signed in, in a game they have not joined, started or not: all four chat calls are 401", outs.every((r) => r.status === 401), J(outs.map((r) => r.status)));
   check("and none of it counted or logged as a turn, and no model call", J(spent()) === J(spent0) && calls.length === 0);
   // Start through the real route; only the host may press it
   check("Bo (not the host) cannot start the game", (await Bo.post("/wk/api/start", {})).status === 403);
   check("the host's Start puts the game in play", (await Ana.post("/wk/api/start", {})).status === 200 && d1(state, `SELECT status FROM games WHERE id = '${gid}'`)[0].status === "playing");
-  const open = [await Ana.get(CH), await Ana.get("/wk/api/chat/starling")];
-  check("after Start both windows read as before: 200 with the day's cap and the composer open", open.every((r) => r.status === 200 && r.data.state.closed === null) && open[0].data.state.cap === 30 && open[1].data.state.cap === 60, J(open.map((r) => r.text)));
+  const open = [await Ana.get(CH), await Ana.get(CH + "?ticket=none")];
+  check("after Start both windows read as before: 200 with the day's cap and the composer open", open.every((r) => r.status === 200 && r.data.state.closed === null) && open[0].data.state.cap === 30 && open[1].data.state.cap === 30, J(open.map((r) => r.text)));
   d1(state, `UPDATE days SET starts_at = '2000-01-01T00:00:00.000Z', ends_at = '2099-01-01T00:00:00.000Z' WHERE game_id = '${gid}'; UPDATE games SET phase = 'open' WHERE id = '${gid}'`);
   d1(state, `INSERT OR IGNORE INTO day_turns (game_id, day, player_id) SELECT '${gid}', 1, id FROM players WHERE game_id = '${gid}'`);
   const setCap = (n) => d1(state, `UPDATE games SET settings = json_set(settings, '$."gremlin.messages_per_day"', ${n}) WHERE id = '${gid}'`);
@@ -78,7 +78,7 @@ try {
 
   console.log("who can talk to him (rule 106.3)");
   check("a visitor can't read or write the chat: 401 both ways, nothing stored", (await visitor.get(CH)).status === 401 && (await visitor.post(CH, { body: "hi" })).status === 401 && d1(state, "SELECT COUNT(*) AS n FROM chat_messages")[0].n === 0);
-  check("an unknown agent is a 404 (Starling's window is tests/starling-chat.mjs)", (await Ana.get("/wk/api/chat/starling")).status === 200 && (await Ana.get("/wk/api/chat/nobody")).status === 404);
+  check("an unknown agent is a 404, and Starling is a 410 that says where to go (an open tab from before the deploy)", (await Ana.get("/wk/api/chat/starling")).status === 410 && /Talk to Gremlin/.test((await Ana.post("/wk/api/chat/starling", { body: "hi" })).data?.error ?? "") && (await Ana.get("/wk/api/chat/nobody")).status === 404);
   const empty = await Ana.get(CH);
   check("a player's empty window: no messages, the day's cap of 30 and all of it left, open, ready", empty.status === 200 && empty.data.messages.length === 0 && empty.data.state.cap === 30 && empty.data.state.left === 30 && empty.data.state.closed === null && empty.data.state.ready === true && empty.data.state.date === "2026-11-10", J(empty.data));
   check("an empty message and a message over 2000 characters are 400s, and are not stored", (await say(Ana, "  ")).status === 400 && (await say(Ana, "x".repeat(2001))).status === 400 && rows("Ana").length === 0);
@@ -387,14 +387,13 @@ try {
   check("the moderator's route needs the token; with it, calls by outcome, the month against its budget, reasons and who hit the cap", (await mod("agents?day=1", "")).status === 401 && (await mod("agents?day=1", "wrong-token-wrong-token-wrong")).status === 401 && ag.status === 200 && agj.calls.some((c) => c.outcome === "ok" && c.calls > 0) && agj.month.budget_micro === 60e6 && agj.reasons.some((r) => r.outcome === "malformed" || r.outcome === "invalid" || r.outcome === "failed") && agj.reasons.some((r) => r.outcome === "refused" && r.reason === "commission refused") && agj.players_at_cap >= 1, ag.text.slice(0, 400));
   check("it never carries a player's words, his replies, a prompt or a player id", !ag.text.includes("stone") && !ag.text.includes(WALL.slice(0, 20)) && !ag.text.includes(id.Ana) && !ag.text.includes("Lovely"));
 
-  console.log("a hand-off to Starling (rule 106.3): the line carries it, the history keeps it, nothing is written");
+  console.log("no handoff any more: one helper (rule 106.3)");
   const recH = REC["handoff-rule"].message;
   const ho = await say(Ana, recH);
-  const hj = await say(Ana, "SYNTH-HANDOFF-JUNK is this one yours?");
+  const hj = await say(Ana, "SYNTH-MOVE-JUNK is this one yours?");
   const hh = await Ana.get(CH);
-  check("a recorded answer that points to Starling comes back with handoff: starling, writes no ticket field, and the line is stored with it (the history still says it after a reload)",
-    ho.status === 200 && ho.data.out === "ok" && ho.data.messages[1].handoff === "starling" && !ho.data.messages[1].patch && hh.data.messages.find((m) => m.id === ho.data.messages[1].id)?.handoff === "starling");
-  check("a handoff to anyone else is dropped: the line has none", hj.status === 200 && hj.data.messages[1].handoff === undefined && !hh.data.messages.find((m) => m.id === hj.data.messages[1].id)?.handoff);
+  check("an old recorded answer that points to Starling is read as a plain answer: no handoff on the line (stored or read back), no move, nothing written", ho.status === 200 && ho.data.out === "ok" && ho.data.messages[1].handoff === undefined && !ho.data.messages[1].patch && hh.data.messages.find((m) => m.id === ho.data.messages[1].id)?.handoff === undefined);
+  check("a move to anywhere but the general conversation is dropped: his words stand where they were said", hj.status === 200 && hj.data.messages[1].ticket === hj.data.messages[0].ticket && hj.data.scope === (hj.data.messages[0].ticket ?? null));
 
   console.log("no key: he is out (section 4.4)");
   await srv.stop();

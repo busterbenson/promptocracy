@@ -11,7 +11,7 @@ Spec for Buster's OK (2026-11-20). Nothing here is built. It replaces the larger
 - A live helper, **Gremlin**, builds the brief with the player in real time and answers ticket discussions. He is clearly not Chalant, has a gremlin-y personality, and escalates what he isn't comfortable with to Chalant.
 - **Gremlin is an NPC who lives in the Workshop tab**, not a piece on the board (to start). His chat is a sidebar window on desktop and a sheet from a button on phones, with a portrait.
 - **Chat history** with Gremlin and Starling is saved per player, private to that player, and scrolls back through past days. Starling's is one stream. Gremlin's is one conversation per ticket (rule 801.6): he is sent, and the window shows, only the ticket being drafted; the daily cap (106.7) still counts every message. A ticket's discussion stays public on the ticket.
-- **Starling** (a starling bird) is the Rulebook tab's chat agent, with the same sidebar window, and **she is the way you draft rule proposals** (below).
+- **Gremlin's general conversation** (outside any ticket) is **the way you draft rule proposals** (below). Starling, the Rulebook's bird, was removed on 2026-11-24: one helper, one window, on every page.
 - Gremlin's limit excuses: a list, plus one improvised excuse at the limit (below).
 - Gremlin **can charge points for a commission or offer it free**, by a generous but sometimes inconsistent logic; 0 by default for simple requests with no rules or code.
 
@@ -62,7 +62,7 @@ One page per commission, opened from the Workshop list or any pill that names it
 
 When a player reaches Gremlin's daily cap, he makes one last short call to improvise an excuse from the conversation, ending with when he's back (midnight in the game's time zone). If that call fails he uses a canned one. The canned list and examples: Chalant's `artifacts/promptocracy-workshop/gremlin-limit-excuses.md` (e.g. "Wrench slipped. Down a drain. I'm going in after it. Back at midnight."). The improvised call is at most once per player per day and outside the cap.
 
-## Starling (the Rulebook's chat, and how you draft)
+## Gremlin's general conversation (what Starling's was; Starling is gone, 2026-11-24)
 
 - Lives in the Rulebook tab; same sidebar window and per-player history as Gremlin. A starling is a mimic: chirpy, quotes rules word for word with their numbers (rule pills in her replies), loves repeating your best phrase back.
 - Answers "can I...?" from the rules as they stand, and says plainly when the rules don't say.

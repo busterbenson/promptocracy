@@ -16,7 +16,7 @@ let watcher = null;
 
 /**
  * The same button before and after a redraw has the same key: its id, else its data-* attributes, else its text.
- * Starling's and Gremlin's windows draw the same buttons (data-c="send" with no id), so a button inside a chat window
+ * His conversations draw the same buttons (data-c="send" with no id), so a button inside a chat window
  * (an ancestor with data-agent) is keyed with that agent too: one window's request never holds the other's button.
  */
 export function keyOf(el) {

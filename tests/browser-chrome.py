@@ -159,6 +159,8 @@ with sync_playwright() as pw:
     check("S1-PLY-03: the account menu's Your player card opens Ada's card", "Ada" in text(page, "#mroot h2") and page.locator("#acct").is_hidden())
     page.keyboard.press("Escape")
 
+    # Gremlin's window is open on the Summary too (one window on every page) and floats over the board band's right edge, where the board's controls are: a player minimizes it to use them
+    if page.locator('#chatcol [data-c="min"]').is_visible(): page.click('#chatcol [data-c="min"]'); page.wait_for_timeout(150)
     # ---- the board itself (port 1's behavior, kept): SVG, 64 tiles, coordinates only on hover, right-click, long-press; pan and zoom
     check("the board is drawn as SVG: the island is 64 charted tiles and a grounded piece for each of the 3 players", page.get_attribute("#board-wrap", "data-renderer") == "svg" and page.locator("#board-wrap g.piece").count() == 3 and page.locator("#board-wrap polygon.top").count() == 64)
     check("nothing shows coordinates by default (no tag, none on the move bar)", tag_text(page) == [] and not re.search(r"\b[1-9][0-9]*[NS]\b", text(page, "#movebar")))
@@ -387,8 +389,8 @@ with sync_playwright() as pw:
     page.locator('.bcard.ghost[data-card="P2"]').click(); page.wait_for_selector("#mroot .mcard")
     check("a ghost (new rule) card: 'new', its text, the proposer, 'On today's ballot'", "A tie goes to the older player." in text(page, "#mroot .mcard") and "On today's ballot" in text(page, "#mroot .mcard") and "Cy" in text(page, "#mroot .chg"))
     page.keyboard.press("Escape")
-    page.click('#pzone [data-p="bar-menu"]'); page.click('#pzone [data-p="bar-rule"]'); page.wait_for_selector("#mroot .pmenu")
-    check("with Starling out, the bar's Propose > Rule change opens a 'Which block?' card (the direct way)", "Which block?" in text(page, "#mroot .mcard") and page.locator("#mroot .pmi").count() == 9)
+    page.click('#pzone [data-p="bar-menu"]'); page.click('#pzone [data-p="bar-propose"]'); page.wait_for_selector("#mroot .pmenu")
+    check("with Gremlin out, the bar's Propose opens a 'Which block?' card (the direct way)", "Which block?" in text(page, "#mroot .mcard") and page.locator("#mroot .pmi").count() == 9)
     page.keyboard.press("Escape")
     # a card keeps what you were writing when it closes (Esc, backdrop); focus stays inside the card after a menu click
     page.locator('.bcard[data-card="401"]').click(); page.wait_for_selector("#mroot .mcard")

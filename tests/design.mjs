@@ -83,7 +83,7 @@ check("the day model replaces the turn model: 103 is proposals (no join order), 
   T.byNum["103"].title === "Proposals" && !/order they joined/.test(rules) && !/skipped for that round/.test(rules) && T.byNum["203"].title === "Days" &&
   T.byNum["202"].clauses.map((c) => c.num).join() === "202.1,202.2,202.3,202.4,202.5" && T.byNum["203"].clauses.map((c) => c.num).join() === "203.1,203.2" && T.byNum["107"].clauses.map((c) => c.num).join().startsWith("107.1") &&
   rules.includes("there is no order of play") && rules.includes("Ending is final: after it they can't move, propose, withdraw a proposal or vote until the next day") && rules.includes("A day runs from midnight to midnight in the game's time zone. [setting: game.timezone]") &&
-  rules.includes("A day always runs to midnight, even if every player has ended their turn.") && rules.includes("the game is locked: nobody can move, vote, propose, post in a ticket's discussion, talk to Starling or Gremlin or end their turn, on the site or through an AI client (rule 204)"));
+  rules.includes("A day always runs to midnight, even if every player has ended their turn.") && rules.includes("the game is locked: nobody can move, vote, propose, post in a ticket's discussion, talk to Gremlin or end their turn, on the site or through an AI client (rule 204)"));
 console.log("the proposal rules (step 1, PR 3)");
 check("103 Proposals is 103.1-103.8 (103.5, 103.7 and 103.8 are the action rules; 103.6 is not wired yet) and 105 Votes needed is 105.1-105.5, worded as approved; the moderator moved to 106",
   T.byNum["103"].clauses.map((c) => c.num).join() === "103.1,103.2,103.3,103.4,103.5,103.6,103.7,103.8" && T.byNum["105"].title === "Votes needed" && T.byNum["105"].clauses.map((c) => c.num).join() === "105.1,105.2,105.3,105.4,105.5" &&
@@ -91,9 +91,9 @@ check("103 Proposals is 103.1-103.8 (103.5, 103.7 and 103.8 are the action rules
   rules.includes("Each confirmed proposal gets the next number (P1, P2, ...) and goes on the ballot (104.3).") && rules.includes("You can confirm up to 3 proposals a day. [setting: proposals.per_day]") && rules.includes("A withdrawn proposal doesn't count toward the limit (103.2).") &&
   rules.includes("Every rule is marked [unanimous] or [majority]; [u] and [m] are short for them. The mark sets the votes needed to change or repeal that rule.") && rules.includes("A proposal that adds a rule makes it majority unless the proposal marks it unanimous. Adding a rule marked unanimous needs a unanimous vote.") && rules.includes("A proposal's mark is set when it is confirmed, from the marks in effect then.") &&
   rules.includes("Rules marked unanimous are the core rules."));
-check("108.3 (Starling names conflicts when drafting) is in",
+check("108.3 (Gremlin names conflicts when drafting) is in",
   T.byNum["108"].clauses.map((c) => c.num).join() === "108.1,108.2,108.3,108.4,108.5" &&
-  rules.includes("When drafting, Starling names any other rule the proposal would conflict with, so the proposer can change that rule too."));
+  rules.includes("When drafting, Gremlin names any other rule the proposal would conflict with, so the proposer can change that rule too."));
 check("rule 110 (what no proposal can change) is retired: no rule or clause 110, nothing cites it, no helper text about parts the site runs",
   !T.byNum["110"] && !T.byNum["110.1"] && !/rule 110|\(110(\.\d)?\)|what no proposal can change|no proposal can change/i.test(rules));
 check("what 110.1 listed is ordinary rules, each unanimous: sign-in 102.4, the proposal limit 103.2, hidden votes 104.4, votes counted by code 104.5, the lock 107.1, the deadline 107.6, End turn 202.4, the day 203.1",
@@ -108,7 +108,7 @@ check("104 Voting is 104.1-104.5 and 107 has 107.6 (the 3 am deadline, live by 4
   rules.replace(/\s+/g, " ").includes(`The moderator has until ${DEADLINE_CLOCK} to process the day; a passed proposal not applied by then is not applied (rule 107.7). The changes it made must be live by ${DEPLOY_CLOCK}; a change not live by then is not applied either.`) && DEADLINE_CLOCK === "3:00 am" && DEPLOY_CLOCK === "4:00 am" && rules.includes("it goes back to its proposer with the moderator's reason and a suggestion") &&
   !/48 hours/.test(rules) && ["104.4", "104.5", "107.6"].every((n) => T.byNum[n] && markOf(T.byNum[n.slice(0, 3)]) === "unanimous"));
 console.log("the night's rules (step 1, PR 5)");
-check("106 is 106.1-106.7 (Starling's is 106.2, Gremlin's 106.3; both are in 106.4 and 106.7; rulings 106.5; the drafter audit is 106.6), 107 is 107.1-107.9 (order, redraft, text + code + tests, the budget, the day tag, repairs), 108 is 108.1-108.5, 402 is 402.1-402.4 (Eras)",
+check("106 is 106.1-106.7 (Gremlin's rules are 106.2, his workshop 106.3; he is in 106.4 and 106.7; rulings 106.5; the drafter audit is 106.6), 107 is 107.1-107.9 (order, redraft, text + code + tests, the budget, the day tag, repairs), 108 is 108.1-108.5, 402 is 402.1-402.4 (Eras)",
   T.byNum["106"].clauses.map((c) => c.num).join() === "106.1,106.2,106.3,106.4,106.5,106.6,106.7" && T.byNum["107"].clauses.map((c) => c.num).join() === "107.1,107.2,107.3,107.4,107.5,107.6,107.7,107.8,107.9" &&
   T.byNum["402"].clauses.map((c) => c.num).join() === "402.1,402.2,402.3,402.4" && T.byNum["402"].title === "Eras" &&
   rules.includes("The draft that was voted on is the one applied.") && rules.includes("[setting: night.apply_minutes]") && rules.includes("[setting: night.apply_effort]") &&
@@ -383,7 +383,7 @@ console.log("the propose bar (rules 103.1, 103.2, 103.3, 103.5): every state, an
     can: { propose: world.made >= world.limit ? { allowed: false, reason: "You've proposed 3 today, the most a day (103.2)." } : { allowed: !world.ended && !world.locked, reason: world.ended ? "Your turn has ended." : world.locked ? "The players are sleeping." : "" }, end_turn: { allowed: !world.ended && !world.locked } } } : undefined });
   const went = [];
   const P = createProposer({ api, me: () => world.me, day, refresh: async () => { await P.load(); }, drawBar() {}, goTab: (k) => went.push("tab:" + k),
-    starling: () => ({ ready: () => world.star, attachRule: async () => {}, open: async (o) => { went.push("starling:" + JSON.stringify(o)); } }),
+    helper: () => ({ ready: () => world.star, attachRule: async () => {}, open: async (o) => { went.push("helper:" + JSON.stringify(o)); } }),
     workshop: () => ({ commission: async () => { went.push("commission"); }, open: async (n) => { went.push("workshop:" + n); } }) });
   const book = parseRules(read("templates/RULES.md"));
   P.attach({ RB: book, redraw() {}, openAdd() {}, openPick() { went.push("picker"); }, closeAdd() {} });
@@ -396,7 +396,7 @@ console.log("the propose bar (rules 103.1, 103.2, 103.3, 103.5): every state, an
   check("two locked in and a draft: P7 and W3 filled, one dashed DRAFT slot that is not counted ('1 of 3 left'), the slots toggle the cards", />P7</.test(b) && />W3</.test(b) && n(b, /class="tkm dr"[^>]*>DR</g) === 1 && n(b, /class="tkm e"/g) === 0 && /<b>1<\/b> of 3 left/.test(b) && /data-p="bar-open"/.test(b), b);
   await P.click({ dataset: { p: "bar-open" } });
   b = P.barHTML();
-  check("opened: a card for each, the draft's with Lock it in (on) and Open in Starling, a locked one's with Unlock, the commission's with Open in Workshop", n(b, /class="pcard/g) === 3 && n(b, /data-p="lock"/g) === 1 && n(b, /data-p="unlock"/g) === 2 && n(b, /Open in Starling/g) === 2 && /Open in Workshop/.test(b) && /Lock it in<\/button>/.test(b) && !/Put it on tomorrow|Withdraw/.test(b), b);
+  check("opened: a card for each, the draft's with Lock it in (on) and Open in Gremlin, a locked one's with Unlock, the commission's with Open in Workshop", n(b, /class="pcard/g) === 3 && n(b, /data-p="lock"/g) === 1 && n(b, /data-p="unlock"/g) === 2 && n(b, /Open in Gremlin/g) === 2 && /Open in Workshop/.test(b) && /Lock it in<\/button>/.test(b) && !/Put it on tomorrow|Withdraw/.test(b), b);
   world.made = 3; world.list.push(mk(10, "repeal")); world.draft = null;
   b = await bar();
   check("all used: '0 of 3 left', no empty slot, Propose disabled with nothing beside it", /<b>0<\/b> of 3 left/.test(b) && n(b, /class="tkm p/g) === 3 && /data-p="bar-menu"[^>]* disabled>/.test(b), b);
@@ -429,44 +429,37 @@ console.log("the propose bar (rules 103.1, 103.2, 103.3, 103.5): every state, an
   await P.load();
   await P.click({ dataset: { p: "bar-menu" } });
   b = P.barHTML();
-  check("the Propose menu: Rule change (103.1), Commission (801.1), Action (103.5); no Champion row unless you are the Champion", /class="pmenu tkmenu"/.test(b) && n(b, /role="menuitem"/g) === 3 && /Rule change/.test(b) && /801\.1/.test(b) && /Action/.test(b) && !/Champion&#39;s change/.test(b) && !/can&#39;t be reached/.test(b), b);
-  went.length = 0; await P.click({ dataset: { p: "bar-rule" } });
-  check("Rule change opens Starling (the menu closes)", went.join() === 'starling:{}' && !/pmenu tkmenu/.test(P.barHTML()), went.join());
-  went.length = 0; await P.click({ dataset: { p: "bar-menu" } }); await P.click({ dataset: { p: "bar-action" } });
-  check("Action opens Starling too, saying it is an action; the form is not opened", went.join() === 'starling:{"intent":"action"}' && !/class="pcard pform"/.test(P.barHTML()), went.join());
-  went.length = 0; await P.click({ dataset: { p: "bar-menu" } }); await P.click({ dataset: { p: "bar-commission" } });
-  check("Commission goes to the Workshop and opens a new ticket", went.join() === "commission", went.join());
+  check("the Propose menu is ONE entry, Propose (103.1): Gremlin works out the kind; no Champion row unless you are the Champion", /class="pmenu tkmenu"/.test(b) && n(b, /role="menuitem"/g) === 1 && /<b>Propose<\/b>/.test(b) && !/Rule change|Commission|Action/.test(b) && !/Champion&#39;s change/.test(b) && !/can&#39;t be reached/.test(b));
+  went.length = 0; await P.click({ dataset: { p: "bar-propose" } });
+  check("Propose opens Gremlin's general conversation (the menu closes); nothing else rides with it", went.join() === 'helper:{}' && !/pmenu tkmenu/.test(P.barHTML()), went.join());
   world.star = false; await P.click({ dataset: { p: "bar-menu" } });
   b = P.barHTML();
-  check("Starling can't be reached: the menu says so on Rule change and Action", n(b, /Starling can&#39;t be reached/g) === 2, b);
-  went.length = 0; await P.click({ dataset: { p: "bar-rule" } });
-  check("...and Rule change opens the direct way (the Rulebook's block picker), not Starling", went.join() === "tab:rules,picker", went.join());
-  await P.click({ dataset: { p: "bar-menu" } }); await P.click({ dataset: { p: "bar-action" } });
-  b = P.barHTML();
-  check("...and Action opens the action form under the bar", /class="ppanel"/.test(b) && /class="pcard pform"/.test(b) && /Draft it/.test(b), b);
+  check("Gremlin can't be reached: the menu says so on Propose and on Action, the direct ways (an action needs no model to draft: rule 103.5)", n(b, /Gremlin can&#39;t be reached/g) === 2 && /data-p="bar-action"/.test(b), b);
+  went.length = 0; await P.click({ dataset: { p: "bar-propose" } });
+  check("...and Propose opens the direct way (the Rulebook's block picker), not Gremlin", went.join() === "tab:rules,picker", went.join());
   await P.click({ dataset: { p: "cancel" } });
   world.star = true; world.champion = true; await P.load(); await P.click({ dataset: { p: "bar-menu" } });
-  check("the Champion gets a fourth row, Champion's change (402.4)", /Champion&#39;s change/.test(P.barHTML()) && n(P.barHTML(), /role="menuitem"/g) === 4, P.barHTML());
+  check("the Champion gets a second row, Champion's change (402.4)", /Champion&#39;s change/.test(P.barHTML()) && n(P.barHTML(), /role="menuitem"/g) === 2, P.barHTML());
   world.made = 3; await P.load();
-  check("at 0 left the Champion's change is still there: Propose is on, the three others are off", !/data-p="bar-menu"[^>]* disabled/.test(P.barHTML()) && n(P.barHTML(), /role="menuitem" class="pmi" data-p="bar-(rule|commission|action)" disabled/g) === 3 && !/data-p="bar-champ" disabled/.test(P.barHTML()), P.barHTML());
+  check("at 0 left the Champion's change is still there: Propose is on, the other is off", !/data-p="bar-menu"[^>]* disabled/.test(P.barHTML()) && n(P.barHTML(), /role="menuitem" class="pmi" data-p="bar-propose" disabled/g) === 1 && !/data-p="bar-champ" disabled/.test(P.barHTML()), P.barHTML());
   world.champion = false; world.made = 1; await P.load();
   went.length = 0;
-  check("a rule card's one Propose button opens Starling with that rule", /data-p="starling" data-n="401">Propose a change/.test(P.proposeHTML(book.byNum["401"])) && !/Draft with Starling/.test(P.proposeHTML(book.byNum["401"])));
+  check("a rule card's one Propose button opens Gremlin with that rule", /data-p="helper" data-n="401">Propose a change/.test(P.proposeHTML(book.byNum["401"])) && !/Draft with Gremlin/.test(P.proposeHTML(book.byNum["401"])));
   world.star = false;
-  check("...and with Starling out it is the direct form's button", /data-p="open" data-n="401"[^>]*>Propose a change/.test(P.proposeHTML(book.byNum["401"])));
+  check("...and with Gremlin out it is the direct form's button", /data-p="open" data-n="401"[^>]*>Propose a change/.test(P.proposeHTML(book.byNum["401"])));
   // ---- review findings: no action types, a frozen day, the Champion's change, an emptied bar
   const openMenu = async () => { if (!/pmenu tkmenu/.test(P.barHTML())) await P.click({ dataset: { p: "bar-menu" } }); };
   world.star = true; world.actions = []; world.made = 1; await P.load();
   await openMenu();
-  check("a game with no action types: the Action item is off (nothing to draft), and clicking it anyway draws nothing and breaks nothing", /data-p="bar-action" disabled/.test(P.barHTML()) && (await P.click({ dataset: { p: "bar-action" } }), P.barHTML().length > 0 && !/pform/.test(P.barHTML())));
+  check("a game with no action types: Propose is still on (he works out the kind from the rules there are), and clicking it breaks nothing", !/data-p="bar-propose" disabled/.test(P.barHTML()) && (await P.click({ dataset: { p: "bar-propose" } }), P.barHTML().length > 0 && !/pform/.test(P.barHTML())));
   world.star = false; await P.load(); await openMenu(); await P.click({ dataset: { p: "bar-action" } });
-  check("...also with Starling out: no form, no throw, the bar still draws and so does every tab's redraw", !/pform/.test(P.barHTML()) && P.barHTML().includes("Propose"));
+  check("...also with Gremlin out: no form, no throw, the bar still draws and so does every tab's redraw", !/pform/.test(P.barHTML()) && P.barHTML().includes("Propose"));
   world.actions = [{ type: "grant", name: "Grant points", rule: 901, touches: [401, 402], params: [] }]; world.star = true; world.ended = true; await P.load();
-  check("a rule card's Propose button on a day that is over for you is disabled with the reason (not a live button that can do nothing)", /data-p="starling" data-n="401" disabled title="Your turn has ended\."/.test(P.proposeHTML(book.byNum["401"])), P.proposeHTML(book.byNum["401"]));
+  check("a rule card's Propose button on a day that is over for you is disabled with the reason (not a live button that can do nothing)", /data-p="helper" data-n="401" disabled title="Your turn has ended\."/.test(P.proposeHTML(book.byNum["401"])), P.proposeHTML(book.byNum["401"]));
   world.ended = false; world.locked = true; await P.load();
-  check("...and during the lock the same", /data-p="starling" data-n="401" disabled/.test(P.proposeHTML(book.byNum["401"])));
+  check("...and during the lock the same", /data-p="helper" data-n="401" disabled/.test(P.proposeHTML(book.byNum["401"])));
   world.locked = false; world.made = 1; world.champion = true; world.list = []; world.draft = null; await P.load();
-  check("the Champion's rule card has two buttons: Starling's, and a Champion's change that opens the direct menu ticked; nobody else has the second", /data-p="starling" data-n="401">Propose a change/.test(P.proposeHTML(book.byNum["401"])) && /data-p="open" data-n="401" data-champ="1"[^>]*>Champion's change/.test(P.proposeHTML(book.byNum["401"])));
+  check("the Champion's rule card has two buttons: Gremlin's, and a Champion's change that opens the direct menu ticked; nobody else has the second", /data-p="helper" data-n="401">Propose a change/.test(P.proposeHTML(book.byNum["401"])) && /data-p="open" data-n="401" data-champ="1"[^>]*>Champion's change/.test(P.proposeHTML(book.byNum["401"])));
   await P.click({ dataset: { p: "open", n: "401", champ: "1" } });
   await P.click({ dataset: { p: "scope", s: "whole" } });   // every rule has clauses now (rule 109.1), so the menu opens after the scope step
   check("...that menu has the Champion's toggle ticked", /class="pmchamp"><input type="checkbox" data-p="champion" checked/.test(P.proposeHTML(book.byNum["401"])), P.proposeHTML(book.byNum["401"]));
@@ -475,8 +468,8 @@ console.log("the propose bar (rules 103.1, 103.2, 103.3, 103.5): every state, an
   check("a player who is not the Champion has no second button", !/data-champ/.test(P.proposeHTML(book.byNum["401"])));
   world.champion = true; await P.load();
   await openMenu(); await P.click({ dataset: { p: "bar-champ" } });
-  check("the Champion row opens the block picker whose buttons carry the Champion's change; the picker Rule change opens (Starling out) does not", /data-p="add" data-n="100" data-champ="1"/.test(P.pickHTML()));
-  world.star = false; await P.load(); await openMenu(); await P.click({ dataset: { p: "bar-rule" } });
+  check("the Champion row opens the block picker whose buttons carry the Champion's change; the picker Rule change opens (Gremlin out) does not", /data-p="add" data-n="100" data-champ="1"/.test(P.pickHTML()));
+  world.star = false; await P.load(); await openMenu(); await P.click({ dataset: { p: "bar-propose" } });
   check("...and a picker opened the plain way has none, so a closed Champion picker leaves nothing behind", !/data-champ/.test(P.pickHTML()));
   globalThis.document = { getElementById: (id) => (id === "pfWords" ? { value: "A new rule.", focus() {} } : null), querySelectorAll: () => [] };
   posts.length = 0;

@@ -1,4 +1,4 @@
-// The ONE place a model is called for the agents (Gremlin now, Starling in step 2b): the Messages API, a timeout, structured output with
+// The ONE place a model is called for the agents (Gremlin): the Messages API, a timeout, structured output with
 // the drafter's fallback (a 400 on the schema is asked once more without it), the refusal stop reason, usage, and the monthly budget.
 // The drafter (src/lib/drafter.ts) keeps its own call; this one follows its pattern exactly (plain fetch, the key only in a header).
 //   MODEL_API_KEY       the secret the drafter uses; unset = the agents are out (a canned line, nothing stored, nothing counted)

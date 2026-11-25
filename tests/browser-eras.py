@@ -71,6 +71,7 @@ with sync_playwright() as p:
                 page.click('#sb-P2 [data-vote="yes"]'); page.wait_for_function("document.querySelector('#pzone .tkstep.vt').textContent.indexOf('Voted') >= 0")
                 check(f"{tag}: after her vote on Bo's proposal the strip reads 'Voted 1 of 1' (her own change was never hers to vote on)", "Voted 1 of 1" in text(page, "#pzone .tkstep.vt"), text(page, "#pzone .tkstep.vt"))
             if name_it:
+                if page.locator('#chatcol [data-c="min"]').is_visible(): page.click('#chatcol [data-c="min"]'); page.wait_for_timeout(150)   # Gremlin's window is open on the Summary too and floats over the era form
                 page.fill("#era-name", "The Long Dusk"); page.click("#sera button[type=submit]")
                 page.wait_for_function("document.querySelector('#sera h2') && document.querySelector('#sera h2').textContent.indexOf('The Long Dusk') >= 0")
                 check(f"{tag}: naming it from the form shows 'Era 2 · The Long Dusk' and the form is gone", text(page, "#sera h2") == "Era 2 · The Long Dusk" and page.locator("#era-name").count() == 0)
@@ -80,7 +81,7 @@ with sync_playwright() as p:
             tag = f"{w}-{scheme}"
             c, page, errors = new_page(b, w, h, scheme)
             page.click("#tab-rules"); page.wait_for_selector('.bcard[data-card="401"]')
-            page.wait_for_selector("#chatcol .cnm small", state="attached")   # Starling's state has loaded (no key here: she can't be reached), so the card's Propose is the direct form's
+            page.wait_for_selector("#chatcol .cnm small", state="attached")   # Gremlin's state has loaded (no key here: he can't be reached), so the card's Propose is the direct form's
             page.locator('.bcard[data-card="401"]').click(); page.wait_for_selector("#mroot .mcard")
             page.click('#mroot [data-p="open"]'); page.click('#mroot [data-p="scope"][data-s="whole"]'); page.wait_for_selector("#mroot .pmenu")
             check(f"{tag}: the Champion's propose menu has the 'Champion's change' toggle, unchecked, enabled (she is under her day's limit)", page.locator("#mroot .pmchamp input").count() == 1 and not page.locator("#mroot .pmchamp input").is_checked() and page.locator("#mroot .pmchamp input").is_enabled())

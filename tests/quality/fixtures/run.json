@@ -1,0 +1,31 @@
+{
+  "run_id": "2026-11-24-1200-night-abc1234", "stage": "night", "date": "2026-11-24", "platform_sha": "abc1234", "rules_ref": "day-0.23", "rules_sha": "def5678",
+  "cost": { "api_micro": 123456, "anthropic_micro": 100000, "gemini_micro": 23456, "claude_calls": 2, "claude_usd": 0.31, "claude_log": [] }, "cap_hit": null,
+  "cases": [
+    {
+      "id": "s-move-two", "agent": "starling", "title": "Move 2 spaces <script>alert(1)</script>", "intent": "One amend of 202.2.", "known_fail": null,
+      "turns": [{ "player": "Move 2 <script>alert('p')</script>", "say": "Drafted <img src=x onerror=alert(2)>", "outcome": "drafted", "pipeline": { "head": "Reword 202.2 <b>x</b>" }, "micro": 4000, "ms": 2000 }],
+      "draft": { "kind": "amend", "scope": "clause", "target": "202.2", "mark": null, "words": "w", "head": "Reword 202.2:", "before_text": "before <script>1</script>", "after_text": "after <script>alert('after')</script>", "settings": { "turn.move_distance": 2 }, "conflicts": [], "drafted_by": "model", "turn": 1 },
+      "refusal": null, "draft_count": 1, "micro": 4000, "ms": 2000, "status": "pass",
+      "night": { "status": "applied", "reason": null, "attempts": 1, "ms": 120000, "claude": [{ "cost_usd": 0.2 }], "diff_text": "+<script>alert('diff')</script>", "diff_code": "+code", "check_tail": "tests: ok", "audit": { "material": false, "gap": "<script>gap</script>" } },
+      "checks": [{ "name": "setting turn.move_distance = 2", "pass": true, "detail": "" }, { "name": "night: applied", "pass": true, "detail": "<script>x</script>" }],
+      "grade": { "ok": true, "scores": { "intent": 2, "fidelity": 2, "voice": 1, "efficiency": 2, "night": 2 }, "verdict": "good", "reasons": ["<script>reason</script>"] }
+    },
+    {
+      "id": "s-action-grant", "agent": "starling", "title": "Give Bo 5 points", "intent": "One action draft.", "known_fail": null,
+      "turns": [{ "player": "Give Bo 5 points", "say": "Drafted.", "outcome": "drafted", "micro": 3000, "ms": 1000 }],
+      "draft": { "kind": "action", "scope": "rule", "target": "901", "mark": null, "words": "", "head": "Grant points (rule 901):", "before_text": "", "after_text": "To: Bo", "settings": {}, "conflicts": [], "drafted_by": "code", "action": { "type": "grant", "params": { "amount": 5 } }, "turn": 1 },
+      "refusal": null, "draft_count": 1, "micro": 3000, "ms": 1000, "status": "pass",
+      "night": { "status": "n/a", "reason": "n/a (actions are applied by the site, not the moderator: rule 103.8)" },
+      "checks": [{ "name": "action type grant", "pass": true, "detail": "" }], "grade": null
+    },
+    {
+      "id": "g-creature", "agent": "gremlin", "title": "A sleepy bog turtle", "intent": "A creature.", "known_fail": { "since": "2026-11-24", "why": "because <script>kf</script>" },
+      "turns": [{ "player": "turtle", "say": "ok", "outcome": "wrote", "micro": 8000, "ms": 3000 }],
+      "draft": null, "refusal": null, "ticket": { "title": "Turtle <script>t</script>", "brief": "b", "makes": [], "estimate": 1, "price": 0, "price_reason": "free" },
+      "micro": 8000, "ms": 3000, "status": "expected fail",
+      "night": { "status": "n/a", "reason": "n/a (commissions are not built at night yet)" },
+      "checks": [{ "name": "a creature entry", "pass": false, "detail": "got none" }], "grade": { "ok": false, "error": "timeout" }
+    }
+  ]
+}

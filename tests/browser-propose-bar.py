@@ -1,6 +1,6 @@
 # The propose bar in real Chromium (called by tests/propose-bar-browser.mjs). Game "shop" is on day 1 with Ada (teal: nothing proposed), Bo (vermilion: one locked
-# in and a Starling draft), Cy (cobalt: three locked in), Dee (jade: nothing yet; drafts an action with Starling) and Eve (orchid: one locked in, then End turn).
-# Game "setup" has not started (Gus). Modes: "main" (everything with the model's stand-in up), "nokey" (Starling can't be reached), "locked" (the midnight lock).
+# in and a Gremlin draft), Cy (cobalt: three locked in), Dee (jade: nothing yet; drafts an action with Gremlin) and Eve (orchid: one locked in, then End turn).
+# Game "setup" has not started (Gus). Modes: "main" (everything with the model's stand-in up), "nokey" (Gremlin can't be reached), "locked" (the midnight lock).
 # Usage: browser-propose-bar.py <base> <screenshot dir or -> <mode> <Ada's session cookie> <Bo's> <Cy's> <Dee's> <Eve's> <Gus's (game "setup")>
 import datetime, re, sys
 from urllib.parse import urlparse
@@ -111,7 +111,7 @@ with sync_playwright() as p:
                 page.click('#pzone [data-endturn="no"]'); page.wait_for_selector('#pzone .tkend [data-endturn="ask"]')
             if w == 390:
                 tab(page, "rules"); page.evaluate("document.getElementById('pzone').scrollIntoView()"); page.wait_for_timeout(150)
-                check(f"{tag}: on the Rulebook tab, with the panel scrolled to the top, Starling's pill is on the screen and sits clear of it (a fixed corner pill floating over the page flow; the panel is 300 px tall, so it passes under the pill while you scroll)", page.evaluate("(() => { const f = document.getElementById('chatfab'); if (!f || f.hidden) return false; const q = f.getBoundingClientRect(), r = document.querySelector('#pzone .tk').getBoundingClientRect(); return q.width > 0 && (q.bottom <= r.top || q.top >= r.bottom || q.right <= r.left || q.left >= r.right); })()"), page.evaluate("JSON.stringify([document.getElementById('chatfab').getBoundingClientRect(), document.querySelector('#pzone .tk').getBoundingClientRect(), innerHeight])"))
+                check(f"{tag}: on the Rulebook tab, with the panel scrolled to the top, Gremlin's pill is on the screen and sits clear of it (a fixed corner pill floating over the page flow; the panel is 300 px tall, so it passes under the pill while you scroll)", page.evaluate("(() => { const f = document.getElementById('chatfab'); if (!f || f.hidden) return false; const q = f.getBoundingClientRect(), r = document.querySelector('#pzone .tk').getBoundingClientRect(); return q.width > 0 && (q.bottom <= r.top || q.top >= r.bottom || q.right <= r.left || q.left >= r.right); })()"), page.evaluate("JSON.stringify([document.getElementById('chatfab').getBoundingClientRect(), document.querySelector('#pzone .tk').getBoundingClientRect(), innerHeight])"))
                 tab(page, "summary")
             check(f"{tag}: Summary has no day strip of its own: no #sday, no steps and no End turn inside it", count(page, "#sday") == 0 and count(page, "#p-summary .tkstep, #p-summary [data-endturn]") == 0)
             check(f"{tag}: Summary has no Propose card and no 'Propose a change' sentence; the count lives only in the bar", count(page, "#spropose") == 0 and "Propose a change" not in text(page, "#p-summary") and "of 3 today" not in text(page, "#p-summary"))
@@ -124,8 +124,8 @@ with sync_playwright() as p:
             tab(page, "summary")
             page.click('#pzone [data-p="bar-menu"]'); page.wait_for_selector("#pzone .pmenu")
             items = [re.sub(r"\s+", " ", t).strip().replace("→ ", "") for t in page.locator("#pzone .pmi").all_inner_texts()]
-            check(f"{tag}: the Propose menu is one menu of three: Rule change 103.1, Commission 801.1, Action 103.5", items == ["Rule change 103.1", "Commission 801.1", "Action 103.5"], str(items))
-            check(f"{tag}: Action carries Starling's portrait like Rule change (a portrait, not an arrow)", page.locator('#pzone [data-p="bar-action"] .por use').get_attribute("href") == page.locator('#pzone [data-p="bar-rule"] .por use').get_attribute("href") and "→" not in text(page, '#pzone [data-p="bar-action"]'))
+            check(f"{tag}: the Propose menu has ONE entry, Propose 103.1 (Gremlin works out the kind: rule change, action or commission)", items == ["Propose 103.1"], str(items))
+            check(f"{tag}: Propose carries Gremlin's portrait (a portrait, not an arrow)", page.locator('#pzone [data-p="bar-propose"] .por use').get_attribute("href") == "/portraits/gremlin.svg#p" and "→" not in text(page, '#pzone [data-p="bar-propose"]'))
             check(f"{tag}: ...none of them disabled, no explanation under any", count(page, "#pzone .pmi:disabled") == 0 and count(page, "#pzone .pmi small") == 0)
             shot(page, f"menu-{tag}")
             page.keyboard.press("Escape")
@@ -138,22 +138,23 @@ with sync_playwright() as p:
             page.click('#pzone [data-p="bar-menu"]'); page.click(clear, position={"x": 4, "y": 20}); page.wait_for_timeout(150)   # (the click goes in the tab's left edge: the menu is as wide as the panel, so at 390 it covers the rest of the tab row)
             check(f"{tag}: a tab click puts it away too (the click is not swallowed by what the tab does)", count(page, "#pzone .pmenu") == 0 and page.locator(clear).get_attribute("aria-selected") == "true")
             tab(page, "summary")
-            # Rule change from the Summary: the Rulebook tab, her window open, the composer focused
-            page.click('#pzone [data-p="bar-menu"]'); page.click('#pzone [data-p="bar-rule"]'); page.wait_for_timeout(500)
-            check(f"{tag}: Rule change opens Starling: the Rulebook tab is showing, her window is open and the composer has the focus", page.locator("#tab-rules").get_attribute("aria-selected") == "true" and page.locator("#chatcol .chat[data-agent=starling]").is_visible() and page.evaluate("document.activeElement && document.activeElement.id") == "chatText" and count(page, "#chatcol .chip") == 0)
+            # Propose from the Summary: Gremlin's window opens where the player is (no tab change), the composer focused, nothing attached
+            page.click('#pzone [data-p="bar-menu"]'); page.click('#pzone [data-p="bar-propose"]'); page.wait_for_timeout(500)
+            check(f"{tag}: Propose opens Gremlin's window and leaves the tab alone (Summary stays), the composer has the focus, no ticket or rule chip", page.locator("#tab-summary").get_attribute("aria-selected") == "true" and page.locator("#chatcol .chat[data-agent=gremlin]").is_visible() and page.evaluate("document.activeElement && document.activeElement.id") == "chatText" and count(page, "#chatcol .chip") == 0)
             # a rule card has ONE propose button, and it opens her with that rule attached
             page.evaluate("document.getElementById('chatcol').querySelector('[data-c=close]') && document.getElementById('chatcol').querySelector('[data-c=close]').click()")
+            tab(page, "rules")
             page.locator('.bcard[data-card="401"]').click(); page.wait_for_selector("#mroot .mcard")
             btns = page.locator("#mroot .proposeact button")
-            check(f"{tag}: a rule card has one propose button, 'Propose a change' (no 'Draft with Starling' beside it)", btns.count() == 1 and btns.first.inner_text().strip() == "Propose a change" and "Draft with Starling" not in text(page, "#mroot .mcard"))
+            check(f"{tag}: a rule card has one propose button, 'Propose a change' (no 'Draft with' beside it)", btns.count() == 1 and btns.first.inner_text().strip() == "Propose a change" and "Draft with" not in text(page, "#mroot .mcard"))
             btns.first.click(); page.wait_for_timeout(500)
-            check(f"{tag}: ...it puts the card away and opens Starling with rule 401 attached", count(page, "#mroot .mcard") == 0 and page.locator("#chatcol .chat").is_visible() and page.locator("#chatcol .chip", has_text="401").count() == 1)
+            check(f"{tag}: ...it puts the card away and opens Gremlin with rule 401 attached", count(page, "#mroot .mcard") == 0 and page.locator("#chatcol .chat").is_visible() and page.locator("#chatcol .chip", has_text="401").count() == 1)
             check(f"{tag}: no page errors", not errors, str(errors)); c.close()
 
-        # ---- Commission goes to the Workshop and opens a new ticket with Gremlin
+        # ---- Propose opens Gremlin's general conversation: no ticket is made by it, and the draft ticket is not one of the day's three
         c, page, errors = new_page(b, 1280, 900, "light", ada_c)
-        page.click('#pzone [data-p="bar-menu"]'); page.click('#pzone [data-p="bar-commission"]'); page.wait_for_selector("#chatcol .chat[data-agent=gremlin] .chip .wpill")
-        check("1280-light: Commission opens the Workshop with a new draft ticket and Gremlin on it; the draft ticket is not one of the day's three", page.locator("#tab-workshop").get_attribute("aria-selected") == "true" and page.locator("#chatcol .chip .wpill").count() == 1 and left(page) == "3 of 3 left" and count(page, "#pzone .tkstep.pr .tkm.dr") == 0, str((page.locator("#tab-workshop").get_attribute("aria-selected"), page.locator("#chatcol .chip").count(), page.locator("#chatcol .chip").first.inner_html() if page.locator("#chatcol .chip").count() else "", left(page))))
+        page.click('#pzone [data-p="bar-menu"]'); page.click('#pzone [data-p="bar-propose"]'); page.wait_for_selector("#chatcol .chat[data-agent=gremlin]")
+        check("1280-light: Propose opens Gremlin in the general conversation: no ticket chip, and the day still reads '3 of 3 left'", page.locator("#chatcol .chip .wpill").count() == 0 and left(page) == "3 of 3 left" and count(page, "#pzone .tkstep.pr .tkm.dr") == 0)
         check("1280-light: no page errors", not errors, str(errors)); c.close()
 
         # ---- Bo: one locked in and one draft
@@ -170,8 +171,8 @@ with sync_playwright() as p:
             cards = page.locator("#pzone .pcard")
             check(f"{tag}: opening the slots shows two cards under the bar and pushes the tabs down (nothing opens over the page)", cards.count() == 2 and box(page, "#btabs")["y"] > before + 40 and box(page, "#pzone .pcard")["y"] > box(page, "#pzone .tk")["y"], str((cards.count(), before, box(page, "#btabs"))))
             locked, draft = page.locator("#pzone .pcard:not(.draft)"), page.locator("#pzone .pcard.draft")
-            check(f"{tag}: the locked card: its P pill, 'On tomorrow's ballot', the tracked change, Unlock and Open in Starling; no Lock it in", locked.count() == 1 and re.search(r"P\d+", locked.inner_text()) and "on tomorrow's ballot" in locked.inner_text().lower() and locked.locator("ins, del").count() >= 1 and locked.locator('[data-p="unlock"]').inner_text().lower() == "unlock" and "open in starling" in locked.inner_text().lower() and locked.locator('[data-p="lock"]').count() == 0)
-            check(f"{tag}: the draft card: 'Draft', the change, Lock it in (on) and Open in Starling; no Unlock", draft.count() == 1 and "draft" in draft.inner_text().lower() and draft.locator('[data-p="lock"]').inner_text().lower() == "lock it in" and draft.locator('[data-p="lock"]').is_enabled() and "open in starling" in draft.inner_text().lower() and draft.locator('[data-p="unlock"]').count() == 0)
+            check(f"{tag}: the locked card: its P pill, 'On tomorrow's ballot', the tracked change, Unlock and Open in Gremlin; no Lock it in", locked.count() == 1 and re.search(r"P\d+", locked.inner_text()) and "on tomorrow's ballot" in locked.inner_text().lower() and locked.locator("ins, del").count() >= 1 and locked.locator('[data-p="unlock"]').inner_text().lower() == "unlock" and "open in gremlin" in locked.inner_text().lower() and locked.locator('[data-p="lock"]').count() == 0)
+            check(f"{tag}: the draft card: 'Draft', the change, Lock it in (on) and Open in Gremlin; no Unlock", draft.count() == 1 and "draft" in draft.inner_text().lower() and draft.locator('[data-p="lock"]').inner_text().lower() == "lock it in" and draft.locator('[data-p="lock"]').is_enabled() and "open in gremlin" in draft.inner_text().lower() and draft.locator('[data-p="unlock"]').count() == 0)
             if w == 1280:
                 xs = sorted({round(cards.nth(i).bounding_box()["x"]) for i in range(2)})
                 check(f"{tag}: at 1280 the cards sit side by side", len(xs) == 2, str(xs))
@@ -182,13 +183,13 @@ with sync_playwright() as p:
             sideways(page, w, tag)
             check(f"{tag}: no page errors", not errors, str(errors)); c.close()
 
-        # ---- Bo again, last: Open in Starling, Lock it in on the draft's card, Unlock (this changes her day, so it runs after her shots)
+        # ---- Bo again, last: Open in Gremlin, Lock it in on the draft's card, Unlock (this changes her day, so it runs after her shots)
         c, page, errors = new_page(b, 1280, 900, "light", bo_c)
         page.click('#pzone [data-p="bar-open"]'); page.wait_for_selector("#pzone .pcard")
         draft = page.locator("#pzone .pcard.draft")
-        draft.locator('[data-p="bar-starling"]').click(); page.wait_for_timeout(500)
-        check("1280-light: Open in Starling opens her window on the Rulebook tab", page.locator("#tab-rules").get_attribute("aria-selected") == "true" and page.locator("#chatcol .chat[data-agent=starling]").is_visible())
-        check("1280-light: her header's count is the bar's count ('2 of 3 left' in both: one number)", text(page, "#chatcol .ch-row .n") == left(page) == "2 of 3 left", text(page, "#chatcol .ch-row .n") + " / " + left(page))
+        draft.locator('[data-p="bar-helper"]').click(); page.wait_for_timeout(500)
+        check("1280-light: Open in Gremlin opens his window (the tab stays)", page.locator("#chatcol .chat[data-agent=gremlin]").is_visible())
+        check("1280-light: his general row's count is the bar's count ('2 of 3 left' in both: one number)", text(page, "#chatcol .ch-row .n") == left(page) == "2 of 3 left", text(page, "#chatcol .ch-row .n") + " / " + left(page))
         tab(page, "summary")
         page.click('#pzone [data-p="bar-menu"]'); page.wait_for_selector("#pzone .pmenu")
         page.locator('#pzone .pcard.draft [data-p="lock"]').click(); wait_text(page, "#pzone .tkstep.pr .tkdet", "1 of 3 left")   # with the menu open: the first click acts, it does not only close the menu
@@ -231,31 +232,30 @@ with sync_playwright() as p:
         check("390-light: turn ended on a phone: the panel is 260 to 330 px tall, 'Turn ended' is on screen and nothing scrolls sideways", 260 <= box(page, "#pzone .tk")["height"] <= 330 and page.locator("#pzone .tkended").is_visible() and page.evaluate("document.documentElement.scrollWidth") <= 390, str(box(page, "#pzone .tk")))
         shot(page, "ended-390-light"); c.close()
 
-        # ---- Dee: an action drafted by Starling, locked in from her slip
+        # ---- Dee: an action drafted by Gremlin, locked in from his slip
         for w, h in [(1280, 900), (390, 844)]:
             tag = f"{w}-light"
             c, page, errors = new_page(b, w, h, "light", dee_c)
-            page.click('#pzone [data-p="bar-menu"]'); page.click('#pzone [data-p="bar-action"]'); page.wait_for_selector("#chatcol .chat[data-agent=starling]")
-            check(f"{tag}: Action opens Starling (not the form): the Rulebook tab, her window with an 'Action' chip on the composer, no form under the bar", page.locator("#tab-rules").get_attribute("aria-selected") == "true" and page.locator("#chatcol .chip-intent").count() == 1 and count(page, "#pzone .pform") == 0 and page.evaluate("document.activeElement && document.activeElement.id") == "chatText")
+            page.click('#pzone [data-p="bar-menu"]'); page.click('#pzone [data-p="bar-propose"]'); page.wait_for_selector("#chatcol .chat[data-agent=gremlin]")
+            check(f"{tag}: Propose opens Gremlin (not a form): the composer has the focus, nothing under the bar", count(page, "#pzone .pform") == 0 and page.evaluate("document.activeElement && document.activeElement.id") == "chatText")
             msg = "SYNTH-ACTION give Bo five points" if w == 1280 else "SYNTH-ACTION-OBJ give Cy two points"
             page.fill("#chatText", msg); page.click('#chatcol [data-c="send"]'); page.wait_for_selector("#chatLog .slip:not(.past):not(.refused)")
             slip = text(page, "#chatLog .slip:not(.past):not(.refused)")
             sl = slip.lower()
             who, pts = ("bo", "5") if w == 1280 else ("cy", "2")
-            check(f"{tag}: her draft is an action slip as the ballot shows one: 'Grant points', To and Points as labels and values, Touches 401 402, DRAFT, Lock it in", "grant points" in sl and f"to {who} points {pts} touches 401 402" in sl and sl.count("grant points") == 1 and "draft" in sl and page.locator('#chatLog .slip:not(.past) [data-c="lock"]').is_enabled(), slip)
-            check(f"{tag}: the Action chip is gone once she answered", page.locator("#chatcol .chip-intent").count() == 0)
+            check(f"{tag}: his draft is an action slip as the ballot shows one: 'Grant points', To and Points as labels and values, Touches 401 402, DRAFT, Lock it in", "grant points" in sl and f"to {who} points {pts} touches 401 402" in sl and sl.count("grant points") == 1 and "draft" in sl and page.locator('#chatLog .slip:not(.past) [data-c="lock"]').is_enabled(), slip)
             # the bar follows without a reload: a dashed DRAFT slot, not counted
             page.wait_for_function("document.querySelectorAll('#pzone .tkstep.pr .tkm.dr').length === 1")
             check(f"{tag}: the bar shows the action draft in a dashed slot, still '3 of 3 left'", left(page) == "3 of 3 left" and count(page, "#pzone .tkstep.pr .tkm.dr") == 1, text(page, "#pzone"))
-            shot(page, f"starling-action-slip-{tag}")
+            shot(page, f"gremlin-action-slip-{tag}")
             if w == 1280:
                 page.click('#chatLog .slip [data-c="lock"]'); wait_text(page, "#chatLog .slip", "LOCKED"); wait_text(page, "#pzone .tkstep.pr .tkdet", "2 of 3 left")
-                check(f"{tag}: Lock it in on her slip: LOCKED, a P-number in a filled slot, '2 of 3 left' in the bar and in her header", count(page, "#pzone .tkstep.pr .tkm.p") == 1 and count(page, "#pzone .tkstep.pr .tkm.dr") == 0 and text(page, "#chatcol .ch-row .n") == "2 of 3 left", text(page, "#pzone"))
+                check(f"{tag}: Lock it in on her slip: LOCKED, a P-number in a filled slot, '2 of 3 left' in the bar and in his general row", count(page, "#pzone .tkstep.pr .tkm.p") == 1 and count(page, "#pzone .tkstep.pr .tkm.dr") == 0 and text(page, "#chatcol .ch-row .n") == "2 of 3 left", text(page, "#pzone"))
                 page.click('#pzone [data-p="bar-open"]'); page.wait_for_selector("#pzone .pcard")
                 card = text(page, "#pzone .pcard")
                 check(f"{tag}: opened, the bar's card shows the action the same way (Grant points, To Bo, Points 5, Touches) with Unlock", "Grant points" in card and "Bo" in card and "Points 5" in card and "Touches" in card and count(page, '#pzone [data-p="unlock"]') == 1, card)
-                page.click('#pzone [data-p="unlock"]'); wait_text(page, "#pzone .tkstep.pr .tkdet", "3 of 3 left"); wait_text(page, "#chatLog", "UNLOCKED")   # her slip reloads after the bar repaints (refresh() fires syncChats without awaiting it)
-                check(f"{tag}: Unlock from the bar frees the slot, and her slip says UNLOCKED", count(page, "#pzone .tkstep.pr .tkm.p") == 0 and "UNLOCKED" in text(page, "#chatLog"), text(page, "#pzone"))
+                page.click('#pzone [data-p="unlock"]'); wait_text(page, "#pzone .tkstep.pr .tkdet", "3 of 3 left"); wait_text(page, "#chatLog", "UNLOCKED")   # his slip reloads after the bar repaints (refresh() fires syncChats without awaiting it)
+                check(f"{tag}: Unlock from the bar frees the slot, and his slip says UNLOCKED", count(page, "#pzone .tkstep.pr .tkm.p") == 0 and "UNLOCKED" in text(page, "#chatLog"), text(page, "#pzone"))
             check(f"{tag}: no page errors", not errors, str(errors)); c.close()
 
         # ---- no bar: a visitor, and a game before Start
@@ -266,7 +266,7 @@ with sync_playwright() as p:
         check("before Start: a joined player has no bar", page.locator("#pzone").is_hidden() and count(page, "#pzone .tk") == 0)
         c.close()
 
-    # ============================================================ nokey: Starling can't be reached
+    # ============================================================ nokey: Gremlin can't be reached
     if mode == "nokey":
         for w, h in [(1280, 900), (390, 844)]:
             tag = f"{w}-light"
@@ -274,13 +274,13 @@ with sync_playwright() as p:
             tab(page, "rules"); page.wait_for_selector("#chatcol .cnm small", state="attached"); tab(page, "summary")
             page.click('#pzone [data-p="bar-menu"]'); page.wait_for_selector("#pzone .pmenu")
             items = [re.sub(r"\s+", " ", t).strip().replace("→ ", "") for t in page.locator("#pzone .pmi").all_inner_texts()]
-            check(f"{tag}: the menu says 'Starling can't be reached' on Rule change and Action, and on nothing else", items == ["Rule change Starling can't be reached 103.1", "Commission 801.1", "Action Starling can't be reached 103.5"], str(items))
-            shot(page, f"menu-starling-down-{tag}")
-            page.click('#pzone [data-p="bar-rule"]'); page.wait_for_selector("#mroot .pmenu")
-            check(f"{tag}: Rule change opens the direct way: the Rulebook's 'Which block?' picker", page.locator("#tab-rules").get_attribute("aria-selected") == "true" and "Which block?" in text(page, "#mroot .mcard") and count(page, "#mroot .pmi") == 9)
+            check(f"{tag}: the menu says 'Gremlin can't be reached' on Propose and Action (the direct ways), and offers Action only now", items == ["Propose Gremlin can't be reached 103.1", "Action Gremlin can't be reached 103.5"], str(items))
+            shot(page, f"menu-gremlin-down-{tag}")
+            page.click('#pzone [data-p="bar-propose"]'); page.wait_for_selector("#mroot .pmenu")
+            check(f"{tag}: Propose opens the direct way: the Rulebook's 'Which block?' picker", page.locator("#tab-rules").get_attribute("aria-selected") == "true" and "Which block?" in text(page, "#mroot .mcard") and count(page, "#mroot .pmi") == 9)
             page.keyboard.press("Escape")
             page.locator('.bcard[data-card="401"]').click(); page.wait_for_selector("#mroot .mcard")
-            check(f"{tag}: and a rule card's one button is the direct form's, not Starling's", page.locator('#mroot [data-p="open"][data-n="401"]').count() == 1 and count(page, '#mroot [data-p="starling"]') == 0 and count(page, "#mroot .proposeact button") == 1)
+            check(f"{tag}: and a rule card's one button is the direct form's, not Gremlin's", page.locator('#mroot [data-p="open"][data-n="401"]').count() == 1 and count(page, '#mroot [data-p="starling"]') == 0 and count(page, "#mroot .proposeact button") == 1)
             page.keyboard.press("Escape")
             if w == 1280:
                 page.click('#pzone [data-p="bar-menu"]'); page.click('#pzone [data-p="bar-action"]'); page.wait_for_selector("#pzone .pcard.pform")
@@ -292,7 +292,7 @@ with sync_playwright() as p:
                 page.click('#pzone [data-p="confirm"]'); wait_text(page, "#pzone .tkstep.pr .tkdet", "2 of 3 left")
                 check(f"{tag}: Lock it in from the form: a filled slot, '2 of 3 left', the form is gone", count(page, "#pzone .tkstep.pr .tkm.p") == 1 and count(page, "#pzone .pform, #pzone .ruling") == 0, text(page, "#pzone"))
                 page.wait_for_selector("#pzone .pcard")   # the panel was open for the form: it stays open for the card
-                check(f"{tag}: its card has Unlock and no Open in Starling (she can't be reached)", count(page, '#pzone [data-p="unlock"]') == 1 and "Open in Starling" not in text(page, "#pzone"))
+                check(f"{tag}: its card has Unlock and no Open in Gremlin (he can't be reached)", count(page, '#pzone [data-p="unlock"]') == 1 and "Open in Gremlin" not in text(page, "#pzone"))
                 page.click('#pzone [data-p="unlock"]'); wait_text(page, "#pzone .tkstep.pr .tkdet", "3 of 3 left")
             check(f"{tag}: no page errors", not errors, str(errors)); c.close()
 
@@ -303,7 +303,7 @@ with sync_playwright() as p:
                 tag = f"{w}-{scheme}"
                 c, page, errors = new_page(b, w, h, scheme, ada_c)
                 tab(page, "rules"); page.wait_for_selector("#chatcol .cnm small", state="attached"); tab(page, "summary")
-                page.click('#pzone [data-p="bar-menu"]'); page.click('#pzone [data-p="bar-rule"]'); page.wait_for_selector("#mroot .pmenu")
+                page.click('#pzone [data-p="bar-menu"]'); page.click('#pzone [data-p="bar-propose"]'); page.wait_for_selector("#mroot .pmenu")
                 page.click('#mroot [data-p="add"][data-n="400"]'); page.wait_for_selector("#pfWords")
                 check(f"{tag}: Add a rule has a 'Needs everyone' toggle, off, with nothing said about it", page.locator('#mroot input[data-p="unanimous"]').count() == 1 and not page.locator('#mroot input[data-p="unanimous"]').is_checked() and count(page, "#mroot .pfu .rpill") == 0 and text(page, "#mroot .pfu") == "Needs everyone")
                 page.fill("#pfWords", "Every player starts with 5 points.")
@@ -320,7 +320,7 @@ with sync_playwright() as p:
                 slip = text(page, "#mroot .ruling")
                 check(f"{tag}: off again, the same words draft a majority rule: no 'marked unanimous', 'majority', no count of votes", "marked unanimous" not in slip and "majority" in slip and "needs 3 of 5" not in slip, slip)
                 page.click('#mroot [data-p="cancel"]')
-                page.click('#pzone [data-p="bar-menu"]'); page.click('#pzone [data-p="bar-rule"]'); page.wait_for_selector("#mroot .pmenu")
+                page.click('#pzone [data-p="bar-menu"]'); page.click('#pzone [data-p="bar-propose"]'); page.wait_for_selector("#mroot .pmenu")
                 page.click('#mroot [data-p="add"][data-n="400"]'); page.wait_for_selector("#pfWords")
                 check(f"{tag}: Cancel and open again: the toggle is off and the words are empty", not page.locator('#mroot input[data-p="unanimous"]').is_checked() and page.input_value("#pfWords") == "")
                 sideways(page, w, tag)

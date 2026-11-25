@@ -1,3 +1,5 @@
+> Superseded 2026-11-24: Starling was removed and Gremlin does everything she did (docs/workshop.md, "Gremlin's general conversation"). Kept as the record of how she was built.
+
 # Workshop step 2: Gremlin, catalog v1, art, then Starling (PLAN)
 
 Plan only, for Buster's OK (2026-11-20). Nothing here is built. It turns the decided design in [workshop.md](workshop.md) (Gremlin, Starling, the three moderators) and [catalog.md](catalog.md) (kinds, the registry, required attributes, art) into PRs, with model and image choices, costs, the safety design, the rule text each PR ships, and the questions left.
