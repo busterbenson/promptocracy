@@ -241,7 +241,9 @@ ${sl.kind !== "action" && (sl.after_text || sl.before_text) ? `<div class="tx cd
     col.hidden = !p;
     if (!p) return;
     const log0 = col.querySelector(".ch-log");
-    const atEnd = toEnd === true || !log0 || log0.scrollHeight - log0.scrollTop - log0.clientHeight < 80;
+    // whether to stay at the end is remembered (S.stick, set by the player's own scrolling), not read back from the old log: on iOS a
+    // scrollTop set during the redraw before can still be pending, so the old log reads as "at the top" and the next redraw kept that
+    const atEnd = toEnd === true || !log0 || S.stick !== false;
     const ta0 = col.querySelector("#chatText");
     const focus = ta0 && document.activeElement === ta0 ? [ta0.selectionStart, ta0.selectionEnd] : null;
     const ready = S.state ? S.state.ready : true;
@@ -362,6 +364,7 @@ ${sl.kind !== "action" && (sl.after_text || sl.before_text) ? `<div class="tx cd
   /** Scrolling to the top brings in the day before. @rule 106.7 */
   async function onScroll(e) {
     const log = e.target;
+    S.stick = log.scrollHeight - log.scrollTop - log.clientHeight < 80;
     if (log.scrollTop > 40 || !S.next || S.loading) return;
     S.loading = true;
     const before = log.scrollHeight, at = S.scope;
@@ -379,7 +382,7 @@ ${sl.kind !== "action" && (sl.after_text || sl.before_text) ? `<div class="tx cd
     S.busy = true; S.err = "";
     const optimistic = { id: -1, role: "player", body: text, date: S.state ? S.state.date : "", ticket: S.ticket };
     S.msgs.push(optimistic); S.draft = "";
-    draw();
+    S.stick = true; draw(true);   // your own message: to the end, and stay there for the answer
     const rule = agent.proposals ? S.rule : null, intent = agent.proposals && !rule ? S.intent : null;
     optimistic.rule = rule;
     const at = S.scope;   // the answer can take 30 s: if the window has moved to another ticket by then, it is not that window's line (rule 801.6)
