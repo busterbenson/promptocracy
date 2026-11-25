@@ -188,7 +188,7 @@ with sync_playwright() as p:
         draft = page.locator("#pzone .pcard.draft")
         draft.locator('[data-p="bar-starling"]').click(); page.wait_for_timeout(500)
         check("1280-light: Open in Starling opens her window on the Rulebook tab", page.locator("#tab-rules").get_attribute("aria-selected") == "true" and page.locator("#chatcol .chat[data-agent=starling]").is_visible())
-        check("1280-light: her header's count is the bar's count ('2 of 3 left' in both: one number)", text(page, "#chatcol .ch-today .n") == left(page) == "2 of 3 left", text(page, "#chatcol .ch-today .n") + " / " + left(page))
+        check("1280-light: her header's count is the bar's count ('2 of 3 left' in both: one number)", text(page, "#chatcol .ch-row .n") == left(page) == "2 of 3 left", text(page, "#chatcol .ch-row .n") + " / " + left(page))
         tab(page, "summary")
         page.click('#pzone [data-p="bar-menu"]'); page.wait_for_selector("#pzone .pmenu")
         page.locator('#pzone .pcard.draft [data-p="lock"]').click(); wait_text(page, "#pzone .tkstep.pr .tkdet", "1 of 3 left")   # with the menu open: the first click acts, it does not only close the menu
@@ -250,7 +250,7 @@ with sync_playwright() as p:
             shot(page, f"starling-action-slip-{tag}")
             if w == 1280:
                 page.click('#chatLog .slip [data-c="lock"]'); wait_text(page, "#chatLog .slip", "LOCKED"); wait_text(page, "#pzone .tkstep.pr .tkdet", "2 of 3 left")
-                check(f"{tag}: Lock it in on her slip: LOCKED, a P-number in a filled slot, '2 of 3 left' in the bar and in her header", count(page, "#pzone .tkstep.pr .tkm.p") == 1 and count(page, "#pzone .tkstep.pr .tkm.dr") == 0 and text(page, "#chatcol .ch-today .n") == "2 of 3 left", text(page, "#pzone"))
+                check(f"{tag}: Lock it in on her slip: LOCKED, a P-number in a filled slot, '2 of 3 left' in the bar and in her header", count(page, "#pzone .tkstep.pr .tkm.p") == 1 and count(page, "#pzone .tkstep.pr .tkm.dr") == 0 and text(page, "#chatcol .ch-row .n") == "2 of 3 left", text(page, "#pzone"))
                 page.click('#pzone [data-p="bar-open"]'); page.wait_for_selector("#pzone .pcard")
                 card = text(page, "#pzone .pcard")
                 check(f"{tag}: opened, the bar's card shows the action the same way (Grant points, To Bo, Points 5, Touches) with Unlock", "Grant points" in card and "Bo" in card and "Points 5" in card and "Touches" in card and count(page, '#pzone [data-p="unlock"]') == 1, card)

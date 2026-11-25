@@ -364,6 +364,16 @@ with sync_playwright() as p:
         page.click("#tab-workshop"); page.wait_for_selector("#chatcol .ch-row")
         check(f"1280-{scheme} strip (no tickets): only New, filled", chips(page).count() == 1 and page.locator("#chatcol .ch-row .it.new.first").count() == 1 and "New" in text(page, "#chatcol .ch-row"), text(page, "#chatcol .ch-row"))
         shot(page, f"strip-empty-1280-{scheme}")
+        if scheme == "light":
+            # after End turn, New can't be used: it is disabled and its reason shows beside it, in the window (a title tooltip is invisible on touch)
+            if page.locator('#chatcol [data-c="min"]').is_visible(): page.click('#chatcol [data-c="min"]'); page.wait_for_timeout(100)
+            page.click('#pzone [data-endturn="ask"]'); page.click('#pzone [data-endturn="yes"]'); page.wait_for_timeout(800)
+            page.reload(wait_until="domcontentloaded"); page.wait_for_selector("#tab-workshop"); page.wait_for_function("document.getElementById('rules').textContent.indexOf('Loading') < 0")
+            page.click("#tab-workshop"); page.wait_for_timeout(500)
+            if not page.locator("#chatcol .ch-row").is_visible(): page.click("#chatfab"); page.wait_for_selector("#chatcol .ch-row")
+            why = text(page, "#chatcol .ch-why") if page.locator("#chatcol .ch-why").count() else ""
+            check("1280-light strip after End turn: New is disabled and the reason is shown beside it, not only as a tooltip", page.locator('#chatcol [data-c="new"]').is_disabled() and len(why) > 5 and page.locator('#chatcol [data-c="new"][title]').count() == 0, why)
+            shot(page, "strip-ended-1280-light")
         check(f"1280-{scheme} strip (no tickets): no console errors", not errors, str(errors)); c.close()
     c, page, errors = new_page(b, 1280, 900, "light")
     page.click("#tab-workshop"); page.wait_for_timeout(400)

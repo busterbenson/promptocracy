@@ -657,6 +657,7 @@ button.pill[aria-pressed="true"]{background:color-mix(in srgb,var(--accent) 16%,
 .chat .ch-row{display:flex;align-items:center;gap:8px;min-height:44px;padding:6px 12px;border-bottom:1px solid var(--line);background:var(--chat);flex:none;min-width:0;font-family:var(--font-mono);font-size:.6rem}
 .chat .ch-row .k{flex:none;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-muted)}
 .chat .ch-row .its{display:flex;align-items:center;gap:6px;flex:1;min-width:0;overflow-x:auto;overscroll-behavior-x:contain;scrollbar-width:none;position:relative}
+.chat .ch-why{flex:none;padding:4px 12px 6px;border-bottom:1px solid var(--line);background:var(--chat);font-family:var(--font-mono);font-size:.62rem;color:var(--ink-muted)}
 .chat .ch-row .n{flex:none;color:var(--ink-muted)}
 .chat .ch-row .it{flex:none;display:inline-flex;align-items:center;gap:6px;min-height:32px;max-width:15rem;padding:2px 8px 2px 3px;border:1.5px solid var(--line);border-radius:999px;background:var(--chat);color:var(--ink);font-family:var(--font-body);font-size:.78rem}
 .chat .ch-row button.it{cursor:pointer}

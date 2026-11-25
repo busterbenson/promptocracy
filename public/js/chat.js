@@ -180,8 +180,10 @@ ${sl.kind !== "action" && (sl.after_text || sl.before_text) ? `<div class="tx cd
   function ticketsRow() {
     const can = canNew ? canNew() : { allowed: true };
     const items = (S.tickets || []).map((t) => `<button type="button" class="it" data-c="pick" data-n="${esc(t.n)}" aria-pressed="${S.ticket === t.n}"${S.busy ? " disabled" : ""}><span class="wpill">${esc(t.n)}</span><span class="tt">${esc(t.title || "Untitled")}</span><span class="pill tstate" data-state="${esc(t.state)}">${esc(t.state)}</span></button>`);
-    const nw = `<button type="button" class="it new${S.ticket ? "" : " first"}" data-c="new"${S.busy || !can.allowed ? " disabled" : ""}${!can.allowed && can.reason ? ` title="${esc(can.reason)}"` : ""}>+ New</button>`;
-    return rowHTML("Tickets", items, nw);
+    const nw = `<button type="button" class="it new${S.ticket ? "" : " first"}" data-c="new"${S.busy || !can.allowed ? " disabled" : ""}>+ New</button>`;
+    // a disabled New says why, beside it (AGENTS.md: a reason next to a disabled control; a title tooltip is invisible on touch)
+    const why = !S.busy && !can.allowed && can.reason ? `<div class="ch-why" role="note">${esc(can.reason)}</div>` : "";
+    return rowHTML("Tickets", items, nw) + why;
   }
   const rowFor = () => (agent.proposals ? todayRow() : ticketsRow());
 
