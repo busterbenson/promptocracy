@@ -347,6 +347,15 @@ with sync_playwright() as p:
             check(f"{tag}: {TA}'s ticket read is out and held while {TB} is picked", len(heldp) == 1)
             heldp[0].continue_(); page.wait_for_timeout(800); page.unroute(re.compile(rf"/shop/api/tickets/{TA}$"))
             check(f"{tag}: {TA}'s late read does not land: {TB} stays the selected pill, the chip, the slip and the conversation (rule 801.6)", selected(page).get_attribute("data-n") == TB and TB in text(page, ".ch-in .chip") and page.locator(f'#chatLog .slip[aria-label="{TB}"]').count() == 1 and not page.locator(f'#chatLog .slip[aria-label="{TA}"]').count(), text(page, ".ch-in"))
+            # a send while a switch is still loading: nothing goes out until the switch lands, so a message can't reach a ticket other than the one on screen (rule 801.6)
+            posts, heldq = [], []
+            page.on("request", lambda r: posts.append(r.url) if r.method == "POST" and "/api/chat/gremlin" in r.url else None)
+            page.route(re.compile(rf"/shop/api/tickets/{TA}$"), lambda route: heldq.append(route) if route.request.method == "GET" else route.continue_())
+            chip(page, TA).click(); page.wait_for_timeout(300)
+            page.fill("#chatText", "is this one still a draft"); page.click('#chatcol [data-c="send"]'); page.wait_for_timeout(400)
+            check(f"{tag}: a send while {TA}'s read is still out sends nothing ({TB}'s conversation is still on screen), and the words stay in the box", len(heldq) == 1 and posts == [] and page.input_value("#chatText") == "is this one still a draft", f"held {len(heldq)} posts {posts}")
+            heldq[0].continue_(); page.wait_for_function(f"document.querySelector('#chatLog .slip') && document.querySelector('#chatLog .slip').getAttribute('aria-label') === '{TA}'"); page.unroute(re.compile(rf"/shop/api/tickets/{TA}$"))
+            page.fill("#chatText", "")
             # New: what "Commission something" does: a draft (her blank one again if she has one) and the chat attached to it
             page.click('#chatcol [data-c="new"]')
             page.wait_for_function(f"(() => {{ const s = document.querySelector('#chatcol .ch-row .it[aria-pressed=true]'); return !!s && s.dataset.n !== '{TA}' && s.dataset.n !== '{TB}'; }})()")

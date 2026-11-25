@@ -375,7 +375,7 @@ ${sl.kind !== "action" && (sl.after_text || sl.before_text) ? `<div class="tx cd
   /** One turn: the message goes in, his answer and the ticket page come back. @rule 106.3, 106.7 */
   async function send() {
     const text = S.draft.trim();
-    if (!text || S.busy) return;
+    if (!text || S.busy || S.switching) return;   // mid-switch the box's ticket is not yet the one on screen: nothing is sent until the switch lands (rule 801.6)
     S.busy = true; S.err = "";
     const optimistic = { id: -1, role: "player", body: text, date: S.state ? S.state.date : "", ticket: S.ticket };
     S.msgs.push(optimistic); S.draft = "";
@@ -466,12 +466,19 @@ ${sl.kind !== "action" && (sl.after_text || sl.before_text) ? `<div class="tx cd
   async function attach(n, o = {}) {
     const pick = ++S.pickSeq;
     S.ticket = n || null;
+    S.switching = true;   // send() waits: the box's ticket changes now, the slip and conversation on screen only when the reads land
     S.slipSeq++;   // an in-flight ticket read from before this pick is not this ticket's
-    if (n) await loadSlip(n); else S.slip = null;
-    if (pick !== S.pickSeq) return;   // two quick picks: the later one finishes the switch, so the box, the slip and the conversation stay on one ticket (rule 801.6)
-    const switched = !agent.proposals && S.loaded && S.scope !== (S.ticket || null);
-    if (switched) await showScope(S.ticket);   // the window shows this ticket's conversation (rule 801.6)
-    if (o.open) open(); else draw(switched);
+    try {
+      if (n) await loadSlip(n); else S.slip = null;
+      if (pick !== S.pickSeq) return;   // two quick picks: the later one finishes the switch, so the box, the slip and the conversation stay on one ticket (rule 801.6)
+      const switched = !agent.proposals && S.loaded && S.scope !== (S.ticket || null);
+      if (switched) await showScope(S.ticket);   // the window shows this ticket's conversation (rule 801.6)
+      if (pick !== S.pickSeq) return;
+      S.switching = false;
+      if (o.open) open(); else draw(switched);
+    } finally {
+      if (pick === S.pickSeq) S.switching = false;
+    }
   }
   /** Can he be reached? True until the server says there is no key. @rule 106.3 */
   const ready = () => !S.state || S.state.ready !== false;
