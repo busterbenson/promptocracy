@@ -22,7 +22,8 @@ try {
   const far = new Date(Date.now() + 8 * 3600e3).toISOString();
   const at = (n, x, y, extra = "") => `UPDATE players SET x = ${x}, y = ${y}${extra} WHERE game_id = '${gid}' AND display_name = '${n}'`;
   d1(state, [
-    `UPDATE games SET status = 'playing', day = 3, phase = 'open' WHERE id = '${gid}'`,
+    // players start with 5 hearts here, the Blob's catalog says 3: its card must draw its own scale (3 of 3), not the players' (3 of 5)
+    `UPDATE games SET status = 'playing', day = 3, phase = 'open', settings = json_set(settings, '$."hearts.start"', 5) WHERE id = '${gid}'`,
     `INSERT INTO days (game_id, n, starts_at, ends_at, status, electorate) VALUES ('${gid}', 3, '2000-01-01T00:00:00.000Z', '${far}', 'open', 2)`,
     at("Ana", 0, 0, ", hearts = 3"), at("Bo", -1, 0, ", hearts = 2"),
     // the Blob at 2,1 (resting, appeared day 1); a second one shares Bo's tile, where the player's card still wins
