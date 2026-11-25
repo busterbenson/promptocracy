@@ -63,6 +63,9 @@ export function codeChecks(c, res, night) {
     const ownSay = turns.find((t) => !t.asked_for && /not wired|isn'?t wired|can'?t (change|draft)|won'?t draft|cannot/i.test(t.say || ""));
     if (e.refused_reason) out.push(chk(`refused as "${e.refused_reason}" (by the drafter, or in his own words)`, res.refusal?.reason === e.refused_reason || (!d && !!ownSay), res.refusal ? `${res.refusal.reason}: ${res.refusal.message}` : ownSay ? `her own line: ${ownSay.say.slice(0, 120)}` : "no refusal"));
     if (e.no_slip) out.push(chk("no slip was made", !d, d ? d.head : ""));
+    // no dead ends (Buster, 2026-11-24): what he cannot do as asked, he does in its nearest allowed version (a draft) or as concrete options, never a bare refusal
+    if (e.draft_or_options) out.push(chk("the nearest allowed version is drafted, or concrete options are offered", !!d || turns.some((t) => (t.options || []).length >= 2), d ? d.head : "no draft, no options"));
+    if (e.says_why) out.push(chk("says in a line why the original can't be done", turns.some((t) => new RegExp(e.says_why, "i").test(t.say || "")), (turns[0]?.say || "").slice(0, 160)));
     if (e.refusal_cites) out.push(chk(`refusal names ${e.refusal_cites.join(" or ")}`, e.refusal_cites.some((r) => (res.refusal?.message || "").includes(r) || (ownSay?.say || "").includes(r)), (res.refusal?.message || ownSay?.say || "").slice(0, 160), !res.refusal));
     if (e.no_ballot_claim) {
       const claim = turns.find((t) => /(locked in|is on (tomorrow'?s|the) ballot|i('ve| have) (drafted|locked))/i.test(t.say || "") && !/(can'?t|won'?t|only you|your (own )?click|not (been )?(drafted|locked))/i.test(t.say || ""));

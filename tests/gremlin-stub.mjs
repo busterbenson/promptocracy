@@ -71,7 +71,7 @@ export function createStub() {
       };
   GENERAL_SYNTH["SYNTH-C-ESC"] = SYNTH["SYNTH-C-ESC"];   // an escalation asked outside any ticket (tests/threads.mjs)
   const calls = [];                                 // every request the stub saw
-  const stubState = { mode: "ok", excuse: "ok", before: null, script: [], looks: [], drafter: null, retry: null };   // looks: the answers to the next pictures shown to the model (the art check), "yes" | "no" | "500" | "garbled" | "hang"; an empty list answers yes   // script: answers for the next thread calls, in order (the browser test's natural wording)
+  const stubState = { mode: "ok", excuse: "ok", before: null, script: [], looks: [], drafter: null, retry: null, retryFail: false };   // looks: the answers to the next pictures shown to the model (the art check), "yes" | "no" | "500" | "garbled" | "hang"; an empty list answers yes   // script: answers for the next thread calls, in order (the browser test's natural wording)
   const stubModel = createServer(async (req, res) => {
     const chunks = []; for await (const c of req) chunks.push(c);
     const body = JSON.parse(Buffer.concat(chunks).toString());
@@ -104,6 +104,7 @@ export function createStub() {
     if (kind === "general") {
       const msg = lastText.slice(lastText.lastIndexOf("The player's new message:"));   // only the NEW message picks the answer: the slip and the rule card above it carry other words
       const retry = lastText.includes("Your draft this turn was refused by the drafter");
+      if (retry && stubState.retryFail) return send(500, { error: {} });   // the second call fails (tests/gremlin-general.mjs: the first call is logged once)
       if (retry && stubState.retry) return send(200, { content: [{ type: "text", text: J(stubState.retry) }], stop_reason: "end_turn", usage: { input_tokens: 400, output_tokens: 80 } });
       const m = Object.keys(GENERAL_SYNTH).sort((a, b) => b.length - a.length).find((k) => msg.includes(k));
       if (m) return send(200, { content: [{ type: "text", text: J(GENERAL_SYNTH[m]) }], stop_reason: "end_turn", usage: { input_tokens: 400, output_tokens: 80, cache_read_input_tokens: 7305 } });

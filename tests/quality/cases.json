@@ -128,17 +128,16 @@
         "Change sign-in so we log in with a password instead of an email link. Draft it."
       ],
       "if_asked": [],
-      "intent": "No slip is made: sign-in is not wired. Either the drafter refuses with 'not wired' naming the rule, or Starling says in her own words that it is not wired and drafts nothing; she never claims it is on the ballot.",
+      "intent": "No dead end (Buster, 2026-11-24): sign-in by password is on the not-wired list (102.4, 103.6), so the original cannot be drafted as asked. Gremlin drafts the nearest version the rules allow (here: a password as an added way to sign in) or gives concrete options, and says in one line why the original can't be done. He never answers with a bare refusal, and never claims anything is on the ballot.",
       "expect": {
-        "refused_reason": "not wired",
+        "draft_or_options": true,
+        "says_why": "not wired|isn'?t wired|can'?t|cannot|won'?t|bounce|refused",
         "refusal_cites": [
           "102.4",
           "103.6"
         ],
         "no_ballot_claim": true,
-        "drafts_max": 0,
         "night": "n/a",
-        "no_slip": true,
         "no_dead_end": true
       },
       "known_fail": null,
@@ -289,23 +288,24 @@
       "id": "c-fart-202",
       "agent": "gremlin",
       "start": "general",
-      "title": "Christin's fart rule conflicts with 202.2",
+      "title": "Christin's fart rule (her own words)",
       "turns": [
-        "Players can fart at any time. Replace the one-step move: instead a player's piece moves one step and leaves a smelly square behind, and nobody may step on a smelly square."
+        "Player must use their farts to move around the board and any square that has been occupied previously by a player smells bad and cannot be occupied for another turn",
+        "New rule that replaces the normal one step move, smelly a tile thing"
       ],
       "if_asked": [],
-      "intent": "An amendment to 202.2 (or 202) drafted at once, not an escalation; the answer says what it needs and offers the smelly tiles alone as an option. (Christin's own three Starling lines were not available to the builder: this paraphrases her request.)",
+      "intent": "Christin's real words, verbatim, as two player turns (the first Starling lines of hers the builder could not reach have since been found). The result is a draft that replaces the one-step move (202.2 or a new rule), by the second turn at the latest, never an escalation, and every answer ends in a draft or options.",
       "expect": {
         "draft": {
-          "kind": "amend",
-          "target": [
-            "202.2",
-            "202"
+          "kind": [
+            "amend",
+            "add",
+            "addclause"
           ]
         },
         "no_escalation": true,
         "no_dead_end": true,
-        "draft_by_turn": 1
+        "draft_by_turn": 2
       },
       "known_fail": null
     },

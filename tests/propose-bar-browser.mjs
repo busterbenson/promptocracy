@@ -1,7 +1,7 @@
 // The propose bar in real Chromium (tests/browser-propose-bar.py): one bar above the tabs on every tab (rules 103.1, 103.2, 103.3, 103.5), its states (3, 2 with a
-// draft, 0 of 3 left; turn ended; the midnight lock; Starling out; no bar for a visitor or before Start), the Propose menu and where each item goes (Rule change and
-// Action open Starling, Commission opens the Workshop), the cards that open under the bar (Lock it in, Unlock, Open in Starling), a rule card's one Propose button,
-// an action drafted by Starling and locked in from her slip, and the direct form when she can't be reached. A real `wrangler dev` on a throwaway LOCAL D1 with a local
+// draft, 0 of 3 left; turn ended; the midnight lock; Gremlin out; no bar for a visitor or before Start), the Propose menu (one entry: Propose opens Gremlin, who works out
+// the kind), the cards that open under the bar (Lock it in, Unlock, Open in Gremlin), a rule card's one Propose button,
+// an action drafted by Gremlin and locked in from his slip, and the direct rule form when he can't be reached. A real `wrangler dev` on a throwaway LOCAL D1 with a local
 // stub for the model (tests/gremlin-stub.mjs): the live API is never called. Set PROPOSE_BAR_SHOTS=<dir> to keep the screenshots. Run: node tests/propose-bar-browser.mjs
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -35,7 +35,7 @@ try {
   const ok = (r, what) => { if (r.status !== 200) throw new Error(`${what}: ${r.status} ${r.text}`); return r; };
   const CH = "/shop/api/chat/gremlin", PR = "/shop/api/proposals";
   const lockIn = async (c, kind, target) => { const r = ok(await c.post(PR, { kind, target }), `draft ${target}`); return ok(await c.post(`${PR}/${r.data.proposal.id}/confirm`, {}), `lock ${target}`); };
-  // Bo: one locked in and one draft from Starling (2 of 3 left). Cy: all three locked in (0 left). Eve: one locked in, then End turn.
+  // Bo: one locked in and one draft from Gremlin (2 of 3 left). Cy: all three locked in (0 left). Eve: one locked in, then End turn.
   await lockIn(P.Bo, "mark", "402");
   ok(await P.Bo.post(CH, { rule: "401", body: REC["d-amend"].message }), "bo draft");
   for (const t of ["401", "402", "403"]) await lockIn(P.Cy, "mark", t);
@@ -48,7 +48,7 @@ try {
     process.stdout.write(r.stdout);
   };
   await go("main", srv.base);
-  // Starling out: the same server without the model key (a restart; the sessions live in the database)
+  // Gremlin out: the same server without the model key (a restart; the sessions live in the database)
   await srv.stop();
   srv = await startServer(state, SRV_PORT, noKey);
   await go("nokey", srv.base);

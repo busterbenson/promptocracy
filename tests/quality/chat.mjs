@@ -3,7 +3,7 @@
 // message, and a refused draft is retried once, as the route does (src/routes/api-chat.ts), and a draft goes through the REAL drafter pipeline (tests/quality/pipeline.mjs). History, slip and ticket are
 // held in memory, built the way the route builds them (api-chat.ts generalTurn / ticketTurn); no database (plan section 1).
 import { CHAT_TIMEOUT_MS, MODEL, MOODS, OUTPUT_CAP_TOKENS, answerSchema as gremlinSchema, gremlinRequest, moodOf, readGremlinAnswer, systemStatic as gremlinSystem } from "../../src/lib/gremlin.js";
-import { generalSchema, plainForQuote, readGeneralAnswer, generalRequest, systemStatic as generalSystem } from "../../src/lib/gremlin-rules.js";
+import { checkQuote, generalSchema, plainForQuote, readGeneralAnswer, generalRequest, systemStatic as generalSystem } from "../../src/lib/gremlin-rules.js";
 import { STARTER_CATALOG } from "../lib.mjs";
 import { CapReached } from "./lib.mjs";
 import { pipeline } from "./pipeline.mjs";
@@ -12,6 +12,11 @@ export const PLAYERS = [{ id: "ada", name: "Ada" }, { id: "bo", name: "Bo" }, { 
 export const LOCAL_DATE = "2026-11-24";
 const PER_DAY = 3, CEILING = 25;
 const clip = (s, n = 4000) => String(s ?? "").slice(0, n);
+
+/** The quotes of a raw answer that the rulebook check dropped, with the number and the first words, so a drop can be read from the page (it is only a reason in the stored line). */
+function droppedQuotes(text, book) {
+  try { return (JSON.parse(text).quotes || []).map((q) => ({ num: q?.num, text: clip(q?.text, 240), why: checkQuote(book, q).dropped })).filter((q) => q.why); } catch { return []; }
+}
 
 /** The scripted lines of one case, as a generator of "what to send next" given what has happened so far. */
 function nextLine(c, sent, state) {
@@ -57,6 +62,7 @@ async function generalCase(c, x, res, o) {
     let a = readGeneralAnswer(r.text, { book: x.book, systemText: generalSystem(), rulesPlain: plainForQuote(x.rulesMd), playerText: message });
     turn.canary_or_prompt_leak = !a.ok && a.code === "invalid";
     if (!a.ok) { turn.error = `unreadable answer: ${a.code} ${clip(a.reason, 120)}`; res.error = turn.error; return; }
+    if (a.dropped.length) turn.dropped_quotes = droppedQuotes(r.text, x.book);   // which quotes, so a drop can be read from the page
     Object.assign(turn, { say: a.say, quotes: a.quotes, dropped: a.dropped, escalate: a.escalate, options: a.options, guesses: a.guesses, commission: a.commission, outcome: "said" });
     // a commission asked here: the site opens a ticket and the message goes there (one move a message): the case continues on a ticket with the rest of the script
     if (a.commission && !a.draft && !moved) {

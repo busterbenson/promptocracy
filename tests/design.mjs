@@ -434,7 +434,7 @@ console.log("the propose bar (rules 103.1, 103.2, 103.3, 103.5): every state, an
   check("Propose opens Gremlin's general conversation (the menu closes); nothing else rides with it", went.join() === 'helper:{}' && !/pmenu tkmenu/.test(P.barHTML()), went.join());
   world.star = false; await P.click({ dataset: { p: "bar-menu" } });
   b = P.barHTML();
-  check("Gremlin can't be reached: the menu says so on Propose", n(b, /Gremlin can&#39;t be reached/g) === 1, b);
+  check("Gremlin can't be reached: the menu says so on Propose and on Action, the direct ways (an action needs no model to draft: rule 103.5)", n(b, /Gremlin can&#39;t be reached/g) === 2 && /data-p="bar-action"/.test(b), b);
   went.length = 0; await P.click({ dataset: { p: "bar-propose" } });
   check("...and Propose opens the direct way (the Rulebook's block picker), not Gremlin", went.join() === "tab:rules,picker", went.join());
   await P.click({ dataset: { p: "cancel" } });

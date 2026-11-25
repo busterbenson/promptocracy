@@ -363,6 +363,13 @@ try {
     const rt2 = await say(Ana, "SYNTH-G-REFUSED-THEN fix points again");
     stubState.retry = null;
     check("when the second draft is refused too there is no third call: his words and the refusal are shown", generalCallsNow() === g2 + 2 && !slipOf(rt2) && !!rt2.data.messages[1].refused);
+    // the retry call itself fails: his first answer stands and its call is logged ONCE (it was logged twice: when the retry began and again with the stored line)
+    const c0 = acalls("purpose = 'chat'").length;
+    stubState.retryFail = true;
+    const rf = await say(Ana, "SYNTH-G-REFUSED-THEN fix points once more");
+    stubState.retryFail = false;
+    const rfCalls = acalls("purpose = 'chat'").slice(c0);
+    check("when the retry call fails, his first answer stands with the refusal and its call is logged once, beside one row for the failed retry", rf.status === 200 && !slipOf(rf) && !!rf.data.messages[1].refused && /Drafting it/.test(rf.data.messages[1].body) && rfCalls.length === 2 && rfCalls.filter((c) => /retry after refusal failed/.test(c.reason || "")).length === 1 && rfCalls.filter((c) => /draft refused/.test(c.reason || "") && !/retry/.test(c.reason || "")).length === 1, J(rfCalls.map((c) => [c.outcome, c.reason])));
     const op = await say(Ana, "SYNTH-G-OPTIONS something about movement");
     check("options are read as at most three distinct choices and stored on the line; guesses are shown only beside a draft", op.data.messages[1].options.length === 3 && op.data.messages[1].guesses === undefined);
   }

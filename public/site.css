@@ -494,6 +494,7 @@ button.wpill:hover{background:var(--surface-2)}
 .wpill.big{font-size:1rem;padding:4px 14px}
 .tstate[data-state="Ready"],.tstate[data-state="Approved"],.tstate[data-state="Building"],.tstate[data-state="Done"]{border-color:var(--accent);color:var(--accent)}
 .tstate[data-state="Draft"],.tstate[data-state="Ready"],.tstate[data-state="Shelved"]{border-style:dashed}
+.tstate[data-state="Locked"]{border-color:var(--accent);color:var(--accent)}
 .tstate[data-state="Refused"],.tstate[data-state="Failed"]{border-color:var(--err);color:var(--err)}
 .tstate[data-state="Escalated"]{background:var(--warm1);border-color:var(--warm-line);color:var(--ink)}
 .tfilter{display:flex;flex-wrap:wrap;gap:6px;padding:4px 0 8px}

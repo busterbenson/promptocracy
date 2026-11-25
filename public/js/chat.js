@@ -41,9 +41,11 @@ const byDraftThenNewest = (a, b) => (b.state === "Draft") - (a.state === "Draft"
 const LEFT_SHOWN = 10;   // "N left" appears in the last ten messages of the day
 
 export function createChat({ api, root, me, slug, agent = AGENTS.gremlin, rpill, wpill, onTicket, onProposals, onSlip, onNew, canNew, started = () => true }) {
-  const S = { slipSeq: 0, pickSeq: 0, msgs: [], next: null, state: null, tickets: [], ticket: null, scope: undefined, seq: 0, rule: null, intent: null, live: null, slips: {}, lockErr: {}, slip: null, busy: false, draft: "", err: "", sheet: false, open: true, loaded: false, loading: false, tab: "", note: "" };
+  const S = { slipSeq: 0, pickSeq: 0, msgs: [], next: null, state: null, tickets: [], proposals: [], pin: null, ticket: null, scope: undefined, seq: 0, rule: null, intent: null, live: null, slips: {}, lockErr: {}, slip: null, busy: false, draft: "", err: "", sheet: false, open: true, loaded: false, loading: false, tab: "", note: "" };
   const col = root.querySelector("#chatcol"), fab = root.querySelector("#chatfab");
   const mine = () => true;
+  /** The strip's two lists as the server last sent them: your tickets and proposals not yet voted on. @rule 103.1, 801.6 */
+  const strip = (d) => { if (d.tickets) S.tickets = d.tickets; if (d.proposals) S.proposals = d.proposals; };
   /** The general conversation: the one outside any ticket, where rule changes and actions are drafted and shown as slips (rule 801.6). */
   const general = () => !S.ticket;
   if (!document.getElementById("chat-symbols")) { const d = document.createElement("div"); d.id = "chat-symbols"; d.innerHTML = SYMBOLS; document.body.appendChild(d); }
@@ -129,6 +131,7 @@ ${refused ? `<div class="tx">${esc(last.refusal)}</div>` : ""}
   const alive = (sl) => !!sl && (sl.status === "draft" || sl.status === "confirmed");
   /** The proposal the slip at the bottom of the log shows: the last one her lines pointed at, while it is still a draft or locked in. @rule 103.1 */
   function liveId() {
+    if (S.pin && alive(S.slips[S.pin])) return S.pin;   // the one picked in the strip
     const last = [...S.msgs].reverse().find((m) => m.proposal && S.slips[m.proposal]);
     // no loaded line points at a slip (the draft is older than the page of history): the server names the newest one
     const id = last ? last.proposal : S.live;
@@ -176,14 +179,20 @@ ${sl.kind !== "action" && (sl.after_text || sl.before_text) ? `<div class="tx cd
     if (!t) return "";
     return rowHTML("Today", (t.list || []).map((n) => `<span class="it">${ppill(n)}</span>`), `<span class="n">${esc(Math.max(0, t.limit - t.made))} of ${esc(t.limit)} left</span>`);
   }
-  /** "Tickets  W3 W2  + New": your tickets not yet voted on, with their state; the attached one is selected, and with none attached New is the filled one. @rule 801.6 */
+  /**
+   * "Yours  Draft P13  W3 W2  + New": your proposals and tickets not yet voted on, drafts first and then newest, with their state. A P-pill shows that
+   * proposal's slip in the general conversation; a W-pill opens that ticket's conversation. The selected one is pressed; with none attached New is
+   * the filled one. @rule 103.1, 801.6
+   */
   function ticketsRow() {
     const can = canNew ? canNew() : { allowed: true };
-    const items = (S.tickets || []).map((t) => `<button type="button" class="it" data-c="pick" data-n="${esc(t.n)}" aria-pressed="${S.ticket === t.n}"${S.busy ? " disabled" : ""}><span class="wpill">${esc(t.n)}</span><span class="tt">${esc(t.title || "Untitled")}</span><span class="pill tstate" data-state="${esc(t.state)}">${esc(t.state)}</span></button>`);
+    const liveP = general() ? liveId() : null;
+    const props = (S.proposals || []).map((x) => `<button type="button" class="it" data-c="pickp" data-id="${esc(x.id)}" aria-pressed="${liveP === x.id}"${S.busy ? " disabled" : ""}>${ppill(x.n || "Draft")}<span class="tt">${esc(x.head || "")}</span>${x.n ? `<span class="pill tstate" data-state="${esc(x.state)}">${esc(x.state)}</span>` : ""}</button>`);
+    const items = props.concat((S.tickets || []).map((t) => `<button type="button" class="it" data-c="pick" data-n="${esc(t.n)}" aria-pressed="${S.ticket === t.n}"${S.busy ? " disabled" : ""}><span class="wpill">${esc(t.n)}</span><span class="tt">${esc(t.title || "Untitled")}</span><span class="pill tstate" data-state="${esc(t.state)}">${esc(t.state)}</span></button>`));
     const nw = `<button type="button" class="it new${S.ticket ? "" : " first"}" data-c="new"${S.busy || !can.allowed ? " disabled" : ""}>+ New</button>`;
     // a disabled New says why, beside it (AGENTS.md: a reason next to a disabled control; a title tooltip is invisible on touch)
     const why = !S.busy && !can.allowed && can.reason ? `<div class="ch-why" role="note">${esc(can.reason)}</div>` : "";
-    return rowHTML("Tickets", items, nw) + why;
+    return rowHTML("Yours", items, nw) + why;
   }
   const rowFor = () => ticketsRow() + (general() ? todayRow() : "");
 
@@ -316,7 +325,7 @@ ${sl.kind !== "action" && (sl.after_text || sl.before_text) ? `<div class="tx cd
     const at = S.scope;
     const r = await api(historyPath(at));
     if (r.ok && S.scope === at) {   // an answer that comes back after the window moved to another ticket is that ticket's no longer (rule 801.6)
-      S.state = r.data.state; if (r.data.tickets) S.tickets = r.data.tickets;
+      S.state = r.data.state; strip(r.data);
       if (r.data.slips) S.slips = { ...S.slips, ...r.data.slips };
       if (r.data.live !== undefined) S.live = r.data.live;
       const have = new Set(S.msgs.map((m) => m.id));
@@ -341,12 +350,12 @@ ${sl.kind !== "action" && (sl.after_text || sl.before_text) ? `<div class="tx cd
     S.loading = false;
     // a ticket picked while this first read was out ("Commission something", "Talk to Gremlin"): its answer is the other conversation's, so only the window's state is kept and that ticket's own log is read (rule 801.6)
     if (r.ok && (S.ticket || null) !== (asked || null)) {
-      S.state = r.data.state; S.tickets = r.data.tickets || S.tickets; S.slips = r.data.slips || {}; S.live = r.data.live || null; S.loaded = true; S.err = "";
+      S.state = r.data.state; strip(r.data); S.slips = r.data.slips || {}; S.live = r.data.live || null; S.loaded = true; S.err = "";
       await showScope(S.ticket);
       draw();
       return;
     }
-    if (r.ok) { S.msgs = r.data.messages; S.next = r.data.next; S.state = r.data.state; S.tickets = r.data.tickets || S.tickets; S.slips = r.data.slips || {}; S.live = r.data.live || null; S.loaded = true; S.err = ""; S.scope = r.data.ticket || null; } else S.err = (r.data && r.data.error) || "Something went wrong.";
+    if (r.ok) { S.msgs = r.data.messages; S.next = r.data.next; S.state = r.data.state; strip(r.data); S.slips = r.data.slips || {}; S.live = r.data.live || null; S.loaded = true; S.err = ""; S.scope = r.data.ticket || null; } else S.err = (r.data && r.data.error) || "Something went wrong.";
     // the ticket the last turns were about stays on the slip; the box is attached to it only while it is still a draft
     const lastTicket = S.ticket || S.scope || ([...S.msgs].reverse().find((m) => m.ticket) || {}).ticket;
     if (lastTicket) await loadSlip(lastTicket, !S.ticket);
@@ -360,7 +369,7 @@ ${sl.kind !== "action" && (sl.after_text || sl.before_text) ? `<div class="tx cd
     const r = await api(historyPath(scope || null));
     if (mine !== S.seq) return;   // a later switch is the one that counts
     if (!r.ok) { S.err = (r.data && r.data.error) || "Something went wrong."; S.msgs = []; S.next = null; S.scope = undefined; return; }   // never the old ticket's lines under the new ticket's box
-    S.msgs = r.data.messages; S.next = r.data.next; S.state = r.data.state; S.tickets = r.data.tickets || S.tickets; S.scope = r.data.ticket || null; S.err = "";
+    S.msgs = r.data.messages; S.next = r.data.next; S.state = r.data.state; strip(r.data); S.scope = r.data.ticket || null; S.err = "";
     S.slips = r.data.slips || {}; S.live = r.data.live || null;
   }
   /** The row learns what the ticket page says (a new draft, a title he has just written, a state that moved); a ticket that is no longer live leaves it. @rule 801.6 */
@@ -395,7 +404,7 @@ ${sl.kind !== "action" && (sl.after_text || sl.before_text) ? `<div class="tx cd
   async function send() {
     const text = S.draft.trim();
     if (!text || S.busy || S.switching) return;   // mid-switch the box's ticket is not yet the one on screen: nothing is sent until the switch lands (rule 801.6)
-    S.busy = true; S.err = "";
+    S.busy = true; S.err = ""; S.pin = null;   // a new message is about the newest draft again
     const optimistic = { id: -1, role: "player", body: text, date: S.state ? S.state.date : "", ticket: S.ticket };
     S.msgs.push(optimistic); S.draft = "";
     S.stick = true; draw(true);   // your own message: to the end, and stay there for the answer
@@ -418,8 +427,9 @@ ${sl.kind !== "action" && (sl.after_text || sl.before_text) ? `<div class="tx cd
     if (r.data.scope !== undefined && (r.data.scope || null) !== (S.ticket || null)) {
       S.ticket = r.data.scope || null; S.slip = null; S.switching = true;
       if (r.data.state) S.state = r.data.state;
-      if (r.data.tickets) S.tickets = r.data.tickets;
+      strip(r.data);
       try { await showScope(S.ticket); if (S.ticket) await loadSlip(S.ticket); } finally { S.switching = false; }
+      if (S.ticket) watchArt();   // a commission opened from the general conversation: its picture may still be drawing (the ticket path below does the same)
       if (r.data.slips) S.slips = { ...S.slips, ...r.data.slips };
       if (r.data.live !== undefined && r.data.live) S.live = r.data.live;
       draw(true);
@@ -429,7 +439,7 @@ ${sl.kind !== "action" && (sl.after_text || sl.before_text) ? `<div class="tx cd
     }
     // a line the server did not store (he is out, over budget) is shown for this visit only
     for (const m of r.data.messages) S.msgs.push(m);
-    if (r.data.tickets) S.tickets = r.data.tickets;
+    strip(r.data);
     if (r.data.state) S.state = r.data.state;
     if (r.data.slips) S.slips = { ...S.slips, ...r.data.slips };
     if (r.data.ticket) { S.slip = r.data.ticket; noteTicket(S.slip); onTicket && (await onTicket(r.data.ticket)); if (S.slip && S.slip.n) { await loadSlip(S.slip.n); watchArt(); } }
@@ -447,6 +457,7 @@ ${sl.kind !== "action" && (sl.after_text || sl.before_text) ? `<div class="tx cd
     else if (a === "close") { S.sheet = false; place(); }
     else if (a === "send") await hold(el, send);
     else if (a === "pick") { if (!S.busy && el.dataset.n && el.dataset.n !== S.ticket) await attach(el.dataset.n); }
+    else if (a === "pickp") { if (!S.busy && el.dataset.id) await pickProposal(el.dataset.id); }
     else if (a === "opt") { const m = S.msgs[optionsAt()]; const o = m && m.options[Number(el.dataset.i)]; if (o) prefill(o); }
     else if (a === "new") { if (!S.busy && onNew) await hold(el, onNew); }
     else if (a === "detach") { S.ticket = null; S.slip = null; await showScope(null); draw(); }
@@ -473,6 +484,12 @@ ${sl.kind !== "action" && (sl.after_text || sl.before_text) ? `<div class="tx cd
   if (vv) { vv.addEventListener("resize", fitSheet); vv.addEventListener("scroll", fitSheet); fitSheet(); }
   if (window.matchMedia) matchMedia("(min-width: 900px)").addEventListener?.("change", () => { S.sheet = false; place(); });
 
+  /** A P-pill: that proposal's slip, in the general conversation (where it was made), whichever conversation the window was in. @rule 103.1, 801.6 */
+  async function pickProposal(id) {
+    S.pin = id;
+    if (S.ticket || S.scope || !S.slips[id]) { S.ticket = null; S.slip = null; S.switching = true; try { await showScope(null); } finally { S.switching = false; } }
+    draw(true);
+  }
   /** Lock it in = confirm (103.2), Unlock = withdraw (103.3): the player's own click on the proposal routes, costing no message. @rule 103.2, 103.3 */
   async function lockOrUnlock(id, what) {
     if (!id || S.locking) return;
@@ -493,7 +510,7 @@ ${sl.kind !== "action" && (sl.after_text || sl.before_text) ? `<div class="tx cd
   /** A ticket is what the next messages are about (and the window opens on it). @rule 801.2 */
   async function attach(n, o = {}) {
     const pick = ++S.pickSeq;
-    S.ticket = n || null;
+    S.ticket = n || null; S.pin = null;
     S.switching = true;   // send() waits: the box's ticket changes now, the slip and conversation on screen only when the reads land
     S.slipSeq++;   // an in-flight ticket read from before this pick is not this ticket's
     try {

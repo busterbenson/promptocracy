@@ -164,7 +164,9 @@ try {
   const mineCm = d1(state, `SELECT * FROM chat_messages WHERE player_id = '${id.Cy}' AND role = 'player' ORDER BY id DESC LIMIT 1`)[0];
   check("a chat turn escalates too: the row holds the player's message, no ticket, category ruling; the chat's own reply says so in the history", cm.status === 200 && es.length === 2 && es[1].ticket_id === null && es[1].chat_message_id === mineCm.id && es[1].category === "ruling" && cm.data.messages.at(-1).escalated === "ruling", J(es[1]));
   const nEsc = escs().length;
-  await say(Ana, "SYNTH-C-REFUSE a commission that names nothing");
+  // a refusal is the ticket conversation's (a commission that names nothing): Ana has a draft of her own to say it on
+  d1(state, `INSERT INTO tickets (id, game_id, number, player_id, title, brief, state, created_at, updated_at) VALUES ('tk-30', '${gid}', 30, '${id.Ana}', 'Ana 30', '', 'Draft', '2026-11-10T18:00:00.000Z', '2026-11-10T18:00:00.000Z')`);
+  await say(Ana, "SYNTH-C-REFUSE a commission that names nothing", "W30");
   check("a refused commission that asks to escalate anyway stores no escalation", escs().length === nEsc && d1(state, `SELECT COUNT(*) AS n FROM chat_messages WHERE player_id = '${id.Ana}' AND role = 'agent' AND meta LIKE '%refusal%'`)[0].n === 1);
   await say(Cy, "SYNTH-C-ESC and another one");
   check("a second chat escalation while one is open is dropped", escs().length === 2 && d1(state, "SELECT reason FROM agent_calls WHERE purpose = 'chat' ORDER BY id DESC LIMIT 1")[0].reason === "escalation dropped: open");

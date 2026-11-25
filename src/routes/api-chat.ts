@@ -99,6 +99,17 @@ async function ticketsOf(env: any, game: any, player: Player) {
   return rows.map((r) => ({ n: `W${r.number}`, title: r.title || "", state: r.state }));
 }
 
+/**
+ * The window's proposals: your own rule-change and action proposals not yet voted on, the same cut as the tickets (Buster, 2026-11-24): a draft of
+ * today's, or locked in for tomorrow's ballot; drafts first, then newest. A commission is its ticket, so it is not listed twice. @rule 103.1, 103.2
+ */
+async function proposalsOf(env: any, game: any, player: Player) {
+  const rows = (await env.DB.prepare("SELECT id, number, status, draft_head FROM proposals WHERE game_id = ? AND player_id = ? AND kind != 'commission' AND ((status = 'draft' AND day_proposed = ?) OR status = 'confirmed') ORDER BY (status = 'draft') DESC, created_at DESC, id DESC LIMIT 30").bind(game.id, player.id, game.day ?? 0).all()).results as any[];
+  return rows.map((r) => ({ id: r.id, n: r.number ? `P${r.number}` : null, head: r.draft_head || "", state: r.status === "draft" ? "Draft" : "Locked" }));
+}
+/** The strip: your tickets and proposals not yet voted on. @rule 103.1, 801.6 */
+const stripOf = async (env: any, game: any, player: Player) => ({ tickets: await ticketsOf(env, game, player), proposals: await proposalsOf(env, game, player) });
+
 // GET /api/chat/gremlin
 /** @rule 106.7, 801.6 */
 export const get = async (ctx: Ctx) => {
@@ -123,14 +134,15 @@ export const get = async (ctx: Ctx) => {
     if (!ticket) return json({ error: "There is no such ticket of yours." }, 404);
   }
   const h = await historyPage(env.DB, game.id, player.id, AGENT, before, { ticketId: ticket?.id ?? null, date: localDate(timeZoneOf(game), nowMs) });
-  const base = { messages: h.rows, next: h.next, ticket: ticket ? `W${ticket.number}` : null, tickets: await ticketsOf(env, game, player) };
+  const strip = await stripOf(env, game, player);
+  const base = { messages: h.rows, next: h.next, ticket: ticket ? `W${ticket.number}` : null, ...strip };
   if (ticket) return json({ ...base, state: await stateOf(ctx, game, day, player, nowMs) });
   // Outside any ticket: the draft slips his lines point at, what may be done to each, the day's count (rules 103.1, 103.2). The newest draft the
   // player has, however far back its line is: the window's slip must not depend on the page of history it loaded.
   const { turn } = await loadToday(env, ctx.data.game!, nowMs, player.id);
   const newest = (await env.DB.prepare("SELECT proposal_id FROM chat_messages WHERE game_id = ? AND player_id = ? AND agent = ? AND ticket_id IS NULL AND proposal_id IS NOT NULL ORDER BY id DESC LIMIT 1").bind(game.id, player.id, AGENT).first()) as any;
   const live: string | null = newest?.proposal_id ?? null;
-  const ids = [...new Set([...h.rows.map((m: any) => m.proposal), ...(before === undefined && live ? [live] : [])].filter(Boolean))] as string[];
+  const ids = [...new Set([...h.rows.map((m: any) => m.proposal), ...(before === undefined && live ? [live] : []), ...(before === undefined ? strip.proposals.map((x: any) => x.id) : [])].filter(Boolean))] as string[];
   return json({ ...base, live, slips: await slipsOf(ctx, game, day, turn, player, ids, nowMs), state: await stateWith(ctx, game, day, player, nowMs) });
 };
 
@@ -277,7 +289,7 @@ async function ticketTurn(T: Turn, ticket: any, moved: boolean): Promise<Out> {
   const canned = async (code: "unavailable" | "failed" | "malformed" | "refused", outcome: string, reason: string | null) => {
     const line = CANNED_LINES[code === "unavailable" ? "unavailable" : code];
     const l = await storeLine(T, ticket, r, later, "agent", line, { canned: code }, outcome, reason);
-    return out({ ok: true, out: code, messages: [mine, l.view], scope: `W${ticket.number}`, tickets: await ticketsOf(env, game, player), state: await stateNow() });
+    return out({ ok: true, out: code, messages: [mine, l.view], scope: `W${ticket.number}`, ...(await stripOf(env, game, player)), state: await stateNow() });
   };
   if (!r.ok) return canned(r.code, r.code, r.reason);
   const a = readGremlinAnswer(r.text, { ceiling, systemText: systemStatic({ ceiling }), catalog: catalogFor(game), makes: JSON.parse(ticket.makes || "[]"), price: ticket.price ?? 0 });
@@ -327,7 +339,7 @@ async function ticketTurn(T: Turn, ticket: any, moved: boolean): Promise<Out> {
       .bind(game.id, player.id, AGENT, date, game.day || null, `Nothing was saved: ${why}`, ticket.id, nowIso(nowMs)).run();
     lines.push(viewOf(Number(res.meta.last_row_id), "event", `Nothing was saved: ${why}`, date, game.day || null, nowIso(nowMs), ticket.number));
   }
-  return out({ ok: true, out: "ok", messages: lines, scope: `W${ticket.number}`, ticket: await pageOf(ctx, ticket.number, player, later), tickets: await ticketsOf(env, game, player), state: await stateNow() });
+  return out({ ok: true, out: "ok", messages: lines, scope: `W${ticket.number}`, ticket: await pageOf(ctx, ticket.number, player, later), ...(await stripOf(env, game, player)), state: await stateNow() });
 }
 
 /**
@@ -369,7 +381,7 @@ async function generalTurn(T: Turn, moved: boolean): Promise<Out> {
   /** @rule 106.2 */
   const canned = async (code: "unavailable" | "failed" | "malformed" | "refused", outcome: string, reason: string | null) => {
     const l = await storeLine(T, null, r, later, "agent", CANNED_LINES[code === "unavailable" ? "unavailable" : code], { canned: code }, outcome, reason);
-    return out({ ok: true, out: code, messages: [mine, l.view], scope: null, tickets: await ticketsOf(env, game, player), slips: {}, state: await stateNow() });
+    return out({ ok: true, out: code, messages: [mine, l.view], scope: null, ...(await stripOf(env, game, player)), slips: {}, state: await stateNow() });
   };
   if (!r.ok) return canned(r.code, r.code, r.reason);
   let a: any = read(r);
@@ -424,6 +436,13 @@ async function generalTurn(T: Turn, moved: boolean): Promise<Out> {
   if (a.quotes.length) meta.quotes = a.quotes;
   if (a.options.length) meta.options = a.options;
   if (a.guesses && proposalId) meta.guesses = a.guesses;
+  // ---- an escalation is a row for Chalant, never text in a notification (rule 106.4) ----
+  // The same row, cap and one-open rule as on a ticket (src/lib/escalate.js); it holds the player's message, and his line carries `turn`, so Chalant's answer is paired with its own turn.
+  if (a.escalate) {
+    const got = await escalate(env.DB, { gameId: game.id, agent: AGENT, playerId: player.id, chatMessageId: myId, category: a.escalate.category, reason: a.escalate.reason, date: localDate(tz, later), at: nowIso(later) });
+    notes.push(got === "stored" ? "escalated" : `escalation dropped: ${got}`);
+    if (got === "stored") meta.escalated = a.escalate.category;
+  }
   const line = await storeLine(T, null, r, later, "agent", a.say, meta, "ok", [moved ? "moved from a ticket" : "", ...notes].filter(Boolean).join("; ").slice(0, 190) || null, proposalId);
   const lines: any[] = [mine, line.view];
   if (a.noTicket) {
@@ -432,17 +451,8 @@ async function generalTurn(T: Turn, moved: boolean): Promise<Out> {
     lines.push(viewOf(Number(res.meta.last_row_id), "event", ev, localDate(tz, later), game.day || null, nowIso(later), null));
   }
 
-  // ---- an escalation is a row for Chalant, never text in a notification (rule 106.4) ----
-  if (a.escalate) {
-    // The same row, cap and one-open rule as on a ticket (src/lib/escalate.js); it holds the player's message, and his line carries `turn`, so Chalant's answer is paired with its own turn.
-    const got = await escalate(env.DB, { gameId: game.id, agent: AGENT, playerId: player.id, chatMessageId: myId, category: a.escalate.category, reason: a.escalate.reason, date: localDate(tz, later), at: nowIso(later) });
-    if (got === "stored") {
-      await env.DB.prepare("UPDATE chat_messages SET meta = json_set(meta, '$.escalated', ?) WHERE id = ?").bind(a.escalate.category, line.id).run();
-      line.view.escalated = a.escalate.category;
-    }
-  }
   const again = await loadToday(env, ctx.data.game!, later, player.id);
-  return out({ ok: true, out: "ok", messages: lines, scope: null, tickets: await ticketsOf(env, game, player), slips: await slipsOf(ctx, again.game, again.day, again.turn, player, proposalId ? [proposalId] : [], later), live: proposalId, state: await stateNow() });
+  return out({ ok: true, out: "ok", messages: lines, scope: null, ...(await stripOf(env, game, player)), slips: await slipsOf(ctx, again.game, again.day, again.turn, player, proposalId ? [proposalId] : [], later), live: proposalId, state: await stateNow() });
 }
 
 // POST /api/chat/gremlin

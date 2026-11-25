@@ -315,7 +315,9 @@ ${S.ui.err ? `<p class="notice err" role="alert">${withPills(S.ui.err)}</p>` : "
     // One entry (Buster, 2026-11-24): the player says what they want and Gremlin works out whether it is a rule change, an action or a commission.
     const item = (act, cls, label, note, rule, off) => `<button type="button" role="menuitem" class="pmi" data-p="${act}"${off ? " disabled" : ""}><span class="lr">${cls ? por(...cls) : `<span class="por none" aria-hidden="true">→</span>`}<span class="l"><b>${esc(label)}</b>${note ? `<span class="st">${esc(note)}</span>` : ""}</span></span>${rule ? `<span class="rpill">${esc(rule)}</span>` : ""}</button>`;
     const champ = champAvail() ? item("bar-champ", ["ch", "chalant"], "Champion's change", "", "402.4", false) : "";
-    return `<div class="pmenu tkmenu" role="menu">${item("bar-propose", ["gr", "gremlin"], "Propose", ready ? "" : "Gremlin can't be reached", "103.1", !ok)}${champ}</div>`;
+    // He can't be reached (no model key): the direct way keeps both kinds, the rule picker and the action form (rule 103.5: an action needs no model to draft)
+    const action = !ready && S.actions.length ? item("bar-action", ["gr", "gremlin"], "Action", "Gremlin can't be reached", "103.5", !ok) : "";
+    return `<div class="pmenu tkmenu" role="menu">${item("bar-propose", ["gr", "gremlin"], "Propose", ready ? "" : "Gremlin can't be reached", "103.1", !ok)}${action}${champ}</div>`;
   }
 
   /** One of your proposals, open under the bar: its number, its state, the change, and what you can do with it. @rule 103.1, 103.2, 103.3 */
@@ -439,6 +441,13 @@ ${S.ui.err ? `<p class="notice err" role="alert">${withPills(S.ui.err)}</p>` : "
     if (a === "lock") return lock(el.dataset.id);
     if (a === "bar-helper") { if (helper && helper()) await helper().open({}); return; }
     if (a === "bar-workshop") { if (workshop && workshop()) await workshop().open(el.dataset.t); return; }
+    if (a === "bar-action") {   // he can't be reached: the action form under the bar (the menu offers it only then)
+      S.bar.menu = false;
+      if (!S.actions.length) return paint();   // a game with no action types: nothing to draft
+      S.ui = mkUi({ rule: "actions", step: "write", kind: "action", type: S.actions[0] && S.actions[0].type, params: {}, err: "", champion: false });   // an action changes no rule: never the Champion's change (rule 103.5)
+      S.bar.open = true;
+      return paint();
+    }
     if (a === "bar-propose" || a === "bar-champ") {
       S.bar.menu = false;
       if (a === "bar-champ") { S.champ = true; paint(); if (goTab) goTab("rules"); S.openPick(); return; }   // he can't draft the Champion's change: the block picker and the form do (rule 402.4)

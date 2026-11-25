@@ -27,8 +27,7 @@ try {
   const cy = await join(srv.base, "shop", g.code, { email: "cy@example.com", name: "Cy", color: "cobalt" });
   const dee = await join(srv.base, "shop", g.code, { email: "dee@example.com", name: "Dee", color: "jade" });
   const eve = await join(srv.base, "shop", g.code, { email: "eve@example.com", name: "Eve", color: "orchid" });   // the ticket strip's player: her tickets are made at the end of the browser run, so Ada's numbers stay put
-  const gus = await join(srv.base, "shop", g.code, { email: "gus@example.com", name: "Gus", color: "marigold" });   // a rule change is asked of him in the general conversation
-  const hal = await join(srv.base, "shop", g.code, { email: "hal@example.com", name: "Hal", color: "sky" });   // the same, then he ends his turn
+  const gus = await join(srv.base, "shop", g.code, { email: "gus@example.com", name: "Gus", color: "marigold" });   // the strip's proposals and a ticket (see below)
   startPlaying(state, "shop");
   // a second game that has not started: its host is its only player; Ada (a player of "shop") is signed in but not a player here
   const gp = await createGame(state, { slug: "pre", name: "Not Yet", repo: "busterbenson/shop", rulesBase: stub.base });
@@ -41,9 +40,11 @@ try {
   const w = ok(await ada.post(T, {}), "ada open").data.ticket;
   ok(await ada.post(CH, { ticket: w, body: REC["wall-sizing"].message }), "turn 1");
   ok(await ada.post(CH, { ticket: w, body: REC["dragon-build"].message }), "turn 2");
-  // Gus and Hal ask for a rule change: an old recorded answer carries a handoff, which nothing reads any more (rule 106.3: one helper). Hal then ends his turn.
-  for (const [c, n] of [[gus, "gus"], [hal, "hal"]]) ok(await c.post(CH, { body: REC["handoff-rule"].message }), `${n} handoff`);
-  ok(await hal.post("/shop/api/end-turn", {}), "hal end turn");
+  // Gus: the strip's proposals (Gremlin's window lists them beside the tickets): a rule change drafted and locked in, and a second one left as a draft (his ticket is made at the end of the browser run, so Ada's numbers stay put).
+  // Drafted in the general conversation (SYNTH-ADD), so his window opens there with the draft's slip.
+  const lockedP = ok(await gus.post(CH, { body: "SYNTH-ADD a rule about proposing twice" }), "gus first draft").data.live;
+  ok(await gus.post(`/shop/api/proposals/${lockedP}/confirm`, {}), "gus lock");
+  ok(await gus.post(CH, { body: "SYNTH-ADD another rule about proposing twice" }), "gus second draft");
   // Bo: at the day's cap, so his window shows the limit's excuse and a closed composer
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Los_Angeles" }).format(new Date());   // the game's date (its zone), not UTC's
   const said = ["a stone wall by the pond", "make it 2 by 1", "no, it should not block anything", "a lantern for the north hill", "does it glow green or yellow", "green, and it hums", "a bog frog that croaks", "can it sit on the wall", "yes, just for show", "a bell for the death of a player", "2 by 2, not for Ghosts", "make the bell louder"];
@@ -60,7 +61,7 @@ try {
   if (r31.data.out !== "cap") throw new Error("Bo is not at the cap: " + r31.text);
   d1(state, Array.from({ length: 30 }, (_, i) => `INSERT INTO chat_messages (game_id, player_id, agent, local_date, day, role, body, at) VALUES ('${gid}', '${pid("Dee")}', 'gremlin', '${today}', 1, 'player', '${said[i % 12]}', '${at}')`).join("; "));
   const cookie = (c) => [...c.jar].find(([k]) => k === "s|/shop")[1];
-  const r = await promisify(execFile)(PYTHON, [ROOT + "/tests/browser-chat.py", srv.base, shots || "-", cookie(ada), cookie(bo), cookie(cy), cookie(dee), [...fay.jar].find(([k]) => k === "s|/pre")[1], cookie(eve), REC["wall-sizing"].message, REC["dragon-build"].message, cookie(gus), cookie(hal), REC["handoff-rule"].message], { timeout: 280000, maxBuffer: 1 << 24 });
+  const r = await promisify(execFile)(PYTHON, [ROOT + "/tests/browser-chat.py", srv.base, shots || "-", cookie(ada), cookie(bo), cookie(cy), cookie(dee), [...fay.jar].find(([k]) => k === "s|/pre")[1], cookie(eve), REC["wall-sizing"].message, REC["dragon-build"].message, cookie(gus)], { timeout: 280000, maxBuffer: 1 << 24 });
   process.stdout.write(r.stdout);
 } catch (e) {
   failed = true;

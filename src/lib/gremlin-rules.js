@@ -176,7 +176,9 @@ export const QUOTE_MIN_WORDS = 4;
  */
 export function checkQuote(book, q) {
   const num = oneLine(q?.num).replace(/^rules?\s+/i, "");
-  const text = oneLine(q?.text);
+  // the rules text he is given carries [setting: key] tags, which the plain text of a clause leaves out: a quote copied from what he reads has the tag in it
+  // (promptocracy#111: every quote of a tagged clause, 202.2 the one players ask about, was dropped as "not the rule's words"). The words are the rule's; the tag is not shown.
+  const text = oneLine(q?.text).replace(/\s*\[setting:\s*[\w.]+\s*\]/g, "");
   if (!text) return { dropped: "empty quote" };
   if (text.length > QUOTE_MAX) return { dropped: "quote too long" };
   const have = nodeText(book, num);
