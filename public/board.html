@@ -57,6 +57,7 @@
       <div id="p-rules" role="tabpanel" aria-labelledby="tab-rules" hidden><section class="rbwrap" id="rules" aria-label="Rulebook">Loading&hellip;</section></div>
       <div id="p-workshop" role="tabpanel" aria-labelledby="tab-workshop" hidden></div>
       <div id="p-history" role="tabpanel" aria-labelledby="tab-history" hidden></div>
+      <div id="p-yours" role="tabpanel" aria-labelledby="tab-yours" hidden></div>
     </div>
     <aside class="chatcol" id="chatcol" aria-label="Chat" hidden></aside>
     <button type="button" class="chatfab" id="chatfab" hidden></button>
@@ -83,6 +84,7 @@
   import { mini, playerPill, hexOf } from "/js/people.js";
 import { rulingsHTML } from "/js/rulings.js";
 import { createWorkshop } from "/js/workshop.js";
+  import { createYours } from "/js/yours.js";
 import { createChat, AGENTS } from "/js/chat.js";
  import { commissionHTML, wPill } from "/js/commission.js";
   const SLUG = location.pathname.split("/")[1] || "";
@@ -108,7 +110,7 @@ import { createChat, AGENTS } from "/js/chat.js";
   };
   let ME = null, DATA = null, INVITE = null;   // who is looking, and the last /api/game
   let DAY = null, END_ASK = false, START_ASK = false, DAY_AT = 0, DAY_TIMER = 0, DAY_TICK = 0;   // the last /api/day, the End turn confirm, when it was fetched
-  let PROP = null, BAL = null, BOOK = null, CARDS = null, WS = null, CHAT = null, STAR = null;   // the proposal controller (propose.js), the mounted rulebook, the card host
+  let PROP = null, BAL = null, BOOK = null, CARDS = null, WS = null, CHAT = null, STAR = null, YOURS = null;   // the proposal controller (propose.js), the mounted rulebook, the card host
   let BOARD = null, SEL = null, VIEW = null;   // the last /api/board, the selected tile {x,y}, the drawn board
   let TAB = "summary", BOARD_OPEN = true, LASTMOVE = null, NOTES = { list: [], unread: 0 }, RULES_OK = false;
   ensureDefs();
@@ -169,6 +171,7 @@ import { createChat, AGENTS } from "/js/chat.js";
     $("acct").innerHTML = ME ? `<div class="acct-me">${p ? `<span class="dot" style="background:${hexOf(p.color)};width:22px;height:22px"></span>` : ""}<span><b>${esc(ME.user.name)}</b>${p ? `<small>${esc(p.color.name)} · ${plural(p.score, "point")}</small>` : ""}</span></div>
       ${p ? `<button type="button" class="acct-link" data-pl="${esc(p.color.key)}" data-fromacct="1">Your player card</button>` : ""}
       ${p && INVITE ? `<div class="acct-invite"><span>Invite a friend</span><span class="row"><input id="invite-url" type="text" readonly value="${esc(INVITE.url || "")}"${INVITE.url ? "" : " disabled"} aria-label="Invite a friend: join link"><button type="button" class="btn ghost small" id="invite-copy"${INVITE.url ? "" : " disabled"}>Copy</button></span>${INVITE.url ? "" : `<small class="why">${esc(INVITE.reason)}</small>`}</div>` : ""}
+      ${p ? `<button type="button" class="acct-link" data-yours="1">Yours</button>` : ""}
       <button type="button" class="acct-link" id="logout">Log out</button>` : "";
     const ic = $("invite-copy");
     if (ic && INVITE && INVITE.url) ic.onclick = async () => {
@@ -256,6 +259,7 @@ import { createChat, AGENTS } from "/js/chat.js";
       workshop: () => WS && ({ commission: async () => { CARDS.close(); if (TAB !== "workshop") setTab("workshop"); await WS.click({ dataset: { w: "open" } }); },
         open: async n => { CARDS.close(); if (TAB !== "workshop") setTab("workshop"); await WS.open(n, false); } }),
       refresh: async () => { await refresh(); loadNotes(); } });
+    YOURS = createYours({ api, me: () => ME, cardKey: p => PROP.cardKey(p) });
     drawTabs(); drawBook();
     loadMe();
     const [g] = await Promise.all([api("/api/game"), loadDay()]);
@@ -274,7 +278,7 @@ import { createChat, AGENTS } from "/js/chat.js";
 
   // ---- the book: tabs, and what each shows --------------------------------------------------------------------------
   const TABS = () => [["summary", "Summary", ""], ["rules", "Rulebook", BOOK && BOOK.count() ? plural(BOOK.count(), "rule") : ""], ["workshop", "Workshop", WS && WS.count() ? plural(WS.count(), "ticket") : ""],
-    ["history", "History", DAY && DAY.day ? plural(DAY.day, "day") : ""]];
+    ["history", "History", DAY && DAY.day ? plural(DAY.day, "day") : ""], ...(TAB === "yours" ? [["yours", "Yours", ""]] : [])];   // Yours is in the row only while it shows: the account menu opens it
   // The propose bar sits above the tabs, on every tab, for a player of a game in play; nobody else has one. @rule 103.1, 103.2
   function drawBar() {
     const el = $("pzone");
@@ -303,9 +307,16 @@ import { createChat, AGENTS } from "/js/chat.js";
   function syncChats(reread) { if (CHAT) CHAT.sync(TAB, reread); if (STAR) STAR.sync(TAB, reread); }
   function setTab(k, scroll) {
     TAB = k;
-    for (const t of ["summary", "rules", "workshop", "history"]) $("p-" + t).hidden = t !== k;
+    for (const t of ["summary", "rules", "workshop", "history", "yours"]) $("p-" + t).hidden = t !== k;
     drawTabs(); drawBook(); syncChats();
     if (scroll) $("book").scrollIntoView({ block: "start", behavior: reduced() ? "auto" : "smooth" });
+  }
+  /** The Yours page: your own proposals and tickets in every state (yours.js), reached from the account menu. */
+  async function openYours() {
+    if (!ME || !ME.player || !YOURS) return;
+    await YOURS.load();
+    setTab("yours", true);
+    const tb = $("tab-yours"); if (tb) tb.scrollIntoView({ block: "nearest", inline: "nearest" });   // a phone's tab row scrolls sideways
   }
   $("btabs").addEventListener("keydown", e => {
     if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
@@ -346,6 +357,7 @@ import { createChat, AGENTS } from "/js/chat.js";
   function drawBook() {
     if (TAB === "summary") $("p-summary").innerHTML = summaryHTML();
     else if (TAB === "workshop") $("p-workshop").innerHTML = WS ? WS.tabHTML() : "";
+    else if (TAB === "yours") $("p-yours").innerHTML = YOURS ? YOURS.html() : "";
     else if (TAB === "history") $("p-history").innerHTML = `<div class="hdays">${rulingsHTML(DATA && DATA.rulings, { esc, rpill: n => PROP.rpill(n) })}<div class="slot" data-slot="history-days"></div><ul class="log" id="log">${((DATA && DATA.events) || []).map(e => `<li><b>${esc(whenText(e.created_at) || String(e.created_at || "").slice(0, 10))}</b> · ${esc(e.text)}</li>`).join("")}</ul></div>`;
   }
 
@@ -608,7 +620,7 @@ import { createChat, AGENTS } from "/js/chat.js";
     if (d.ok) { DAY = d.data; DAY_AT = Date.now(); }
     if (g.ok) { DATA = g.data; }
     if (b.ok) { BOARD = b.data; if (VIEW) VIEW.setData(b.data, myKey()); }
-    await Promise.all([PROP ? PROP.load() : 0, BAL ? BAL.load() : 0, WS ? WS.load() : 0]);
+    await Promise.all([PROP ? PROP.load() : 0, BAL ? BAL.load() : 0, WS ? WS.load() : 0, YOURS && TAB === "yours" ? YOURS.load() : 0]);
     drawWho(); if (g.ok) drawGame(g.data); if (b.ok) drawBoard(b.data); drawTabs(); drawDay(); drawBook(); drawMoveBar(); syncChats(true);   // the day or the lock changed: the chats read their state again
     if (BOOK) BOOK.redraw();
     if (CARDS && CARDS.isOpen()) CARDS.redraw();
@@ -634,6 +646,7 @@ import { createChat, AGENTS } from "/js/chat.js";
   document.addEventListener("click", async e => {
     const t = e.target;
     if (PROP && !t.closest("#pzone .tkstep.pr")) PROP.closeMenu();   // a click anywhere else puts the Propose menu away (first, so a vote or a tab click does too)
+    if (t.closest("[data-yours]")) { await closePanels(); await openYours(); return; }
     const tab = t.closest("[data-tab]");
     if (tab && !tab.disabled) { setTab(tab.dataset.tab, !tab.closest(".btabs")); return; }
     const j = t.closest("[data-jump]");

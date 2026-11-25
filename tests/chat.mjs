@@ -112,12 +112,13 @@ try {
   check("Bo's GET returns nothing of Ana's; a visitor's gets 401; Bo can't write to Ana's ticket (404) and nothing is stored", hb.data.messages.length === 0 && hb.data.state.used === 0 && (await say(Bo, "hello", "W1")).status === 404 && rows("Bo").length === 0);
   const strip = (r) => (r.data.tickets || []).map((t) => `${t.n}:${t.state}`).join(",");
   check("the window's tickets row (rule 801.6): Ana's GET lists her own live ticket and nothing of anyone else's; Bo, who has none, gets an empty list", strip(h1) === "W1:Draft" && h1.data.tickets[0].title === "Low stone garden wall" && Array.isArray(hb.data.tickets) && hb.data.tickets.length === 0, strip(h1));
-  d1(state, "UPDATE tickets SET state = 'Done' WHERE number = 1");
-  const stripDone = strip(await Ana.get(CH));
-  d1(state, "UPDATE tickets SET state = 'Approved' WHERE number = 1");
-  const stripAppr = strip(await Ana.get(CH));
+  // the row lists only tickets not yet voted on (Buster, 2026-11-24): a draft, and one on the ballot; the later states are on the Yours page
+  const stripAs = async (st) => { d1(state, `UPDATE tickets SET state = '${st}' WHERE number = 1`); return strip(await Ana.get(CH)); };
+  const byState = {};
+  for (const st of ["Proposed", "Ready", "Approved", "Building", "Done", "Refused", "Failed", "Shelved"]) byState[st] = await stripAs(st);
   d1(state, "UPDATE tickets SET state = 'Draft' WHERE number = 1");
-  check("a finished ticket leaves the row; one that is approved stays (its conversation can still be read)", stripDone === "" && stripAppr === "W1:Approved" && strip(await Ana.get(CH)) === "W1:Draft", `${stripDone} | ${stripAppr}`);
+  check("a ticket on the ballot stays in the row; Ready, Approved, Building and every closed state leave it", byState.Proposed === "W1:Proposed" && ["Ready", "Approved", "Building", "Done", "Refused", "Failed", "Shelved"].every((st) => byState[st] === ""), J(byState));
+  check("and a draft is back in it", strip(await Ana.get(CH)) === "W1:Draft");
   check("history pages by id: before=<id> returns the earlier rows only; a bad cursor is a 400", (await Ana.get(`${CH}?before=${mm[1].id}`)).data.messages.length === 1 && (await Ana.get(`${CH}?before=0`)).status === 400 && (await Ana.get(`${CH}?before=x`)).status === 400);
 
   console.log("structured output is validated, and what is rejected comes back to him (rules 801.2, 801.3)");
@@ -244,12 +245,14 @@ try {
   // the tickets row's order: drafts first, then the rest newest first (Buster, 2026-11-24)
   const wasP = d1(state, `SELECT state FROM tickets WHERE number = ${P.slice(1)}`)[0].state;
   check("(setup) the two later tickets are drafts", wasP === "Draft" && d1(state, `SELECT state FROM tickets WHERE number = ${Q.slice(1)}`)[0].state === "Draft");
-  d1(state, `UPDATE tickets SET state = 'Approved' WHERE number = ${P.slice(1)}`);
+  d1(state, `UPDATE tickets SET state = 'Proposed' WHERE number = ${P.slice(1)}`);
   const orderA = strip(await Ana.get(CH));
-  d1(state, `UPDATE tickets SET state = 'Approved' WHERE number = 1`);
+  d1(state, `UPDATE tickets SET state = 'Proposed' WHERE number = 1`);
   const orderB = strip(await Ana.get(CH));
+  d1(state, `UPDATE tickets SET state = 'Approved' WHERE number = ${P.slice(1)}`);
+  const orderC = strip(await Ana.get(CH));
   d1(state, `UPDATE tickets SET state = 'Draft' WHERE number = 1`); d1(state, `UPDATE tickets SET state = '${wasP}' WHERE number = ${P.slice(1)}`);
-  check("the tickets row lists drafts first, then the rest newest first", orderA === `${Q}:Draft,W1:Draft,${P}:Approved` && orderB === `${Q}:Draft,${P}:Approved,W1:Approved`, `${orderA} | ${orderB}`);
+  check("the tickets row lists drafts first, then the ones on the ballot newest first", orderA === `${Q}:Draft,W1:Draft,${P}:Proposed` && orderB === `${Q}:Draft,${P}:Proposed,W1:Proposed` && orderC === `${Q}:Draft,W1:Proposed`, `${orderA} | ${orderB} | ${orderC}`);
 
   console.log("the daily cap is in SQL (rule 106.7)");
   d1(state, `DELETE FROM chat_messages WHERE player_id = '${id.Bo}'`);

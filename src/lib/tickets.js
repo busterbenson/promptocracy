@@ -149,6 +149,8 @@ export function readPost(body) {
 
 // ---- the list -----------------------------------------------------------------------------------------------------------
 export const LIVE_STATES = ["Draft", "Proposed", "Ready", "Approved", "Building"];
+/** The states of a ticket the chat window's row lists: not yet voted on (a draft, or on tomorrow's ballot). The later states are on the Yours page and the Workshop's list. */
+export const STRIP_STATES = ["Draft", "Proposed"];
 export const CLOSED_STATES = ["Done", "Refused", "Failed", "Shelved"];
 export const RECENT_CLOSED = 5;
 export const PAGE = 50;

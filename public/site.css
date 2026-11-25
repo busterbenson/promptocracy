@@ -485,6 +485,8 @@ button.wpill:hover{background:var(--surface-2)}
 .tfilter{display:flex;flex-wrap:wrap;gap:6px;padding:4px 0 8px}
 button.pill{background:none;cursor:pointer;min-height:30px;font:inherit;font-family:var(--font-mono);font-size:.6rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:3px 9px}
 button.pill[aria-pressed="true"]{background:color-mix(in srgb,var(--accent) 16%,transparent)}
+.yours{display:flex;flex-direction:column;gap:14px;max-width:760px;padding:0 24px}
+.yours .yh{margin:6px 0 0;font-size:1.25rem}
 .wkall .trow{padding:6px 0}
 .wkall .tlist+.row,.wkreopen{padding-top:10px}
 .wkreopen{display:flex;align-items:center;gap:10px;flex-wrap:wrap}

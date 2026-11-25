@@ -5,7 +5,7 @@
 //                                                 day's cap, what is left, and a reason when the composer is closed (the lock, the cap).
 //                                                 `ticket=none` is what was said outside any ticket; with no `ticket` it is the
 //                                                 conversation you were last in. `ticket` in the answer names the one shown. Signed-in
-//                                                 players only. `tickets` is your own live tickets (the window's row).
+//                                                 players only. `tickets` is your own drafts and tickets on the ballot (the window's row).
 //   POST /<slug>/api/chat/gremlin                 {ticket?: "W3", body}: one turn. The message is stored (under the cap, in the same
 //                                                 statement), the model answers as JSON, the platform validates it and writes ONLY that draft
 //                                                 ticket's fields, and the reply is stored. At the cap he gives his one improvised excuse of
@@ -28,7 +28,7 @@ import { Ctx, json, nowIso, readJson } from "../lib/util";
 import { catalogFor } from "./api-catalog";
 import { bookFor } from "./api-proposals";
 import { gremlinWrite, pageOf } from "./api-tickets";
-import { LIVE_STATES } from "../lib/tickets.js";
+import { STRIP_STATES } from "../lib/tickets.js";
 import { queueNew } from "../lib/art";
 
 export type Out = { status: number; body: any };
@@ -85,9 +85,9 @@ async function ticketOf(env: any, game: any, player: Player, raw: unknown): Prom
   return n ? await env.DB.prepare("SELECT * FROM tickets WHERE game_id = ? AND number = ? AND player_id = ?").bind(game.id, Number(n[1]), player.id).first() : null;
 }
 
-/** The window's tickets row: your own tickets that are still live (a draft, on the ballot, being built), drafts first and then the rest newest first; a closed or discarded one has no conversation to go back to. @rule 801.6 */
+/** The window's tickets row: your own tickets not yet voted on (a draft, or on the ballot), drafts first and then the rest newest first; the later states are on the Yours page. @rule 801.6 */
 async function ticketsOf(env: any, game: any, player: Player) {
-  const rows = (await env.DB.prepare(`SELECT number, title, state FROM tickets WHERE game_id = ? AND player_id = ? AND state IN (${LIVE_STATES.map((s: string) => `'${s}'`).join(",")}) ORDER BY (state = 'Draft') DESC, number DESC LIMIT 50`).bind(game.id, player.id).all()).results as any[];
+  const rows = (await env.DB.prepare(`SELECT number, title, state FROM tickets WHERE game_id = ? AND player_id = ? AND state IN (${STRIP_STATES.map((s: string) => `'${s}'`).join(",")}) ORDER BY (state = 'Draft') DESC, number DESC LIMIT 50`).bind(game.id, player.id).all()).results as any[];
   return rows.map((r) => ({ n: `W${r.number}`, title: r.title || "", state: r.state }));
 }
 
