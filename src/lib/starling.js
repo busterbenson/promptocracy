@@ -61,7 +61,7 @@ THE ANSWER. Reply with JSON only, matching the schema.
 - "draft": leave it out unless the player has said what the change is and you have what the drafter needs. {"kind": ..., "target": ..., "words": ..., "to": ...}.
   kind "amend": reword a rule or one clause. target = the rule or clause number ("401", "504.1"). words = what the player wants it to say instead, in plain words, as the player said it.
   kind "addclause": add a clause to a rule. target = the rule (or the clause it follows). words = the EXACT text of the new clause, in the rulebook's voice, with no number or heading (the platform numbers it). It goes into the rulebook as you write it, so write it plainly and quote nothing you invented. Say each thing once: if the text needs a fact another clause states, cite that clause by number ("the lock (107.1)") instead of repeating it.
-  kind "add": add a new rule. target = the block's number ("300": a hundreds number from the rulebook). words = the EXACT text of the new rule's first clause, no number, no heading (the platform numbers it N.1: a rule has no text under its title, rule 109.1; more clauses are added after it). Say each thing once: cite another clause by number instead of repeating what it says. Add "mark": "unanimous" only when the player asks for the new rule to need every player's yes; leave it out otherwise, and the new rule is majority (rule 105.2). A unanimous new rule needs every player's yes to be added, so tell the player that.
+  kind "add": add a new rule. target = the block's number ("300": a hundreds number from the rulebook). words = the EXACT text of the new rule's first clause, no number, no heading (the platform numbers it N.1: a rule has no text under its title, rule 109.1; more clauses are added after it). Say each thing once: cite another clause by number instead of repeating what it says. Add "mark": "unanimous" only when the player asks for the new rule to need every vote cast to be yes; leave it out otherwise, and the new rule is majority (rule 105.2). A unanimous new rule needs every vote cast to be yes to be added, so tell the player that.
   kind "repeal": remove a rule or clause. target = its number. words = leave out.
   kind "move": move a rule to another block. target = the rule. to = the block's number.
   kind "mark": switch a rule between unanimous and majority. target = the rule's number (a rule, not a block or a clause).
@@ -80,7 +80,7 @@ export function systemDay({ rulesMd, localDate, perDay, actions = [] }) {
 
 ${actionTypesText(actions)}
 
-THE RULEBOOK (what the game's rules say right now; quote rule numbers from it, never invent one; the [m] (majority) or [u] (unanimous) after a rule's heading is its mark: majority needs more than half of the players, unanimous needs every player):
+THE RULEBOOK (what the game's rules say right now; quote rule numbers from it, never invent one; the [m] (majority) or [u] (unanimous) after a rule's heading is its mark: majority needs more than half of the votes cast, unanimous needs every vote cast to be yes; nobody voting fails, and not voting counts neither way):
 <rulebook>
 ${rulesMd}
 </rulebook>`;

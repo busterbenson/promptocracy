@@ -28,18 +28,36 @@ console.log("the count (rules 104.1, 104.5)");
 {
   const E = ["a", "b", "c", "d", "e"];
   const v = (pairs) => pairs.map(([player_id, vote]) => ({ player_id, vote }));
-  const m3 = tally({ mark: "majority", electorate: 5, electors: E, votes: v([["a", "yes"], ["b", "yes"], ["c", "yes"]]) });
-  check("majority of 5 needs 3: 3 yes (and 2 who didn't vote) passes", m3.needed === 3 && m3.passed && m3.yes === 3 && m3.no === 0 && m3.absent === 2, J(m3));
-  const m2 = tally({ mark: "majority", electorate: 5, electors: E, votes: v([["a", "yes"], ["b", "yes"]]) });
-  check("2 yes and 3 who didn't vote fails: not voting counts as no", !m2.passed && m2.yes === 2 && m2.absent === 3 && resultSentence(m2) === "2 of 5 voted yes; it needed 3.", J(m2));
-  const u4 = tally({ mark: "unanimous", electorate: 5, electors: E, votes: v([["a", "yes"], ["b", "yes"], ["c", "yes"], ["d", "yes"], ["e", "no"]]) });
-  const u5 = tally({ mark: "unanimous", electorate: 5, electors: E, votes: v(E.map((p) => [p, "yes"])) });
-  check("unanimous needs all 5: 4 yes and 1 no fails, 5 yes passes", !u4.passed && u4.needed === 5 && u5.passed, J([u4, u5]));
-  const out = tally({ mark: "majority", electorate: 5, electors: E, votes: v([["a", "yes"], ["b", "yes"], ["zed", "yes"]]) });
-  check("a vote from someone outside the day's electorate is not counted", out.yes === 2 && !out.passed, J(out));
-  check("the stored votes needed are used as stored (rule 105.4), and match neededOf for every size", tally({ mark: "majority", electorate: 5, electors: E, votes: [], needed: 4 }).needed === 4 &&
-    [1, 2, 3, 4, 5, 6, 7, 8].every((e) => neededOf("majority", e) === Math.floor(e / 2) + 1 && neededOf("unanimous", e) === e));
-  check("4 of 4 players: majority needs 3 (more than half), so 2 yes fails", tally({ mark: "majority", electorate: 4, electors: ["a", "b", "c", "d"], votes: v([["a", "yes"], ["b", "yes"]]) }).passed === false && neededOf("majority", 4) === 3);
+  const w = (o) => tally({ electorate: 5, electors: E, ...o });
+  const m3 = w({ mark: "majority", votes: v([["a", "yes"], ["b", "yes"], ["c", "yes"]]) });
+  check("majority: 3 yes of 3 who voted passes, and the 2 who didn't vote change nothing", m3.passed && m3.needed === 2 && m3.yes === 3 && m3.no === 0 && m3.absent === 2 && m3.voters === 3, J(m3));
+  const m1 = w({ mark: "majority", votes: v([["a", "yes"]]) });
+  check("majority: 1 yes of 1 voter passes (Buster 2026-11-24: one player voting is enough)", m1.passed && m1.needed === 1 && m1.absent === 4 && resultSentence(m1) === "1 of 5 voted; 1 voted yes; it needed more than half of the votes cast.", J(m1));
+  const u1 = w({ mark: "unanimous", votes: v([["a", "yes"]]) });
+  check("unanimous: 1 yes of 1 voter passes", u1.passed && u1.needed === 1 && resultSentence(u1) === "1 of 5 voted; 1 voted yes; it needed every vote cast.", J(u1));
+  const u21 = w({ mark: "unanimous", votes: v([["a", "yes"], ["b", "yes"], ["c", "no"]]) });
+  check("unanimous: 2 yes 1 no fails", !u21.passed && u21.needed === 3 && u21.no === 1, J(u21));
+  const u4 = w({ mark: "unanimous", votes: v([["a", "yes"], ["b", "yes"], ["c", "yes"], ["d", "yes"], ["e", "no"]]) });
+  const u5 = w({ mark: "unanimous", votes: v(E.map((p) => [p, "yes"])) });
+  check("unanimous: 4 yes and 1 no fails, 5 yes passes", !u4.passed && u4.needed === 5 && u5.passed, J([u4, u5]));
+  const m11 = w({ mark: "majority", votes: v([["a", "yes"], ["b", "no"]]) });
+  check("majority: 1 yes 1 no fails (not more than half)", !m11.passed && m11.needed === 2 && resultSentence(m11) === "2 of 5 voted; 1 voted yes; it needed more than half of the votes cast.", J(m11));
+  const m2 = w({ mark: "majority", votes: v([["a", "yes"], ["b", "yes"], ["c", "no"], ["d", "no"]]) });
+  check("majority: 2 yes 2 no (and 1 who didn't vote) fails, the non-voter is not a no", !m2.passed && m2.needed === 3 && m2.absent === 1, J(m2));
+  for (const mark of ["majority", "unanimous"]) {
+    const z = w({ mark, votes: [] });
+    check(`${mark}: nobody voting fails; it needed 1 yes vote, and the sentence says nobody voted`, !z.passed && z.voters === 0 && z.needed === 1 && z.absent === 5 && resultSentence(z) === "Nobody voted on it.", J(z));
+  }
+  const nv = (n) => w({ mark: "majority", votes: v([["a", "yes"], ["b", "yes"], ["c", "no"], ...E.slice(3, n).map((p) => [p, "no"])]) });
+  check("who didn't vote does not change the result: the same 3 votes pass or fail alike in a 5-player and a 50-player day", J(nv(3).passed) === J(tally({ mark: "majority", electorate: 50, votes: v([["a", "yes"], ["b", "yes"], ["c", "no"]]) }).passed) && nv(3).passed);
+  const out = w({ mark: "majority", votes: v([["a", "yes"], ["zed", "no"]]) });
+  check("a vote from someone outside the day's electorate is not counted", out.yes === 1 && out.no === 0 && out.voters === 1 && out.passed, J(out));
+  check("a stored number is not used for an ordinary proposal: the count comes from who voted", w({ mark: "majority", votes: v([["a", "yes"]]), needed: 4 }).needed === 1 &&
+    [0, 1, 2, 3, 4, 5, 6, 7, 8].every((n) => neededOf("majority", n) === Math.floor(n / 2) + 1 && neededOf("unanimous", n) === n));
+  const ch = (o) => tally({ mark: "majority", electorate: 3, electors: ["a", "b", "c"], champion: true, proposer: "a", ...o });
+  check("the Champion's change is counted as before (rule 402.4): it passes unless every other player votes no; not voting is not against it; its own vote is not counted",
+    ch({ votes: [] }).passed && ch({ votes: v([["b", "no"]]) }).passed && !ch({ votes: v([["b", "no"], ["c", "no"]]) }).passed && ch({ votes: v([["a", "no"], ["b", "no"]]) }).passed &&
+    ch({ votes: v([["b", "no"], ["c", "no"]]) }).needed === 2 && resultSentence(ch({ votes: v([["b", "no"]]) })) === "1 of 2 other players voted no; it fails only if all 2 do.");
 }
 
 console.log("the 3 am deadline (rule 107.6), by the wall clock");
@@ -150,9 +168,8 @@ try {
   const d2 = dayRow(2);
   check("day 1 had nothing to count, so day 2 opens at once; day 2 is 2026-11-01, 25 hours long (to midnight PST, 08:00Z), with its electorate of 5",
     dayRow(1).status === "done" && d2.status === "open" && d2.starts_at === "2026-11-01T07:00:00.000Z" && d2.ends_at === "2026-11-02T08:00:00.000Z" && d2.electorate === 5 && gameRow().day === 2, J([dayRow(1), d2]));
-  check("P1-P3 are on day 2's ballot, each with the votes it needs stored from its confirmed mark and day 2's electorate: 3 of 5, 3 of 5, 5 of 5",
-    [1, 2, 3].every((n) => prop(n).status === "on_ballot" && prop(n).day_ballot === 2 && prop(n).electorate === 5) && prop(1).needed === 3 && prop(2).needed === 3 && prop(3).needed === 5 &&
-    prop(1).needed === neededOf("majority", 5) && prop(3).needed === neededOf("unanimous", 5), J([prop(1), prop(2), prop(3)]));
+  check("P1-P3 are on day 2's ballot with day 2's electorate (5) and their confirmed marks; none has a number needed yet, that depends on who votes (rule 104.1)",
+    [1, 2, 3].every((n) => prop(n).status === "on_ballot" && prop(n).day_ballot === 2 && prop(n).electorate === 5 && prop(n).needed === null) && prop(1).mark === "majority" && prop(3).mark === "unanimous", J([prop(1), prop(2), prop(3)]));
 
   setClock("2026-11-01T20:00:00.000Z"); // noon PST
   console.log("someone joins during day 2");
@@ -161,8 +178,8 @@ try {
   d1(state, `UPDATE games SET status = 'playing' WHERE id = '${gid}'`);
   const fv = await vote(fay, "P1", "yes");
   const fb = (await fay.get(BAL)).data;
-  check("Fay joined after day 2 began: her vote is refused (403, rule 104.2), the thresholds do not move (3 of 5), and the ballot says she votes from tomorrow",
-    fv.status === 403 && /vote from tomorrow \(rule 104\.2\)/.test(fv.data.error) && fb.electorate === 5 && fb.items[0].needs.needed === 3 && fb.items[0].needs.of === 5 && fb.you.elector === false && fb.you.can_vote.allowed === false && voteRows(1).length === 0, fv.text + J(fb.you));
+  check("Fay joined after day 2 began: her vote is refused (403, rule 104.2), the electorate does not move (5), and the ballot says she votes from tomorrow",
+    fv.status === 403 && /vote from tomorrow \(rule 104\.2\)/.test(fv.data.error) && fb.electorate === 5 && J(fb.items[0].needs) === J({ mark: "majority" }) && fb.you.elector === false && fb.you.can_vote.allowed === false && voteRows(1).length === 0, fv.text + J(fb.you));
 
   console.log("votes are hidden until midnight (rule 104.4), on every surface");
   const tokCy = await connect(A, "vote", cy, SITE), tokAna = await connect(A, "vote", ana, SITE);
@@ -220,9 +237,9 @@ try {
   check("Eve votes No on P3 over MCP: the same route, the same toast", !ev.isError && ev.text === "P3: you voted No. You can change it until midnight." && voteRows(3).find((r) => r.who === "Eve").vote === "no", ev.text);
   const rb = await tool(A, "vote", tokAna.access_token, "read_ballot");
   const rbd = JSON.parse(rb.text);
-  check("read_ballot over MCP: 3 items, 'N of M voted' for Ana (3 of 3), thresholds, turnout, her own votes, no totals",
+  check("read_ballot over MCP: 3 items, 'N of M voted' for Ana (3 of 3), marks, turnout, her own votes, no totals",
     rbd.items.length === 3 && rbd.you.voted === 3 && rbd.you.of === 3 && J(rbd.items.map((i) => i.your_vote)) === J(["yes", "yes", "yes"]) && J(rbd.items.map((i) => i.turnout.voted)) === J([3, 2, 5]) &&
-    J(rbd.items.map((i) => [i.n, i.needs.needed, i.needs.of, i.threshold_rule])) === J([["P1", 3, 5, "104.1"], ["P2", 3, 5, "104.1"], ["P3", 5, 5, "104.1"]]) && rbd.items.every((i) => i.result === undefined), rb.text.slice(0, 400));
+    J(rbd.items.map((i) => [i.n, i.needs, i.threshold_rule])) === J([["P1", { mark: "majority" }, "104.1"], ["P2", { mark: "majority" }, "104.1"], ["P3", { mark: "unanimous" }, "104.1"]]) && rbd.items.every((i) => i.result === undefined), rb.text.slice(0, 400));
   const t4 = await bo.post("/vote/api/turn", { kind: "repeal", target: "403", words: "Paradoxes are dull." });
   check("Bo confirms P4 on day 2 (tomorrow's ballot)", t4.status === 200 && prop(4).status === "confirmed", t4.text);
 
@@ -252,18 +269,18 @@ try {
   console.log("the count at midnight (rules 104.1, 104.5)");
   await cron();
   const [c1, c2, c3] = [prop(1), prop(2), prop(3)];
-  check("P1 passes at exactly its threshold: 3 yes of 5 (Ana, Bo, Cy), 0 no, 2 didn't vote, needed 3; its budget is fixed (20 minutes, medium effort)",
-    c1.status === "passed" && c1.yes === 3 && c1.no === 0 && c1.absent === 2 && c1.needed === 3 && c1.why === "3 of 5 voted yes; it needed 3." && c1.budget_minutes === 20 && c1.budget_effort === "medium", J(c1));
-  check("P2 fails: 2 yes, 2 no, 1 didn't vote (counted as no), needed 3; it is final, with no budget",
-    c2.status === "failed" && c2.yes === 2 && c2.no === 2 && c2.absent === 1 && c2.why === "2 of 5 voted yes; it needed 3." && c2.budget_minutes === null, J(c2));
-  check("P3 (unanimous) fails on one No: 4 yes of 5 (Dee's frozen Yes counted), needed 5", c3.status === "failed" && c3.yes === 4 && c3.no === 1 && c3.absent === 0 && c3.needed === 5, J(c3));
+  check("P1 passes: 3 yes of the 3 who voted (Ana, Bo, Cy), 0 no, 2 didn't vote (neither for nor against), needed 2; its budget is fixed (20 minutes, medium effort)",
+    c1.status === "passed" && c1.yes === 3 && c1.no === 0 && c1.absent === 2 && c1.needed === 2 && c1.why === "3 of 5 voted; 3 voted yes; it needed more than half of the votes cast." && c1.budget_minutes === 20 && c1.budget_effort === "medium", J(c1));
+  check("P2 fails: 2 yes, 2 no, 1 didn't vote: 2 of 4 is not more than half, needed 3; it is final, with no budget",
+    c2.status === "failed" && c2.yes === 2 && c2.no === 2 && c2.absent === 1 && c2.why === "4 of 5 voted; 2 voted yes; it needed more than half of the votes cast." && c2.budget_minutes === null, J(c2));
+  check("P3 (unanimous) fails on one No: 4 yes of the 5 who voted (Dee's frozen Yes counted), needed all 5", c3.status === "failed" && c3.yes === 4 && c3.no === 1 && c3.absent === 0 && c3.needed === 5, J(c3));
   check("one passed, so day 2 waits for the moderator: processing, deadline 3:00 am PST (11:00Z); the game stays locked and says so; P4 is not on a ballot yet",
     dayRow(2).status === "processing" && dayRow(2).deadline_at === "2026-11-02T11:00:00.000Z" && gameRow().phase === "locked" && gameRow().day === 2 && prop(4).status === "confirmed" &&
     (await ana.get("/vote/api/day")).data.deadline_at === "2026-11-02T11:00:00.000Z" && (await vote(ana, "P2", "no")).status === 423, J([dayRow(2), gameRow()]));
   const rev = (await cy.get(`${BAL}?day=2`)).data;
   check("after the count every vote is shown (rule 104.4): each item's result and its roll call, 'didn't vote' as null",
     J(rev.items[0].roll_call.map((r) => [r.name, r.vote])) === J([["Ana", "yes"], ["Bo", "yes"], ["Cy", "yes"], ["Dee", null], ["Eve", null]]) &&
-    J(rev.items[1].result) === J({ yes: 2, no: 2, didnt_vote: 1, needed: 3, electorate: 5, passed: false, applied: null, sentence: "2 of 5 voted yes; it needed 3.", not_applied_reason: null }) &&
+    J(rev.items[1].result) === J({ yes: 2, no: 2, didnt_vote: 1, needed: 3, electorate: 5, passed: false, applied: null, sentence: "4 of 5 voted; 2 voted yes; it needed more than half of the votes cast.", not_applied_reason: null }) &&
     rev.items[0].result.passed === true && rev.items.every((i) => i.can_vote.allowed === false), J(rev.items[0]));
   const snap = () => J([d1(state, `SELECT number, status, yes, no, absent, needed, why, not_applied_reason, decided_at FROM proposals WHERE game_id = '${gid}' ORDER BY number`), dayRow(2), dayRow(3) ?? null, d1(state, `SELECT id, kind FROM notifications WHERE game_id = '${gid}' AND kind = 'not_applied'`), gameRow()]);
   const s1 = snap();
@@ -294,18 +311,19 @@ try {
   check("the lock always ends: day 2 timed_out, day 3 open (from day 2's midnight to the next), the game unlocked on the old rules (rules_day unchanged)",
     dayRow(2).status === "timed_out" && d3?.status === "open" && d3.starts_at === "2026-11-02T08:00:00.000Z" && d3.ends_at === "2026-11-03T08:00:00.000Z" &&
     J(gameRow()) === J({ status: "playing", day: 3, phase: "open", rules_day: 0 }) && (await ana.get("/vote/api/day")).data.locked === false, J([dayRow(2), d3, gameRow()]));
-  check("day 3's electorate is the 6 players now, Fay included; P4 is its ballot, needing 4 of 6", d3.electorate === 6 && prop(4).status === "on_ballot" && prop(4).needed === 4 && prop(4).electorate === 6, J([d3, prop(4)]));
+  check("day 3's electorate is the 6 players now, Fay included; P4 is its ballot, with no number needed yet", d3.electorate === 6 && prop(4).status === "on_ballot" && prop(4).needed === null && prop(4).electorate === 6, J([d3, prop(4)]));
   const s2 = snap();
   await cron(); await cron();
   check("the cron run twice more after the deadline changes nothing: no second notification, no second day", snap() === s2 && d1(state, `SELECT COUNT(*) AS n FROM days WHERE game_id = '${gid}'`)[0].n === 3);
   const fv3 = await vote(fay, "P4", "yes");
-  check("Fay votes from day 3", fv3.status === 200, fv3.text);
+  const av3 = await vote(ana, "P4", "no");
+  check("Fay votes yes and Ana votes no from day 3", fv3.status === 200 && av3.status === 200, fv3.text + av3.text);
 
   console.log("a ballot where nothing passes");
   setClock("2026-11-03T08:00:05.000Z");
   await cron();
-  check("day 3's only item fails (1 yes of 6; it needed 4), so day 4 opens at once: day 3 done, no deadline",
-    prop(4).status === "failed" && prop(4).yes === 1 && prop(4).absent === 5 && dayRow(3).status === "done" && dayRow(3).deadline_at === null && dayRow(4)?.status === "open" && gameRow().day === 4 && gameRow().phase === "open", J([prop(4), dayRow(3)]));
+  check("day 3's only item fails (1 yes, 1 no, 4 didn't vote: not more than half of the 2 who voted; it needed 2), so day 4 opens at once: day 3 done, no deadline",
+    prop(4).status === "failed" && prop(4).yes === 1 && prop(4).no === 1 && prop(4).needed === 2 && prop(4).absent === 4 && dayRow(3).status === "done" && dayRow(3).deadline_at === null && dayRow(4)?.status === "open" && gameRow().day === 4 && gameRow().phase === "open", J([prop(4), dayRow(3)]));
 } catch (e) {
   fail++;
   console.log("  FAIL  harness error:", e?.stack || e, e?.cause, e?.stderr ? String(e.stderr).slice(-1500) : "");

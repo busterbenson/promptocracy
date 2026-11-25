@@ -95,7 +95,7 @@ try {
   check("the rule card she was opened from rides on the message (stored on it) and in the model's tail", d.data.messages[0].rule === "401" && JSON.parse(rows("Ana", "player").at(-1).meta).rule === "401" && /opened you from the rulebook's card for rule 401/.test(calls.filter((c) => c.kind === "starling").at(-1).lastText));
   check("a draft: the drafter was asked once (its Haiku), a proposal row exists as a DRAFT of Ana's, its text is the drafter's, its conflicts are named, and her line points at it",
     drafterCalls() === 1 && props("Ana").length === 1 && props("Ana")[0].status === "draft" && props("Ana")[0].kind === "amend" && props("Ana")[0].target === "401" && props("Ana")[0].after_text === POINTS && props("Ana")[0].drafted_by === "model" && rows("Ana").at(-1).proposal_id === props("Ana")[0].id &&
-    sl && sl.status === "draft" && sl.head === "Amend rule 401 (Points) to read:" && sl.after_text === POINTS && J(sl.conflicts) === '["402"]' && sl.needs.mark === "majority" && sl.needs.of === 4, J(sl));
+    sl && sl.status === "draft" && sl.head === "Amend rule 401 (Points) to read:" && sl.after_text === POINTS && J(sl.conflicts) === '["402"]' && J(sl.needs) === J({ mark: "majority" }), J(sl));
   check("Lock it in is allowed on the slip; Unlock is not (nothing is locked); the day shows 0 of 3", sl.can.lock.allowed === true && sl.can.unlock.allowed === false && d.data.state.today.made === 0);
   check("drafting cost one of the draft attempts and no proposal slot: 0 locked in, 1 draft attempt", d1(state, `SELECT n FROM draft_attempts WHERE game_id = '${gid}' AND player_id = '${id.Ana}'`)[0].n === 1 && d1(state, `SELECT COUNT(*) AS n FROM proposals WHERE status = 'confirmed'`)[0].n === 0);
 

@@ -20,7 +20,7 @@ import { DrafterError, draftRewording, drafterReady } from "../lib/drafter";
 import { notify } from "../lib/notify";
 import { commissionsFor } from "../lib/ticket-view";
 import { COMMISSION_SNAPSHOT_SQL } from "../lib/tickets.js";
-import { ACTION_DRAFT_INSERT_SQL, CONFIRMED_TODAY_SQL, CONFIRM_SQL, DRAFT_INSERT_SQL, NOT_WIRED_REASON, WITHDRAW_SQL, conflictSentence, draftOf, markFor, needsModel, neededOf, normKind, notWiredConflictRefusal, notWiredRefusal, parseBook, proposalLimitMessage, readRequest } from "../lib/proposals.js";
+import { ACTION_DRAFT_INSERT_SQL, CONFIRMED_TODAY_SQL, CONFIRM_SQL, DRAFT_INSERT_SQL, NOT_WIRED_REASON, WITHDRAW_SQL, conflictSentence, draftOf, markFor, needsModel, normKind, notWiredConflictRefusal, notWiredRefusal, parseBook, proposalLimitMessage, readRequest } from "../lib/proposals.js";
 import { refusalBody, turnBlock } from "../lib/turn";
 import { Ctx, colorOf, json, nowIso, readJson, sha256Hex, siteUrl, who } from "../lib/util";
 
@@ -64,8 +64,9 @@ const actionView = (a: any) => ({ type: a.type, name: a.name, rule: a.rule, touc
 export const catalogOf = (game: { slug: string }) => rulesFor(game).actionTypes();
 
 // What a proposal shows. A whitelist: the count's columns (yes, no, absent, why) are in it only once it is counted
-// (rule 104.4); before that, nothing about its votes. The votes it needs come from its ballot day's electorate once it
-// is on a ballot (stored when the day opened), else from `electorate` (today's players, for a draft's slip).
+// (rule 104.4); before that, nothing about its votes. An ordinary proposal shows its mark only: what it needs depends on
+// who votes (rule 104.1). The Champion's change shows the other players, from its ballot day's electorate once it is on a
+// ballot (stored when the day opened), else from `electorate` (today's players, for a draft's slip).
 /** @rule 103.1, 103.2, 104.4, 105.4, 402.4 */
 export function view(r: any, viewerId?: string | null, electorate?: number) {
   const mark = r.mark ?? r.draft_mark;
@@ -87,8 +88,7 @@ export function view(r: any, viewerId?: string | null, electorate?: number) {
     champion: !!r.champion,
     // The Champion's change needs no votes to pass: `needed` is how many other players must ALL vote no to stop it (rule 402.4).
     needs: r.champion ? (stored ? { mark, champion: true, needed: r.needed, of: r.electorate } : electorate ? { mark, champion: true, needed: Math.max(0, electorate - 1), of: electorate } : undefined)
-      : mark && stored ? { mark, needed: r.needed, of: r.electorate }
-      : mark && electorate ? { mark, needed: neededOf(mark, electorate), of: electorate } : undefined,
+      : mark ? { mark } : undefined,
     result: COUNTED.includes(r.status) ? {
       yes: r.yes, no: r.no, didnt_vote: r.absent, needed: r.needed, electorate: r.electorate,
       passed: r.status !== "failed", applied: r.status === "enacted" ? true : r.status === "not_applied" ? false : null,

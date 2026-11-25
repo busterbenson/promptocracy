@@ -116,7 +116,7 @@ export function registerTools(server: McpServer, ctx: Ctx, player: Player) {
       p.after_text ? `After: ${p.after_text}` : null,
       settingsText(p.settings) ? `Sets: ${settingsText(p.settings)}` : null,
       p.conflict_note ? `Conflicts: ${p.conflict_note}` : null,
-      p.needs ? (p.needs.champion ? `Champion's change: stopped only if all ${p.needs.needed} other players vote no` : `Needs: ${p.needs.mark}, ${p.needs.needed} of ${p.needs.of} votes`) : null,
+      p.needs ? (p.needs.champion ? `Champion's change: stopped only if all ${p.needs.needed} other players vote no` : `Needs: ${p.needs.mark}`) : null,
       "This is only a draft. Confirm it with confirm_proposal to make it one of your proposals today (it goes on tomorrow's ballot). my_state shows how many you have made of the day's limit.",
     ].filter(Boolean).join("\n");
     return reply(r, text);
@@ -162,13 +162,13 @@ export function registerTools(server: McpServer, ctx: Ctx, player: Player) {
   }, async () => reply(await viaRoute(ctx, player, apiProposals.get, "GET", "proposals")));
 
   server.registerTool("read_ballot", {
-    description: "Read today's ballot: each proposal confirmed yesterday, its exact change, the votes it needs (its mark, of today's players; not voting counts as no; a Champion's change instead says how many of the other players must all vote no to stop it), how many have voted and who, and your own vote. Nobody's vote and no total is shown until midnight, when the ballot is counted. Give `day` to read an earlier day's ballot with its results and every vote.",
+    description: "Read today's ballot: each proposal confirmed yesterday, its exact change, its mark (counted among the players who voted on it; not voting counts neither for nor against; a nobody-voted proposal fails; a Champion's change instead says how many of the other players must all vote no to stop it), how many have voted and who, and your own vote. Nobody's vote and no total is shown until midnight, when the ballot is counted. Give `day` to read an earlier day's ballot with its results and every vote.",
     inputSchema: { day: z.number().int().min(1).optional().describe("An earlier day's number, to read its counted ballot. Leave out for today's") },
     annotations: read,
   }, async ({ day }) => reply(await viaRoute(ctx, player, apiBallot.get, "GET", day === undefined ? "ballot" : `ballot?day=${day}`)));
 
   server.registerTool("vote", {
-    description: "Vote yes or no on a proposal on today's ballot (like P3). You may vote on your own proposal (not on your own Champion's change), and change your vote until midnight or until you end your turn (ending your turn is final). Not voting counts as no (except on a Champion's change, which takes effect unless every other player votes no). Nobody sees your vote until midnight. Not during the midnight lock (the lock message is returned).",
+    description: "Vote yes or no on a proposal on today's ballot (like P3). You may vote on your own proposal (not on your own Champion's change), and change your vote until midnight or until you end your turn (ending your turn is final). Not voting counts neither for nor against: a proposal is counted among those who voted, and fails if nobody does (a Champion's change takes effect unless every other player votes no). Nobody sees your vote until midnight. Not during the midnight lock (the lock message is returned).",
     inputSchema: {
       proposal: z.string().describe("The proposal, like \"P3\""),
       vote: z.enum(["yes", "no"]).describe("yes or no"),

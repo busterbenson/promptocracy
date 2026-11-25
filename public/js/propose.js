@@ -76,7 +76,7 @@ const settingsHTML = (p) => {
 };
 /** @rule 105.1, 402.4 */
 const needText = (p) => (p.needs && p.needs.champion ? (p.needs.needed ? `Champion's change · stopped at ${p.needs.needed} of ${p.needs.needed} against` : "Champion's change")
-  : p.needs ? `${p.needs.mark} · needs ${p.needs.needed} of ${p.needs.of}` : p.mark || "");
+  : p.needs ? p.needs.mark : p.mark || "");
 
 // An action's slip and ballot row (rule 103.5): its type and rule, then each detail as a label and its value, and the rules it touches.
 /** @rule 103.5 */

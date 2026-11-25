@@ -542,7 +542,7 @@ try {
   const draftId = (dr.text.match(/Draft id: (\S+)/) || [])[1];
   const gmD = (await client(A).get("/pilot/api/game")).data;
   check("draft_proposal returns the draft: its id, the heading, the new text and the votes it needs; it is free and not yet a proposal (a draft row, no log line, still free to propose)",
-    !dr.isError && !!draftId && /Add a clause to rule 101/.test(dr.text) && /Cats may vote\./.test(dr.text) && /Needs: unanimous, 2 of 2/.test(dr.text) && /only a draft/i.test(dr.text) &&
+    !dr.isError && !!draftId && /Add a clause to rule 101/.test(dr.text) && /Cats may vote\./.test(dr.text) && /Needs: unanimous(\n|$)/.test(dr.text) && /only a draft/i.test(dr.text) &&
     d1(state, `SELECT status, kind, target FROM proposals WHERE game_id = '${gidOf("pilot")}'`).map((r) => J(r)).join() === J({ status: "draft", kind: "addclause", target: "101" }) && gmD.events.length === eventsBefore &&
     JSON.parse((await tool(A, "pilot", tokMia, "my_state")).text).today.proposed === false, dr.text);
   const dr2 = await tool(A, "pilot", tokMia, "draft_proposal", cats);

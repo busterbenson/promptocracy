@@ -79,9 +79,9 @@ export function partsOf(d) {
 // A new rule is majority unless the proposal marks it unanimous, which takes a unanimous vote (105.2); the draft's `mark` is that choice.
 /** @rule 105.2, 105.4 */
 export const markFor = (book, d) => (d.kind === "add" ? (d.mark === "unanimous" ? "unanimous" : "majority") : strictestMark(book, partsOf(d)));
-// How many yes votes a mark needs of `electorate` players (rule 104.1: more than half; unanimous: all).
+// How many yes votes a mark needs of `voters` players who voted (rule 104.1: more than half; unanimous: all of them).
 /** @rule 104.1, 105.1 */
-export const neededOf = (mark, electorate) => (mark === "unanimous" ? electorate : Math.floor(electorate / 2) + 1);
+export const neededOf = (mark, voters) => (mark === "unanimous" ? voters : Math.floor(voters / 2) + 1);
 
 // ---- numbers --------------------------------------------------------------------------------------------------------
 // Numbers no rule is given again: rule 110 was deleted from the file, not struck, so it would otherwise come back as the next
