@@ -489,7 +489,7 @@ ${editing ? formHTML(t) : factsHTML(t)}${unlockHTML(t)}${reopenHTML(t)}${holdHTM
         S.form = null; await loadOne(n); await refresh();
       } else if (a === "hold" || a === "resume" || a === "cancel") {
         const r = await api(`/api/tickets/${encodeURIComponent(n)}/${a}`, {});
-        if (r.ok) { S.askCancel = ""; S.detail[n] = r.data.ticket; await load(); await refresh(); } else { S.err = (r.data && r.data.error) || "Something went wrong."; await loadOne(n); }
+        if (r.ok) { S.askCancel = ""; S.detail[n] = r.data.ticket; await load(); if (S.view === "all") await loadAll(true); await refresh(); } else { S.err = (r.data && r.data.error) || "Something went wrong."; await loadOne(n); }
       } else if (a === "reopen") {
         const r = await api(`/api/tickets/${encodeURIComponent(n)}/reopen`, {});
         if (r.ok) { S.detail[n] = r.data.ticket; S.form = null; await refresh(); } else { S.err = (r.data && r.data.error) || "Something went wrong."; await loadOne(n); }
