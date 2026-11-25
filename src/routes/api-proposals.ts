@@ -8,7 +8,7 @@
 //                                             one locked in today (status confirmed, proposed today), anyone's: shown the
 //                                             day it is locked in (Buster, 2026-11-24), withdrawn ones are gone. Drafts are
 //                                             private. Votes and totals only once it is counted (rule 104.4).
-//                                             `draft`: your newest draft from Starling, if it is still a draft made today
+//                                             `draft`: your newest draft from Gremlin, if it is still a draft made today
 //                                             (the propose bar's dashed slot; never counted, rule 103.1).
 // Every write goes through the day's gate (rule 107.1 the lock, rule 202.4 End turn), in the handler and again in the
 // SQL of the write itself. Mechanical kinds are drafted by code (src/lib/proposals.js); rewording in the player's own
@@ -101,6 +101,47 @@ export function view(r: any, viewerId?: string | null, electorate?: number) {
   };
 }
 
+/**
+ * The drafting half of a proposal, with nothing written: the model's rewording or conflict check (rule 108.3), the exact change (draftOf), the
+ * not-wired refusals (103.6) and the conflicts. `draft()` is the gates, the day's attempt slot, this, and the insert; a commission's rule text
+ * can call the same function later, so a standalone change and a commission's rule are checked one way. Returns {d, conflicts, settings, after,
+ * nowMs} (nowMs: the clock after the model call), or {fail: the Out to send}. @rule 103.1, 103.6, 108.3
+ */
+export async function prepareDraft(env: any, game: any, day: any, turn: any, player: any, md: string, book: any, req: any, nowMs: number): Promise<any> {
+  let after: string | null = null, settings: Record<string, unknown> = {}, modelConflicts: string[] = [], asked = false;
+  if (req.kind === "amend" && req.prefilled && drafterReady(env)) {
+    // Exact wording is kept as written; the model only names the other rules it would conflict with (rule 108.3). If
+    // the model is down, the exact text still drafts, with no conflicts named.
+    asked = true;
+    try { modelConflicts = (await draftRewording(env, book, md, req)).conflicts; } catch (e: any) { if (!(e instanceof DrafterError)) throw e; }
+  }
+  if (needsModel(req)) {
+    asked = true;
+    try {
+      const a = await draftRewording(env, book, md, req);
+      after = a.after_text; settings = a.settings; modelConflicts = a.conflicts;
+    } catch (e: any) {
+      if (!(e instanceof DrafterError)) throw e;
+      return { fail: out({ error: e.message, drafting: e.code, ...(e.reason ? { reason: e.reason } : {}) }, e.code === "unavailable" ? 503 : e.code === "refused" ? 422 : 502) };
+    }
+  }
+  // The model may take a while: the write is timed when its answer is in, so a draft that finishes after midnight
+  // meets the lock (rule 107.1).
+  if (asked) {
+    nowMs = await clockNow(env);
+    const late = turnBlock(game, day, turn, player, "propose", nowMs);
+    if (late) return { fail: out(refusalBody(late), late.status) };
+  }
+  const d = draftOf(book, req, after);
+  if ("error" in d) return { fail: out({ error: d.error }, 400) };
+  const refused = notWiredRefusal(book, { ...req, ...d, settings });
+  if (refused) return { fail: out({ error: refused, drafting: "refused", reason: NOT_WIRED_REASON }, 422) };
+  const conflicts = [...new Set([...d.conflicts, ...modelConflicts])];
+  const unwired = notWiredConflictRefusal(book, conflicts);
+  if (unwired) return { fail: out({ error: unwired, drafting: "refused", reason: NOT_WIRED_REASON }, 422) };
+  return { d, conflicts, settings, after, nowMs };
+}
+
 // Draft (rule 103.1). Returns the draft, or the refusal.
 /** @rule 103.1, 103.6, 108.3, 402.4 */
 export async function draft(ctx: Ctx, player: any, body: any, nowMs: number, o: { atLimit?: boolean } = {}): Promise<Out> {
@@ -109,7 +150,7 @@ export async function draft(ctx: Ctx, player: any, body: any, nowMs: number, o: 
   const blocked = turnBlock(game, day, turn, player, "propose", nowMs);
   if (blocked) return out(refusalBody(blocked), blocked.status);
   const limit = limitOf(game), made = await confirmedToday(env, game.id, player.id, game.day);
-  // Starling drafts at the limit too (rule 103.1: drafting costs nothing, only a locked-in proposal counts): `atLimit`. Confirming still refuses past it.
+  // Gremlin drafts at the limit too (rule 103.1: drafting costs nothing, only a locked-in proposal counts): `atLimit`. Confirming still refuses past it.
   // The Champion's change (rule 402.4) is on top of the day's proposals, so the day's limit does not stop its draft; being
   // the Champion and not having made it this Era does. Drafted through the same checks as any proposal below.
   const asChampion = body?.champion === true;
@@ -135,37 +176,10 @@ export async function draft(ctx: Ctx, player: any, body: any, nowMs: number, o: 
      ON CONFLICT (game_id, player_id, day) DO UPDATE SET n = n + 1 WHERE n < ?`,
   ).bind(game.id, player.id, game.day, draftCap).run();
   if (!(slot?.meta?.changes > 0)) return out({ error: `That's ${draftCap} drafts today, the most for one day. Try again tomorrow.` }, 429);
-  let after: string | null = null, settings: Record<string, unknown> = {}, modelConflicts: string[] = [], asked = false;
-  if (req.kind === "amend" && req.prefilled && drafterReady(env)) {
-    // Exact wording is kept as written; the model only names the other rules it would conflict with (rule 108.3). If
-    // the model is down, the exact text still drafts, with no conflicts named.
-    asked = true;
-    try { modelConflicts = (await draftRewording(env, book, md, req)).conflicts; } catch (e: any) { if (!(e instanceof DrafterError)) throw e; }
-  }
-  if (needsModel(req)) {
-    asked = true;
-    try {
-      const a = await draftRewording(env, book, md, req);
-      after = a.after_text; settings = a.settings; modelConflicts = a.conflicts;
-    } catch (e: any) {
-      if (!(e instanceof DrafterError)) throw e;
-      return out({ error: e.message, drafting: e.code, ...(e.reason ? { reason: e.reason } : {}) }, e.code === "unavailable" ? 503 : e.code === "refused" ? 422 : 502);
-    }
-  }
-  // The model may take a while: the write is timed when its answer is in, so a draft that finishes after midnight
-  // meets the lock (rule 107.1).
-  if (asked) {
-    nowMs = await clockNow(env);
-    const late = turnBlock(game, day, turn, player, "propose", nowMs);
-    if (late) return out(refusalBody(late), late.status);
-  }
-  const d = draftOf(book, req, after);
-  if ("error" in d) return out({ error: d.error }, 400);
-  const refused = notWiredRefusal(book, { ...req, ...d, settings });
-  if (refused) return out({ error: refused, drafting: "refused", reason: NOT_WIRED_REASON }, 422);
-  const conflicts = [...new Set([...d.conflicts, ...modelConflicts])];
-  const unwired = notWiredConflictRefusal(book, conflicts);
-  if (unwired) return out({ error: unwired, drafting: "refused", reason: NOT_WIRED_REASON }, 422);
+  const prep = await prepareDraft(env, game, day, turn, player, md, book, req, nowMs);
+  if ("fail" in prep) return prep.fail;
+  const { d, conflicts, settings, after } = prep;
+  nowMs = prep.nowMs;
 
   const id = crypto.randomUUID(), now = nowIso(nowMs);
   const insert = req.kind === "action"
@@ -301,11 +315,11 @@ export const get = async (ctx: Ctx) => {
      ORDER BY q.number`,
   ).bind(game.id, game.day, rule, rule, rule, rule).all()).results as any[];
   const n = await playerCount(env, game.id);
-  // The draft the propose bar shows: the one Starling's newest line points at, while it is still a draft made today (not one cancelled in the form).
+  // The draft the propose bar shows: the one Gremlin's newest general-conversation line points at, while it is still a draft made today (not one cancelled in the form).
   const mineDraft: any = player && game.day ? await env.DB.prepare(
     `SELECT q.*, p.display_name AS name, p.color FROM proposals q JOIN players p ON p.game_id = q.game_id AND p.id = q.player_id
      WHERE q.game_id = ? AND q.player_id = ? AND q.status = 'draft' AND q.day_proposed = ?
-       AND q.id = (SELECT proposal_id FROM chat_messages WHERE game_id = ? AND player_id = ? AND agent = 'starling' AND proposal_id IS NOT NULL ORDER BY id DESC LIMIT 1)`,
+       AND q.id = (SELECT proposal_id FROM chat_messages WHERE game_id = ? AND player_id = ? AND agent = 'gremlin' AND ticket_id IS NULL AND proposal_id IS NOT NULL ORDER BY id DESC LIMIT 1)`,
   ).bind(game.id, player.id, game.day, game.id, player.id).first() : null;
   const tickets = await commissionsFor(env, game.id, rows.filter((r) => r.kind === "commission").map((r) => r.id));
   const today = game.day;

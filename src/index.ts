@@ -27,7 +27,6 @@ import * as apiHistory from "./routes/api-history";
 import * as apiCatalog from "./routes/api-catalog";
 import * as apiTickets from "./routes/api-tickets";
 import * as apiChat from "./routes/api-chat";
-import * as apiStarling from "./routes/api-starling";
 import * as apiArt from "./routes/api-art";
 import { sweepArt } from "./lib/art-sweep";
 import { AGENTS } from "./lib/chat.js";
@@ -127,7 +126,7 @@ async function route(request: Request, env: Env, execCtx: ExecutionContext): Pro
   // The pages' own scripts: one flat folder, plain file names only.
   const isScript = /^\/js\/[A-Za-z0-9._-]+\.js$/.test(path) && !path.includes("..");
   // The chat portraits: static SVG files (symbol #p), named one by one.
-  const isPortrait = /^\/portraits\/(gremlin|starling|chalant)\.svg$/.test(path);
+  const isPortrait = /^\/portraits\/(gremlin|chalant)\.svg$/.test(path);
   const slug = segs[0];
   const sub = segs[1];
   const isGame = !isRoot && !isVersion && !isVersioned && !isCss && !isScript && !isPortrait && validSlug(slug) && (sub === undefined || SUBROUTES.has(sub));
@@ -212,8 +211,10 @@ async function route(request: Request, env: Env, execCtx: ExecutionContext): Pro
   if (sub === "art" && segs.length === 3) { ctx.params.hash = segs[2]; return run(apiArt, method, ctx); }
   // /api/catalog/<id>: one catalog entry (rule 701.1)
   if (sub === "api" && segs.length === 4 && segs[2] === "catalog") { ctx.params.id = segs[3]; return run({ get: apiCatalog.one }, method, ctx); }
-  // /api/chat/<agent>: a player's private chat with Gremlin or Starling (rules 106.2, 106.3, 106.7)
-  if (sub === "api" && segs.length === 4 && segs[2] === "chat" && AGENTS.includes(segs[3])) return run(segs[3] === "starling" ? apiStarling : apiChat, method, ctx);
+  // /api/chat/<agent>: a player's private chat with Gremlin (rules 106.2, 106.3, 106.7). Starling is gone (one helper, 2026-11-24): a tab opened before the deploy
+  // still posts to her, and a 404 would read as a bug, so she answers 410 with where to go.
+  if (sub === "api" && segs.length === 4 && segs[2] === "chat" && segs[3] === "starling") return json({ error: "Starling is gone. Talk to Gremlin." }, 410);
+  if (sub === "api" && segs.length === 4 && segs[2] === "chat" && AGENTS.includes(segs[3])) return run(apiChat, method, ctx);
   // /api/tickets/<W3> (the ticket page), and /api/tickets/<W3>/edit, /confirm, /reopen, /discard and /post (rules 801, 804)
   if (sub === "api" && segs[2] === "tickets" && (segs.length === 4 || segs.length === 5)) {
     ctx.params.n = segs[3];

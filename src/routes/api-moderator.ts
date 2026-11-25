@@ -11,7 +11,7 @@
 //                                                ?after=<id> pages (50 a page, `next` is the id to pass on, null at the end); `month` is the game's model spend
 //                                                against its budget (106.7), so the job can skip every call when it is over
 //   GET  /<slug>/api/moderator/rulings          escalations whose ruling is owed (answered with the holding line, not yet ruled on): same items, same paging;
-//                                                an escalated Starling turn also carries the draft her reply showed (`turn.draft`, with drafted_by), and
+//                                                an escalated general-conversation turn also carries the draft his reply showed (`turn.draft`, with drafted_by), and
 //                                                `enacted` lists every enacted proposal (number, day, kind, target, drafted_by), so a ruling can tell
 //                                                which of the rulebook's text a model drafted (106.5)
 //   POST /<slug>/api/moderator/escalations/:id/ruled        {body, path}: the night's ruling, posted where the question was asked; closes the escalation
@@ -200,8 +200,8 @@ async function escalationItems(env: Ctx["env"], game: any, open: any[], drafts =
       // a private chat: ONLY the escalated turn (the player's message and Gremlin's answer to it), never the rest of the history
       const m: any = await env.DB.prepare("SELECT c.id, c.body, c.player_id, t.number AS ticket_number FROM chat_messages c LEFT JOIN tickets t ON t.id = c.ticket_id WHERE c.id = ? AND c.game_id = ?").bind(e.chat_message_id, game.id).first();
       // his answer to THAT message, by the `turn` he stored on it (the first agent line after it can belong to another turn when two tabs overlap); none found = no reply shown
-      const reply: any = m ? await env.DB.prepare("SELECT body, proposal_id FROM chat_messages WHERE game_id = ? AND player_id = ? AND agent = ? AND role = 'agent' AND json_extract(meta, '$.turn') = ? ORDER BY id LIMIT 1").bind(game.id, m.player_id, e.agent, m.id).first() : null;
-      // the draft Starling's reply showed (the slip under it), with who drafted its text: never the player's words, which are the turn's message
+      const reply: any = m ? await env.DB.prepare("SELECT body, proposal_id FROM chat_messages WHERE game_id = ? AND player_id = ? AND agent = (SELECT agent FROM chat_messages WHERE id = ?) AND role = 'agent' AND json_extract(meta, '$.turn') = ? ORDER BY id LIMIT 1").bind(game.id, m.player_id, m.id, m.id).first() : null;
+      // the draft his reply showed (the slip under it), with who drafted its text: never the player's words, which are the turn's message
       const d: any = drafts && reply?.proposal_id ? await env.DB.prepare("SELECT number, status, kind, target, draft_head, before_text, after_text, drafted_by FROM proposals WHERE id = ? AND game_id = ?").bind(reply.proposal_id, game.id).first() : null;
       const draft = d ? { number: d.number ?? null, status: d.status, kind: d.kind, target: d.target, head: d.draft_head, before_text: d.before_text, after_text: d.after_text, drafted_by: d.drafted_by } : undefined;
       items.push({ ...base, where: "chat", ticket_number: m?.ticket_number ?? null, turn: m ? { message: m.body, reply: reply?.body ?? null, ...(draft ? { draft } : {}) } : null });
@@ -273,8 +273,8 @@ function readUsage(u: any): { model: string; usage: any; ms: number } | null | "
 function postStatement(env: Ctx["env"], game: any, e: any, text: string, now: string, nowMs: number) {
   return e.ticket_id
     ? env.DB.prepare("INSERT INTO ticket_posts (ticket_id, game_id, author_kind, player_id, body, at) SELECT ?, ?, 'chalant', NULL, ?, ? WHERE changes() > 0").bind(e.ticket_id, game.id, text, now)
-    : env.DB.prepare("INSERT INTO chat_messages (game_id, player_id, agent, local_date, day, role, body, ticket_id, at) SELECT ?, ?, ?, ?, ?, 'chalant', ?, (SELECT ticket_id FROM chat_messages WHERE id = ?), ? WHERE changes() > 0")
-      .bind(game.id, e.player_id, e.agent, localDate(timeZoneOf(game), nowMs), game.day || null, text, e.chat_message_id, now);
+    : env.DB.prepare("INSERT INTO chat_messages (game_id, player_id, agent, local_date, day, role, body, ticket_id, at) SELECT ?, ?, (SELECT agent FROM chat_messages WHERE id = ?), ?, ?, 'chalant', ?, (SELECT ticket_id FROM chat_messages WHERE id = ?), ? WHERE changes() > 0")
+      .bind(game.id, e.player_id, e.chat_message_id, localDate(timeZoneOf(game), nowMs), game.day || null, text, e.chat_message_id, now);
 }
 
 /** @rule 106.4 */

@@ -4,11 +4,11 @@
 import { lockOpenSql } from "./day-gate.js";
 import { localDate, startOfDate } from "./day-gate.js";
 
-export const AGENTS = ["gremlin", "starling"];
+export const AGENTS = ["gremlin"];
 export const HISTORY_PAGE = 50;
 export const HISTORY_FOR_MODEL = 200;          // rows read to build a prompt; the prompt's own token cap trims further
 // The most a game's model calls may cost in a calendar month (the game's time zone), in dollars: a SITE limit, not a game setting
-// (docs/step2-plan.md 2.4). Over it, both agents answer with a canned line until the 1st. AGENT_BUDGET_USD overrides it (the tests).
+// (docs/step2-plan.md 2.4). Over it, he answers with a canned line until the 1st. AGENT_BUDGET_USD overrides it (the tests).
 export const MONTHLY_BUDGET_USD = 60;
 
 // What a model costs per million tokens, in dollars: input, output, a cache write (1.25x), a cache read (0.1x). Anthropic's list prices of 2026-11-03.
@@ -66,17 +66,18 @@ export function rowView(r) {
   if (meta.refusal) out.refusal = meta.refusal;
   if (meta.canned) out.canned = meta.canned;
   if (meta.price !== undefined) out.price = meta.price;
-  if (meta.rule) out.rule = meta.rule;                      // Starling: the rule card the player opened her from
-  if (r.proposal_id) out.proposal = r.proposal_id;          // Starling: the draft this line shows (the slip under it)
-  if (meta.quotes) out.quotes = meta.quotes;                // Starling: rule text she quoted, each checked against the rulebook
-  if (meta.refused) out.refused = meta.refused;             // Starling: the drafter said no, with its reason
+  if (meta.rule) out.rule = meta.rule;                      // the rule card the player opened him from
+  if (r.proposal_id) out.proposal = r.proposal_id;          // the draft this line shows (the slip under it)
+  if (meta.quotes) out.quotes = meta.quotes;                // rule text he quoted, each checked against the rulebook
+  if (meta.refused) out.refused = meta.refused;             // the drafter said no, with its reason
+  if (meta.options) out.options = meta.options;             // concrete choices he offers: buttons that fill the box, unsent
+  if (meta.guesses) out.guesses = meta.guesses;             // what he guessed in a draft, in one line
   if (meta.escalated) out.escalated = meta.escalated;
-  if (meta.handoff === "gremlin" || meta.handoff === "starling") out.handoff = meta.handoff;   // the other helper this line points the player to
   return out;
 }
 // One page of a player's own history, newest rows first by id; `before` is the cursor (an id). Only this player's rows with this agent.
 // `scope` narrows it to one conversation (Gremlin's, rule 801.6): {ticketId, date} is that ticket's own lines, and today's excuse (which belongs to
-// no ticket); {ticketId: null, date} is what was said outside any ticket; no scope is every line (Starling's one stream).
+// no ticket); {ticketId: null, date} is what was said outside any ticket; no scope is every line.
 // Returns {rows (oldest first within the page), next (the cursor for the page before it, or null)}.
 /** @rule 106.7, 801.6 */
 export async function historyPage(db, gameId, playerId, agent, before, scope) {

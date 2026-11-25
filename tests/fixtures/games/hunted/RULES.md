@@ -30,7 +30,7 @@ Joining waits while the night is being processed (107.1).
 **102.4** You sign in with a link sent to your email address.
 
 ### 103 Proposals [u]
-**103.1** To propose, you talk the change through with Starling. When she has it worded as an exact change to this file, she asks you to lock it in. Locking it in confirms it, and unlocking it withdraws it (103.3).
+**103.1** To propose, you talk the change through with Gremlin. When he has it worded as an exact change to this file, he asks you to lock it in. Locking it in confirms it, and unlocking it withdraws it (103.3).
 
 **103.2** You can confirm up to 3 proposals a day. [setting: proposals.per_day] Each confirmed proposal gets the next number (P1, P2, ...) and goes on the ballot (104.3). The Champion's change (402.4) doesn't count toward the limit.
 
@@ -39,7 +39,7 @@ Joining waits while the night is being processed (107.1).
 **103.4** A proposal may change any number of rules, and the settings and code that carry them out. It needs the votes
 required by its strictest part, and it passes or fails as a whole, never in part.
 
-**103.5** An action is a proposal that does one thing the game's rules already allow, and changes no rule. Only the action types in block 900 exist. You tell Starling what you want, she drafts it (106.2), and you confirm it like any proposal (103.1). The draft shows what it will do.
+**103.5** An action is a proposal that does one thing the game's rules already allow, and changes no rule. Only the action types in block 900 exist. You tell Gremlin what you want, he drafts it (106.2), and you confirm it like any proposal (103.1). The draft shows what it will do.
 
 **103.6** These parts of the game aren't wired yet: sign-in (102.4), the proposal limit (103.2), hidden votes (104.4),
 votes counted by code (104.5), the lock (107.1), the deadline (107.6), End turn (202.4), the day (203.1) and this clause. A proposal
@@ -75,14 +75,14 @@ on a proposal, and how many have. After midnight every vote is shown.
 **105.5** Rules marked unanimous are the core rules.
 
 ### 106 The moderator [u]
-**106.1** The game has three moderators: Chalant, Starling (106.2) and Gremlin (106.3). Chalant runs the game (107, 106.5). In these rules, "the moderator" on its own means Chalant.
+**106.1** The game has two moderators: Chalant and Gremlin (106.2, 106.3). Chalant runs the game (107, 106.5). In these rules, "the moderator" on its own means Chalant.
 
-**106.2** Starling moderates the rules by day (103.1, 103.5, 108.3). She answers questions about the rules by quoting them.
+**106.2** Gremlin moderates the rules by day (103.1, 103.5, 108.3). He answers questions about the rules by quoting them.
 
 **106.3** Gremlin moderates the workshop by day (801, 804).
 
-**106.4** Starling and Gremlin can't change a rule, rule on what one means, or change an approved commission. They pass
-anything they can't settle to Chalant.
+**106.4** Gremlin can't change a rule, rule on what one means, or change an approved commission. He passes
+anything he can't settle to Chalant.
 
 **106.5** The moderator rules on what the rules mean. Every ruling names the rules it relies on and is written to
 `rulings/`. The moderator makes rulings at night, after applying the day's proposals, and answers where the question was asked.
@@ -93,13 +93,12 @@ the ruling or a rule it relies on, or an appeal succeeds (301).
 the draft that was voted on. The draft that was voted on is the one applied. If the two differ in a way that matters,
 the moderator tells the proposer what differs, so they can propose a fix.
 
-**106.7** Starling and Gremlin talk only with players, and only once the game has started (day 1, rule 203.1).
-Gremlin answers up to 30 of your messages a day [setting: gremlin.messages_per_day], and Starling up to 60
-[setting: starling.messages_per_day]. At the limit they tell you, and they're back at midnight. Each redraw counts as a message.
+**106.7** Gremlin talks only with players, and only once the game has started (day 1, rule 203.1).
+He answers up to 30 of your messages a day [setting: gremlin.messages_per_day]. At the limit he tells you, and he's back at midnight. Each redraw counts as a message.
 
 ### 107 The night [u]
 **107.1** From midnight until the moderator has processed the day that just ended, the game is locked: nobody can
-move, vote, propose, post in a ticket's discussion, talk to Starling or Gremlin or end their turn, on the site or through an AI client
+move, vote, propose, post in a ticket's discussion, talk to Gremlin or end their turn, on the site or through an AI client
 (rule 204).
 Play resumes when processing is done.
 
@@ -131,7 +130,7 @@ Between rules added at the same time, like the starter rules, the lower number p
 **108.2** A rule that says it prevails over another rule, or gives way to one, is followed, but only within its kind: a
 majority rule can't prevail over a core rule.
 
-**108.3** A proposal doesn't conflict with the rules it changes. When drafting, Starling names any other rule the
+**108.3** A proposal doesn't conflict with the rules it changes. When drafting, Gremlin names any other rule the
 proposal would conflict with, so the proposer can change that rule too.
 
 **108.4** If a passed proposal conflicts with a rule that prevails over it, it is not applied, and the reason names

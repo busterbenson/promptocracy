@@ -41,8 +41,6 @@ export const DEFAULT_SETTINGS = {
   // How many of a player's posts in ticket discussions Gremlin answers in a day (rule 804.1), counted by model call, from midnight to
   // midnight in the game's time zone. Bounded like the chat's cap: a vote can lower it, never raise it past what the site pays for.
   "gremlin.thread_replies_per_day": 20,
-  // How many of a player's messages Starling answers in a day (rule 106.7), midnight to midnight in the game's zone, like Gremlin's.
-  "starling.messages_per_day": 60,
   // The points that win an Era (rule 402.2): the first player to reach this many in an Era becomes Champion. The rule's module reads it.
   "eras.points_to_win": 100,
   // Hearts (rule 601.1), hostile creatures (602.3, 602.5) and how long the dead lie before they rise as Ghosts (603.3).
@@ -80,6 +78,8 @@ const VALIDATORS = {
   "night.apply_minutes": (v) => (isInt(v, 1, 60) ? null : "must be a whole number from 1 to 60"),
   "proposals.per_day": (v) => (isInt(v, 1, 10) ? null : "must be a whole number from 1 to 10"),
   "gremlin.messages_per_day": (v) => (isInt(v, 0, GREMLIN_MESSAGES_MAX) ? null : `must be a whole number from 0 to ${GREMLIN_MESSAGES_MAX}`),
+  // Accepted and read by nothing until every game's tag has dropped it (the engine deploys before a game is re-tagged, and a tag that still names it must
+  // validate); remove with its place in OPTIONAL_SETTINGS after Rickshaw's next tag. @rule 109.2
   "starling.messages_per_day": (v) => (isInt(v, 0, STARLING_MESSAGES_MAX) ? null : `must be a whole number from 0 to ${STARLING_MESSAGES_MAX}`),
   "workshop.price_ceiling": (v) => (isInt(v, 0, PRICE_CEILING_MAX) ? null : `must be a whole number from 0 to ${PRICE_CEILING_MAX}`),
   "gremlin.thread_replies_per_day": (v) => (isInt(v, 0, GREMLIN_THREAD_MAX) ? null : `must be a whole number from 0 to ${GREMLIN_THREAD_MAX}`),
