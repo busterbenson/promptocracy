@@ -3,7 +3,7 @@
 //   const Y = createYours({ api, me, cardKey })
 //     me()             the page's /api/me answer (a player: { player }), or null
 //     cardKey(p)       the rule card a proposal opens (propose.js), or null when it has none
-//   Y.load()           reads /api/me/items; Y.html() is the panel; Y.count() the number of rows
+//   Y.load()           reads /api/me/items; Y.html() is the panel
 // The panel is a tab the account menu opens; it is in the tab row only while it is showing.
 import { points, pointsOf } from "./commission.js";
 
@@ -24,7 +24,6 @@ export function createYours({ api, me, cardKey }) {
     S.loading = false;
     if (r.ok) { S.data = r.data; S.err = ""; } else S.err = (r.data && r.data.error) || "Something went wrong.";
   }
-  const count = () => (S.data ? S.data.proposals.length + S.data.tickets.length : 0);
 
   /** @rule 103.2 */
   function proposalRow(p) {
@@ -51,5 +50,5 @@ export function createYours({ api, me, cardKey }) {
     if (!ps && !ts) return `<p class="mnote">No proposals or tickets.</p>`;
     return `<div class="yours">${ps ? `<h2 class="yh">Proposals</h2>${ps}` : ""}${ts ? `<h2 class="yh">Tickets</h2>${ts}` : ""}</div>`;
   }
-  return { load, html, count };
+  return { load, html };
 }
