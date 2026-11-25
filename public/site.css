@@ -132,7 +132,7 @@ mark{background:color-mix(in srgb,var(--accent) 28%,transparent);color:inherit;b
 .rim{fill:none;stroke-width:2.6;stroke-linejoin:round;pointer-events:none}
 .selected{fill:none;stroke:var(--accent);stroke-width:2.6;stroke-linejoin:round;pointer-events:none}
 .hover{fill:none;stroke:var(--ink);stroke-width:1.6;pointer-events:none}
-.piece,.piece-shadow{pointer-events:none}
+.piece,.piece-shadow,.creature,.creature-shadow{pointer-events:none}   /* a tap on a figure lands on its tile */
 .board-ctl{position:absolute;right:12px;bottom:12px;display:flex;gap:6px}
 .board-ctl button{width:36px;height:36px;border-radius:10px;border:1.5px solid var(--line);background:var(--surface);cursor:pointer;font-family:var(--font-mono);font-weight:700;padding:0}
 .board-ctl button.wide{width:auto;padding:0 10px;font-size:.66rem}
@@ -209,6 +209,7 @@ mark{background:color-mix(in srgb,var(--accent) 28%,transparent);color:inherit;b
 .rb-plain{padding:20px 28px 40px;max-width:72ch}
 .rbhead h2{font-size:2rem}
 .linkbtn{background:none;border:1px solid transparent;border-radius:8px;padding:6px 8px;cursor:pointer;color:var(--ink-muted);font-family:var(--font-mono);font-size:.6rem;margin-top:8px;min-height:32px}
+.cstats .linkbtn{margin-top:0;font-size:.8rem;padding:2px 0}
 .linkbtn:hover{border-color:var(--line);color:var(--ink)}
 .pn{font-family:var(--font-mono);font-weight:700;font-size:.72rem}
 .xref{display:inline-block;font-family:var(--font-mono);font-size:.72em;font-weight:700;color:var(--accent);background:var(--surface);border:1px solid color-mix(in srgb,var(--accent) 45%,transparent);border-radius:999px;padding:0 7px;line-height:1.55;vertical-align:1px;cursor:pointer}

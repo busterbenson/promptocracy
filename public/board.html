@@ -531,7 +531,33 @@ import { hold } from "/js/busy.js";
     return { cls: "crit", label: p.name, backLabel: p.name,
       html: `<div class="mtop"><div class="cart">${mini(p, "cartico")}</div><h2>${esc(p.name)}${me ? ' <span class="you">(you)</span>' : ""}</h2><span class="mmeta">${esc(p.color.name)} · player</span><span class="mpill">${esc(stateText(p))}</span></div><dl class="cstats">${rows.join("")}${give}</dl>` };
   }
-  function describe(spec) { return spec.kind === "player" ? playerCard(spec) : spec.kind === "ticket" || spec.kind === "entry" ? WS.card(spec) : BOOK ? BOOK.describe(spec) : null; }
+  // Things on the board that are not a player's piece. Each is an instance of a catalog entry, and its card is keyed by the entry's kind
+  // (creature today). A new kind (an item, a structure) adds one line here and its rows below: the tap, the card host, the tile list
+  // and the entry link are shared.
+  const THINGS = { creature: { list: () => (BOARD && BOARD.creatures) || [], rows: creatureRows } };
+  const thingsAt = t => Object.entries(THINGS).flatMap(([kind, T]) => T.list().filter(c => c.at.x === t.x && c.at.y === t.y && c.at.z === t.z).map(c => ({ kind, key: c.id, thing: c })));
+  /** @rule 602.1, 602.3, 602.4, 602.5, 601 */
+  function creatureRows(c, chip, row) {
+    const hostile = c.temper === "hostile";
+    const rows = [];
+    if (c.hearts != null) rows.push(row("Hearts", heartsHTML(c.hearts), chip("601")));
+    if (c.temper) rows.push(row("Temper", esc(pieceName(c.temper)), chip("602.1")));
+    rows.push(row("At", esc(noLevel(c.at.label)), chip(hostile ? "602.4" : "602.2") + (c.resting ? chip("602.5") : "")));
+    if (c.appeared_day != null) rows.push(row("Appeared", "Day " + esc(c.appeared_day), chip("602.3")));
+    return rows;
+  }
+  /** The card of a thing on the board, from its catalog entry's kind: the drawing, name, kind and temper, a state, the kind's rows and the entry link. */
+  function thingCard(spec) {
+    const T = THINGS[spec.kind], c = T && T.list().find(q => q.id === spec.key);
+    if (!c) return null;
+    const chip = (num) => `<button type="button" class="rref" data-seecard="${num}" data-clause="${num}" aria-haspopup="dialog" aria-label="Preview rule ${num}">${num}</button>`;
+    const row = (k, v, refs) => `<div class="cs"><dt>${k}</dt><dd>${v}</dd><span class="rr">${refs}</span></div>`;
+    const art = (WS && c.entry && WS.entryArt(c.entry)) || `<span class="arttile" aria-hidden="true">${esc(String(c.name || "?").charAt(0))}</span>`;
+    const link = c.entry && WS && WS.entryArt(c.entry) ? `<div class="cs"><dt>Entry</dt><dd><button type="button" class="linkbtn" data-entry="${esc(c.entry)}">${esc(c.entry)} ${esc(c.name)}</button></dd></div>` : "";
+    return { cls: "crit", label: c.name, backLabel: c.name,
+      html: `<div class="mtop"><div class="cart">${art}</div><h2>${esc(c.name)}</h2><span class="mmeta">${esc(c.kind || spec.kind)}${c.temper ? " · " + esc(c.temper) : ""}</span>${c.resting ? '<span class="mpill">Resting</span>' : ""}</div><dl class="cstats">${T.rows(c, chip, row).join("")}${link}</dl>` };
+  }
+  function describe(spec) { return spec.kind === "player" ? playerCard(spec) : THINGS[spec.kind] ? thingCard(spec) : spec.kind === "ticket" || spec.kind === "entry" ? WS.card(spec) : BOOK ? BOOK.describe(spec) : null; }
   const openPlayer = (key, push) => CARDS.open({ kind: "player", key }, { push: !!push });
 
   // 504's card carries its own action: move your piece (it takes you to the board).
@@ -626,6 +652,8 @@ import { hold } from "/js/busy.js";
     // a piece's tile opens that player's card (S1-PLY-03); a tile you may move to is picked (a pending move); any other tile is not
     const t = q == null ? null : tileAt(q, r), here = t ? piecesAt(t) : [];
     if (here.length) { SEL = null; if (VIEW) VIEW.select(null, null); drawMoveBar(); openPlayer(here[0].color.key); return; }
+    const things = t ? thingsAt(t) : [];   // no piece here: a creature (or any other thing) on the tile opens its card
+    if (things.length) { SEL = null; if (VIEW) VIEW.select(null, null); drawMoveBar(); CARDS.open({ kind: things[0].kind, key: things[0].key }); return; }
     SEL = q == null ? null : { x: q, y: r };
     if (VIEW) VIEW.select(q, r);
     drawMoveBar();
@@ -634,7 +662,7 @@ import { hold } from "/js/busy.js";
   function drawBoard(b) {
     BOARD = b;
     if (VIEW) VIEW.setData(b, myKey());
-    $("tile-list").innerHTML = b.tiles.filter(t => t.z === 0).map(t => `<li><button type="button" data-x="${t.x}" data-y="${t.y}">${esc("Tile " + t.label + (piecesAt(t).length ? ", " + piecesAt(t).map(p => `${p.name} (${p.color.name})`).join(", ") : ""))}</button></li>`).join("");
+    $("tile-list").innerHTML = b.tiles.filter(t => t.z === 0).map(t => `<li><button type="button" data-x="${t.x}" data-y="${t.y}">${esc("Tile " + t.label + (piecesAt(t).length ? ", " + piecesAt(t).map(p => `${p.name} (${p.color.name})`).join(", ") : "") + thingsAt(t).map(h => ", " + h.thing.name + (h.thing.resting ? " (resting)" : "")).join(""))}</button></li>`).join("");
     drawMoveBar(); drawBar();
     if (TAB === "summary") drawBook();
   }
