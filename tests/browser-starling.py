@@ -9,6 +9,7 @@
 import re, sys
 from urllib.parse import urlparse
 from playwright.sync_api import sync_playwright
+from busy_check import busy_check
 
 base, out, ada_cookie, bo_cookie, cy_cookie, dee_cookie, eve_cookie = sys.argv[1:8]
 host = urlparse(base).hostname
@@ -116,10 +117,13 @@ with sync_playwright() as p:
         to_book(page); shot(page, f"desktop-draft-{tag}")
         sideways(page, 1280, f"{tag} chat open")
         if scheme == "light":
+            # one tap, one request: the chat's Lock it in (AGENTS.md: Gremlin's window is the same UI, tests/browser-chat.py holds the same check for his + New)
+            busy_check(page, check, f"{tag} busy Lock it in (Starling's slip)", '#chatLog .slip [data-c="lock"]', "**/api/proposals/*/confirm", shot=lambda l: shot(page, f"busy-lock-{tag}"), errors=errors)
             page.click('#chatLog .slip [data-c="lock"]'); page.wait_for_selector("#chatLog .slip.locked")
             check(f"{tag}: Lock it in: the slip is LOCKED as its P-number with 'On tomorrow's ballot' and Unlock; the Today row says P1 and 2 of 3 left; no message was spent",
                   "LOCKED" in text(page, "#chatLog .slip") and re.search(r"P\d", text(page, "#chatLog .slip")) and page.locator('#chatLog .slip [data-c="unlock"]').is_enabled() and re.search(r"P\d", text(page, ".ch-row")) and "2 of 3 left" in text(page, ".ch-row"), text(page, "#chatLog .slip"))
             to_book(page); shot(page, f"desktop-locked-{tag}")
+            busy_check(page, check, f"{tag} busy Unlock (Starling's slip)", '#chatLog .slip [data-c="unlock"]', "**/api/proposals/*/withdraw", errors=errors)
             page.click('#chatLog .slip [data-c="unlock"]'); page.wait_for_function("!document.querySelector('#chatLog .slip.locked')")
             check(f"{tag}: Unlock: the slot is free again (3 of 3 left) and the slip is a collapsed line stamped UNLOCKED", "3 of 3 left" in text(page, ".ch-row") and "UNLOCKED" in text(page, "#chatLog .slip.past"), text(page, ".ch-row"))
             check(f"{tag}: the collapsed UNLOCKED slip keeps the diff (del and ins)", page.locator("#chatLog .slip.past del").count() >= 1 and page.locator("#chatLog .slip.past ins").count() >= 1, text(page, "#chatLog .slip.past"))

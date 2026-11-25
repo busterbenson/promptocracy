@@ -6,6 +6,7 @@
 import re, sys
 from urllib.parse import urlparse
 from playwright.sync_api import sync_playwright
+from busy_check import busy_check
 
 base, out, cookie, _, hook = sys.argv[1:6]
 from urllib.request import urlopen
@@ -136,9 +137,12 @@ with sync_playwright() as p:
     check("1280-light: no console errors", not errors, str(errors)); c.close()
     # ---- discarding a blank draft (rule 801.8): the button, and the draft gone from the list
     c, page, errors = new_page(b, 390, 844, "light")
-    page.click("#tab-workshop"); unblock(page); page.click('[data-w="open"]'); page.wait_for_selector("#wfTitle")
+    page.click("#tab-workshop"); unblock(page)
+    busy_check(page, check, "390-light busy Commission something", '[data-w="open"]', "**/api/tickets", shot=lambda l: shot(page, "busy-commission-390-light"), errors=errors)
+    page.click('[data-w="open"]'); page.wait_for_selector("#wfTitle")
     num = re.search(r"W\d+", text(page, "#mroot .mcard")).group(0)
     shot(page, "draft-blank-discard-390-light")
+    busy_check(page, check, "390-light busy Discard draft", '[data-w="discard"]', "**/api/tickets/*/discard", shot=lambda l: shot(page, "busy-discard-390-light"), errors=errors)
     page.click('[data-w="discard"]'); page.wait_for_selector("#mroot .mcard", state="detached")
     page.wait_for_timeout(500)
     check(f"390-light: Discard draft closes the blank draft {num}; it is gone from the Workshop list and 'Commission something' opens a fresh one", page.locator(f'#p-workshop [data-ticket="{num}"]').count() == 0 and page.locator('[data-w="open"]').is_enabled())
