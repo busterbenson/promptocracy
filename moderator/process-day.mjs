@@ -218,8 +218,11 @@ export function scopeProblems({ beforeMd, afterMd, beforeSettings, afterSettings
     for (const k of new Set([...Object.keys(ca), ...Object.keys(cb)])) if (!own.has(k) && norm(ca[k]) !== norm(cb[k])) out.push(`RULES.md ${k === "head" ? `rule ${n}'s text outside its clauses` : `clause ${k}`} changed`);
   }
   if (p.after_text && !p.redraft && !markChange) {
-    const own = plain([...rules].map((n) => b[`r${n}`] ?? "").join("\n"));
-    const parts = String(p.after_text).split(/\n\s*\n/).map(plain).filter(Boolean);
+    // The drafter writes after_text without [setting: key] tags (src/lib/proposals.js) while the rule keeps them (109.2), so the
+    // words are compared with the tags left out: a tag is markup tying the text to settings.json, not part of what was voted.
+    const untag = (t) => plain(String(t ?? "").replace(/\s*\[setting:\s*[A-Za-z0-9_.]+\s*\]/g, ""));
+    const own = untag([...rules].map((n) => b[`r${n}`] ?? "").join("\n"));
+    const parts = String(p.after_text).split(/\n\s*\n/).map(untag).filter(Boolean);
     if (!parts.every((x) => own.includes(x))) out.push("the draft that was voted on is not in the rule it changes, word for word");
     // A move only moves (and renumbers) the rule: its two sections (the rule at its new number, the forwarder) hold the
     // voted draft and nothing else.

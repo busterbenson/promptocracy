@@ -7,7 +7,7 @@ import { chmodSync, copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, re
 import { createServer } from "node:http";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
-import { ALLOWED, fence, markOf, prevailing, ruleAge, runOnce, ROOT } from "./process-day.mjs";
+import { ALLOWED, fence, markOf, prevailing, ruleAge, runOnce, ROOT, scopeProblems } from "./process-day.mjs";
 
 let pass = 0, fail = 0;
 const check = (name, ok, detail = "") => { if (ok) pass++; else { fail++; console.log(`FAIL ${name}${detail ? `\n     ${detail}` : ""}`); } };
@@ -873,6 +873,22 @@ const rulingCalls = (t) => t.claude.calls().filter((c) => c.escalation !== null)
   const st = { job: job([]), rulings: [1, 2, 3, 4, 5, 6, 7].map((i) => ESC(i)) };
   const t = await night({ scenario: { apply: {}, ruling: { default: { answer: ANS() } } }, state: st, opts: { audit: false } });
   check("cap: seven owed, five made, numbered 1-1 to 1-5, the other two still owed", t.r.status === "claimed" && g(["ls-tree", "--name-only", "main", "rulings/"], t.repo.bare).trim().split("\n").length === 5 && st.rulings.filter((r) => r.ruled).length === 5, J(log(t.repo.bare)));
+}
+
+{
+  // A clause that carries a [setting: key] tag (202.2 names turn.move_distance). The drafter writes after_text as plain text, without the tag
+  // (src/lib/proposals.js); the rule keeps its tag (109.2, checkGame). So the word-for-word check compares the words with tags left out.
+  // Rickshaw's P1 (day 1), exactly as confirmed.
+  const md = (clause) => `# Rules\n\n## 200. Players and turns [m]\n\n### 202 Your turn [u]\n**202.1** The game is played one day at a time.\n\n${clause}\n`;
+  const before = md("**202.2** On your turn you can move your piece 1 space in any direction, diagonals included [setting: turn.move_distance], and make proposals (103.2). You can do both, in either order, and you move at most once a day.");
+  const after = md("**202.2** On your turn you can move your piece 2 spaces in any direction, diagonals included [setting: turn.move_distance], and make proposals (103.2). You can do both, in either order, and you move at most once a day.");
+  const p = { kind: "amend", scope: "clause", target: "202.2", settings: { "turn.move_distance": 2 },
+    after_text: "On your turn you can move your piece 2 spaces in any direction, diagonals included, and make proposals (103.2). You can do both, in either order, and you move at most once a day." };
+  const probs = scopeProblems({ beforeMd: before, afterMd: after, beforeSettings: { "turn.move_distance": 1 }, afterSettings: { "turn.move_distance": 2 }, changed: ["RULES.md", "settings.json"], p });
+  check("scope: a voted draft of a clause with a [setting] tag applies when the rule keeps its tag (P1, 202.2)", !probs.some((x) => /word for word/.test(x)), J(probs));
+  const wrong = md("**202.2** On your turn you can move your piece 3 spaces in any direction, diagonals included [setting: turn.move_distance], and make proposals (103.2). You can do both, in either order, and you move at most once a day.");
+  const probs2 = scopeProblems({ beforeMd: before, afterMd: wrong, beforeSettings: { "turn.move_distance": 1 }, afterSettings: { "turn.move_distance": 2 }, changed: ["RULES.md", "settings.json"], p });
+  check("scope: leaving tags out of the comparison still catches different words (3 spaces for a voted 2)", probs2.some((x) => /word for word/.test(x)), J(probs2));
 }
 
 console.log(`${pass} passed, ${fail} failed`);
