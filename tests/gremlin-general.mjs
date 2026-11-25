@@ -374,6 +374,23 @@ try {
     check("options are read as at most three distinct choices and stored on the line; guesses are shown only beside a draft", op.data.messages[1].options.length === 3 && op.data.messages[1].guesses === undefined);
   }
 
+  console.log("the window's strip of proposals (rules 103.1, 103.2): your own draft of today and locked-in ones, never anyone else's");
+  {
+    const strip = async (c) => (await c.get(CH)).data;
+    const locked0 = (await strip(Cy)).proposals.filter((x) => x.state === "Locked").map((x) => x.id);
+    const a2 = await say(Cy, "SYNTH-ADD strip one");
+    const bo1 = await say(Bo, "SYNTH-ADD a draft that is Bo's");
+    const d2id = d1(state, `SELECT id FROM proposals WHERE player_id = '${id.Cy}' AND status = 'draft'`)[0].id, boId = d1(state, `SELECT id FROM proposals WHERE player_id = '${id.Bo}' AND status = 'draft'`)[0].id;
+    const got = await strip(Cy);
+    check("every answer carries the strip's proposals; GET lists the draft first ({id, n: null, head, state: Draft}), then the locked ones (n P-number, state Locked) and never the other player's draft",
+      a2.data.proposals?.[0]?.id === d2id && got.proposals[0].id === d2id && got.proposals[0].state === "Draft" && got.proposals[0].n === null && !!got.proposals[0].head && !got.proposals.some((x) => x.id === boId) && (await strip(Bo)).proposals.some((x) => x.id === boId) && got.proposals.slice(1).every((x) => x.state === "Locked" && /^P\d+$/.test(x.n)) && locked0.every((l) => got.proposals.some((x) => x.id === l)), J(got.proposals));
+    check("the slips for every listed proposal come with the same read (a tap on a pill needs no second one)", got.proposals.every((x) => !!got.slips[x.id] && got.slips[x.id].id === x.id), J(Object.keys(got.slips)));
+    check("a ticket's conversation carries the same strip (the pills show in both)", (await Cy.get(`${CH}?ticket=none`)).data.proposals.length === got.proposals.length);
+    d1(state, `UPDATE games SET day = 2 WHERE id = '${gid}'; INSERT OR IGNORE INTO days (game_id, n, starts_at, ends_at, status) VALUES ('${gid}', 2, '2000-01-01T00:00:00.000Z', '2099-01-01T00:00:00.000Z', 'open')`);   // day 2: the draft is yesterday's
+    check("a draft of an earlier day is not in the strip (it can no longer be locked in)", !(await strip(Cy)).proposals.some((x) => x.id === d2id));
+    d1(state, `UPDATE games SET day = 1 WHERE id = '${gid}'; DELETE FROM days WHERE game_id = '${gid}' AND n = 2`);
+  }
+
   console.log("no key: she is out (section 4.4)");
   await srv.stop();
   srv = await startSrv({ noKey: true });

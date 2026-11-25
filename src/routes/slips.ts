@@ -44,7 +44,12 @@ export async function slipsOf(ctx: Ctx, game: any, day: any, turn: any, player: 
   const { book, sha } = await bookFor(game);
   const t = await todayOf(ctx, game, player);
   const n = ((await env.DB.prepare("SELECT COUNT(*) AS n FROM players WHERE game_id = ?").bind(game.id).first()) as any)?.n ?? 0;
-  const rows = (await env.DB.prepare(`SELECT q.*, p.display_name AS name, p.color FROM proposals q JOIN players p ON p.game_id = q.game_id AND p.id = q.player_id WHERE q.game_id = ? AND q.player_id = ? AND q.id IN (${ids.map(() => "?").join(",")})`).bind(game.id, player.id, ...ids).all()).results as any[];
+  // D1 takes at most 100 bound values in a statement: a page of history (50) and the window's strip (30) can come close, so the ids go in chunks
+  const rows: any[] = [];
+  for (let i = 0; i < ids.length; i += 40) {
+    const part = ids.slice(i, i + 40);
+    rows.push(...((await env.DB.prepare(`SELECT q.*, p.display_name AS name, p.color FROM proposals q JOIN players p ON p.game_id = q.game_id AND p.id = q.player_id WHERE q.game_id = ? AND q.player_id = ? AND q.id IN (${part.map(() => "?").join(",")})`).bind(game.id, player.id, ...part).all()).results as any[]));
+  }
   for (const r of rows) slips[r.id] = { ...view({ ...r, draft_mark: markFor(book, r) }, player.id, n), can: canOf(game, day, turn, player, r, t.made, t.limit, sha, nowMs) };
   return slips;
 }

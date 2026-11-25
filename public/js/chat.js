@@ -187,7 +187,7 @@ ${sl.kind !== "action" && (sl.after_text || sl.before_text) ? `<div class="tx cd
   function ticketsRow() {
     const can = canNew ? canNew() : { allowed: true };
     const liveP = general() ? liveId() : null;
-    const props = (S.proposals || []).map((x) => `<button type="button" class="it" data-c="pickp" data-id="${esc(x.id)}" aria-pressed="${liveP === x.id}"${S.busy ? " disabled" : ""}>${ppill(x.n || "Draft")}<span class="tt">${esc(x.head || "")}</span>${x.n ? `<span class="pill tstate" data-state="${esc(x.state)}">${esc(x.state)}</span>` : ""}</button>`);
+    const props = (S.proposals || []).map((x) => `<button type="button" class="it" data-c="pickp" data-id="${esc(x.id)}" aria-pressed="${liveP === x.id}"${S.busy || S.switching ? " disabled" : ""}>${ppill(x.n || "Draft")}<span class="tt">${esc(x.head || "")}</span>${x.n ? `<span class="pill tstate" data-state="${esc(x.state)}">${esc(x.state)}</span>` : ""}</button>`);
     const items = props.concat((S.tickets || []).map((t) => `<button type="button" class="it" data-c="pick" data-n="${esc(t.n)}" aria-pressed="${S.ticket === t.n}"${S.busy ? " disabled" : ""}><span class="wpill">${esc(t.n)}</span><span class="tt">${esc(t.title || "Untitled")}</span><span class="pill tstate" data-state="${esc(t.state)}">${esc(t.state)}</span></button>`));
     const nw = `<button type="button" class="it new${S.ticket ? "" : " first"}" data-c="new"${S.busy || !can.allowed ? " disabled" : ""}>+ New</button>`;
     // a disabled New says why, beside it (AGENTS.md: a reason next to a disabled control; a title tooltip is invisible on touch)
@@ -487,6 +487,7 @@ ${sl.kind !== "action" && (sl.after_text || sl.before_text) ? `<div class="tx cd
   /** A P-pill: that proposal's slip, in the general conversation (where it was made), whichever conversation the window was in. @rule 103.1, 801.6 */
   async function pickProposal(id) {
     S.pin = id;
+    ++S.pickSeq; S.slipSeq++;   // a ticket pick still reading is not this window's any more (rule 801.6)
     if (S.ticket || S.scope || !S.slips[id]) { S.ticket = null; S.slip = null; S.switching = true; try { await showScope(null); } finally { S.switching = false; } }
     draw(true);
   }

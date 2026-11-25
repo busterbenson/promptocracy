@@ -32,7 +32,7 @@
       },
       "known_fail": {
         "since": "2026-11-24",
-        "why": "Chat: Starling's quote of the tagged clause 202.2 is dropped as 'not the rule's words' (promptocracy#111). Night: the setting-tag apply failure is fixed by promptocracy#110; once #110 is on main this case's night should apply, and only the chat check keeps it a known fail."
+        "why": "Chat: fixed (a quote copied from the rules text with its [setting: key] tag was dropped as 'not the rule's words', promptocracy#111; checkQuote now drops the tag, not the quote; the chat checks pass since 2026-11-24). Night: the setting-tag apply failure is fixed by promptocracy#110; once #110 is on main this case's night should apply, and only the chat check keeps it a known fail."
       },
       "start": "general"
     },
