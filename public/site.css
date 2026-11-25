@@ -656,6 +656,16 @@ button.pill[aria-pressed="true"]{background:color-mix(in srgb,var(--accent) 16%,
 .chat .ch-today{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:6px 12px;border-bottom:1px solid var(--line);background:var(--chat);font-family:var(--font-mono);font-size:.6rem}
 .chat .ch-today .k{font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-muted)}
 .chat .ch-today .n{margin-left:auto;color:var(--ink-muted)}
+.chat .ch-tk{display:flex;align-items:center;gap:6px;padding:6px 12px;border-bottom:1px solid var(--line);background:var(--chat);flex:none;min-width:0}
+.chat .ch-tk .tks{display:flex;align-items:center;gap:6px;flex:1;min-width:0;overflow-x:auto;overscroll-behavior-x:contain;scrollbar-width:none;position:relative}
+.chat .tkchip{flex:none;display:inline-flex;align-items:center;gap:6px;min-height:32px;max-width:15rem;padding:2px 8px 2px 3px;border:1.5px solid var(--line);border-radius:999px;background:var(--chat);color:var(--ink);font:inherit;font-size:.78rem;cursor:pointer}
+.chat .tkchip:hover{background:var(--surface-2)}
+.chat .tkchip[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-tint);font-weight:700}
+.chat .tkchip .tt{min-width:0;max-width:5.5rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chat .tkchip .tstate{font-size:.55rem;padding:0 6px}
+.chat .tknew{padding:2px 12px;font-weight:700;border-style:dashed;color:var(--accent);border-color:var(--accent)}
+.chat .tknew.first{background:var(--accent);color:var(--on-accent);border-style:solid}
+.chat .tkchip:disabled{opacity:.55;cursor:not-allowed}
 .chat .ppill{font-family:var(--font-mono);font-size:.62rem;font-weight:700;padding:1px 7px;border-radius:999px;background:var(--ink);color:var(--surface);white-space:nowrap}
 .chat .msg .bub .q{display:block;margin:6px 0 2px;padding:4px 0 4px 10px;border-left:2px solid var(--accent);font-size:.84rem;line-height:1.4;white-space:normal}
 .chat .msg .bub .q .rpill,.chat .msg .bub .q .pill{margin-right:6px}

@@ -4,12 +4,13 @@
 # opens it on the new draft), the corner pill and the bottom sheet at 390, the cap's closed composer, a visitor with no window, light and dark,
 # no sideways scroll and no console errors. "ok"/"FAIL" lines; any FAIL makes the exit code 1.
 # Game "pre" has not started (Fay, its host, is its only player): no window for her, none for Ada (signed in to "shop", not a player there), none for a visitor.
-# Usage: browser-chat.py <base> <screenshot dir or -> <Ada's session cookie> <Bo's> <Cy's> <Dee's> <Fay's session cookie, for pre>
+# The ticket strip (rule 801.6) is Eve's, at the end: a strip of her live tickets and New under Gremlin's header, in light and dark at 390 and 1280.
+# Usage: browser-chat.py <base> <screenshot dir or -> <Ada's session cookie> <Bo's> <Cy's> <Dee's> <Fay's session cookie, for pre> <Eve's cookie> <two recorded messages Gremlin answers: the lines her two tickets are drafted with>
 import re, sys
 from urllib.parse import urlparse
 from playwright.sync_api import sync_playwright
 
-base, out, ada_cookie, bo_cookie, cy_cookie, dee_cookie, fay_cookie = sys.argv[1:8]
+base, out, ada_cookie, bo_cookie, cy_cookie, dee_cookie, fay_cookie, eve_cookie, MSG_A, MSG_B = sys.argv[1:11]
 host = urlparse(base).hostname
 failed = []
 SLUG = "shop"
@@ -294,5 +295,62 @@ with sync_playwright() as p:
             pinned(page, w, h, f"{w}x{h}-{scheme} Gremlin", w < 900)
             shot(page, f"pinned-{w}x{h}-{scheme}")
             check(f"{w}x{h}-{scheme} Gremlin pinned: no console errors", not errors, str(errors)); c.close()
+    # ---------------- the ticket strip (rule 801.6): Gremlin's window lists your live tickets and a New; Eve's tickets are made here, once
+    c0, p0, e0 = new_page(b, 1280, 900, "light", eve_cookie)
+    post = "(path, body) => fetch(path, {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify(body)}).then(r => r.json())"
+    TA = p0.evaluate(f"({post})('/shop/api/tickets', {{}})")["ticket"]
+    p0.evaluate(f"({post})('/shop/api/chat/gremlin', {{ticket: {TA!r}, body: {MSG_A!r}}})")
+    TB = p0.evaluate(f"({post})('/shop/api/tickets', {{}})")["ticket"]
+    p0.evaluate(f"({post})('/shop/api/chat/gremlin', {{ticket: {TB!r}, body: {MSG_B!r}}})")
+    check(f"strip: Eve has two drafts with something in them ({TA}, {TB})", TA != TB and TA.startswith("W") and TB.startswith("W"))
+    c0.close()
+    def chips(page): return page.locator("#chatcol .ch-tk .tkchip")
+    def chip(page, n): return page.locator(f'#chatcol .ch-tk .tkchip[data-n="{n}"]')
+    def selected(page): return page.locator('#chatcol .ch-tk .tkchip[aria-pressed="true"]')
+    def strip_ok(page, w, tag):
+        page.wait_for_selector("#chatcol .ch-tk", state="visible"); page.wait_for_timeout(500)   # the page redraws the window once more after a New (refresh)
+        sb = page.locator("#chatcol .ch-tk").bounding_box(); cb = page.locator("#chatcol .chat").bounding_box()
+        check(f"{tag}: the strip sits inside the window, under the header (x {sb['x']:.0f}..{sb['x'] + sb['width']:.0f} of {cb['x']:.0f}..{cb['x'] + cb['width']:.0f})", sb["x"] >= cb["x"] - 0.5 and sb["x"] + sb["width"] <= cb["x"] + cb["width"] + 0.5 and sb["y"] >= page.locator("#chatcol .ch-h").bounding_box()["y"])
+        sideways(page, w, tag + " strip")
+    for scheme in ["light", "dark"]:
+        for w, h in [(1280, 900), (390, 844)]:
+            tag = f"{w}-{scheme} strip"; phone = w < 900
+            c, page, errors = new_page(b, w, h, scheme, eve_cookie)
+            page.click("#tab-workshop")
+            if phone: page.wait_for_selector("#chatfab"); page.click("#chatfab")
+            page.wait_for_selector("#chatcol .ch-tk"); page.wait_for_selector("#chatLog .slip"); page.wait_for_timeout(300)
+            nums = [x.get_attribute("data-n") for x in chips(page).all() if x.get_attribute("data-n")]
+            check(f"{tag}: the strip lists her live tickets, in order, and then New", nums[:2] == [TA, TB] and "New" in text(page, "#chatcol .ch-tk .tknew"), f"{nums} {text(page, '#chatcol .ch-tk')}")
+            check(f"{tag}: each ticket shows its state (Draft)", " ".join(chip(page, TA).inner_text().split()).lower().endswith("draft"), text(page, "#chatcol .ch-tk"))
+            check(f"{tag}: the window opens on the ticket she was last in ({TB}), its pill selected and the only one", selected(page).count() == 1 and selected(page).get_attribute("data-n") == TB and TB in text(page, "#chatLog .slip"), text(page, "#chatLog .slip"))
+            strip_ok(page, w, tag)
+            shot(page, f"strip-{tag}")
+            chip(page, TA).click(); page.wait_for_function(f"document.querySelector('#chatLog .slip') && document.querySelector('#chatLog .slip').getAttribute('aria-label') === '{TA}'")
+            lines = msgs(page)
+            check(f"{tag}: tapping {TA} switches to its conversation and slip, selects its pill, and attaches it (a chip beside the box)", selected(page).get_attribute("data-n") == TA and lines >= 2 and TA in text(page, ".ch-in .chip"), f"{lines} {text(page, '.ch-in')}")
+            chip(page, TB).click(); page.wait_for_function(f"document.querySelector('#chatLog .slip') && document.querySelector('#chatLog .slip').getAttribute('aria-label') === '{TB}'")
+            check(f"{tag}: and back to {TB}: its own lines, {TA}'s slip gone (rule 801.6)", selected(page).get_attribute("data-n") == TB and not page.locator(f'#chatLog .slip[aria-label="{TA}"]').count())
+            # New: what "Commission something" does: a draft (her blank one again if she has one) and the chat attached to it
+            page.click('#chatcol [data-c="new"]')
+            page.wait_for_function(f"(() => {{ const s = document.querySelector('#chatcol .ch-tk .tkchip[aria-pressed=true]'); return !!s && s.dataset.n !== '{TA}' && s.dataset.n !== '{TB}'; }})()")
+            nn = selected(page).get_attribute("data-n")
+            check(f"{tag}: New opens a draft that is neither of hers ({nn}), attached, with an empty conversation", nn in text(page, ".ch-in .chip") and msgs(page) == 0 and page.locator(f'#chatLog .slip[aria-label="{nn}"]').count() == 1 and chip(page, TA).count() == 1 and chip(page, TB).count() == 1, text(page, "#chatLog"))
+            strip_ok(page, w, tag + " after New")
+            shot(page, f"strip-new-{tag}")
+            # the chip's x detaches the ticket: nothing is selected, and New is the filled one again
+            page.click('.ch-in .chip [data-c="detach"]'); page.wait_for_function("document.querySelectorAll('#chatcol .ch-tk .tkchip[aria-pressed=true]').length === 0")
+            check(f"{tag}: with no ticket attached nothing is selected and New is the filled control", page.locator("#chatcol .ch-tk .tknew.first").count() == 1)
+            shot(page, f"strip-none-{tag}")
+            check(f"{tag}: no console errors", not errors, str(errors)); c.close()
+        # a player with no ticket: the strip is just New, the obvious next step (Dee, at the limit)
+        c, page, errors = new_page(b, 1280, 900, scheme, dee_cookie)
+        page.click("#tab-workshop"); page.wait_for_selector("#chatcol .ch-tk")
+        check(f"1280-{scheme} strip (no tickets): only New, filled", chips(page).count() == 1 and page.locator("#chatcol .ch-tk .tknew.first").count() == 1 and "New" in text(page, "#chatcol .ch-tk"), text(page, "#chatcol .ch-tk"))
+        shot(page, f"strip-empty-1280-{scheme}")
+        check(f"1280-{scheme} strip (no tickets): no console errors", not errors, str(errors)); c.close()
+    c, page, errors = new_page(b, 1280, 900, "light")
+    page.click("#tab-workshop"); page.wait_for_timeout(400)
+    check("visitor: no ticket strip", page.locator(".ch-tk").count() == 0)
+    c.close()
     b.close()
 sys.exit(1 if failed else 0)

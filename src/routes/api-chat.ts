@@ -5,7 +5,7 @@
 //                                                 day's cap, what is left, and a reason when the composer is closed (the lock, the cap).
 //                                                 `ticket=none` is what was said outside any ticket; with no `ticket` it is the
 //                                                 conversation you were last in. `ticket` in the answer names the one shown. Signed-in
-//                                                 players only.
+//                                                 players only. `tickets` is your own live tickets (the window's strip).
 //   POST /<slug>/api/chat/gremlin                 {ticket?: "W3", body}: one turn. The message is stored (under the cap, in the same
 //                                                 statement), the model answers as JSON, the platform validates it and writes ONLY that draft
 //                                                 ticket's fields, and the reply is stored. At the cap he gives his one improvised excuse of
@@ -28,6 +28,7 @@ import { Ctx, json, nowIso, readJson } from "../lib/util";
 import { catalogFor } from "./api-catalog";
 import { bookFor } from "./api-proposals";
 import { gremlinWrite, pageOf } from "./api-tickets";
+import { LIVE_STATES } from "../lib/tickets.js";
 import { queueNew } from "../lib/art";
 
 export type Out = { status: number; body: any };
@@ -84,6 +85,12 @@ async function ticketOf(env: any, game: any, player: Player, raw: unknown): Prom
   return n ? await env.DB.prepare("SELECT * FROM tickets WHERE game_id = ? AND number = ? AND player_id = ?").bind(game.id, Number(n[1]), player.id).first() : null;
 }
 
+/** The window's ticket strip: your own tickets that are still live (a draft, on the ballot, being built), oldest first; a closed or discarded one has no conversation to go back to. @rule 801.6 */
+async function strip(env: any, game: any, player: Player) {
+  const rows = (await env.DB.prepare(`SELECT number, title, state FROM tickets WHERE game_id = ? AND player_id = ? AND state IN (${LIVE_STATES.map((s: string) => `'${s}'`).join(",")}) ORDER BY number LIMIT 50`).bind(game.id, player.id).all()).results as any[];
+  return rows.map((r) => ({ n: `W${r.number}`, title: r.title || "", state: r.state }));
+}
+
 // GET /api/chat/gremlin
 /** @rule 106.7, 801.6 */
 export const get = async (ctx: Ctx) => {
@@ -108,7 +115,7 @@ export const get = async (ctx: Ctx) => {
     if (!ticket) return json({ error: "There is no such ticket of yours." }, 404);
   }
   const h = await historyPage(env.DB, game.id, player.id, AGENT, before, { ticketId: ticket?.id ?? null, date: localDate(timeZoneOf(game), nowMs) });
-  return json({ messages: h.rows, next: h.next, ticket: ticket ? `W${ticket.number}` : null, state: await stateOf(ctx, game, day, player, nowMs) });
+  return json({ messages: h.rows, next: h.next, ticket: ticket ? `W${ticket.number}` : null, tickets: await strip(env, game, player), state: await stateOf(ctx, game, day, player, nowMs) });
 };
 
 // One stored line, as the client reads it (the same whitelist the history uses).

@@ -26,6 +26,7 @@ try {
   const bo = await join(srv.base, "shop", g.code, { email: "bo@example.com", name: "Bo", color: "vermilion" });
   const cy = await join(srv.base, "shop", g.code, { email: "cy@example.com", name: "Cy", color: "cobalt" });
   const dee = await join(srv.base, "shop", g.code, { email: "dee@example.com", name: "Dee", color: "jade" });
+  const eve = await join(srv.base, "shop", g.code, { email: "eve@example.com", name: "Eve", color: "orchid" });   // the ticket strip's player: her tickets are made at the end of the browser run, so Ada's numbers stay put
   startPlaying(state, "shop");
   // a second game that has not started: its host is its only player; Ada (a player of "shop") is signed in but not a player here
   const gp = await createGame(state, { slug: "pre", name: "Not Yet", repo: "busterbenson/shop", rulesBase: stub.base });
@@ -54,7 +55,7 @@ try {
   if (r31.data.out !== "cap") throw new Error("Bo is not at the cap: " + r31.text);
   d1(state, Array.from({ length: 30 }, (_, i) => `INSERT INTO chat_messages (game_id, player_id, agent, local_date, day, role, body, at) VALUES ('${gid}', '${pid("Dee")}', 'gremlin', '${today}', 1, 'player', '${said[i % 12]}', '${at}')`).join("; "));
   const cookie = (c) => [...c.jar].find(([k]) => k === "s|/shop")[1];
-  const r = await promisify(execFile)(PYTHON, [ROOT + "/tests/browser-chat.py", srv.base, shots || "-", cookie(ada), cookie(bo), cookie(cy), cookie(dee), [...fay.jar].find(([k]) => k === "s|/pre")[1]], { timeout: 280000, maxBuffer: 1 << 24 });
+  const r = await promisify(execFile)(PYTHON, [ROOT + "/tests/browser-chat.py", srv.base, shots || "-", cookie(ada), cookie(bo), cookie(cy), cookie(dee), [...fay.jar].find(([k]) => k === "s|/pre")[1], cookie(eve), REC["wall-sizing"].message, REC["dragon-build"].message], { timeout: 280000, maxBuffer: 1 << 24 });
   process.stdout.write(r.stdout);
 } catch (e) {
   failed = true;

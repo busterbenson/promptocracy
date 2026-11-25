@@ -110,6 +110,14 @@ try {
   check("Ana's GET returns her two lines, oldest first, with no player id; the state counts her one message", h1.data.messages.length === 2 && h1.data.messages[0].role === "player" && h1.data.state.used === 1 && h1.data.state.left === 29 && !h1.text.includes(id.Ana));
   const hb = await Bo.get(CH);
   check("Bo's GET returns nothing of Ana's; a visitor's gets 401; Bo can't write to Ana's ticket (404) and nothing is stored", hb.data.messages.length === 0 && hb.data.state.used === 0 && (await say(Bo, "hello", "W1")).status === 404 && rows("Bo").length === 0);
+  const strip = (r) => (r.data.tickets || []).map((t) => `${t.n}:${t.state}`).join(",");
+  check("the window's strip (rule 801.6): Ana's GET lists her own live ticket and nothing of anyone else's; Bo, who has none, gets an empty list", strip(h1) === "W1:Draft" && h1.data.tickets[0].title === "Low stone garden wall" && Array.isArray(hb.data.tickets) && hb.data.tickets.length === 0, strip(h1));
+  d1(state, "UPDATE tickets SET state = 'Done' WHERE number = 1");
+  const stripDone = strip(await Ana.get(CH));
+  d1(state, "UPDATE tickets SET state = 'Approved' WHERE number = 1");
+  const stripAppr = strip(await Ana.get(CH));
+  d1(state, "UPDATE tickets SET state = 'Draft' WHERE number = 1");
+  check("a finished ticket leaves the strip; one that is approved stays (its conversation can still be read)", stripDone === "" && stripAppr === "W1:Approved" && strip(await Ana.get(CH)) === "W1:Draft", `${stripDone} | ${stripAppr}`);
   check("history pages by id: before=<id> returns the earlier rows only; a bad cursor is a 400", (await Ana.get(`${CH}?before=${mm[1].id}`)).data.messages.length === 1 && (await Ana.get(`${CH}?before=0`)).status === 400 && (await Ana.get(`${CH}?before=x`)).status === 400);
 
   console.log("structured output is validated, and what is rejected comes back to him (rules 801.2, 801.3)");
