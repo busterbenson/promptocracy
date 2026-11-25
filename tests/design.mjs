@@ -108,8 +108,8 @@ check("104 Voting is 104.1-104.5 and 107 has 107.6 (the 3 am deadline, live by 4
   rules.replace(/\s+/g, " ").includes(`The moderator has until ${DEADLINE_CLOCK} to process the day; a passed proposal not applied by then is not applied (rule 107.7). The changes it made must be live by ${DEPLOY_CLOCK}; a change not live by then is not applied either.`) && DEADLINE_CLOCK === "3:00 am" && DEPLOY_CLOCK === "4:00 am" && rules.includes("it goes back to its proposer with the moderator's reason and a suggestion") &&
   !/48 hours/.test(rules) && ["104.4", "104.5", "107.6"].every((n) => T.byNum[n] && markOf(T.byNum[n.slice(0, 3)]) === "unanimous"));
 console.log("the night's rules (step 1, PR 5)");
-check("106 is 106.1-106.7 (Starling's is 106.2, Gremlin's 106.3; both are in 106.4 and 106.7; rulings 106.5; the drafter audit is 106.6), 107 is 107.1-107.8 (order, redraft, text + code + tests, the budget, the day tag), 108 is 108.1-108.5, 402 is 402.1-402.4 (Eras)",
-  T.byNum["106"].clauses.map((c) => c.num).join() === "106.1,106.2,106.3,106.4,106.5,106.6,106.7" && T.byNum["107"].clauses.map((c) => c.num).join() === "107.1,107.2,107.3,107.4,107.5,107.6,107.7,107.8" &&
+check("106 is 106.1-106.7 (Starling's is 106.2, Gremlin's 106.3; both are in 106.4 and 106.7; rulings 106.5; the drafter audit is 106.6), 107 is 107.1-107.9 (order, redraft, text + code + tests, the budget, the day tag, repairs), 108 is 108.1-108.5, 402 is 402.1-402.4 (Eras)",
+  T.byNum["106"].clauses.map((c) => c.num).join() === "106.1,106.2,106.3,106.4,106.5,106.6,106.7" && T.byNum["107"].clauses.map((c) => c.num).join() === "107.1,107.2,107.3,107.4,107.5,107.6,107.7,107.8,107.9" &&
   T.byNum["402"].clauses.map((c) => c.num).join() === "402.1,402.2,402.3,402.4" && T.byNum["402"].title === "Eras" &&
   rules.includes("The draft that was voted on is the one applied.") && rules.includes("[setting: night.apply_minutes]") && rules.includes("[setting: night.apply_effort]") &&
   rules.includes("A core rule prevails over a majority rule.") && rules.includes("the moderator tags the game's files with that day's number") &&

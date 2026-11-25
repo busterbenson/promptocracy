@@ -7,7 +7,7 @@ import { chmodSync, copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, re
 import { createServer } from "node:http";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
-import { ALLOWED, fence, markOf, prevailing, ruleAge, runOnce, ROOT, scopeProblems } from "./process-day.mjs";
+import { ALLOWED, fence, markOf, prevailing, repairNote, repairsBlock, repairsOfBody, rulebookLinesOk, ruleAge, runOnce, ROOT, scopeProblems, votedWords } from "./process-day.mjs";
 
 let pass = 0, fail = 0;
 const check = (name, ok, detail = "") => { if (ok) pass++; else { fail++; console.log(`FAIL ${name}${detail ? `\n     ${detail}` : ""}`); } };
@@ -889,6 +889,112 @@ const rulingCalls = (t) => t.claude.calls().filter((c) => c.escalation !== null)
   const wrong = md("**202.2** On your turn you can move your piece 3 spaces in any direction, diagonals included [setting: turn.move_distance], and make proposals (103.2). You can do both, in either order, and you move at most once a day.");
   const probs2 = scopeProblems({ beforeMd: before, afterMd: wrong, beforeSettings: { "turn.move_distance": 1 }, afterSettings: { "turn.move_distance": 2 }, changed: ["RULES.md", "settings.json"], p });
   check("scope: leaving tags out of the comparison still catches different words (3 spaces for a voted 2)", probs2.some((x) => /word for word/.test(x)), J(probs2));
+  // Codex's two examples on #113, through the scope check itself (rule 107.9: a repair never changes what was voted on).
+  const rule401 = (c1) => `# Rules\n\n## 400. Points [m]\n\n### 401 Points [m]\n**401.1** ${c1}\n**401.2** You also get 5 points (402.1), whatever happens.\n\n### 402 Eras [m]\n**402.1** The Era.\n`;
+  const sp = (pp, afterMd) => scopeProblems({ beforeMd: rule401("You get 10 points."), afterMd, beforeSettings: {}, afterSettings: {}, changed: ["RULES.md"], p: { kind: "amend", scope: "clause", target: "401.1", ...pp } });
+  check("scope: a voted '100.5 points a day.' is not applied as '3.5 points a day.' under a numbering repair", sp({ after_text: "100.5 points a day." }, rule401("3.5 points a day.")).some((x) => /word for word/.test(x)));
+  check("scope: a citation only 401.2 had (402.1) is not restored into the amended 401.1", sp({ after_text: "You get 15 points." }, rule401("You get 15 points (402.1).")).some((x) => /word for word/.test(x)));
+  check("scope: the same amendment with no invented citation applies", !sp({ after_text: "You get 15 points." }, rule401("You get 15 points.")).length);
+}
+
+// ---- rule 107.9: the moderator repairs how Starling or Gremlin wrote a draft, never what it says ---------------------------------
+{
+  const KNOWN = new Set(["103", "103.2", "107", "401", "401.1", "202.2", "202.4"]);
+  const own = "### 202 Your turn [u]\n**202.2** On your turn you can move your piece 2 spaces in any direction, diagonals included [setting: turn.move_distance], and make proposals (103.2). You can do both, in either order, and you move at most once a day.";
+  const before = own.replace("2 spaces", "1 space");
+  const words = "On your turn you can move your piece 2 spaces in any direction, diagonals included, and make proposals (103.2). You can do both, in either order, and you move at most once a day.";
+  const vw = (afterText, o = {}) => votedWords({ afterText, own: o.own ?? own, before: o.before ?? before, known: KNOWN });
+  const v1 = vw(words);
+  check("107.9 words: a draft without the setting tag is the voted words, and the tag is listed as a repair", v1.ok && v1.repairs.length === 1 && /\[setting: turn\.move_distance\]/.test(v1.repairs[0].what), J(v1));
+  const v2 = vw(words.replace(" (103.2)", ""));
+  check("107.9 words: a citation the clause had before and the draft dropped is a repair too (with the tag: two)", v2.ok && v2.repairs.length === 2 && v2.repairs.some((r) => /\(103\.2\)/.test(r.what)), J(v2));
+  const v3 = vw(`**202.2** ${words.replace(/ (?=in any)/, "\n")}`.replace("You can do both,", "You   can\ndo both,"));
+  check("107.9 words: bold clause markup, line wraps and spacing differences are not words (nothing to list)", v3.ok && v3.repairs.every((r) => /setting/.test(r.what)), J(v3));
+  const v4 = vw(words.replace("2 spaces", "3 spaces"));
+  check("107.9 words: different words (3 spaces for a voted 2) are refused", !v4.ok, J(v4));
+  check("107.9 words: a citation the clause did not have before is not tolerated", !vw(words.replace(" (103.2)", ""), { before: before.replace(" (103.2)", "") }).ok);
+  check("107.9 words: a citation of a clause that doesn't exist is not tolerated", !votedWords({ afterText: words.replace(" (103.2)", ""), own: own.replace("(103.2)", "(199.9)"), before: before.replace("(103.2)", "(199.9)"), known: KNOWN }).ok);
+  check("107.9 words: extra words in a parenthesis are not a citation", !vw(words.replace(" (103.2)", ""), { own: own.replace("(103.2)", "(and also you can fly)"), before: before.replace("(103.2)", "(and also you can fly)") }).ok);
+  const v5 = vw(`**202.3** ${words}`);
+  check("107.9 words: a draft's clause number can differ from where it goes (reported), the words may not", v5.ok && v5.repairs.some((r) => /clause number to 202\.2/.test(r.what)) && !vw(`**202.3** ${words.replace("2 spaces", "3 spaces")}`).ok, J(v5));
+  check("107.9 words: a leading decimal that is a number in the words is never taken for a clause number (2.5 for a voted 3.5)", !votedWords({ afterText: "2.5 points a day", own: "**401.1** 3.5 points a day", before: "", known: KNOWN }).ok && !votedWords({ afterText: "100.5 points a day", own: "**401.1** 100.5 points a day extra", before: "", known: KNOWN }).rest === false);
+  check("107.9 words: the words the draft has but the rule dropped are refused", !vw(words + " And you can fly.").ok);
+  // Codex's two findings on #113 (round 2): a repair never changes a word, a number or a citation the voters didn't see.
+  const v6 = votedWords({ afterText: "100.5 points a day.", own: "**401.1** 3.5 points a day.", before: "", known: KNOWN });
+  check("107.9 words: a voted decimal (100.5 points) is never stripped as a clause label, so 3.5 points a day is refused", !v6.ok && !v6.repairs.length, J(v6));
+  check("107.9 words: a label that is another rule's number, or is followed by words that are not the rule's, is never stripped", !votedWords({ afterText: "402.1 points a day.", own: "**401.1** points a day.", before: "", known: KNOWN }).ok && !votedWords({ afterText: "401.5 points a day.", own: "**401.1** 9 points a day.", before: "", known: KNOWN }).ok);
+  const two = "### 401 Points [m]\n**401.1** You get 10 points.\n**401.2** You also get 5 points (402.1), whatever happens.";
+  const twoBefore = two, twoAfter = two.replace("You get 10 points.", "You get 15 points (402.1).");
+  const v7 = votedWords({ afterText: "You get 15 points.", own: twoAfter, before: twoBefore, known: new Set(["401", "401.1", "401.2", "402.1"]) });
+  check("107.9 words: a citation that only another clause had (402.1 in 401.2) is not restored into 401.1", !v7.ok, J(v7));
+  const v8 = votedWords({ afterText: "You also get 5 points, whatever happens.", own: two, before: twoBefore, known: new Set(["401", "401.1", "401.2", "402.1"]) });
+  check("107.9 words: the same citation in its own clause, at its own place, is still restored (the true repair)", v8.ok && v8.repairs.some((r) => /\(402\.1\)/.test(r.what)), J(v8));
+  const moved = two.replace("5 points (402.1), whatever happens.", "5 points, whatever happens (402.1).");
+  const v9 = votedWords({ afterText: "You also get 5 points, whatever happens.", own: moved, before: twoBefore, known: new Set(["401", "401.1", "401.2", "402.1"]) });
+  check("107.9 words: the citation at a different place in its clause than it had is not a repair", !v9.ok, J(v9));
+  const v10 = votedWords({ afterText: "You get 15 points.", own: "### 401 Points [m]\n**401.1** You get 15 [setting: points.per_win] points.", before: twoBefore, known: new Set(["401", "401.1"]) });
+  check("107.9 words: a [setting] tag the clause never had is not a repair (unless the proposal sets that setting)", !v10.ok && votedWords({ afterText: "You get 15 points.", own: "### 401 Points [m]\n**401.1** You get 15 [setting: points.per_win] points.", before: twoBefore, known: new Set(["401", "401.1"]), settings: ["points.per_win"] }).ok, J(v10));
+  const rb = repairsBlock([{ what: "kept the [setting: a.b] tag in the rule's text", why: "x" }, { what: "set the clause number to 202.2", why: "" }]);
+  check("107.9 report: the commit's repairs block names rule 107.9 and 301, and reads back", /rule 107\.9/.test(rb) && /rule 301/.test(rb) && repairsOfBody(`P4: t (day 1, 4-1)\n\n${rb}Proposal: P4`).length === 2 && repairsOfBody(`P4: t\n\nProposal: P4`).length === 0, rb);
+  const rn = repairNote(4, v2.repairs);
+  check("107.9 report: the note to the proposer cites 107.9, says what was repaired, that the vote is unchanged, and that it can be appealed (301)", /rule 107\.9/.test(rn) && /\(103\.2\)/.test(rn) && /appeal/.test(rn) && /rule 301/.test(rn) && rn.length < 600, rn);
+  const PIN = "  assert.ok(flat.includes(`**401.1** A player whose proposal passes and is applied gets 10 points when it is applied (rule 107).`));\n";
+  const pinned = `test("x", () => {\n${PIN}  assert.ok(flat.includes("**402.1** The Era."));\n  for (const n of [107, 202, 401]) assert.ok(nums.includes(n));\n});\n`;
+  check("107.9 pin: a rulebook line that pins rule 401's words may change when 401 changes", rulebookLinesOk(pinned, pinned.replace("gets 10 points", "gets 15 points"), [401]));
+  check("107.9 pin: the line that pins 402's words may not change in a proposal on 401", !rulebookLinesOk(pinned, pinned.replace("The Era.", "The Era, twice."), [401]));
+  check("107.9 pin: a line that is dropped, or one that pins another rule, is still refused", !rulebookLinesOk(pinned, pinned.replace(PIN, ""), [402]) && !rulebookLinesOk(pinned, pinned.replace(PIN, "").replace(/.*402\.1.*\n/, ""), [401]));
+  check("107.9 pin: a list that gains the rule's number still passes (a module added)", rulebookLinesOk(pinned, pinned.replace("[107, 202, 401]", "[107, 202, 401, 405]"), [405]));
+}
+{
+  // The night, end to end (fake model): the voted draft the drafter wrote (plain text, no tag, a dropped citation) is applied as a repair, and the repair is reported.
+  const W202 = "On your turn you can move your piece 2 spaces in any direction, diagonals included, and make proposals. You can do both, in either order, and you move at most once a day.";
+  const ops202 = [{ replace: ["RULES.md", "move your piece 1 space in any", "move your piece 2 spaces in any"] }, { replace: ["settings.json", '"turn.move_distance": 1', '"turn.move_distance": 2'] }];
+  const p202 = P(4, "202.2", { scope: "clause", after_text: W202, settings: { "turn.move_distance": 2 } });
+  const t1 = await night({ scenario: { apply: { 4: { action: "ops", ops: ops202, result: { outcome: "applied", repairs: [{ what: "kept the clause number 202.2", why: "the draft left it out" }, { what: 7 }, null] } } } }, state: { job: job([p202]) }, opts: { audit: false } });
+  const o1 = t1.claims[0]?.outcomes[0], body1 = g(["log", "-1", "--format=%B", "main"], t1.repo.bare);
+  check("107.9 night: a draft with no setting tag and no citation applies (the repair, not a refusal)", o1?.applied === true && /move your piece 2 spaces/.test(g(["show", "main:RULES.md"], t1.repo.bare)), J(t1.claims[0]?.outcomes));
+  check("107.9 night: the commit message in the game's repo lists each repair (code's and the model's) with rule 107.9", /^Repairs \(rule 107\.9; each can be appealed under rule 301\):$/m.test(body1) && /^- kept the \[setting: turn\.move_distance\] tag/m.test(body1) && /^- kept the citation \(103\.2\)/m.test(body1) && /^- kept the clause number 202\.2/m.test(body1) && !/^- 7$/m.test(body1), body1);
+  const note1 = t1.claims[0].notes?.find((x) => x.number === 4);
+  check("107.9 night: the claim carries a note to the proposer, citing 107.9, that it can be appealed (301)", t1.claims[0].notes?.length === 1 && /rule 107\.9/.test(note1?.body) && /rule 301/.test(note1.body) && /\[setting: turn\.move_distance\]/.test(note1.body), J(t1.claims[0].notes));
+  const nl = readFileSync(join(t1.stateDir, "g.night.jsonl"), "utf8").split("\n").filter((l) => /"event":"repairs"/.test(l));
+  check("107.9 night: the night log has the repairs event", nl.length === 1 && /107|setting/.test(nl[0]), J(nl));
+  check("107.9 night: APPLY.md tells the model what a repair is, to list it in the result file, and that it never changes words", /"repairs": \[\{"what"/.test(readFileSync(join(ROOT, "moderator", "APPLY.md"), "utf8")) && /never changes what the proposal says/.test(readFileSync(join(ROOT, "moderator", "APPLY.md"), "utf8")));
+  // The same night with an audit gap: the one note per proposal holds both.
+  const t1b = await night({ scenario: { apply: { 4: { action: "ops", ops: ops202 } }, audit: { 4: { material: true, reading: "r", gap: "The draft moves 2 spaces only on Tuesdays." } } }, state: { job: job([p202]) }, opts: {} });
+  check("107.9 night: with an audit gap the proposer still gets ONE note, holding the gap and the repair", t1b.claims[0].notes.length === 1 && /only on Tuesdays/.test(t1b.claims[0].notes[0].body) && /rule 107\.9/.test(t1b.claims[0].notes[0].body) && t1b.claims[0].notes[0].body.length <= 600, J(t1b.claims[0].notes));
+  // The drafter's draft has the tag and the citation the rule has: nothing to repair, nothing reported.
+  const t2 = await night({ scenario: { apply: { 4: { action: "ops", ops: ops202 } } }, state: { job: job([P(4, "202.2", { scope: "clause", settings: { "turn.move_distance": 2 }, after_text: "**202.2** On your turn you can move your piece 2\nspaces in any direction, diagonals included [setting: turn.move_distance], and make proposals (103.2). You can do both, in either order, and you move at most once a day." })]) }, opts: { audit: false } });
+  check("107.9 night: bold clause markup and different line wraps apply, and with no repair there is no note and no Repairs block", t2.claims[0]?.outcomes[0]?.applied === true && !t2.claims[0].notes?.length && !/Repairs/.test(g(["log", "-1", "--format=%B", "main"], t2.repo.bare)), J([t2.claims[0]?.outcomes, t2.claims[0]?.notes]));
+  // Different words are refused, however the model labels the change.
+  const t3 = await night({ scenario: { apply: { 4: { action: "ops", ops: [{ replace: ["RULES.md", "move your piece 1 space in any", "move your piece 3 spaces in any"] }, { replace: ["settings.json", '"turn.move_distance": 1', '"turn.move_distance": 3'] }], result: { outcome: "applied", repairs: [{ what: "fixed the number of spaces", why: "the draft was a typo" }] } } } }, state: { job: job([p202]) }, opts: { audit: false } });
+  check("107.9 night: a model that changes the words (3 spaces for the voted 2) and calls it a repair is refused, and nothing is committed", t3.claims[0]?.outcomes[0]?.applied === false && /not in the rule it changes, word for word/.test(t3.claims[0].outcomes[0].reason) && log(t3.repo.bare)[0] === "day 0" && !t3.claims[0].notes?.length, J(t3.claims[0]));
+  // The resume path: a night that crashed after applying reports the same repairs.
+  const rr = repairsOfBody(body1);
+  check("107.9 night: a resumed night reads the repairs back from the commit it already made", rr.length === 3 && rr.some((r) => /citation/.test(r.what)), J(rr));
+}
+{
+  // The rulebook pin (found by the end-to-end harness, case s-ambiguous): the game's rulebook.test.ts pins the opening words of rules (rickshaw's pins 401.1's), so a passed
+  // amendment of such a rule fails the game's own tests unless the night may update the pin: a line that names the rule the proposal changes.
+  const pinRepo = () => {
+    const r = gameRepo(), w = join(r.base, "pinwork");
+    g(["clone", "-q", r.bare, w], r.base);
+    const f = join(w, "rules", "rulebook.test.ts");
+    writeFileSync(f, readFileSync(f, "utf8") + 'test("pins", () => {\n  const flat = rulesMd.replace(/\\s+/g, " ");\n  assert.ok(flat.includes("**401.1** A player whose proposal passes and is applied gets 10 points when it is applied (rule 107)."));\n  assert.ok(flat.includes("**402.4** Once in each Era, the Champion can make one change of their own."));\n});\n');
+    g(["add", "-A"], w); g(["commit", "-q", "-m", "pin 401 and 402"], w); g(["push", "-q", "origin", "main"], w);
+    return r;
+  };
+  const text15 = [{ replace: ["RULES.md", "gets 10 points when it is applied", "gets 15 points when it is applied"] }, { replace: ["rules/401.ts", "proposal.player, 10,", "proposal.player, 15,"] }, { replace: ["rules/401.test.ts", "delta: 10,", "delta: 15,"] }];
+  const pin15 = { replace: ["rules/rulebook.test.ts", "gets 10 points when it is applied (rule 107).", "gets 15 points when it is applied (rule 107)."] };
+  const p401 = P(4, "401.1", { scope: "clause", after_text: "A player whose proposal passes and is applied gets 15 points when it is applied (rule 107)." });
+  const tNo = await night({ scenario: { apply: { 4: { action: "ops", ops: text15 } } }, state: { job: job([p401]) }, opts: { audit: false, repo: pinRepo() } });
+  const checkOut = (t) => readFileSync(join(t.stateDir, "g.night.jsonl"), "utf8").split("\n").filter((l) => /"event":"check"/.test(l)).map((l) => JSON.parse(l).out).join("\n");
+  check("pin: with the pin left as it was, the amendment of 401.1 to 15 points fails the game's own tests (not applied; the next case differs from it only by the pin line)", tNo.claims[0]?.outcomes[0]?.applied === false && /couldn't be made to pass/.test(tNo.claims[0].outcomes[0].reason) && /# fail 1/.test(checkOut(tNo)), checkOut(tNo).slice(-300));
+  const tYes = await night({ scenario: { apply: { 4: { action: "ops", ops: [...text15, pin15] } } }, state: { job: job([p401]) }, opts: { audit: false, repo: pinRepo() } });
+  check("pin: with the 401 pin line updated, the same amendment is applied", tYes.claims[0]?.outcomes[0]?.applied === true && /gets 15 points/.test(g(["show", "main:rules/rulebook.test.ts"], tYes.repo.bare)) && /gets 15 points/.test(g(["show", "main:RULES.md"], tYes.repo.bare)), J(tYes.claims[0]?.outcomes) + checkOut(tYes).slice(-600));
+  const tText = await night({ scenario: { apply: { 4: { action: "ops", ops: [{ replace: ["RULES.md", "(rule 107).\n\n### 402", "(rule 107), and nothing else.\n\n### 402"] }, { replace: ["rules/rulebook.test.ts", "gets 10 points when it is applied (rule 107).", "gets 10 points when it is applied (rule 107), and nothing else."] }] } } }, state: { job: job([P(4, "401.1", { scope: "clause", after_text: "A player whose proposal passes and is applied gets 10 points when it is applied (rule 107), and nothing else." })]) }, opts: { audit: false, repo: pinRepo() } });
+  check("pin: a wording-only amendment (no module change) may update its pin line too", tText.claims[0]?.outcomes[0]?.applied === true, J(tText.claims[0]?.outcomes));
+  const tOther = await night({ scenario: { apply: { 4: { action: "ops", ops: [...text15, pin15, { replace: ["rules/rulebook.test.ts", "Once in each Era, the Champion can make one change of their own.", "Once in each Era, nobody can change anything."] }] } } }, state: { job: job([p401]) }, opts: { audit: false, repo: pinRepo() } });
+  check("pin: the same amendment that also rewrites the line pinning rule 402 is refused", tOther.claims[0]?.outcomes[0]?.applied === false && /rulebook\.test\.ts changed beyond the lines for the rules/.test(tOther.claims[0].outcomes[0].reason), J(tOther.claims[0]?.outcomes));
 }
 
 console.log(`${pass} passed, ${fail} failed`);
