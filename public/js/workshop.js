@@ -21,7 +21,7 @@ const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&
 const lines = (s) => String(s || "").split("\n").map((x) => x.trim()).filter(Boolean);
 
 export function createWorkshop({ api, me, pill, rpill, when, canCommission, refresh, cards, chat }) {
-  const S = { artErr: {}, cat: { kinds: [], required: {}, registry: {}, entries: [] }, flavorOpen: {}, list: [], total: 0, counts: {}, view: "main", all: { rows: [], next: null, state: "", err: "" }, detail: {}, form: null, touched: new Set(), busy: false, err: "", note: "", openErr: "", draftPost: {} };
+  const S = { artErr: {}, cat: { kinds: [], required: {}, registry: {}, entries: [] }, flavorOpen: {}, list: [], total: 0, counts: {}, view: "main", all: { rows: [], next: null, state: "", err: "" }, detail: {}, form: null, touched: new Set(), busy: false, err: "", note: "", openErr: "", draftPost: {}, askCancel: "" };
 
   /** @rule 801.2 */
   async function load() {
@@ -74,7 +74,7 @@ export function createWorkshop({ api, me, pill, rpill, when, canCommission, refr
 
   /** @rule 801.2 */
   async function open(n, push) {
-    S.err = ""; S.note = "";
+    S.err = ""; S.note = ""; S.askCancel = "";   // a card opens without Cancel's question showing
     S.detail[n] = S.detail[n] || null;   // a card with its name and nothing else until the page arrives
     cards.open({ kind: "ticket", key: n }, { push: !!push });
     await loadOne(n);
@@ -239,7 +239,7 @@ ${stripHTML(artOf(v), false, "", 1)}${attrsHTML(v)}${flavorHTML(v, open)}${more 
   const count = () => S.total;
   /** The all-tickets list: a row each, a chip per state, "More". @rule 801.2 */
   function allHTML() {
-    const A = S.all, states = ["Draft", "Proposed", "Ready", "Approved", "Building", "Done", "Refused", "Failed", "Shelved"].filter((s) => S.counts[s]);
+    const A = S.all, states = ["Draft", "Proposed", "Ready", "On hold", "Approved", "Building", "Done", "Refused", "Failed", "Shelved"].filter((s) => S.counts[s]);
     const chip = (s, label) => `<button type="button" class="pill tstate" data-w="filter" data-state="${esc(s)}" aria-pressed="${A.state === s}">${esc(label)}</button>`;
     return `<div class="wk"><div class="wkmain"><section class="sw wkl wkall" aria-label="All tickets"><div class="swh"><h2>All tickets</h2><span class="m">${esc(`${S.total} ${S.total === 1 ? "ticket" : "tickets"}`)}</span><button type="button" class="linkbtn" data-w="main">← Workshop</button></div>
 <div class="tfilter">${chip("", `All ${S.total}`)}${states.map((s) => chip(s, `${s} ${S.counts[s]}`)).join("")}</div>
@@ -382,6 +382,17 @@ ${row("Price", `${esc(pointsOf(t))}${t.price_reason ? `<span class="mnote"> · $
     const c = t.can.reopen, off = S.busy || !c.allowed;
     return `<div class="row wkreopen"><button class="btn small" type="button" data-w="reopen"${off ? " disabled" : ""}>Reopen as a draft</button>${c.allowed ? "" : `<span class="mnote">${esc(c.reason || "")}</span>`}${S.err && !t.can.edit.allowed ? `<p class="notice err" role="alert">${esc(S.err)}</p>` : ""}</div>`;
   }
+  /** Your Ready ticket can be put on hold and taken off it (rule 801.9), and cancelled while it is Ready or on hold (rule 801.10). Cancelling asks first: one tap
+   *  turns the button into "Cancel W3?" with Yes and No; the lock turns the buttons off with its sentence. @rule 801.9, 801.10 */
+  function holdHTML(t) {
+    const c = t.can && t.can.cancel;
+    if (!t.mine || !c || (!c.allowed && !c.reason)) return "";
+    const toggle = t.held ? t.can.resume : t.can.hold, off = S.busy || !c.allowed;
+    const ask = S.askCancel === t.n && c.allowed;
+    return `<div class="row wkreopen" data-w-hold="${esc(t.n)}">${ask
+      ? `<span class="mnote" role="alert">Cancel ${esc(t.n)}?</span><button class="btn ghost small" type="button" data-w="cancel"${S.busy ? " disabled" : ""}>Yes, cancel</button><button class="linkbtn" type="button" data-w="keep"${S.busy ? " disabled" : ""}>No</button>`
+      : `<button class="btn ghost small" type="button" data-w="${t.held ? "resume" : "hold"}"${off || !toggle.allowed ? " disabled" : ""}>${t.held ? "Resume" : "Put on hold"}</button><button class="linkbtn" type="button" data-w="askcancel"${off ? " disabled" : ""}>Cancel</button>`}${c.allowed ? "" : `<span class="mnote">${esc(c.reason || "")}</span>`}${S.err && !t.can.edit.allowed ? `<p class="notice err" role="alert">${esc(S.err)}</p>` : ""}</div>`;
+  }
   /** The ticket card. @rule 801.2, 804.1 */
   function card(spec) {
     if (spec.kind === "entry") return entryCard(spec.key);
@@ -393,7 +404,7 @@ ${row("Price", `${esc(pointsOf(t))}${t.price_reason ? `<span class="mnote"> · $
     if (editing && (!S.form || S.form.n !== n)) S.form = formFrom(t);
     return { cls: "crit tk", label: `${t.n} ${t.title || "Untitled"}`, backLabel: t.n,
       html: `<div class="mtop"><div class="cart"><span class="wpill big">${esc(t.n)}</span></div><h2>${esc(t.title || "Untitled")}</h2><span class="mmeta">${pill(t.by, t.mine)}</span><span class="mpill">${esc(t.state)}</span></div>
-${editing ? formHTML(t) : factsHTML(t)}${unlockHTML(t)}${reopenHTML(t)}${editing ? "" : tasksHTML(t)}${logHTML(t)}${threadHTML(t)}` };
+${editing ? formHTML(t) : factsHTML(t)}${unlockHTML(t)}${reopenHTML(t)}${holdHTML(t)}${editing ? "" : tasksHTML(t)}${logHTML(t)}${threadHTML(t)}` };
   }
 
   // ---- the clicks and keystrokes ---------------------------------------------------------------------------------
@@ -417,7 +428,7 @@ ${editing ? formHTML(t) : factsHTML(t)}${unlockHTML(t)}${reopenHTML(t)}${editing
     await open(r.data.ticket, false);
   }
   // The buttons that send a request: one tap, one request (busy.js).
-  const SENDS = new Set(["open", "art", "save", "confirm", "discard", "unlock", "reopen", "post"]);
+  const SENDS = new Set(["open", "art", "save", "confirm", "discard", "unlock", "reopen", "hold", "resume", "cancel", "post"]);
   /** @rule 801.1, 801.2, 801.8, 804.1 */
   const click = (el) => (SENDS.has(el.dataset.w) ? hold(el, () => run(el)) : run(el));
   async function run(el) {
@@ -456,6 +467,7 @@ ${editing ? formHTML(t) : factsHTML(t)}${unlockHTML(t)}${reopenHTML(t)}${editing
       return;
     }
     if (a === "gremlin") { const c = chat && chat(); if (c && n) { cards.close(); await c.attach(n, { open: true }); } return; }   // the card goes away first: it would cover the chat
+    if ((a === "askcancel" || a === "keep") && n && !S.busy) { S.askCancel = a === "askcancel" ? n : ""; S.err = ""; cards.redraw(); return; }
     if (!n || S.busy) return;
     S.busy = true; S.err = ""; S.note = ""; cards.redraw();
     try {
@@ -475,6 +487,9 @@ ${editing ? formHTML(t) : factsHTML(t)}${unlockHTML(t)}${reopenHTML(t)}${editing
         const r = await api(`/api/proposals/${encodeURIComponent(t && t.unlock_id || "")}/withdraw`, {});
         if (!r.ok) S.err = (r.data && r.data.error) || "Something went wrong.";
         S.form = null; await loadOne(n); await refresh();
+      } else if (a === "hold" || a === "resume" || a === "cancel") {
+        const r = await api(`/api/tickets/${encodeURIComponent(n)}/${a}`, {});
+        if (r.ok) { S.askCancel = ""; S.detail[n] = r.data.ticket; await load(); if (S.view === "all") await loadAll(true); await refresh(); } else { S.err = (r.data && r.data.error) || "Something went wrong."; await loadOne(n); }
       } else if (a === "reopen") {
         const r = await api(`/api/tickets/${encodeURIComponent(n)}/reopen`, {});
         if (r.ok) { S.detail[n] = r.data.ticket; S.form = null; await refresh(); } else { S.err = (r.data && r.data.error) || "Something went wrong."; await loadOne(n); }

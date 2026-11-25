@@ -103,6 +103,18 @@ try {
   check("an answer that names a state, a proposal, a price, a paid mark and ticket fields changes nothing on any ticket", J(tk(10)) === before && posts(10).at(-1).author_kind === "gremlin" && posts(10).at(-1).body === "Done and approved.");
   check("a player's own call count is now 3", tcalls("Ana").length === 3);
 
+  console.log("a ticket on hold (rule 801.9) is told to him, and to the chat, as On hold, not as Ready");
+  const callsBefore = d1(state, "SELECT COALESCE(MAX(id), 0) AS m FROM agent_calls")[0].m, chatBefore = d1(state, "SELECT COALESCE(MAX(id), 0) AS m FROM chat_messages")[0].m;
+  d1(state, `INSERT INTO tickets (id, game_id, number, player_id, title, brief, state, held_at, created_at, updated_at, proposed_at) VALUES ('tk-90', '${gid}', 90, '${id.Bo}', 'Held', 'A thing.', 'Ready', '2026-11-10T18:30:00.000Z', '2026-11-10T18:00:00.000Z', '2026-11-10T18:30:00.000Z', '2026-11-10T18:00:00.000Z')`);
+  await post(Cy, 90, "SYNTH-T-REPLY will this be paid tonight?");
+  await settled();
+  const heldCall = calls.filter((c) => c.model === "claude-sonnet-5-5").at(-1);
+  check("the thread request carries the ticket's state as On hold, and never plain Ready", heldCall.body.messages[0].content[0].text.includes('"state": "On hold"') && !heldCall.body.messages[0].content[0].text.includes('"state": "Ready"'), J(heldCall.body.messages).slice(0, 400));
+  await say(Bo, "SYNTH-OPTIONS what now", "W90");
+  const chatCall = calls.filter((c) => c.kind === "ticket").at(-1);
+  check("in the chat on that ticket he is told nothing will be saved because W90 is on hold (not 'ready')", J(chatCall.body).includes("W90 is on hold") && !J(chatCall.body).includes("W90 is ready"), J(chatCall.body).slice(-300));
+  d1(state, `DELETE FROM ticket_posts WHERE ticket_id = 'tk-90'; DELETE FROM chat_messages WHERE id > ${chatBefore}; DELETE FROM agent_calls WHERE id > ${callsBefore}; DELETE FROM tickets WHERE id = 'tk-90'`);   // leave the counts the next sections read as they were
+
   console.log("the cap counts calls by the posting player (rule 804.1)");
   const s0 = sonnetCalls(), n0 = posts(10).length;
   const over = await post(Ana, 10, "SYNTH-T-REPLY a fourth question");

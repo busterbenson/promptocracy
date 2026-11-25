@@ -215,11 +215,11 @@ async function route(request: Request, env: Env, execCtx: ExecutionContext): Pro
   // still posts to her, and a 404 would read as a bug, so she answers 410 with where to go.
   if (sub === "api" && segs.length === 4 && segs[2] === "chat" && segs[3] === "starling") return json({ error: "Starling is gone. Talk to Gremlin." }, 410);
   if (sub === "api" && segs.length === 4 && segs[2] === "chat" && AGENTS.includes(segs[3])) return run(apiChat, method, ctx);
-  // /api/tickets/<W3> (the ticket page), and /api/tickets/<W3>/edit, /confirm, /reopen, /discard and /post (rules 801, 804)
+  // /api/tickets/<W3> (the ticket page), and /api/tickets/<W3>/edit, /confirm, /reopen, /discard, /hold, /resume, /cancel and /post (rules 801, 804)
   if (sub === "api" && segs[2] === "tickets" && (segs.length === 4 || segs.length === 5)) {
     ctx.params.n = segs[3];
     if (segs.length === 4) return run({ get: apiTickets.one }, method, ctx);
-    if (segs[4] === "edit" || segs[4] === "confirm" || segs[4] === "post" || segs[4] === "reopen" || segs[4] === "discard") return run({ post: apiTickets.action(segs[4]) }, method, ctx);
+    if (segs[4] === "edit" || segs[4] === "confirm" || segs[4] === "post" || segs[4] === "reopen" || segs[4] === "discard" || segs[4] === "hold" || segs[4] === "resume" || segs[4] === "cancel") return run({ post: apiTickets.action(segs[4]) }, method, ctx);
     // /api/tickets/<W3>/art: save, default or redraw one of an entry's drawings (rules 801.2, 106.7)
     if (segs[4] === "art") return run({ post: apiArt.act }, method, ctx);
   }

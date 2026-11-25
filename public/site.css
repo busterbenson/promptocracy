@@ -493,7 +493,7 @@ button.wpill{cursor:pointer;min-height:26px;padding:3px 9px}
 button.wpill:hover{background:var(--surface-2)}
 .wpill.big{font-size:1rem;padding:4px 14px}
 .tstate[data-state="Ready"],.tstate[data-state="Approved"],.tstate[data-state="Building"],.tstate[data-state="Done"]{border-color:var(--accent);color:var(--accent)}
-.tstate[data-state="Draft"],.tstate[data-state="Ready"],.tstate[data-state="Shelved"]{border-style:dashed}
+.tstate[data-state="Draft"],.tstate[data-state="Ready"],.tstate[data-state="On hold"],.tstate[data-state="Shelved"]{border-style:dashed}
 .tstate[data-state="Locked"]{border-color:var(--accent);color:var(--accent)}
 .tstate[data-state="Refused"],.tstate[data-state="Failed"]{border-color:var(--err);color:var(--err)}
 .tstate[data-state="Escalated"]{background:var(--warm1);border-color:var(--warm-line);color:var(--ink)}
@@ -505,6 +505,8 @@ button.pill[aria-pressed="true"]{background:color-mix(in srgb,var(--accent) 16%,
 .wkall .trow{padding:6px 0}
 .wkall .tlist+.row,.wkreopen{padding-top:10px}
 .wkreopen{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.wkreopen .linkbtn{margin-top:0;min-height:34px}
+.wkreopen .linkbtn:disabled:not([aria-busy="true"]){opacity:.45;cursor:not-allowed}
 .cbrief{margin:0;white-space:pre-wrap;overflow-wrap:anywhere}
 .cfacts{margin:0;font-size:.72rem;color:var(--ink-muted)}
 .tk .tdl{margin:0;border-top:1px solid var(--line)}

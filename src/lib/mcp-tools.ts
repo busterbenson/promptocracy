@@ -181,7 +181,7 @@ export function registerTools(server: McpServer, ctx: Ctx, player: Player) {
 
   // The Workshop (rules 801, 804): the commissions of this game, and the discussion on each.
   server.registerTool("list_tickets", {
-    description: "List the workshop's tickets (commissions, W1, W2...): each one's title, who asked for it, its state (Draft, Proposed, Ready, Approved, Building, Done, Refused, Failed, Shelved), the nights it will take and its price in points (Ready: passed, but the requester can't pay the whole price yet, so it waits outside the queue). Your own draft is included; other players' drafts are not. Shows the live work and the 5 most recently closed. Read one ticket's brief, tasks, log and discussion with read_ticket.",
+    description: "List the workshop's tickets (commissions, W1, W2...): each one's title, who asked for it, its state (Draft, Proposed, Ready, On hold, Approved, Building, Done, Refused, Failed, Shelved), the nights it will take and its price in points (Ready: passed, but the requester can't pay the whole price yet, so it waits outside the queue; On hold: a Ready ticket its requester put on hold, which the night does not pay). Your own draft is included; other players' drafts are not. Shows the live work and the 5 most recently closed. Read one ticket's brief, tasks, log and discussion with read_ticket.",
     annotations: read,
   }, async () => reply(await viaRoute(ctx, player, apiTickets.get, "GET", "tickets")));
 
@@ -198,6 +198,33 @@ export function registerTools(server: McpServer, ctx: Ctx, player: Player) {
   }, async ({ ticket }) => {
     const r = await viaRoute(ctx, player, apiTickets.action("reopen"), "POST", `tickets/${encodeURIComponent(ticket)}/reopen`, {}, { n: ticket });
     return reply(r, r.data?.ok ? `${String(ticket).toUpperCase().replace(/^(\d)/, "W$1")} is a draft again.` : r.text);
+  });
+
+  server.registerTool("hold_ticket", {
+    description: "Put a Ready ticket of yours on hold (rule 801.9): the night does not pay it or put it in the queue, and your points stay yours, until you resume it. Only your own Ready ticket. Not during the midnight lock.",
+    inputSchema: { ticket: z.string().describe("The ticket, like \"W3\"") },
+    annotations: write,
+  }, async ({ ticket }) => {
+    const r = await viaRoute(ctx, player, apiTickets.action("hold"), "POST", `tickets/${encodeURIComponent(ticket)}/hold`, {}, { n: ticket });
+    return reply(r, r.data?.ok ? `${String(ticket).toUpperCase().replace(/^(\d)/, "W$1")} is on hold.` : r.text);
+  });
+
+  server.registerTool("resume_ticket", {
+    description: "Take a ticket of yours off hold (rule 801.9): it is Ready again, and the night pays it the first night you can. Only your own ticket on hold. Not during the midnight lock.",
+    inputSchema: { ticket: z.string().describe("The ticket, like \"W3\"") },
+    annotations: write,
+  }, async ({ ticket }) => {
+    const r = await viaRoute(ctx, player, apiTickets.action("resume"), "POST", `tickets/${encodeURIComponent(ticket)}/resume`, {}, { n: ticket });
+    return reply(r, r.data?.ok ? `${String(ticket).toUpperCase().replace(/^(\d)/, "W$1")} is Ready again.` : r.text);
+  });
+
+  server.registerTool("cancel_ticket", {
+    description: "Cancel a ticket of yours while it is Ready or on hold (rule 801.10): nothing is paid and the ticket closes, as Shelved; it can't be reopened. Only your own ticket. Not during the midnight lock.",
+    inputSchema: { ticket: z.string().describe("The ticket, like \"W3\"") },
+    annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
+  }, async ({ ticket }) => {
+    const r = await viaRoute(ctx, player, apiTickets.action("cancel"), "POST", `tickets/${encodeURIComponent(ticket)}/cancel`, {}, { n: ticket });
+    return reply(r, r.data?.ok ? `${String(ticket).toUpperCase().replace(/^(\d)/, "W$1")} is cancelled.` : r.text);
   });
 
   server.registerTool("post_to_ticket", {
