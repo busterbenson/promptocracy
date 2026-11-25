@@ -137,14 +137,14 @@ export function checkGiveHeart(game: any, ctx: any, giver: { ref: string }, targ
 
 // Runs the game's afterAction hooks and turns the effects into D1 statements for the action's own batch.
 /** @rule 504 */
-// `charted`, when given, is filled with the tiles this action charts that were not charted before (the history line says them, rule 101.2).
-export function afterActionStatements(env: Env, game: any, ctx: any, actor: { ref: string }, action: any, now = nowIso(), charted: { x: number; y: number; z: number }[] = []) {
+// `candidates`, when given, is filled with every tile the action charts (once each). The history line's own SQL works out which of them are new inside the batch (chartedSql, rules 101.2, 504.1), never from this request's snapshot.
+export function afterActionStatements(env: Env, game: any, ctx: any, actor: { ref: string }, action: any, now = nowIso(), candidates: { x: number; y: number; z: number }[] = []) {
   const stmts: any[] = [];
   for (const e of rulesFor(game).afterAction(ctx, actor, action)) {
     if (!APPLIED_EFFECTS.includes(e.type)) throw new RuleError(0, "afterAction", new Error(`the ${e.type} effect is not applied yet`));
     for (const t of e.tiles) {
       stmts.push(chartTile(env, game.id, t.x, t.y, t.z, now));
-      if (!ctx.tiles.has(t.x, t.y, t.z) && !charted.some((c) => c.x === t.x && c.y === t.y && c.z === t.z)) charted.push({ x: t.x, y: t.y, z: t.z });
+      if (!candidates.some((c) => c.x === t.x && c.y === t.y && c.z === t.z)) candidates.push({ x: t.x, y: t.y, z: t.z });
     }
   }
   return stmts;

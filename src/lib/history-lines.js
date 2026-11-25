@@ -15,8 +15,17 @@ const xyz = (t) => ({ x: t.x, y: t.y, z: t.z ?? 0 });
 /** @rule 101.2 */
 const hearts = (n) => `${n} ${n === 1 ? "heart" : "hearts"}`;
 
-/** A move (rules 202.2, 504.2): from, to, and the tiles it charted that were not charted before (504.1). @rule 101.2, 202.2, 504.1, 504.2 */
-export const moved = (who, from, to, charted) => ({ kind: "piece_moved", template: "moved", text: `${who} moved to ${tileLabel(to.x, to.y, to.z)}.`, args: { from: xyz(from), to: xyz(to), charted: charted.map(xyz) } });
+/** A move (rules 202.2, 504.2): from and to. Its `charted` (the tiles it charted that were not charted before, 504.1) is added by the move's own batch, see chartedSql. @rule 101.2, 202.2, 504.1, 504.2 */
+export const moved = (who, from, to) => ({ kind: "piece_moved", template: "moved", text: `${who} moved to ${tileLabel(to.x, to.y, to.z)}.`, args: { from: xyz(from), to: xyz(to) } });
+/**
+ * The move line's `charted` (rule 504.1), as a SQL expression for the line's own INSERT ... SELECT: the JSON list of the candidate tiles (one `?` bind: a JSON array of
+ * {x, y, z}) that have no row in `tiles` AT THAT POINT OF THE BATCH. The line runs before the tile inserts, in the same transaction, so what it says is exactly what the
+ * INSERT OR IGNOREs then add, whatever another move charted since this request read the board. `game` is the SQL for the game id. Empty when nothing is new: `[]`.
+ * @rule 101.2, 504.1
+ */
+export const chartedSql = (game) => `(SELECT json_group_array(json_object('x', c.x, 'y', c.y, 'z', c.z)) FROM (SELECT j.key AS k, json_extract(j.value, '$.x') AS x, json_extract(j.value, '$.y') AS y, COALESCE(json_extract(j.value, '$.z'), 0) AS z FROM json_each(?) j ORDER BY j.key) c WHERE NOT EXISTS (SELECT 1 FROM tiles t WHERE t.game_id = ${game} AND t.x = c.x AND t.y = c.y AND t.z = c.z))`;
+/** The bind for chartedSql: the candidate tiles, as a JSON array. @rule 101.2, 504.1 */
+export const chartedBind = (candidates) => JSON.stringify(candidates.map(xyz));
 /** A player joins the game (102.3, 505). @rule 101.2, 102.3, 505 */
 export const joined = (who, p) => ({ kind: "player_joined", template: "joined", text: `${who} joined the game.`, args: { x: p.x, y: p.y, z: p.z, hearts: p.hearts, color: p.color, shape: p.shape } });
 /** The text of "X proposed a change." (103.1); its args are read from the proposal in SQL. @rule 101.2, 103.1 */

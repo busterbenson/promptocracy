@@ -1,6 +1,9 @@
 // GET /api/history (History's per-day ballots): each past day that was counted lists its proposals and commissions with the one sentence
 // (src/lib/history.js), newest day first and paged; a ballot that has not been counted is not there, and no vote is ever shown. A real
 // `wrangler dev` on a throwaway LOCAL D1; the rows are written straight to it. Run: node tests/history.mjs
+import { DatabaseSync } from "node:sqlite";
+import { chartedSql } from "../src/lib/history-lines.js";
+import { chartedAround, islandCoords } from "../src/lib/geometry.js";
 import { proposalSentence } from "../src/lib/history.js";
 import { client, createGame, d1, freePort, join, migrate, newState, startPlaying, startRulesStub, startServer } from "./lib.mjs";
 
@@ -16,6 +19,41 @@ check("not applied carries the moderator's reason", proposalSentence({ kind: "re
 check("a commission names its ticket, title and price, and where the ticket stands now", proposalSentence({ kind: "commission", target: "", status: "approved", why: COUNT }, { n: "W3", title: "A bog frog", price: 6, state: "Building" }) === `A commission W3 (A bog frog, 6 points). Approved. It is now Building. ${COUNT}`);
 check("the Champion's change says so", /^The Champion's change: a change to rule 402\./.test(proposalSentence({ kind: "amend", target: "402", champion: 1, status: "enacted", why: "x" })));
 check("a row with no stored count still says how the votes went", /^A new rule 204\. Failed\. 1 voted yes, 2 voted no, 0 did not vote\.$/.test(proposalSentence({ kind: "add", target: "200", new_num: "204", status: "failed", yes: 1, no: 2, absent: 0 })));
+
+console.log("the move line's charted tiles (rule 101.2, 504.1): worked out inside the batch, from the tiles that do not exist yet");
+{
+  // Codex's example on #131: on the initial 8x8 island, (2,0) -> (3,0) and (2,1) -> (3,1) chart overlapping squares. Both requests read the tile snapshot BEFORE
+  // either batch ran (the Worker takes the snapshot, then batches; two requests can interleave there), so each one's candidate tiles overlap. The line's
+  // `charted` is selected inside the batch, so the second line only claims what the first left uncharted.
+  const db = new DatabaseSync(":memory:");
+  db.exec("CREATE TABLE games (id TEXT); CREATE TABLE tiles (game_id TEXT, x INT, y INT, z INT DEFAULT 0, charted_at TEXT, PRIMARY KEY (game_id, x, y, z)); CREATE TABLE ev (n INTEGER PRIMARY KEY, args TEXT)");
+  db.prepare("INSERT INTO games VALUES ('g1')").run();
+  const addTile = db.prepare("INSERT OR IGNORE INTO tiles (game_id, x, y, z, charted_at) VALUES ('g1', ?, ?, ?, 'now')");
+  for (const [x, y] of islandCoords(8, 8)) addTile.run(x, y, 0);
+  const count = () => db.prepare("SELECT COUNT(*) AS n FROM tiles").get().n;
+  const snapshot = new Set(db.prepare("SELECT x, y, z FROM tiles").all().map((t) => `${t.x},${t.y},${t.z}`)); // what both requests read first
+  const candidates = (x, y) => chartedAround(x, y, 2).map(([cx, cy]) => ({ x: cx, y: cy, z: 0 }));
+  const batch = (cands) => { // the route's order: the line first, then the tile inserts, in one transaction
+    db.exec("BEGIN");
+    db.prepare(`INSERT INTO ev (args) SELECT json_set(json(?), '$.charted', json(${chartedSql("g.id")})) FROM games g WHERE g.id = ?`).run(JSON.stringify({ from: {}, to: {} }), JSON.stringify(cands), "g1");
+    for (const t of cands) addTile.run(t.x, t.y, t.z);
+    db.exec("COMMIT");
+  };
+  const before = count();
+  const a = candidates(3, 0), b = candidates(3, 1);
+  const oldClaim = [a, b].map((c) => c.filter((t) => !snapshot.has(`${t.x},${t.y},${t.z}`))); // what the route claimed from the snapshot
+  batch(a); batch(b);
+  const claims = db.prepare("SELECT args FROM ev ORDER BY n").all().map((r) => JSON.parse(r.args).charted);
+  const claimed = claims.flat().map((t) => `${t.x},${t.y},${t.z}`);
+  const added = count() - before;
+  check("the example adds 10 tiles", added === 10, String(added));
+  check("the two lines claim exactly those 10, no tile twice", claimed.length === 10 && new Set(claimed).size === 10, `${claimed.length} claimed, ${new Set(claimed).size} distinct`);
+  check("the first line claims its own 8, the second only the 2 it adds beyond them", claims[0].length === 8 && claims[1].length === 2, J(claims.map((c) => c.length)));
+  check("a claimed tile is {x, y, z}, in the order of the candidates", claims[0].every((t) => J(Object.keys(t)) === '["x","y","z"]') && J(claims[0]) === J(a.filter((t) => !snapshot.has(`${t.x},${t.y},${t.z}`))), J(claims[0]));
+  check("a move that charts nothing says an empty list, not null", (() => { batch(a); return db.prepare("SELECT args FROM ev ORDER BY n DESC LIMIT 1").get().args === '{"from":{},"to":{},"charted":[]}'; })());
+  check("the test sees the bug it guards: claims taken from the snapshot say 16", oldClaim[0].length + oldClaim[1].length === 16 && 16 !== added, J(oldClaim.map((c) => c.length)));
+  db.close();
+}
 
 const state = newState();
 let srv = null, stub = null;

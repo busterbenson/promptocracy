@@ -54,12 +54,12 @@ export const post = async (ctx: Ctx) => {
   const actor = { ref: player.id }, action = { kind: "move", to: { x, y, z } };
   let bctx: any, effectStmts: any[];
   const now = nowIso(nowMs);
-  const charted: { x: number; y: number; z: number }[] = [];
+  const candidates: { x: number; y: number; z: number }[] = [];
   try {
     bctx = await boardContext(env, game, { moved: !!movedAt });
     const refused = checkAction(game, bctx, actor, action);
     if (refused) return json({ error: refused.error }, refused.status);
-    effectStmts = afterActionStatements(env, game, bctx, actor, action, now, charted);
+    effectStmts = afterActionStatements(env, game, bctx, actor, action, now, candidates);
   } catch (e) {
     if (e instanceof RuleError) { console.error(e.message); return json({ error: "A rule could not be checked. Try again later." }, 500); }
     throw e;
@@ -72,7 +72,7 @@ export const post = async (ctx: Ctx) => {
 
   const toRight = (x - at.x) - (y - at.y); // > 0 moves right on screen, < 0 left, 0 straight up or down
   const facing = toRight > 0 ? 1 : toRight < 0 ? 0 : me.mirrored;
-  const line = H.moved(who(player.display_name, player.color), at, { x, y, z }, charted);
+  const line = H.moved(who(player.display_name, player.color), at, { x, y, z });
   const stmts = [
     env.DB.prepare(
       `INSERT INTO events (game_id, kind, text, created_at, day, phase, template, args, player_id)
@@ -81,11 +81,11 @@ export const post = async (ctx: Ctx) => {
               AND EXISTS (SELECT 1 FROM players p WHERE p.game_id = g.id AND p.id = ? AND p.x = ? AND p.y = ? AND p.z = ?)
               AND EXISTS (SELECT 1 FROM tiles t WHERE t.game_id = g.id AND t.x = ? AND t.y = ? AND t.z = ?)
               AND (SELECT COUNT(*) FROM players o WHERE o.game_id = g.id AND o.id != ? AND o.x = ? AND o.y = ? AND o.z = ?) = ?
-              THEN ? ELSE NULL END, ?, g.day, 'day', ?, json(?), ?
+              THEN ? ELSE NULL END, ?, g.day, 'day', ?, json_set(json(?), '$.charted', json(${H.chartedSql("g.id")})), ?
        FROM games g WHERE g.id = ?`,
     ).bind(
       ...dayOpenBinds(game.day, nowMs, player.id), player.id, movedAt ?? "", player.id, at.x, at.y, at.z, x, y, z,
-      player.id, x, y, z, sharing, line.text, now, line.template, JSON.stringify(line.args), player.id, game.id,
+      player.id, x, y, z, sharing, line.text, now, line.template, JSON.stringify(line.args), H.chartedBind(candidates), player.id, game.id,
     ),
     // The piece turns to face the way it moved on screen: right on screen is east minus north (the board's one projection).
     env.DB.prepare("UPDATE players SET x = ?, y = ?, z = ?, mirrored = ? WHERE game_id = ? AND id = ?").bind(x, y, z, facing, game.id, player.id),
