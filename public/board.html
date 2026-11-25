@@ -243,7 +243,8 @@ import { createChat, AGENTS } from "/js/chat.js";
     BAL = createBallot({ api, pill: by => pill(by, false), refreshed: refresh, player: () => !!(ME && ME.player) });
     WS = createWorkshop({ api, me: () => ME, pill, rpill: n => PROP.rpill(n), when: whenText, canCommission: () => PROP.canCommission(), refresh: async () => { await refresh(); loadNotes(); }, cards: CARDS, chat: () => CHAT });
     CHAT = createChat({ api, root: $("bwrap"), me: () => ME, started: () => gameStarted(), slug: SLUG, rpill: n => PROP.rpill(n), wpill: wPill,
-      onTicket: async t => { WS.apply(t); await WS.load(); drawBook(); } });
+      onTicket: async t => { WS.apply(t); await WS.load(); drawBook(); },
+      onNew: () => WS.commission(), canNew: () => PROP.canCommission() });
     // Starling shares the column and the pill with Gremlin: only the window whose tab is showing draws (public/js/chat.js)
     STAR = createChat({ api, root: $("bwrap"), me: () => ME, started: () => gameStarted(), slug: SLUG, agent: AGENTS.starling, rpill: n => PROP.rpill(n), wpill: wPill,
       onProposals: async () => { await refresh(); loadNotes(); }, onSlip: async () => { await PROP.load(); drawBar(); } });

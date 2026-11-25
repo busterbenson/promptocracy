@@ -4,14 +4,16 @@
 # opens it on the new draft), the corner pill and the bottom sheet at 390, the cap's closed composer, a visitor with no window, light and dark,
 # no sideways scroll and no console errors. "ok"/"FAIL" lines; any FAIL makes the exit code 1.
 # Game "pre" has not started (Fay, its host, is its only player): no window for her, none for Ada (signed in to "shop", not a player there), none for a visitor.
-# Usage: browser-chat.py <base> <screenshot dir or -> <Ada's session cookie> <Bo's> <Cy's> <Dee's> <Fay's session cookie, for pre>
+# The ticket strip (rule 801.6) is Eve's, at the end: a strip of her live tickets and New under Gremlin's header, in light and dark at 390 and 1280.
+# Usage: browser-chat.py <base> <screenshot dir or -> <Ada's session cookie> <Bo's> <Cy's> <Dee's> <Fay's session cookie, for pre> <Eve's cookie> <two recorded messages Gremlin answers: the lines her two tickets are drafted with>
 import re, sys
 from urllib.parse import urlparse
 from playwright.sync_api import sync_playwright
 
-base, out, ada_cookie, bo_cookie, cy_cookie, dee_cookie, fay_cookie = sys.argv[1:8]
+base, out, ada_cookie, bo_cookie, cy_cookie, dee_cookie, fay_cookie, eve_cookie, MSG_A, MSG_B = sys.argv[1:11]
 host = urlparse(base).hostname
 failed = []
+ROW_H = 44
 SLUG = "shop"
 
 def check(name, ok, detail=""):
@@ -40,6 +42,14 @@ def sideways(page, w, name):
 
 # The sheet fits the screen (rule 106.3): every part of it, the close and send buttons included, inside the viewport, and the composer's text
 # is 16px or more (iOS Safari zooms the page into a smaller field when it takes focus, which pushes a fixed sheet off the right edge).
+def row_ok(page, w, tag):
+    # The shared row (AGENTS.md "The two chat windows are one UI"): one .ch-row in both windows, directly under the header, inside the window, the same height
+    # (tests/browser-chat.py holds the same ROW_H), its pills scrolling sideways inside it
+    rb = page.locator("#chatcol .ch-row").bounding_box(); hb = page.locator("#chatcol .ch-h").bounding_box(); cb = page.locator("#chatcol .chat").bounding_box()
+    check(f"{tag}: the row is one .ch-row, directly under the header ({rb['y']:.0f} vs {hb['y'] + hb['height']:.0f}) and inside the window", page.locator("#chatcol .ch-row").count() == 1 and abs(rb["y"] - (hb["y"] + hb["height"])) <= 1.5 and rb["x"] >= cb["x"] - 0.5 and rb["x"] + rb["width"] <= cb["x"] + cb["width"] + 0.5)
+    check(f"{tag}: the row is {ROW_H}px high, as in the other window (is {rb['height']:.1f})", abs(rb["height"] - ROW_H) <= 1.5)
+    ov = page.evaluate("getComputedStyle(document.querySelector('#chatcol .ch-row .its')).overflowX")
+    check(f"{tag}: its pills scroll sideways inside the row (overflow-x {ov}), never the page", ov in ("auto", "scroll"))
 def fits(page, w, h, name):
     page.wait_for_selector("#chatcol .chat", state="visible")
     bad = []
@@ -294,5 +304,89 @@ with sync_playwright() as p:
             pinned(page, w, h, f"{w}x{h}-{scheme} Gremlin", w < 900)
             shot(page, f"pinned-{w}x{h}-{scheme}")
             check(f"{w}x{h}-{scheme} Gremlin pinned: no console errors", not errors, str(errors)); c.close()
+    # ---------------- the ticket strip (rule 801.6): Gremlin's window lists your live tickets and a New; Eve's tickets are made here, once
+    c0, p0, e0 = new_page(b, 1280, 900, "light", eve_cookie)
+    post = "(path, body) => fetch(path, {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify(body)}).then(r => r.json())"
+    TA = p0.evaluate(f"({post})('/shop/api/tickets', {{}})")["ticket"]
+    p0.evaluate(f"({post})('/shop/api/chat/gremlin', {{ticket: {TA!r}, body: {MSG_A!r}}})")
+    TB = p0.evaluate(f"({post})('/shop/api/tickets', {{}})")["ticket"]
+    p0.evaluate(f"({post})('/shop/api/chat/gremlin', {{ticket: {TB!r}, body: {MSG_B!r}}})")
+    check(f"strip: Eve has two drafts with something in them ({TA}, {TB})", TA != TB and TA.startswith("W") and TB.startswith("W"))
+    c0.close()
+    def chips(page): return page.locator("#chatcol .ch-row .it")
+    def chip(page, n): return page.locator(f'#chatcol .ch-row .it[data-n="{n}"]')
+    def selected(page): return page.locator('#chatcol .ch-row .it[aria-pressed="true"]')
+    def strip_ok(page, w, tag):
+        page.wait_for_selector("#chatcol .ch-row", state="visible"); page.wait_for_timeout(500)   # the page redraws the window once more after a New (refresh)
+        sb = page.locator("#chatcol .ch-row").bounding_box(); cb = page.locator("#chatcol .chat").bounding_box()
+        check(f"{tag}: the strip sits inside the window, under the header (x {sb['x']:.0f}..{sb['x'] + sb['width']:.0f} of {cb['x']:.0f}..{cb['x'] + cb['width']:.0f})", sb["x"] >= cb["x"] - 0.5 and sb["x"] + sb["width"] <= cb["x"] + cb["width"] + 0.5 and sb["y"] >= page.locator("#chatcol .ch-h").bounding_box()["y"])
+        sideways(page, w, tag + " strip"); row_ok(page, w, tag)
+    for scheme in ["light", "dark"]:
+        for w, h in [(1280, 900), (390, 844)]:
+            tag = f"{w}-{scheme} strip"; phone = w < 900
+            c, page, errors = new_page(b, w, h, scheme, eve_cookie)
+            page.click("#tab-workshop")
+            if phone: page.wait_for_selector("#chatfab"); page.click("#chatfab")
+            page.wait_for_selector("#chatcol .ch-row"); page.wait_for_selector("#chatLog .slip"); page.wait_for_timeout(300)
+            nums = [x.get_attribute("data-n") for x in chips(page).all() if x.get_attribute("data-n")]
+            check(f"{tag}: the row lists her live tickets (all drafts here: newest first; an earlier pass of this loop has added drafts), and New at the end", TA in nums and TB in nums and nums == sorted(nums, key=lambda n: -int(n[1:])) and "New" in text(page, "#chatcol .ch-row .it.new"), f"{nums} {text(page, '#chatcol .ch-row')}")
+            check(f"{tag}: each ticket shows its state (Draft)", " ".join(chip(page, TA).inner_text().split()).lower().endswith("draft"), text(page, "#chatcol .ch-row"))
+            check(f"{tag}: the window opens on the ticket she was last in ({TB}), its pill selected and the only one", selected(page).count() == 1 and selected(page).get_attribute("data-n") == TB and TB in text(page, "#chatLog .slip"), text(page, "#chatLog .slip"))
+            strip_ok(page, w, tag)
+            shot(page, f"strip-{tag}")
+            chip(page, TA).click(); page.wait_for_function(f"document.querySelector('#chatLog .slip') && document.querySelector('#chatLog .slip').getAttribute('aria-label') === '{TA}'")
+            lines = msgs(page)
+            check(f"{tag}: tapping {TA} switches to its conversation and slip, selects its pill, and attaches it (a chip beside the box)", selected(page).get_attribute("data-n") == TA and lines >= 2 and TA in text(page, ".ch-in .chip"), f"{lines} {text(page, '.ch-in')}")
+            chip(page, TB).click(); page.wait_for_function(f"document.querySelector('#chatLog .slip') && document.querySelector('#chatLog .slip').getAttribute('aria-label') === '{TB}'")
+            check(f"{tag}: and back to {TB}: its own lines, {TA}'s slip gone (rule 801.6)", selected(page).get_attribute("data-n") == TB and not page.locator(f'#chatLog .slip[aria-label="{TA}"]').count())
+            # two quick picks: TA's ticket read is held, TB is picked, then TA's late read lands; it must not become the slip, the chip or the conversation (rule 801.6)
+            heldp = []
+            page.route(re.compile(rf"/shop/api/tickets/{TA}$"), lambda route: heldp.append(route) if route.request.method == "GET" else route.continue_())
+            chip(page, TA).click(); page.wait_for_timeout(300)
+            chip(page, TB).click(); page.wait_for_function(f"document.querySelector('#chatLog .slip') && document.querySelector('#chatLog .slip').getAttribute('aria-label') === '{TB}'")
+            check(f"{tag}: {TA}'s ticket read is out and held while {TB} is picked", len(heldp) == 1)
+            heldp[0].continue_(); page.wait_for_timeout(800); page.unroute(re.compile(rf"/shop/api/tickets/{TA}$"))
+            check(f"{tag}: {TA}'s late read does not land: {TB} stays the selected pill, the chip, the slip and the conversation (rule 801.6)", selected(page).get_attribute("data-n") == TB and TB in text(page, ".ch-in .chip") and page.locator(f'#chatLog .slip[aria-label="{TB}"]').count() == 1 and not page.locator(f'#chatLog .slip[aria-label="{TA}"]').count(), text(page, ".ch-in"))
+            # a send while a switch is still loading: nothing goes out until the switch lands, so a message can't reach a ticket other than the one on screen (rule 801.6)
+            posts, heldq = [], []
+            page.on("request", lambda r: posts.append(r.url) if r.method == "POST" and "/api/chat/gremlin" in r.url else None)
+            page.route(re.compile(rf"/shop/api/tickets/{TA}$"), lambda route: heldq.append(route) if route.request.method == "GET" else route.continue_())
+            chip(page, TA).click(); page.wait_for_timeout(300)
+            page.fill("#chatText", "is this one still a draft"); page.click('#chatcol [data-c="send"]'); page.wait_for_timeout(400)
+            check(f"{tag}: a send while {TA}'s read is still out sends nothing ({TB}'s conversation is still on screen), and the words stay in the box", len(heldq) == 1 and posts == [] and page.input_value("#chatText") == "is this one still a draft", f"held {len(heldq)} posts {posts}")
+            heldq[0].continue_(); page.wait_for_function(f"document.querySelector('#chatLog .slip') && document.querySelector('#chatLog .slip').getAttribute('aria-label') === '{TA}'"); page.unroute(re.compile(rf"/shop/api/tickets/{TA}$"))
+            page.fill("#chatText", "")
+            # New: what "Commission something" does: a draft (her blank one again if she has one) and the chat attached to it
+            page.click('#chatcol [data-c="new"]')
+            page.wait_for_function(f"(() => {{ const s = document.querySelector('#chatcol .ch-row .it[aria-pressed=true]'); return !!s && s.dataset.n !== '{TA}' && s.dataset.n !== '{TB}'; }})()")
+            nn = selected(page).get_attribute("data-n")
+            check(f"{tag}: New opens a draft that is neither of hers ({nn}), attached, with an empty conversation", nn in text(page, ".ch-in .chip") and msgs(page) == 0 and page.locator(f'#chatLog .slip[aria-label="{nn}"]').count() == 1 and chip(page, TA).count() == 1 and chip(page, TB).count() == 1, text(page, "#chatLog"))
+            strip_ok(page, w, tag + " after New")
+            shot(page, f"strip-new-{tag}")
+            # the chip's x detaches the ticket: nothing is selected, and New is the filled one again
+            page.click('.ch-in .chip [data-c="detach"]'); page.wait_for_function("document.querySelectorAll('#chatcol .ch-row .it[aria-pressed=true]').length === 0")
+            check(f"{tag}: with no ticket attached nothing is selected and New is the filled control", page.locator("#chatcol .ch-row .it.new.first").count() == 1)
+            shot(page, f"strip-none-{tag}")
+            check(f"{tag}: no console errors", not errors, str(errors)); c.close()
+        # a player with no ticket: the strip is just New, the obvious next step (Dee, at the limit)
+        c, page, errors = new_page(b, 1280, 900, scheme, dee_cookie)
+        page.click("#tab-workshop"); page.wait_for_selector("#chatcol .ch-row")
+        check(f"1280-{scheme} strip (no tickets): only New, filled", chips(page).count() == 1 and page.locator("#chatcol .ch-row .it.new.first").count() == 1 and "New" in text(page, "#chatcol .ch-row"), text(page, "#chatcol .ch-row"))
+        shot(page, f"strip-empty-1280-{scheme}")
+        if scheme == "light":
+            # after End turn, New can't be used: it is disabled and its reason shows beside it, in the window (a title tooltip is invisible on touch)
+            if page.locator('#chatcol [data-c="min"]').is_visible(): page.click('#chatcol [data-c="min"]'); page.wait_for_timeout(100)
+            page.click('#pzone [data-endturn="ask"]'); page.click('#pzone [data-endturn="yes"]'); page.wait_for_timeout(800)
+            page.reload(wait_until="domcontentloaded"); page.wait_for_selector("#tab-workshop"); page.wait_for_function("document.getElementById('rules').textContent.indexOf('Loading') < 0")
+            page.click("#tab-workshop"); page.wait_for_timeout(500)
+            if not page.locator("#chatcol .ch-row").is_visible(): page.click("#chatfab"); page.wait_for_selector("#chatcol .ch-row")
+            why = text(page, "#chatcol .ch-why") if page.locator("#chatcol .ch-why").count() else ""
+            check("1280-light strip after End turn: New is disabled and the reason is shown beside it, not only as a tooltip", page.locator('#chatcol [data-c="new"]').is_disabled() and len(why) > 5 and page.locator('#chatcol [data-c="new"][title]').count() == 0, why)
+            shot(page, "strip-ended-1280-light")
+        check(f"1280-{scheme} strip (no tickets): no console errors", not errors, str(errors)); c.close()
+    c, page, errors = new_page(b, 1280, 900, "light")
+    page.click("#tab-workshop"); page.wait_for_timeout(400)
+    check("visitor: no ticket strip", page.locator(".ch-row").count() == 0)
+    c.close()
     b.close()
 sys.exit(1 if failed else 0)

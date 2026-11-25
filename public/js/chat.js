@@ -38,10 +38,12 @@ const SYMBOLS = `<svg width="0" height="0" style="position:absolute" aria-hidden
 let ACTIVE = null;
 /** The settings a slip sets, as "key = value" (an object value as its numbers joined by x, a boolean as on / off): the drafter keeps a setting change out of the text. @rule 103.1 */
 export const settingsLine = (settings) => Object.entries(settings || {}).map(([k, v]) => `${k} = ${v && typeof v === "object" ? Object.values(v).join("x") : typeof v === "boolean" ? (v ? "on" : "off") : String(v)}`).join(", ");
+/** The tickets row's order (Buster, 2026-11-24): drafts first, then the rest, newest first. The server sends the same order. */
+const byDraftThenNewest = (a, b) => (b.state === "Draft") - (a.state === "Draft") || Number(b.n.slice(1)) - Number(a.n.slice(1));
 const LEFT_SHOWN = 10;   // "N left" appears in the last ten messages of the day
 
-export function createChat({ api, root, me, slug, agent = AGENTS.gremlin, rpill, wpill, onTicket, onProposals, onSlip, started = () => true }) {
-  const S = { msgs: [], next: null, state: null, ticket: null, scope: undefined, seq: 0, rule: null, intent: null, live: null, slips: {}, lockErr: {}, slip: null, busy: false, draft: "", err: "", sheet: false, open: true, loaded: false, loading: false, tab: "", note: "" };
+export function createChat({ api, root, me, slug, agent = AGENTS.gremlin, rpill, wpill, onTicket, onProposals, onSlip, onNew, canNew, started = () => true }) {
+  const S = { slipSeq: 0, pickSeq: 0, msgs: [], next: null, state: null, tickets: [], ticket: null, scope: undefined, seq: 0, rule: null, intent: null, live: null, slips: {}, lockErr: {}, slip: null, busy: false, draft: "", err: "", sheet: false, open: true, loaded: false, loading: false, tab: "", note: "" };
   const col = root.querySelector("#chatcol"), fab = root.querySelector("#chatfab");
   const mine = () => ACTIVE === agent.key;
   if (!document.getElementById("chat-symbols")) { const d = document.createElement("div"); d.id = "chat-symbols"; d.innerHTML = SYMBOLS; document.body.appendChild(d); }
@@ -162,11 +164,28 @@ ${sl.kind !== "action" && (sl.after_text || sl.before_text) ? `<div class="tx cd
   }
   /** The drafter said no: the reason, no button. @rule 103.1, 110.1 */
   const refusedHTML = (m) => `<section class="slip refused" aria-label="Refused"><span class="cstamp err">REFUSED</span><div class="tx">${esc(m.refused.error)}</div></section>`;
-  /** "Today  P13 P14  2 of 3": what the player has locked in. @rule 103.2 */
-  function todayHTML() {
+  /**
+   * The row under the header, the same markup and CSS in both windows: a label, pills that scroll sideways, an end slot. What differs is
+   * only what the rules make different: Starling has one conversation, so hers lists today's locked-in proposals and "n of 3 left"
+   * (rule 103.2); Gremlin has one per ticket, so his lists your live tickets, switches between them and has "+ New" (rule 801.6).
+   */
+  const rowHTML = (label, items, end) => `<div class="ch-row" role="group" aria-label="${esc(label)}"><span class="k">${esc(label)}</span><div class="its">${items.join("")}</div>${end}</div>`;
+  /** "Today  P13 P14  2 of 3 left": what the player has locked in. @rule 103.2 */
+  function todayRow() {
     const t = S.state && S.state.today;
-    return t && agent.proposals ? `<div class="ch-today"><span class="k">Today</span>${(t.list || []).map(ppill).join("")}<span class="n">${esc(Math.max(0, t.limit - t.made))} of ${esc(t.limit)} left</span></div>` : "";
+    if (!t) return "";
+    return rowHTML("Today", (t.list || []).map((n) => `<span class="it">${ppill(n)}</span>`), `<span class="n">${esc(Math.max(0, t.limit - t.made))} of ${esc(t.limit)} left</span>`);
   }
+  /** "Tickets  W3 W2  + New": your live tickets with their state; the attached one is selected, and with none attached New is the filled one. @rule 801.6 */
+  function ticketsRow() {
+    const can = canNew ? canNew() : { allowed: true };
+    const items = (S.tickets || []).map((t) => `<button type="button" class="it" data-c="pick" data-n="${esc(t.n)}" aria-pressed="${S.ticket === t.n}"${S.busy ? " disabled" : ""}><span class="wpill">${esc(t.n)}</span><span class="tt">${esc(t.title || "Untitled")}</span><span class="pill tstate" data-state="${esc(t.state)}">${esc(t.state)}</span></button>`);
+    const nw = `<button type="button" class="it new${S.ticket ? "" : " first"}" data-c="new"${S.busy || !can.allowed ? " disabled" : ""}>+ New</button>`;
+    // a disabled New says why, beside it (AGENTS.md: a reason next to a disabled control; a title tooltip is invisible on touch)
+    const why = !S.busy && !can.allowed && can.reason ? `<div class="ch-why" role="note">${esc(can.reason)}</div>` : "";
+    return rowHTML("Tickets", items, nw) + why;
+  }
+  const rowFor = () => (agent.proposals ? todayRow() : ticketsRow());
 
   // ---- the log ------------------------------------------------------------------------------------------------------------
   /** One stored line. @rule 106.3 */
@@ -228,7 +247,7 @@ ${sl.kind !== "action" && (sl.after_text || sl.before_text) ? `<div class="tx cd
     const ready = S.state ? S.state.ready : true;
     col.innerHTML = `<section class="chat" data-agent="${esc(agent.key)}" aria-label="${esc(agent.name)}">
 <header class="ch-h">${portrait(false)}<div class="cnm"><b>${esc(agent.name)}</b>${!ready ? "<small>can't be reached</small>" : S.busy ? '<small class="live">typing</small>' : ""}</div>
-<button type="button" class="ch-x" data-c="min" aria-label="Minimize" title="Minimize">–</button><button type="button" class="ch-x ch-close" data-c="close" aria-label="Close" title="Close">×</button></header>${todayHTML()}
+<button type="button" class="ch-x" data-c="min" aria-label="Minimize" title="Minimize">–</button><button type="button" class="ch-x ch-close" data-c="close" aria-label="Close" title="Close">×</button></header>${rowFor()}
 <div class="ch-log" id="chatLog" tabindex="0" aria-live="polite">${S.loaded ? logHTML() : ""}</div>${inputHTML()}</section>`;
     const log = col.querySelector(".ch-log");
     if (log) {
@@ -238,6 +257,8 @@ ${sl.kind !== "action" && (sl.after_text || sl.before_text) ? `<div class="tx cd
     }
     const ta = col.querySelector("#chatText");
     if (ta) { autosize(ta); if (focus) { ta.focus(); try { ta.setSelectionRange(focus[0], focus[1]); } catch {} } }
+    const tks = col.querySelector(".ch-row .its"), on = tks && tks.querySelector('[aria-pressed="true"]');
+    if (on && (on.offsetLeft < tks.scrollLeft || on.offsetLeft + on.offsetWidth > tks.scrollLeft + tks.clientWidth)) tks.scrollLeft = on.offsetLeft;   // the selected pill is never scrolled out of the row
     drawFab();
   }
   function autosize(ta) { ta.style.height = "auto"; ta.style.height = Math.min(120, ta.scrollHeight) + "px"; }
@@ -278,7 +299,7 @@ ${sl.kind !== "action" && (sl.after_text || sl.before_text) ? `<div class="tx cd
     const at = S.scope;
     const r = await api(historyPath(at));
     if (r.ok && S.scope === at) {   // an answer that comes back after the window moved to another ticket is that ticket's no longer (rule 801.6)
-      S.state = r.data.state;
+      S.state = r.data.state; if (r.data.tickets) S.tickets = r.data.tickets;
       if (r.data.slips) S.slips = { ...S.slips, ...r.data.slips };
       if (r.data.live !== undefined) S.live = r.data.live;
       const have = new Set(S.msgs.map((m) => m.id));
@@ -303,12 +324,12 @@ ${sl.kind !== "action" && (sl.after_text || sl.before_text) ? `<div class="tx cd
     S.loading = false;
     // a ticket picked while this first read was out ("Commission something", "Talk to Gremlin"): its answer is the other conversation's, so only the window's state is kept and that ticket's own log is read (rule 801.6)
     if (r.ok && !agent.proposals && (S.ticket || null) !== (asked || null)) {
-      S.state = r.data.state; S.slips = r.data.slips || {}; S.live = r.data.live || null; S.loaded = true; S.err = "";
+      S.state = r.data.state; S.tickets = r.data.tickets || S.tickets; S.slips = r.data.slips || {}; S.live = r.data.live || null; S.loaded = true; S.err = "";
       await showScope(S.ticket);
       draw();
       return;
     }
-    if (r.ok) { S.msgs = r.data.messages; S.next = r.data.next; S.state = r.data.state; S.slips = r.data.slips || {}; S.live = r.data.live || null; S.loaded = true; S.err = ""; S.scope = agent.proposals ? null : (r.data.ticket || null); } else S.err = (r.data && r.data.error) || "Something went wrong.";
+    if (r.ok) { S.msgs = r.data.messages; S.next = r.data.next; S.state = r.data.state; S.tickets = r.data.tickets || S.tickets; S.slips = r.data.slips || {}; S.live = r.data.live || null; S.loaded = true; S.err = ""; S.scope = agent.proposals ? null : (r.data.ticket || null); } else S.err = (r.data && r.data.error) || "Something went wrong.";
     // the ticket the last turns were about stays on the slip; the box is attached to it only while it is still a draft
     const lastTicket = S.ticket || S.scope || ([...S.msgs].reverse().find((m) => m.ticket) || {}).ticket;
     if (lastTicket) await loadSlip(lastTicket, !S.ticket);
@@ -322,12 +343,20 @@ ${sl.kind !== "action" && (sl.after_text || sl.before_text) ? `<div class="tx cd
     const r = await api(historyPath(scope || null));
     if (mine !== S.seq) return;   // a later switch is the one that counts
     if (!r.ok) { S.err = (r.data && r.data.error) || "Something went wrong."; S.msgs = []; S.next = null; S.scope = undefined; return; }   // never the old ticket's lines under the new ticket's box
-    S.msgs = r.data.messages; S.next = r.data.next; S.state = r.data.state; S.scope = r.data.ticket || null; S.err = "";
+    S.msgs = r.data.messages; S.next = r.data.next; S.state = r.data.state; S.tickets = r.data.tickets || S.tickets; S.scope = r.data.ticket || null; S.err = "";
+  }
+  /** The row learns what the ticket page says (a new draft, a title he has just written, a state that moved); a ticket that is no longer live leaves it. @rule 801.6 */
+  function noteTicket(t) {
+    const rest = S.tickets.filter((x) => x.n !== t.n);
+    S.tickets = ["Draft", "Proposed", "Ready", "Approved", "Building"].includes(t.state) ? [...rest, { n: t.n, title: t.title || "", state: t.state }].sort(byDraftThenNewest) : rest;
   }
   /** The ticket on the slip: yours or nothing. `auto`: it was inferred from the history, so it is attached only if it can still be written. @rule 801.2 */
   async function loadSlip(n, auto) {
+    const tok = ++S.slipSeq;
     const r = await api(`/api/tickets/${encodeURIComponent(n)}`);
+    if (tok !== S.slipSeq) return;   // a later ticket read is the one that counts: a slow answer for W1 never lands on W2's window (rule 801.6)
     S.slip = r.ok && r.data && r.data.ticket && r.data.ticket.mine ? r.data.ticket : null;
+    if (S.slip) noteTicket(S.slip);
     if (!S.slip) S.ticket = null; else if (auto) S.ticket = S.slip.state === "Draft" ? S.slip.n : null;
   }
   /** Scrolling to the top brings in the day before. @rule 106.7 */
@@ -346,7 +375,7 @@ ${sl.kind !== "action" && (sl.after_text || sl.before_text) ? `<div class="tx cd
   /** One turn: the message goes in, his answer and the ticket page come back. @rule 106.3, 106.7 */
   async function send() {
     const text = S.draft.trim();
-    if (!text || S.busy) return;
+    if (!text || S.busy || S.switching) return;   // mid-switch the box's ticket is not yet the one on screen: nothing is sent until the switch lands (rule 801.6)
     S.busy = true; S.err = "";
     const optimistic = { id: -1, role: "player", body: text, date: S.state ? S.state.date : "", ticket: S.ticket };
     S.msgs.push(optimistic); S.draft = "";
@@ -371,7 +400,7 @@ ${sl.kind !== "action" && (sl.after_text || sl.before_text) ? `<div class="tx cd
     for (const m of r.data.messages) S.msgs.push(m);
     if (r.data.state) S.state = r.data.state;
     if (r.data.slips) S.slips = { ...S.slips, ...r.data.slips };
-    if (r.data.ticket) { S.slip = r.data.ticket; onTicket && (await onTicket(r.data.ticket)); if (!agent.proposals && S.slip && S.slip.n) { await loadSlip(S.slip.n); watchArt(); } }
+    if (r.data.ticket) { S.slip = r.data.ticket; noteTicket(S.slip); onTicket && (await onTicket(r.data.ticket)); if (!agent.proposals && S.slip && S.slip.n) { await loadSlip(S.slip.n); watchArt(); } }
     draw();
     if (onSlip && r.data.slips && Object.keys(r.data.slips).length) await onSlip();   // the propose bar shows her newest draft
   }
@@ -385,6 +414,8 @@ ${sl.kind !== "action" && (sl.after_text || sl.before_text) ? `<div class="tx cd
     if (a === "min") minimize();
     else if (a === "close") { S.sheet = false; place(); }
     else if (a === "send") await send();
+    else if (a === "pick") { if (!S.busy && el.dataset.n && el.dataset.n !== S.ticket) await attach(el.dataset.n); }
+    else if (a === "new") { if (!S.busy && onNew) await onNew(); }
     else if (a === "detach") { S.ticket = null; S.slip = null; if (!agent.proposals) await showScope(null); draw(); }
     else if (a === "detach-rule") { S.rule = null; draw(); }
     else if (a === "detach-intent") { S.intent = null; draw(); }
@@ -433,11 +464,21 @@ ${sl.kind !== "action" && (sl.after_text || sl.before_text) ? `<div class="tx cd
   }
   /** A ticket is what the next messages are about (and the window opens on it). @rule 801.2 */
   async function attach(n, o = {}) {
+    const pick = ++S.pickSeq;
     S.ticket = n || null;
-    if (n) await loadSlip(n); else S.slip = null;
-    const switched = !agent.proposals && S.loaded && S.scope !== (S.ticket || null);
-    if (switched) await showScope(S.ticket);   // the window shows this ticket's conversation (rule 801.6)
-    if (o.open) open(); else draw(switched);
+    S.switching = true;   // send() waits: the box's ticket changes now, the slip and conversation on screen only when the reads land
+    S.slipSeq++;   // an in-flight ticket read from before this pick is not this ticket's
+    try {
+      if (n) await loadSlip(n); else S.slip = null;
+      if (pick !== S.pickSeq) return;   // two quick picks: the later one finishes the switch, so the box, the slip and the conversation stay on one ticket (rule 801.6)
+      const switched = !agent.proposals && S.loaded && S.scope !== (S.ticket || null);
+      if (switched) await showScope(S.ticket);   // the window shows this ticket's conversation (rule 801.6)
+      if (pick !== S.pickSeq) return;
+      S.switching = false;
+      if (o.open) open(); else draw(switched);
+    } finally {
+      if (pick === S.pickSeq) S.switching = false;
+    }
   }
   /** Can he be reached? True until the server says there is no key. @rule 106.3 */
   const ready = () => !S.state || S.state.ready !== false;

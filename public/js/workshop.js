@@ -403,23 +403,24 @@ ${editing ? formHTML(t) : factsHTML(t)}${unlockHTML(t)}${reopenHTML(t)}${editing
     S.err = (r.data && r.data.error) || "Something went wrong.";
     return false;
   }
+  /** "Commission something", from the Workshop or from the chat window's "New": a draft (your blank one again), and the chat attached to it. @rule 801.1, 801.2 */
+  async function commission() {
+    S.openErr = "";
+    const r = await api("/api/tickets", {});
+    if (!r.ok) { S.openErr = (r.data && r.data.error) || "Something went wrong."; await refresh(); return; }
+    await load();
+    const c = chat && chat();
+    // Gremlin is there: the chat opens on the new draft and the player talks the commission through (rule 801.2); the card, with its form,
+    // is a click away (the slip's pill). Without him (no key: the chat says it can't be reached) the card and its form open, as in step 1.
+    if (c && c.ready()) { await c.attach(r.data.ticket, { open: true }); await refresh(); return; }
+    await open(r.data.ticket, false);
+  }
   /** @rule 801.1, 801.2, 801.8, 804.1 */
   async function click(el) {
     const a = el.dataset.w;
     const cur = cards.current();
     const n = cur && cur.kind === "ticket" ? cur.key : null;
-    if (a === "open") {
-      S.openErr = "";
-      const r = await api("/api/tickets", {});
-      if (!r.ok) { S.openErr = (r.data && r.data.error) || "Something went wrong."; await refresh(); return; }
-      await load();
-      const c = chat && chat();
-      // Gremlin is there: the chat opens on the new draft and the player talks the commission through (rule 801.2); the card, with its form,
-      // is a click away (the slip's pill). Without him (no key: the chat says it can't be reached) the card and its form open, as in step 1.
-      if (c && c.ready()) { await c.attach(r.data.ticket, { open: true }); await refresh(); return; }
-      await open(r.data.ticket, false);
-      return;
-    }
+    if (a === "open") { await commission(); return; }
     if (a === "all" || a === "main" || a === "filter" || a === "more") {
       if (S.busy) return;
       S.busy = true;
@@ -524,5 +525,5 @@ ${editing ? formHTML(t) : factsHTML(t)}${unlockHTML(t)}${reopenHTML(t)}${editing
     watchArt(t.n);
   }
 
-  return { load, count, tabHTML, summaryHTML, card, open, openEntry, click, input, apply, list: () => S.list };
+  return { load, count, tabHTML, summaryHTML, card, open, openEntry, commission, click, input, apply, list: () => S.list };
 }
