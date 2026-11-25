@@ -1,12 +1,12 @@
-// A LIVE eval of Starling (src/lib/starling.js + src/lib/agent.ts). It is NOT part of `npm test` and not in CI: it needs the model key and
+// A LIVE eval of Gremlin's general conversation (what Starling's was; its cases are folded in here) (src/lib/gremlin-rules.js + src/lib/agent.ts). It is NOT part of `npm test` and not in CI: it needs the model key and
 // it costs money. Run it by hand:
 //
-//   node tests/starling-live.mjs [--only id,id] [--max-calls 40] [--ledger file] [--record tests/fixtures/starling-answers.json] [--out results.json] [--list]
+//   node tests/gremlin-general-live.mjs [--only id,id] [--max-calls 40] [--ledger file] [--record tests/fixtures/gremlin-general-answers.json] [--out results.json] [--list]
 //
-// It builds each case's request with the SAME function the Worker uses (starlingRequest), makes the REAL call through the Worker's own caller
-// (callModel), reads the answer with readStarlingAnswer, and grades it IN CODE (tests/starling-cases.json `expect`), never by a model. With
-// --record, the answers are written to a fixtures file that tests/starling.mjs and tests/starling-chat.mjs replay through a local stub: that
-// is how CI runs Starling without the API. The key is PROMPTOCRACY_MODEL_API_KEY, from the environment or ~/chalantbot/.env; it is passed to the
+// It builds each case's request with the SAME function the Worker uses (generalRequest), makes the REAL call through the Worker's own caller
+// (callModel), reads the answer with readGeneralAnswer, and grades it IN CODE (tests/gremlin-general-cases.json `expect`), never by a model. With
+// --record, the answers are written to a fixtures file that tests/gremlin-rules.mjs and tests/gremlin-general.mjs replay through a local stub: that
+// is how CI runs him without the API. The key is PROMPTOCRACY_MODEL_API_KEY, from the environment or ~/chalantbot/.env; it is passed to the
 // caller as MODEL_API_KEY and is never printed, logged or written to a result. Every call is counted in code and the run stops at the cap
 // (--max-calls, counted across runs in the ledger file). No thinking, effort low: the Gremlin eval found adaptive thinking blew the 30 s timeout.
 // --model claude-haiku-5-5 runs the question-only cases on Haiku, to see whether it holds the score (docs/step2-plan.md 2.1).
@@ -16,7 +16,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { ROOT } from "./lib.mjs";
 import { CHAT_TIMEOUT_MS, MODEL, OUTPUT_CAP_TOKENS } from "../src/lib/gremlin.js";
-import { STARLING_CANARY, answerSchema, readStarlingAnswer, starlingRequest, systemStatic, nodeText } from "../src/lib/starling.js";
+import { CANARY, generalSchema, readGeneralAnswer, generalRequest, systemStatic, nodeText } from "../src/lib/gremlin-rules.js";
 import { parseBook } from "../src/lib/proposals.js";
 import { costMicro } from "../src/lib/chat.js";
 
@@ -25,12 +25,12 @@ const argv = process.argv.slice(2);
 const flag = (name, dflt = null) => { const i = argv.indexOf(`--${name}`); return i < 0 ? dflt : argv[i + 1]; };
 const has = (name) => argv.includes(`--${name}`);
 const MAX_CALLS = Number(flag("max-calls", 40));
-const LEDGER = flag("ledger", join(ROOT, ".starling-live-ledger.json"));   // per checkout (gitignored)
-const OUT = flag("out", join(tmpdir(), `promptocracy-starling-live-${new Date().toISOString().replace(/[:.]/g, "-")}.json`));
+const LEDGER = flag("ledger", join(ROOT, ".gremlin-general-live-ledger.json"));   // per checkout (gitignored)
+const OUT = flag("out", join(tmpdir(), `promptocracy-gremlin-general-live-${new Date().toISOString().replace(/[:.]/g, "-")}.json`));
 const RECORD = flag("record");
 const USE_MODEL = flag("model", MODEL);
 
-const doc = JSON.parse(readFileSync(join(HERE, "starling-cases.json"), "utf8"));
+const doc = JSON.parse(readFileSync(join(HERE, "gremlin-general-cases.json"), "utf8"));
 let cases = doc.cases;
 if (flag("only")) { const ids = flag("only").split(","); cases = cases.filter((c) => ids.includes(c.id)); }
 if (USE_MODEL !== MODEL) cases = cases.filter((c) => c.group === "question");
@@ -51,7 +51,7 @@ const save = () => writeFileSync(LEDGER, JSON.stringify(ledger, null, 2));
 
 // the Worker's own caller, bundled the way the Worker bundles it
 const { build } = await import("esbuild");
-const dir = mkdtempSync(join(tmpdir(), "promptocracy-starling-agent-"));
+const dir = mkdtempSync(join(tmpdir(), "promptocracy-gremlin-general-agent-"));
 await build({ entryPoints: [join(ROOT, "src/lib/agent.ts")], bundle: true, format: "esm", platform: "node", outfile: join(dir, "agent.mjs"), logLevel: "silent", loader: { ".json": "json" } });
 const agent = await import(pathToFileURL(join(dir, "agent.mjs")).href);
 
@@ -65,13 +65,14 @@ function grade(c, a, plain) {
   const f = [];
   const e = c.expect || {};
   if (!a.ok) return [`unreadable answer: ${a.code} ${a.reason}`];
-  if (plain.includes(STARLING_CANARY)) f.push("the canary leaked");
+  if (plain.includes(CANARY)) f.push("the canary leaked");
   if (e.noDraft && a.draft) f.push(`drafted ${a.draft.kind} ${a.draft.target ?? a.draft.type} but should not have`);
   if (e.params) for (const [k, v] of Object.entries(e.params)) if (!a.draft || String(a.draft.params?.[k]) !== String(v)) f.push(`draft.params.${k} is ${JSON.stringify(a.draft?.params?.[k])}, not ${JSON.stringify(v)}`);
   if (e.noEscalate && a.escalate) f.push(`escalated (${a.escalate.category}) but the rulebook answers it`);
   if (e.escalate && !a.escalate) f.push("expected an escalation");
-  if (e.handoff && a.handoff !== e.handoff) f.push(`handoff is ${JSON.stringify(a.handoff)}, not ${JSON.stringify(e.handoff)}`);
-  if (!e.handoff && a.handoff) f.push(`handed off to ${a.handoff} but the ask is hers`);
+  if (e.commission && !a.commission) f.push("no commission, but the ask is one");
+  if (!e.commission && a.commission) f.push(`a commission (${a.commission.title}) but the ask is a rule change or a question`);
+  if (e.options && !a.options.length) f.push("no options, but the turn needs a choice");
   if (e.draft) {
     if (!a.draft) f.push("expected a draft");
     else for (const [k, v] of Object.entries(e.draft)) if (a.draft[k] !== v) f.push(`draft.${k} is ${JSON.stringify(a.draft[k])}, not ${JSON.stringify(v)}`);
@@ -95,14 +96,14 @@ let spent = 0, cacheReads = 0;
 for (const c of cases) {
   if (ledger.calls >= MAX_CALLS) { console.log(`STOPPED at the call cap (${MAX_CALLS}).`); break; }
   const rule = c.rule ? { num: c.rule, title: book.byNum[c.rule].title, text: nodeText(book, c.rule) } : null;
-  const { system, messages } = starlingRequest({
+  const { system, messages } = generalRequest({
     rulesMd, localDate: "2026-11-20", perDay: doc.limit, actions: ACTIONS, history: c.history || [], label: "Ada", message: c.message, rule,
     slip: c.slip || null, drafted: c.slip ? { head: c.slip.head, after_text: c.slip.after_text, conflicts: [] } : null, made: 1, limit: doc.limit, noDraft: c.noDraft || null,
   });
   ledger.calls++; save();
-  const r = await agent.callModel({ MODEL_API_KEY: KEY }, { model: USE_MODEL, system, messages, maxTokens: OUTPUT_CAP_TOKENS, timeoutMs: Number(flag("timeout", CHAT_TIMEOUT_MS)), schema: answerSchema(), effort: "low" });
+  const r = await agent.callModel({ MODEL_API_KEY: KEY }, { model: USE_MODEL, system, messages, maxTokens: OUTPUT_CAP_TOKENS, timeoutMs: Number(flag("timeout", CHAT_TIMEOUT_MS)), schema: generalSchema(), effort: "low" });
   if (!r.ok) { rows.push({ id: c.id, pass: false, failures: [`call failed: ${r.code} ${r.reason}`] }); console.log(`FAIL  ${c.id}  call failed: ${r.code} ${r.reason}`); continue; }
-  const a = readStarlingAnswer(r.text, { book, systemText: systemStatic() });
+  const a = readGeneralAnswer(r.text, { book, systemText: systemStatic() });
   const failures = grade(c, a, r.text);
   const cost = costMicro(USE_MODEL, r.usage);
   spent += cost; cacheReads += r.usage.cache_read_input_tokens;

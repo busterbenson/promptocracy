@@ -7,7 +7,7 @@
 //     refresh()          reload the page's state after a confirm or a withdraw (it calls P.load() and P.redraw())
 //     pill(by, mine)     the page's player pill (piece + name) for a proposer {name, color}; optional
 //     vote(n)            the vote box HTML for an item on today's ballot (ballot.js), drawn in its tracked change; optional
-//     starling()         Starling's window: { ready(), attachRule(n, {open}), open({intent}) } (board.html puts the Rulebook tab under her); optional
+//     helper()           Gremlin's window (the one helper): { ready(), attachRule(n, {open}), open() }; he is on every page; optional
 //     workshop()         the Workshop: { commission(), open(n) } (the tab, then a new ticket or an open one); optional
 //     goTab(k)           show a tab
 //     drawBar()          draw the propose bar again (board.html: P.barHTML() into #pzone)
@@ -83,7 +83,7 @@ const needText = (p) => (p.needs && p.needs.champion ? (p.needs.needed ? `Champi
 /** @rule 103.5 */
 export const actionBodyHTML = (p, rpill) => `<p class="mono head"><b>${esc(p.head)}</b></p><dl class="adet">${(p.action.shown || []).map(([l, v]) => `<dt>${esc(l)}</dt><dd>${esc(v)}</dd>`).join("")}</dl><p class="needline mono">Touches ${(p.action.touches || []).map((n) => rpill(String(n))).join(" ")}</p>`;
 
-export function createProposer({ api, me, day, refresh, pill, vote, starling, workshop, goTab, drawBar }) {
+export function createProposer({ api, me, day, refresh, pill, vote, helper, workshop, goTab, drawBar }) {
   const S = { list: [], draft: null, actions: [], today: null, ui: null, bar: { menu: false, open: false }, champ: false, lockErr: {}, RB: null, redraw: () => {}, openAdd: () => {}, openPick: () => {}, closeAdd: () => {} };
   /** Both places a flow is drawn: the rulebook (its cards) and the bar (the action form). @rule 103.1 */
   const paint = () => { S.redraw(); if (drawBar) drawBar(); };
@@ -245,10 +245,10 @@ ${S.ui.err ? `<p class="notice err" role="alert">${withPills(S.ui.err)}</p>` : "
     return u.step === "slip" ? slipHTML() : u.step === "write" ? (u.kind === "action" ? actionFormHTML() : formHTML()) : "";
   }
 
-  /** Does the rule card's Propose button open Starling? Unless she can't be reached, or the Champion's change (which she can't draft) is what is being made. @rule 103.1, 402.4 */
-  const viaStarling = () => !!(starling && starling() && starling().ready()) && !(champAvail() && !base().allowed);
+  /** Does the rule card's Propose button open Gremlin? Unless he can't be reached, or the Champion's change (which he can't draft) is what is being made. @rule 103.1, 402.4 */
+  const viaHelper = () => !!(helper && helper() && helper().ready()) && !(champAvail() && !base().allowed);
 
-  // What follows a rule's text and tracked changes: the Propose button (Starling's; the direct form's while she can't be reached), a Champion's change button
+  // What follows a rule's text and tracked changes: the Propose button (Gremlin's; the direct form's while he can't be reached), a Champion's change button
   // for the Champion, and the menu, form or slip a direct button opens under it.
   /** @rule 103.1, 402.4 */
   function proposeHTML(rule) {
@@ -257,9 +257,9 @@ ${S.ui.err ? `<p class="notice err" role="alert">${withPills(S.ui.err)}</p>` : "
     const open = here && (u.step === "scope" || u.step === "menu");
     const direct = (label, champ) => `<button class="btn ghost small" type="button" data-p="open" data-n="${esc(rule.num)}"${champ ? ' data-champ="1"' : ""} aria-expanded="${!!open && !!u.champion === !!champ}"${c.allowed ? "" : ` disabled title="${esc(c.reason || "")}"`}>${label}</button>`;
     const tail = here ? (open ? menuHTML(rule) : flowHTML()) : "";
-    if (viaStarling()) {
+    if (viaHelper()) {
       const fz = frozen(), why = base().reason || "";
-      return `<div class="proposeact"><button class="btn ghost small" type="button" data-p="starling" data-n="${esc(rule.num)}"${fz ? ` disabled title="${esc(why)}"` : ""}>Propose a change</button>${champAvail() ? direct("Champion's change", true) : ""}${tail}</div>`;
+      return `<div class="proposeact"><button class="btn ghost small" type="button" data-p="helper" data-n="${esc(rule.num)}"${fz ? ` disabled title="${esc(why)}"` : ""}>Propose a change</button>${champAvail() ? direct("Champion's change", true) : ""}${tail}</div>`;
     }
     return `<div class="proposeact">${direct("Propose a change", false)}${tail}</div>`;
   }
@@ -294,7 +294,7 @@ ${S.ui.err ? `<p class="notice err" role="alert">${withPills(S.ui.err)}</p>` : "
   /** @rule 103.2 */
   const frozen = () => !!(active() && (day().locked || day().you.ended));
   /** @rule 106.2 */
-  const stReady = () => !!(starling && starling() && starling().ready());
+  const helperReady = () => !!(helper && helper() && helper().ready());
   /** @rule 103.1 */
   const por = (cls, name) => `<span class="por ${cls}"><svg aria-hidden="true"><use href="/portraits/${name}.svg#p"/></svg></span>`;
 
@@ -311,11 +311,11 @@ ${S.ui.err ? `<p class="notice err" role="alert">${withPills(S.ui.err)}</p>` : "
 
   /** @rule 103.1, 103.5, 402.4, 801.1 */
   function menuBarHTML() {
-    const ok = base().allowed, ready = stReady();
-    const none = !S.actions.length;
+    const ok = base().allowed, ready = helperReady();
+    // One entry (Buster, 2026-11-24): the player says what they want and Gremlin works out whether it is a rule change, an action or a commission.
     const item = (act, cls, label, note, rule, off) => `<button type="button" role="menuitem" class="pmi" data-p="${act}"${off ? " disabled" : ""}><span class="lr">${cls ? por(...cls) : `<span class="por none" aria-hidden="true">→</span>`}<span class="l"><b>${esc(label)}</b>${note ? `<span class="st">${esc(note)}</span>` : ""}</span></span>${rule ? `<span class="rpill">${esc(rule)}</span>` : ""}</button>`;
     const champ = champAvail() ? item("bar-champ", ["ch", "chalant"], "Champion's change", "", "402.4", false) : "";
-    return `<div class="pmenu tkmenu" role="menu">${item("bar-rule", ["st", "starling"], "Rule change", ready ? "" : "Starling can't be reached", "103.1", !ok)}${item("bar-commission", ["gr", "gremlin"], "Commission", "", "801.1", !ok)}${item("bar-action", ["st", "starling"], "Action", ready ? "" : "Starling can't be reached", "103.5", !ok || none)}${champ}</div>`;
+    return `<div class="pmenu tkmenu" role="menu">${item("bar-propose", ["gr", "gremlin"], "Propose", ready ? "" : "Gremlin can't be reached", "103.1", !ok)}${champ}</div>`;
   }
 
   /** One of your proposals, open under the bar: its number, its state, the change, and what you can do with it. @rule 103.1, 103.2, 103.3 */
@@ -325,7 +325,7 @@ ${S.ui.err ? `<p class="notice err" role="alert">${withPills(S.ui.err)}</p>` : "
     const body = p.kind === "commission" && p.ticket ? `<div class="sdiff">${wPill(p.ticket.n)}${commissionHTML(p.ticket)}</div>`
       : p.kind === "action" && p.action ? actionHTML(p) : `<p class="mono head"><b>${esc(p.head || "")}</b></p><p class="cdiff">${diffOf(p)}</p>`;
     const open = p.kind === "commission" && p.ticket ? `<button type="button" class="linkbtn" data-p="bar-workshop" data-t="${esc(p.ticket.n)}">Open in Workshop</button>`
-      : stReady() ? `<button type="button" class="linkbtn" data-p="bar-starling">Open in Starling</button>` : "";
+      : helperReady() ? `<button type="button" class="linkbtn" data-p="bar-helper">Open in Gremlin</button>` : "";
     const lock = isDraft ? `<button type="button" class="btn" data-p="lock" data-id="${esc(p.id)}"${lockOk ? "" : " disabled"}>Lock it in</button>${lockOk ? "" : `<span class="why">${esc(base().reason || "")}</span>`}` : "";
     return `<article class="pcard${isDraft ? " draft" : ""}" data-pn="${esc(p.n || "")}"><div class="ch">${p.n ? pPill(p) : ""}<span class="pill ${isDraft ? "acc" : "dash"}">${isDraft ? "Draft" : "On tomorrow's ballot"}</span>${p.champion ? `<span class="pill core">Champion's change</span>` : ""}${unlock ? `<button type="button" class="linkbtn" data-p="unlock" data-id="${esc(p.id)}">Unlock</button>` : ""}</div>${body}${settingsHTML(p)}${p.conflict_note ? `<p class="cnote">${withPills(p.conflict_note)}</p>` : ""}<p class="needline mono">${esc(needText(p))}</p><div class="row">${lock}${open}</div>${err}</article>`;
   }
@@ -413,7 +413,7 @@ ${S.ui.err ? `<p class="notice err" role="alert">${withPills(S.ui.err)}</p>` : "
     const r = await api(`/api/proposals/${encodeURIComponent(id)}/confirm`, {});
     S.locking = false;
     if (!r.ok) S.lockErr[id] = (r.data && r.data.error) || "Something went wrong.";
-    await refresh();   // the slots, the count and Starling's slip all follow what is true now
+    await refresh();   // the slots, the count and Gremlin's slip all follow what is true now
   }
 
   /** @rule 103.3 */
@@ -426,29 +426,24 @@ ${S.ui.err ? `<p class="notice err" role="alert">${withPills(S.ui.err)}</p>` : "
   }
 
   // The buttons that send a request: one tap, one request (busy.js).
-  const SENDS = new Set(["draft", "confirm", "lock", "unlock", "bar-commission"]);
+  const SENDS = new Set(["draft", "confirm", "lock", "unlock"]);
   /** @rule 103.1 */
   const click = (el) => (SENDS.has(el.dataset.p) ? hold(el, () => run(el)) : run(el));
   async function run(el) {
     const a = el.dataset.p;
     if (S.ui && S.ui.wId && a !== "unlock") S.ui = null;   // a withdraw error is said once
     const u = S.ui;
-    if (a === "starling") { const st = starling && starling(); if (st) await st.attachRule(el.dataset.n, { open: true }); return; }   // her window opens with this rule riding on the next message (rule 103.1)
+    if (a === "helper") { const st = helper && helper(); if (st) await st.attachRule(el.dataset.n, { open: true }); return; }   // his window opens with this rule riding on the next message (rule 103.1)
     if (a === "bar-menu") { S.bar.menu = !S.bar.menu; return paint(); }
     if (a === "bar-open") { S.bar.open = !S.bar.open; S.bar.menu = false; return paint(); }
     if (a === "lock") return lock(el.dataset.id);
-    if (a === "bar-starling") { if (starling && starling()) await starling().open({}); return; }
+    if (a === "bar-helper") { if (helper && helper()) await helper().open({}); return; }
     if (a === "bar-workshop") { if (workshop && workshop()) await workshop().open(el.dataset.t); return; }
-    if (a === "bar-rule" || a === "bar-action" || a === "bar-commission" || a === "bar-champ") {
+    if (a === "bar-propose" || a === "bar-champ") {
       S.bar.menu = false;
-      if (a === "bar-action" && !S.actions.length) return paint();   // a game with no action types: nothing to draft
-      if (a === "bar-commission") { paint(); if (workshop && workshop()) await workshop().commission(); return; }
-      if (a === "bar-champ") { S.champ = true; paint(); if (goTab) goTab("rules"); S.openPick(); return; }   // (the picker's buttons carry it: data-champ)   // she can't draft the Champion's change: the block picker and the form do (rule 402.4)
-      if (stReady()) { paint(); await starling().open(a === "bar-action" ? { intent: "action" } : {}); return; }   // Rule change and Action are Starling's to draft (rules 103.1, 103.5)
-      if (a === "bar-rule") { S.champ = false; paint(); if (goTab) goTab("rules"); S.openPick(); return; }   // she can't be reached: the direct way
-      S.ui = mkUi({ rule: "actions", step: "write", kind: "action", type: S.actions[0] && S.actions[0].type, params: {}, err: "", champion: false });   // an action changes no rule: never the Champion's change (rule 103.5)
-      S.bar.open = true;
-      return paint();
+      if (a === "bar-champ") { S.champ = true; paint(); if (goTab) goTab("rules"); S.openPick(); return; }   // he can't draft the Champion's change: the block picker and the form do (rule 402.4)
+      if (helperReady()) { paint(); await helper().open({}); return; }   // one Propose: he works out the kind (rules 103.1, 103.5, 801.1)
+      S.champ = false; paint(); if (goTab) goTab("rules"); S.openPick(); return;   // he can't be reached: the direct way
     }
     if (a === "open") {
       const n = el.dataset.n, rule = S.RB.byNum[n];

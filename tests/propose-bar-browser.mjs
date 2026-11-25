@@ -2,17 +2,17 @@
 // draft, 0 of 3 left; turn ended; the midnight lock; Starling out; no bar for a visitor or before Start), the Propose menu and where each item goes (Rule change and
 // Action open Starling, Commission opens the Workshop), the cards that open under the bar (Lock it in, Unlock, Open in Starling), a rule card's one Propose button,
 // an action drafted by Starling and locked in from her slip, and the direct form when she can't be reached. A real `wrangler dev` on a throwaway LOCAL D1 with a local
-// stub for the model (tests/starling-stub.mjs): the live API is never called. Set PROPOSE_BAR_SHOTS=<dir> to keep the screenshots. Run: node tests/propose-bar-browser.mjs
+// stub for the model (tests/gremlin-stub.mjs): the live API is never called. Set PROPOSE_BAR_SHOTS=<dir> to keep the screenshots. Run: node tests/propose-bar-browser.mjs
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { mkdirSync, readFileSync, rmSync } from "node:fs";
-import { createStarlingStub } from "./starling-stub.mjs";
+import { createStub } from "./gremlin-stub.mjs";
 import { PYTHON, ROOT, createGame, d1, freePort, join, migrate, newState, startPlaying, startRulesStub, startServer } from "./lib.mjs";
 
 const shots = process.env.PROPOSE_BAR_SHOTS || "";
 if (shots) mkdirSync(shots, { recursive: true });
 const state = newState();
-const { stubModel, stubState, REC } = createStarlingStub();
+const { stubModel, stubState, GREC: REC } = createStub();
 let srv = null, stub = null, failed = false;
 const MODEL_PORT = await freePort(), SRV_PORT = await freePort();
 const POINTS = "401.1 A player whose proposal passes and is applied gets 15 points when it is applied (rule 107).";
@@ -33,7 +33,7 @@ try {
   const gus = await join(srv.base, "setup", g2.code, { email: "gus@example.com", name: "Gus", color: "teal" });
   startPlaying(state, "shop");
   const ok = (r, what) => { if (r.status !== 200) throw new Error(`${what}: ${r.status} ${r.text}`); return r; };
-  const CH = "/shop/api/chat/starling", PR = "/shop/api/proposals";
+  const CH = "/shop/api/chat/gremlin", PR = "/shop/api/proposals";
   const lockIn = async (c, kind, target) => { const r = ok(await c.post(PR, { kind, target }), `draft ${target}`); return ok(await c.post(`${PR}/${r.data.proposal.id}/confirm`, {}), `lock ${target}`); };
   // Bo: one locked in and one draft from Starling (2 of 3 left). Cy: all three locked in (0 left). Eve: one locked in, then End turn.
   await lockIn(P.Bo, "mark", "402");

@@ -4,7 +4,7 @@ node_modules/
 src/generated/
 .drafter-live-ledger.json
 .gremlin-live-ledger.json
-.starling-live-ledger.json
+.gremlin-general-live-ledger.json
 wrangler.test.toml
 __pycache__/
 .quality-live-ledger.json

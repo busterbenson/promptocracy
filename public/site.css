@@ -572,7 +572,7 @@ button.pill[aria-pressed="true"]{background:color-mix(in srgb,var(--accent) 16%,
 .sdiff .wpill{align-self:flex-start}
 
 /* ==== The chat window ==== */
-/* The chat window (rules 106.3, 106.7): one component for the agents (Gremlin now, Starling in step 2b), written by public/js/chat.js.
+/* The chat window (rules 106.3, 106.7): one component for the one helper (Gremlin), written by public/js/chat.js.
    Desktop: a sticky column beside the tab; minimize docks it as the corner pill and the tab reflows. Phone: the corner pill opens a
    bottom sheet over a dim. The wrapper #bwrap says which: data-chat = off | open | min, data-sheet = open | closed. */
 .bwrap{display:block;min-width:0}
@@ -666,7 +666,7 @@ button.pill[aria-pressed="true"]{background:color-mix(in srgb,var(--accent) 16%,
 /* iOS Safari zooms the page into any field under 16px when it takes focus, and a fixed sheet then runs off the visual viewport's right edge (the close and send buttons cut off). 16px stops the zoom, on every touch screen and in a phone held sideways. */
 @media (max-width:899.98px),(pointer:coarse){.chat .ch-in textarea{font-size:16px}}
 .wkprice{margin:0}
-/* Starling (rules 103.1, 106.2): the Rulebook's agent in the same window. Her slip is a draft proposal; past slips collapse to a line. */
+/* The general conversation (rules 103.1, 106.2): rule changes and actions in the same window. The slip is a draft proposal; past slips collapse to a line. */
 .chat .por.ch{background:color-mix(in srgb,#D7A63E 28%,var(--portrait-ground))}
 .chat .por.st,.chatfab .por.st{background:color-mix(in srgb,#2F3B52 22%,var(--portrait-ground))}
 /* The row under the header, ONE for both windows (AGENTS.md "The two chat windows are one UI"): a label, pills that scroll sideways inside the window, and an end slot. */

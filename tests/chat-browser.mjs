@@ -27,7 +27,7 @@ try {
   const cy = await join(srv.base, "shop", g.code, { email: "cy@example.com", name: "Cy", color: "cobalt" });
   const dee = await join(srv.base, "shop", g.code, { email: "dee@example.com", name: "Dee", color: "jade" });
   const eve = await join(srv.base, "shop", g.code, { email: "eve@example.com", name: "Eve", color: "orchid" });   // the ticket strip's player: her tickets are made at the end of the browser run, so Ada's numbers stay put
-  const gus = await join(srv.base, "shop", g.code, { email: "gus@example.com", name: "Gus", color: "marigold" });   // his last line points to Starling
+  const gus = await join(srv.base, "shop", g.code, { email: "gus@example.com", name: "Gus", color: "marigold" });   // a rule change is asked of him in the general conversation
   const hal = await join(srv.base, "shop", g.code, { email: "hal@example.com", name: "Hal", color: "sky" });   // the same, then he ends his turn
   startPlaying(state, "shop");
   // a second game that has not started: its host is its only player; Ada (a player of "shop") is signed in but not a player here
@@ -41,7 +41,7 @@ try {
   const w = ok(await ada.post(T, {}), "ada open").data.ticket;
   ok(await ada.post(CH, { ticket: w, body: REC["wall-sizing"].message }), "turn 1");
   ok(await ada.post(CH, { ticket: w, body: REC["dragon-build"].message }), "turn 2");
-  // Gus and Hal ask for a rule change: his recorded answer carries handoff: starling (rule 106.3), written to no ticket. Hal then ends his turn.
+  // Gus and Hal ask for a rule change: an old recorded answer carries a handoff, which nothing reads any more (rule 106.3: one helper). Hal then ends his turn.
   for (const [c, n] of [[gus, "gus"], [hal, "hal"]]) ok(await c.post(CH, { body: REC["handoff-rule"].message }), `${n} handoff`);
   ok(await hal.post("/shop/api/end-turn", {}), "hal end turn");
   // Bo: at the day's cap, so his window shows the limit's excuse and a closed composer

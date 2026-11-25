@@ -274,7 +274,7 @@ try {
   check("ruled keeps the restated question, the rules relied on and the text for History, and never the reason", rowT().ruling_question === "Is a wall a creature?" && rowT().ruling_relies_on === '["701"]' && rowT().ruling_text.startsWith("Chalant rules:") && !J(rowT().ruling_question).includes("RULING-T"));
   check("a second ruling on the same escalation is a 409 and posts nothing", (await ruled(tRul, { body: "again", path: "rulings/1-2.md" })).status === 409 && posts(16).length === nPosts16 + 2);
   const doneC = await ruled(cRul, { body: "Chalant rules: private ruling.", path: "rulings/1-3.md" });
-  const aHist = (await Ana.get("/wk/api/chat/starling")).data?.messages ?? [];
+  const aHist = [];   // a leftover legacy escalation is answered into its own chat row's agent; the 410 route has no history to read
   check("a private chat's ruling lands only in that player's chat with that agent, never in a thread", doneC.status === 200 && d1(state, "SELECT COUNT(*) AS n FROM chat_messages WHERE role = 'chalant'")[0].n === nChalantChat + 2 && d1(state, "SELECT COUNT(*) AS n FROM ticket_posts WHERE body LIKE '%private ruling%'")[0].n === 0 && d1(state, "SELECT player_id, agent FROM chat_messages WHERE body LIKE '%private ruling%'")[0].player_id === id.Ana && d1(state, "SELECT agent FROM chat_messages WHERE body LIKE '%private ruling%'")[0].agent === "starling", J(aHist.length));
   check("the answered rulings are gone from /rulings and pending's count", !(await mod("GET", "rulings")).data.rulings.some((x) => x.id === tRul || x.id === cRul) && (await mod("GET", "pending")).data.rulings_owed === 0);
   const gm = (await Cy.get("/wk/api/game")).data, rs = gm.rulings ?? [];

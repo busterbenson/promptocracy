@@ -23,7 +23,7 @@ script runs them after you and tells you what failed.
 ## How to apply it
 
 1. `after_text` is the draft the players voted on. Put it in `RULES.md` in place of the target (`target`, `scope`):
-   the draft is what is enacted, word for word. Don't improve it. Words are what players voted on; how the helpers (Starling,
+   the draft is what is enacted, word for word. Don't improve it. Words are what players voted on; how the helper (Gremlin,
    Gremlin) wrote them is not, and you repair that, below (rule 107.9). The one thing to note is a restatement (rules voice 8,
    guidance, not a rule): if the draft repeats a fact another clause states, you still enact it word for word, and you
    report it in the result file as `"restates": ["<clause>"]`, so the operator can fix it by proposal.
@@ -47,7 +47,7 @@ script runs them after you and tells you what failed.
    written without the tags; keep each `[setting: key]` tag the clause had, in the same place in the sentence (the
    word-for-word check leaves tags out).
 5. Add or update tests for what changed, in `rules/<n>.test.ts`.
-6. **Repairs (rule 107.9).** If the draft can't be applied as written because of how Starling or Gremlin wrote it (not what it
+6. **Repairs (rule 107.9).** If the draft can't be applied as written because of how Gremlin wrote it (not what it
    says), make that repair and apply it. What counts: a `[setting: key]` tag the draft left out (4); a citation in parentheses,
    such as `(103.2)`, that the clause had before and the draft dropped (keep it, in the same place); the clause number or numbering
    (`**N.k**`); bold marks, spacing or line wrapping. Nothing else is a repair. A repair never changes what the proposal says: no

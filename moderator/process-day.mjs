@@ -160,7 +160,7 @@ const tagsIn = (t) => [...String(t ?? "").matchAll(/\[setting:\s*([A-Za-z0-9_.]+
 // What the players voted on are the WORDS of after_text. Markup the helpers wrote around them is not the words, and the night may
 // repair it (rule 107.9). The repairs are a short list of transformations; every other token is compared as it is, one for one:
 //   1. invisible markup is ignored without a mention: `**` marks, spacing and line wraps, heading marks, a rule's [u]/[m];
-//   2. a [setting: key] tag in the rule between the voted words (109.2: Starling's drafter writes plain text), when the clause stood
+//   2. a [setting: key] tag in the rule between the voted words (109.2: the drafter writes plain text), when the clause stood
 //      with that tag in that place (the word before it is the same), or the proposal itself sets that setting;
 //   3. a parenthesised citation of an existing rule or clause that the SAME clause already had in the same place (the word before
 //      it is the same) and the draft dropped. A citation the clause never had is a new word, not a repair, wherever else in the
@@ -613,7 +613,7 @@ const oneLine = (s) => String(s ?? "").replace(/\s+/g, " ").trim().slice(0, 100)
 const clean = (s) => oneLine(s).replace(/[.\s]+$/, "").slice(0, 300);
 
 // ---- repairs (rule 107.9) ---------------------------------------------------------------------------------------
-// If a passed proposal can't be applied as written because of how Starling or Gremlin wrote it, the moderator repairs that and applies it,
+// If a passed proposal can't be applied as written because of how Gremlin wrote it, the moderator repairs that and applies it,
 // and each repair is listed in the night's report (the commit message in the game's repo, and a note to the proposer) so it can be
 // appealed (301). A repair never changes what the proposal says: that is votedWords' check, in code, whatever the model claims.
 const REPAIR_MAX = 10;
@@ -672,7 +672,7 @@ export function auditCase(slug, day, p, a) {
 }
 
 // ---- rulings (rule 106.5) ------------------------------------------------------------------------------------------
-// A question Starling or Gremlin passed up that needs a ruling is made here, at night, on the rules as they stand after
+// A question Gremlin passed up that needs a ruling is made here, at night, on the rules as they stand after
 // tonight's proposals. The model reads (Read, Glob, Grep) a throwaway copy and answers with JSON; THIS code checks the
 // answer and writes the one file, rulings/<day>-<n>.md, and the commit. The model has no Write tool, and its copy is
 // never read back, so a ruling cannot change a rule (106.5).
@@ -707,7 +707,7 @@ export function rulingProblem(out, { rulesMd, dir }) {
 /** @rule 106.5 */
 export function rulingFile({ day, n, item, out, at }) {
   const asked = item.where === "ticket" && Number.isInteger(item.ticket?.number) ? `W${item.ticket.number}` : "chat";
-  const agent = item.agent === "starling" ? "starling" : "gremlin";
+  const agent = item.agent === "starling" ? "starling" : "gremlin";   // a legacy row (before migration 0021 moved her chats) keeps its label
   return `---\nruling: ${day}-${n}\nescalation: E${item.id}\nasked: ${asked}\nagent: ${agent}\nquestion: ${JSON.stringify(oneLine2(out.question))}\nrelies_on: ${JSON.stringify(out.relies_on)}\nprecedent: ${JSON.stringify(out.precedent)}\nrules: day-${day}\nwritten_at: ${at}\n---\n${out.ruling.replace(/\r\n?/g, "\n").trim()}\n`;
 }
 const oneLine2 = (s) => String(s).replace(/\s+/g, " ").trim();
@@ -735,7 +735,7 @@ export function nextRulingNumber(dir, day) {
 // One ruling: the model reads a copy of the game as it stands now (RULES.md after tonight's proposals, the earlier rulings, the Nomic
 // library), answers with JSON, and the code checks it and commits the one new file. {ok, path, question, relies_on, text} or {ok: false, reason}.
 // A failure leaves the clone as it was.
-// `enacted` is the site's list of the rulebook's enacted changes with who drafted each (drafted_by), and an escalated Starling turn carries the
+// `enacted` is the site's list of the rulebook's enacted changes with who drafted each (drafted_by), and an escalated general-conversation turn carries the
 // draft her reply showed (turn.draft): both go to the model, so a ruling can say when the text it turns on was drafted by a model (RULING.md).
 /** @rule 106.5 */
 export async function ruleOwed({ dir, item, day, n, timeoutMs, model = runModel, claude, libraryDir = LIBRARY_DIR, ruleAdded = {}, enacted = [], at = new Date().toISOString() }) {

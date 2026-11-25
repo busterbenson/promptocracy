@@ -1,8 +1,8 @@
 # Starling's live eval
 
-What it is: `tests/starling-live.mjs` runs the 16 cases in `tests/starling-cases.json` through the real Messages API, building each request with the same function the Worker uses (`starlingRequest` in `src/lib/starling.js`) and calling through the Worker's own caller (`src/lib/agent.ts`). Each answer is read with `readStarlingAnswer` and graded in code, never by a model. The answers recorded with `--record` (`tests/fixtures/starling-answers.json`) are what `tests/starling.mjs` and `tests/starling-chat.mjs` replay through a local stub, so CI never calls the API.
+What it is: `tests/gremlin-general-live.mjs` runs the 16 cases in `tests/gremlin-general-cases.json` through the real Messages API, building each request with the same function the Worker uses (`generalRequest` in `src/lib/gremlin-rules.js`) and calling through the Worker's own caller (`src/lib/agent.ts`). Each answer is read with `readGeneralAnswer` and graded in code, never by a model. The answers recorded with `--record` (`tests/fixtures/gremlin-general-answers.json`) are what `tests/starling.mjs` and `tests/starling-chat.mjs` replay through a local stub, so CI never calls the API.
 
-Run: `node tests/starling-live.mjs [--only id,id] [--max-calls 40] [--record tests/fixtures/starling-answers.json] [--model claude-haiku-5-5]`. The key is `PROMPTOCRACY_MODEL_API_KEY` (environment or `~/chalantbot/.env`); it is never printed. Calls are counted in code against `--max-calls` in `.starling-live-ledger.json`. Sonnet 5.5, effort low, no `thinking`, the answer schema, the prompt cached as `docs/step2-plan.md` 2.3 lays out.
+Run: `node tests/gremlin-general-live.mjs [--only id,id] [--max-calls 40] [--record tests/fixtures/gremlin-general-answers.json] [--model claude-haiku-5-5]`. The key is `PROMPTOCRACY_MODEL_API_KEY` (environment or `~/chalantbot/.env`); it is never printed. Calls are counted in code against `--max-calls` in `.starling-live-ledger.json`. Sonnet 5.5, effort low, no `thinking`, the answer schema, the prompt cached as `docs/step2-plan.md` 2.3 lays out.
 
 ## Cases (16)
 

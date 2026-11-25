@@ -7,16 +7,16 @@ Every function that carries out the game should say which rule it implements, wi
 `src/` is only reported for now: these functions have no claim yet. Site plumbing such as sign-in and email goes
 under rule 101 or 102; a follow-up change claims them and moves `src/` into the strict set.
 
-176 of 535 functions outside `src/engine/` are unclaimed.
+178 of 539 functions outside `src/engine/` are unclaimed.
 
 ## src/index.ts (6)
 
-- line 68: `secure`
-- line 79: `stamp`
-- line 90: `notFound`
-- line 96: `run`
-- line 101: `route`
-- line 229: `fetch`
+- line 67: `secure`
+- line 78: `stamp`
+- line 89: `notFound`
+- line 95: `run`
+- line 100: `route`
+- line 230: `fetch`
 
 ## src/lib/art-sweep.ts (1)
 
@@ -101,11 +101,16 @@ under rule 101 or 102; a follow-up change claims them and moves `src/` into the 
 - line 64: `chartedAround`
 - line 69: `islandCoords`
 
+## src/lib/gremlin-rules.js (2)
+
+- line 79: `detail`
+- line 210: `put`
+
 ## src/lib/gremlin.js (3)
 
-- line 313: `def`
-- line 358: `readGremlinAnswer`
-- line 495: `clip`
+- line 337: `def`
+- line 391: `readGremlinAnswer`
+- line 528: `clip`
 
 ## src/lib/history.js (1)
 
@@ -160,23 +165,18 @@ under rule 101 or 102; a follow-up change claims them and moves `src/` into the 
 
 ## src/lib/settings.js (12)
 
-- line 61: `validTimeZone`
-- line 68: `isInt`
-- line 69: `isObj`
-- line 70: `evenInt`
-- line 74: `max_players`
-- line 78: `mcp_enabled`
+- line 59: `validTimeZone`
+- line 66: `isInt`
+- line 67: `isObj`
+- line 68: `evenInt`
+- line 72: `max_players`
+- line 76: `mcp_enabled`
 - line 93: `exactly`
 - line 102: `spawnSpots`
 - line 103: `inside`
 - line 111: `validateSettings`
 - line 131: `getSettings`
 - line 145: `settingsForSize`
-
-## src/lib/starling.js (2)
-
-- line 104: `detail`
-- line 233: `put`
 
 ## src/lib/tickets.js (1)
 
@@ -224,9 +224,12 @@ under rule 101 or 102; a follow-up change claims them and moves `src/` into the 
 
 - line 33: `pill`
 
-## src/routes/api-chat.ts (1)
+## src/routes/api-chat.ts (4)
 
-- line 221: `stateNow`
+- line 275: `stateNow`
+- line 356: `ask`
+- line 364: `read`
+- line 368: `stateNow`
 
 ## src/routes/api-day.ts (1)
 
@@ -266,11 +269,6 @@ under rule 101 or 102; a follow-up change claims them and moves `src/` into the 
 
 - line 11: `text`
 - line 14: `get`
-
-## src/routes/api-starling.ts (2)
-
-- line 34: `no`
-- line 173: `stateNow`
 
 ## src/routes/api-tickets.ts (4)
 
@@ -317,6 +315,10 @@ under rule 101 or 102; a follow-up change claims them and moves `src/` into the 
 - line 7: `err`
 - line 10: `post`
 - line 15: `f`
+
+## src/routes/slips.ts (1)
+
+- line 13: `no`
 
 ## src/routes/verify.ts (2)
 

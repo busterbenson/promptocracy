@@ -280,13 +280,13 @@ with sync_playwright() as p:
     check("1280-light (another tab): after the limit's excuse was given elsewhere, entering the tab again closes the composer with the count, and shows his excuse", text(page, ".ch-in .closed") == "30 of 30 messages today" and "midnight" in text(page, "#chatLog .msg >> nth=-1").lower(), text(page, ".ch-in"))
     check("1280-light (another tab): no console errors", not errors, str(errors)); c.close()
 
-    # ---------------- Starling shares the window: her sheet fits too, at 390 and at 375 and in a short screen
+    # ---------------- the Rulebook tab has the same one window (Gremlin everywhere): his sheet fits there too, at 390 and at 375 and in a short screen
     c, page, errors = new_page(b, 390, 844, "light", ada_cookie)
     page.click("#tab-rules"); page.wait_for_selector("#chatfab"); page.click("#chatfab"); page.wait_for_selector("#chatText")
-    check("390-light: the Rulebook tab's pill opens Starling's sheet", "Starling" in text(page, "#chatcol .ch-h"))
-    fits(page, 390, 844, "390-light Starling sheet")
-    page.set_viewport_size({"width": 375, "height": 420}); page.wait_for_timeout(200); fits(page, 375, 420, "375x420-light Starling sheet (keyboard up)")
-    check("390-light: Starling no console errors", not errors, str(errors)); c.close()
+    check("390-light: the Rulebook tab's pill opens Gremlin's sheet, and nothing on the page says Starling", "Gremlin" in text(page, "#chatcol .ch-h") and "Starling" not in page.inner_text("body"))
+    fits(page, 390, 844, "390-light rulebook sheet")
+    page.set_viewport_size({"width": 375, "height": 420}); page.wait_for_timeout(200); fits(page, 375, 420, "375x420-light rulebook sheet (keyboard up)")
+    check("390-light: rulebook no console errors", not errors, str(errors)); c.close()
 
     # ---------------- before Start (game "pre"): no pill, no column, no request to the chat route, on either tab, phone or desktop
     for w, h in [(390, 844), (1280, 900)]:
@@ -404,50 +404,5 @@ with sync_playwright() as p:
     check("visitor: no ticket strip", page.locator(".ch-row").count() == 0)
     c.close()
 
-    # ---------------- the hand-off (rule 106.3): Gremlin's line says the ask is Starling's, and "Ask Starling ›" opens Starling's window with the player's words in its box, UNSENT.
-    # Gus has the recorded answer that points to Starling; Hal has it too but has ended his turn, so the button is disabled with its reason beside it.
-    def handoff_open(page, w, tab):
-        page.click("#tab-" + tab)
-        if w < 900: page.wait_for_selector("#chatfab"); page.click("#chatfab")
-        page.wait_for_selector("#chatcol .chat")
-    for scheme in ["light", "dark"]:
-        for w, h in [(1280, 900), (390, 844)]:
-            tag = f"{w}-{scheme} hand-off to Starling"
-            c, page, errors = new_page(b, w, h, scheme, gus_cookie)
-            sent = []
-            page.on("request", lambda r: sent.append(r.method + " " + urlparse(r.url).path) if r.method == "POST" else None)
-            handoff_open(page, w, "workshop")
-            page.wait_for_selector('#chatLog [data-c="handoff"]')
-            btn = page.locator('#chatLog [data-c="handoff"]')
-            check(f"{tag}: the last line has ONE button, 'Ask Starling ›', enabled, with no reason beside it", btn.count() == 1 and text(page, '#chatLog [data-c="handoff"]') == "Ask Starling ›" and btn.is_enabled() and page.locator("#chatLog .handoff .why").count() == 0, text(page, "#chatLog .handoff"))
-            bb = btn.bounding_box(); last = page.locator("#chatLog .msg.cher").last.bounding_box(); cb = page.locator("#chatcol .chat").bounding_box()
-            check(f"{tag}: it sits under the reply, inside the window (button y {bb['y']:.0f} vs the reply's bottom {last['y'] + last['height']:.0f})", bb["y"] >= last["y"] + last["height"] - 1 and bb["x"] >= cb["x"] and bb["x"] + bb["width"] <= cb["x"] + cb["width"] + 0.5)
-            check(f"{tag}: the box is empty before the tap", page.input_value("#chatText") == "")
-            shot(page, f"handoff-from-{tag.split(' ')[0]}")
-            btn.click()
-            page.wait_for_selector('#chatcol .chat[data-agent="starling"]')
-            page.wait_for_function("document.getElementById('chatText') && document.getElementById('chatText').value.length > 0")
-            page.wait_for_timeout(500)
-            check(f"{tag}: Starling's window is open on the rules tab (the tab is selected) and it is Starling's", page.get_attribute("#tab-rules", "aria-selected") == "true" and page.get_attribute("#chatcol .chat", "data-agent") == "starling" and (w >= 900 or sheet(page) == "open"))
-            check(f"{tag}: the player's own message is in the box, unsent", page.input_value("#chatText") == HO_MSG, page.input_value("#chatText"))
-            check(f"{tag}: nothing was sent to either chat (POSTs: {sent}), and not as a line in Starling's log", not [s for s in sent if "/api/chat/" in s] and page.locator("#chatLog .msg.cme").filter(has_text=HO_MSG).count() == 0)
-            check(f"{tag}: Starling's window has no rule or action riding with the words (only the box is filled)", page.locator("#chatcol .chip").count() == 0)
-            shot(page, f"handoff-to-{tag.split(' ')[0]}")
-            sideways(page, w, tag)
-            check(f"{tag}: no console errors", not errors, str(errors)); c.close()
-    for scheme, w, h in [("light", 1280, 900), ("dark", 390, 844)]:
-        tag = f"{w}-{scheme} hand-off disabled"
-        c, page, errors = new_page(b, w, h, scheme, hal_cookie)
-        sent = []
-        page.on("request", lambda r: sent.append(r.method + " " + urlparse(r.url).path) if r.method == "POST" else None)
-        handoff_open(page, w, "workshop")
-        page.wait_for_selector('#chatLog [data-c="handoff"]')
-        btn = page.locator('#chatLog [data-c="handoff"]'); why = text(page, "#chatLog .handoff .why") if page.locator("#chatLog .handoff .why").count() else ""
-        check(f"{tag}: after End turn the button is disabled and says why beside it ({why!r})", btn.is_disabled() and len(why) > 3, why)
-        bw = page.locator("#chatLog .handoff").bounding_box(); wb = page.locator("#chatcol .chat").bounding_box()
-        check(f"{tag}: the reason sits inside the window", bw["x"] + bw["width"] <= wb["x"] + wb["width"] + 0.5)
-        check(f"{tag}: the window did not move and nothing was sent", page.get_attribute("#chatcol .chat", "data-agent") == "gremlin" and not sent, str(sent))
-        shot(page, f"handoff-disabled-{tag.split(' ')[0]}")
-        check(f"{tag}: no console errors", not errors, str(errors)); c.close()
     b.close()
 sys.exit(1 if failed else 0)
