@@ -37,6 +37,8 @@ try {
   const game = () => d1(state, `SELECT status, day, phase, rules_day FROM games WHERE id = '${gid}'`)[0];
   const prop = (n) => d1(state, `SELECT number, status, rev, commit_sha, not_applied_reason, budget_minutes, budget_effort FROM proposals WHERE game_id = '${gid}' AND number = ${n}`)[0];
   const notes = (who) => d1(state, `SELECT id, kind, body FROM notifications WHERE game_id = '${gid}' AND player_id = '${id[who]}' AND kind IN ('not_applied', 'moderator_note') ORDER BY created_at, id`);
+  // The night's outcome notices (rules 107.2, 107.7): one per player per passed proposal, kind proposal_outcome, id outcome-<proposal id>-<player id>.
+  const outcomes = (pn) => d1(state, `SELECT p.display_name AS who, n.body, n.link, n.emailed_at FROM notifications n JOIN players p ON p.id = n.player_id WHERE n.game_id = '${gid}' AND n.kind = 'proposal_outcome' AND n.id LIKE 'outcome-' || (SELECT id FROM proposals WHERE game_id = '${gid}' AND number = ${pn}) || '-%' ORDER BY p.display_name`);
   const plus = (iso, min) => new Date(Date.parse(iso) + min * 60_000).toISOString();
   // A claim's outcomes carry their applied sequence (seq); a test that doesn't give one gets the array order. `raw` sends as is.
   const withSeq = (body) => (body?.outcomes && body.outcomes.every((o) => o && !("seq" in o)) ? { ...body, outcomes: body.outcomes.map((o, i) => ({ ...o, seq: i + 1 })) } : body);
@@ -99,6 +101,11 @@ try {
   check("day 2 done, the rules of day 2 live (rules_day), day 3 open and the game unlocked", day(2).status === "done" && game().rules_day === 2 && game().day === 3 && game().phase === "open" && day(3).status === "open", J([day(2), game()]));
   await cron();
   check("the cron again changes nothing: no points twice", score("Ana") === 10 && game().day === 3);
+  check("the night told every player how each passed proposal ended: P1 (in the rules) to all three, none emailed, linked to its card",
+    J(outcomes(p1).map((x) => x.who)) === J(["Ana", "Bo", "Cy"]) && outcomes(p1).every((x) => x.body === `P${p1} by Ana. A change to rule 401, "Change 401". Passed and in the rules.` && x.link === `/mod/#p-P${p1}` && x.emailed_at === null), J(outcomes(p1)));
+  check("P2 (not applied) went to the two players it was not already told to: Ana and Cy, with the moderator's reason; Bo keeps only his own note with the suggestion (107.7)",
+    J(outcomes(p2).map((x) => x.who)) === J(["Ana", "Cy"]) && outcomes(p2).every((x) => x.body === `P${p2} by Bo. A change to clause 402.1, "Change 402.1". Passed, not applied: ${prop(p2).not_applied_reason}.` && x.link === `/mod/#p-P${p2}`) && notes("Bo").length === 1, J(outcomes(p2)));
+  check("nothing about P3, which failed (the count told everyone already)", outcomes(p1 + 2).length === 0);
 
   console.log("a deploy that never goes live");
   const p4 = ballot(3, "Cy", "401");
@@ -111,6 +118,7 @@ try {
   await cron();
   check("an hour past the deadline and never live: not applied (the reason says so), no points, the lock ends (timed_out)", prop(p4).status === "not_applied" && prop(p4).not_applied_reason === DEPLOY_REASON && score("Cy") === 0 && day(3).status === "timed_out" && game().phase === "open" && game().day === 4 && game().rules_day === 2, J([prop(p4), day(3), game()]));
   check("Cy is told, with the reason", notes("Cy").some((x) => x.body.includes(DEPLOY_REASON)));
+  check("a deploy that never went live is told to the other players too (Ana, Bo), with the reason; Cy only has his own note", J(outcomes(p4).map((x) => x.who)) === J(["Ana", "Bo"]) && outcomes(p4).every((x) => x.body === `P${p4} by Cy. A change to rule 401, "Change 401". Passed, not applied: ${DEPLOY_REASON}.`), J(outcomes(p4)));
   const recon = await mod("GET", "pending");
   check("pending lists the not-applied proposals for the moderator to reconcile", J(recon.data.not_applied.map((x) => x.number)) === J([p2, p4]) && recon.data.job === null);
 
@@ -222,6 +230,21 @@ try {
   dev("clock", plus(dq.deadline_at, DEPLOY_GRACE_MINUTES + 2));
   await cron();
   check("past the deploy deadline the night unlocks anyway (the bundle is live): enacted, day N+1 open; the ruling stays owed", prop(pr2).status === "enacted" && day(dq.n).status === "done" && game().day === dq.n + 1 && esc(e2).answered_at === null, J([day(dq.n), game(), prop(pr2)]));
+
+  console.log("the night's outcome notices survive a retried night (rules 107.2, 107.7)");
+  // The night fails AFTER the notices were written (the lock stays, the next tick runs every step again): nobody is told twice.
+  const pa = ballot(game().day, "Ana", "504"), pb = ballot(game().day, "Bo", "402.1");
+  const dn = await midnight();
+  const SHAH = "7".repeat(40);
+  await mod("POST", `days/${dn.n}/claim`, { sha: SHAH, outcomes: [{ number: pa, applied: true, commit: SHAH }, { number: pb, applied: false, reason: "it could not be made to pass its tests" }] });
+  dev("bundle_sha:mod", SHAH);
+  dev("night_fail", "boom");
+  await cron();
+  check("the night fails at its end: the lock stays, but the outcomes were written once: P-a to the three players, P-b (not applied) to Ana and Cy", day(dn.n).status === "deploying" && !!day(dn.n).last_error && prop(pa).status === "enacted" && J(outcomes(pa).map((x) => x.who)) === J(["Ana", "Bo", "Cy"]) && J(outcomes(pb).map((x) => x.who)) === J(["Ana", "Cy"]), J([day(dn.n), outcomes(pa), outcomes(pb)]));
+  const before = J([outcomes(pa), outcomes(pb)]);
+  d1(state, "DELETE FROM dev_controls WHERE key = 'night_fail'");
+  await cron(); await cron();
+  check("the retried night finishes and writes no second notice (same rows, same ids)", day(dn.n).status === "done" && J([outcomes(pa), outcomes(pb)]) === before, before.slice(0, 200));
 } catch (e) {
   fail++; console.log("  FAIL  harness:", e?.stack || e);
   if (srv) console.log(srv.log().slice(-3000));

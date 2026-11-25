@@ -72,6 +72,16 @@ try {
   const v = await visitor.get("/hy/api/history");
   check("a visitor sees the same list, none of it theirs", v.status === 200 && v.data.days.length === 2 && v.data.days.every((x) => x.items.every((p) => p.mine === false)));
   check("it is read-only: a POST is not a route", (await Ada.post("/hy/api/history", {})).status === 404);
+  // The night is still processing (Codex P2 on #125, issue #126): games.day still names the ballot day, but its count has run, so its
+  // counted rows are History's too (a notification's target resolves). An open day's counted-looking row stays hidden.
+  d1(state, `INSERT INTO days (game_id, n, starts_at, ends_at, status) VALUES ('${gid}', 5, '2026-11-24T00:00:00.000Z', '2026-11-25T00:00:00.000Z', 'open')`);
+  check("day 5 open: its counted-looking row is still hidden", J((await Ada.get("/hy/api/history")).data.days.map((x) => x.day)) === "[3,2]");
+  for (const st of ["locked", "processing", "deploying"]) {
+    d1(state, `UPDATE days SET status = '${st}' WHERE game_id = '${gid}' AND n = 5`);
+    const night = await Ada.get("/hy/api/history");
+    check(`day 5 ${st} (the night is running): its counted proposals are listed, the uncounted ones are not`, J(night.data.days.map((x) => x.day)) === "[5,3,2]" && night.data.days[0].items.map((p) => p.n).join() === "P7" && !/"P[56]"/.test(night.text), night.text.slice(0, 200));
+  }
+  d1(state, `UPDATE days SET status = 'open' WHERE game_id = '${gid}' AND n = 5`);
   // a game that ended on night 5 doesn't open day 6, so day 5 (counted) is the last day and must show (the early P7 is counted, the
   // still-on-ballot P5 is not)
   d1(state, `UPDATE games SET status = 'over' WHERE id = '${gid}'`);

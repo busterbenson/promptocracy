@@ -74,6 +74,17 @@ export function resultNotice(r, ticket, o = {}) {
 }
 
 /**
+ * How a passed proposal ended up, as a notification to every player once the night has applied it or not: "P3 by Ada. A change to rule 402,
+ * "Shorter Eras". Passed and in the rules." or "... Passed, not applied: <the moderator's reason>." (no count again: the count notice had it).
+ * `r` is the proposal row (status enacted or not_applied) with the proposer's `name`.
+ * @rule 107.2, 107.7
+ */
+export function outcomeNotice(r, ticket, o = {}) {
+  const what = `${r.champion ? "The Champion's change: " : ""}${r.champion ? whatSentence(r, ticket, o).replace(/^A /, "a ") : whatSentence(r, ticket, o)}`;
+  return `P${r.number} by ${r.name}. ${what}. ${outcomeSentence(r)}.`;
+}
+
+/**
  * Where a bell row opens: a commission's ticket (#w-W3), else the proposal (#p-P3). The page resolves the P-number to its card when
  * the row is clicked (the rule it changes; an enacted new rule opens under its new number), so the link stays right as the night goes on.
  * @rule 104.4, 801.2
