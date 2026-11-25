@@ -56,14 +56,12 @@ def pinned(page, w, h, name, phone):
         check(f"{name}, page at its {where}: the window is as tall as the viewport allows (not taller: {cb['height']:.0f} <= {h}) and its bottom edge is the viewport's bottom (within 8px: {cb['y'] + cb['height']:.0f} vs {h})", cb["height"] <= h and abs(cb["y"] + cb["height"] - h) <= 8, f"{cb}")
         check(f"{name}, page at its {where}: the composer is inside the viewport, under the log", ib["y"] + ib["height"] <= h + 0.5 and ib["y"] >= hb["y"] + hb["height"] - 1, f"{ib}")
         if not phone:
-            # nothing interactive sits under the open window: the day panel's Propose control and End turn, wherever the page is scrolled, are left of it and hit-test as themselves
-            wl = cb["x"]
-            for sel, what in [('.tkgo[data-p="bar-menu"]', "the Propose control"), (".tbend", "End turn")]:
-                if not page.locator(sel).count(): check(f"{name}, page at its {where}: {what} exists to test", False, sel); continue
-                page.evaluate("(s) => document.querySelector(s).scrollIntoView({block: 'center'})", sel); page.wait_for_timeout(100)
-                bb = page.locator(sel).first.bounding_box(); cb3 = page.locator("#chatcol .chat").bounding_box()
-                hit = page.evaluate("([s, x, y]) => { const e = document.elementFromPoint(x, y), t = document.querySelector(s); return !!e && (e === t || t.contains(e)); }", [sel, bb["x"] + bb["width"] / 2, bb["y"] + bb["height"] / 2])
-                check(f"{name}, page at its {where}: {what} is fully visible, left of the window (right edge {bb['x'] + bb['width']:.0f} <= window {cb3['x']:.0f}) and nothing covers its centre", bb["x"] >= 0 and bb["x"] + bb["width"] <= cb3["x"] + 0.5 and bb["y"] >= 0 and bb["y"] + bb["height"] <= h and hit, f"{bb} {cb3} hit={hit}")
+            # the open window floats over the page (Buster, day 1: "open on top of the rest of the page content, not push everything else to the side"):
+            # the page keeps its full width and layout, and the window sits on top of it at the right edge
+            pad = page.evaluate("getComputedStyle(document.body).paddingRight")
+            bw = page.evaluate("document.getElementById('bwrap').getBoundingClientRect().width")
+            check(f"{name}, page at its {where}: the page is not pushed aside (body padding-right {pad}, page {bw:.0f}px of {w}px wide)", pad == "0px" and bw >= w - 48, f"{pad} {bw}")
+            check(f"{name}, page at its {where}: the window is on top, at the right edge", abs(cb["x"] + cb["width"] - (w - 16)) <= 2 and page.evaluate("(() => { const r = document.querySelector('#chatcol .chat').getBoundingClientRect(); const e = document.elementFromPoint(r.x + r.width / 2, r.y + 30); return !!e && !!e.closest('#chatcol'); })()"), f"{cb}")
         if where == "bottom": check(f"{name}: the page behind is taller than the screen (so scrolling it was real)", phone or tall, str(page.evaluate("document.documentElement.scrollHeight")))
         if phone:
             page.evaluate("window.scrollBy(0, 400)"); page.wait_for_timeout(100)
@@ -91,7 +89,7 @@ with sync_playwright() as p:
         page.click("#tab-rules"); page.wait_for_selector("#chatcol .chat"); page.wait_for_selector("#chatLog .slip")
         check(f"{tag}: on the Rulebook tab her column is open beside the rules, and it is hers", mode(page) == "open" and who(page) == "starling" and vis(page, "#chatcol .chat") and text(page, "#chatcol .ch-h").startswith("Starling") and not vis(page, "#chatfab"))
         box = page.locator("#chatcol .chat").bounding_box(); rb = page.locator("#p-rules").bounding_box()
-        check(f"{tag}: the column is on the right (x {box['x']:.0f}) and the rulebook keeps the rest ({rb['width']:.0f} wide)", box["x"] > 800 and box["x"] + box["width"] <= 1280 and rb["x"] + rb["width"] <= box["x"] + 4)
+        check(f"{tag}: the window floats on the right (x {box['x']:.0f}) over the rulebook, which keeps the page's full width ({rb['width']:.0f} wide)", box["x"] > 800 and box["x"] + box["width"] <= 1280 and rb["width"] > 1100)
         check(f"{tag}: the Today strip says 3 of 3 left (the bar's count, not a different one)", "today" in text(page, ".ch-today").lower() and "3 of 3 left" in text(page, ".ch-today"), text(page, ".ch-today"))
         q = text(page, "#chatLog .q")
         check(f"{tag}: her answer carries her quote of 103.3, the rulebook's own words, with the rule's pill", q.startswith("103.3") and "withdraw a confirmed proposal until it goes on the ballot" in q and page.locator("#chatLog .q .rpill, #chatLog .q .pill").count() >= 1, q)

@@ -409,6 +409,7 @@ with sync_playwright() as pw:
     page.click('#mroot [data-p="cancel"]'); page.wait_for_timeout(100)
     page.keyboard.press("Escape")
     # adding a rule to block 400 through its card: the words survive a close, and the new rule gets 405 - the same number P2 was given
+    (page.click('#chatcol [data-c="min"]') if page.locator('#chatcol [data-c="min"]').is_visible() else None); page.wait_for_timeout(100)   # the open chat window floats over the right of the page: minimize first, as a player would
     page.click('.bcard.add[data-n="400"]'); page.wait_for_selector("#pfWords")
     page.fill("#pfWords", "Draws are replayed.")
     page.keyboard.press("Escape"); page.wait_for_timeout(100)

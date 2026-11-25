@@ -71,14 +71,12 @@ def pinned(page, w, h, name, phone):
         check(f"{name}, page at its {where}: the window is as tall as the viewport allows (not taller: {cb['height']:.0f} <= {h}) and its bottom edge is the viewport's bottom (within 8px: {cb['y'] + cb['height']:.0f} vs {h})", cb["height"] <= h and abs(cb["y"] + cb["height"] - h) <= 8, f"{cb}")
         check(f"{name}, page at its {where}: the composer is inside the viewport, under the log", ib["y"] + ib["height"] <= h + 0.5 and ib["y"] >= hb["y"] + hb["height"] - 1, f"{ib}")
         if not phone:
-            # nothing interactive sits under the open window: the day panel's Propose control and End turn, wherever the page is scrolled, are left of it and hit-test as themselves
-            wl = cb["x"]
-            for sel, what in [('.tkgo[data-p="bar-menu"]', "the Propose control"), (".tbend", "End turn")]:
-                if not page.locator(sel).count(): check(f"{name}, page at its {where}: {what} exists to test", False, sel); continue
-                page.evaluate("(s) => document.querySelector(s).scrollIntoView({block: 'center'})", sel); page.wait_for_timeout(100)
-                bb = page.locator(sel).first.bounding_box(); cb3 = page.locator("#chatcol .chat").bounding_box()
-                hit = page.evaluate("([s, x, y]) => { const e = document.elementFromPoint(x, y), t = document.querySelector(s); return !!e && (e === t || t.contains(e)); }", [sel, bb["x"] + bb["width"] / 2, bb["y"] + bb["height"] / 2])
-                check(f"{name}, page at its {where}: {what} is fully visible, left of the window (right edge {bb['x'] + bb['width']:.0f} <= window {cb3['x']:.0f}) and nothing covers its centre", bb["x"] >= 0 and bb["x"] + bb["width"] <= cb3["x"] + 0.5 and bb["y"] >= 0 and bb["y"] + bb["height"] <= h and hit, f"{bb} {cb3} hit={hit}")
+            # the open window floats over the page (Buster, day 1: "open on top of the rest of the page content, not push everything else to the side"):
+            # the page keeps its full width and layout, and the window sits on top of it at the right edge
+            pad = page.evaluate("getComputedStyle(document.body).paddingRight")
+            bw = page.evaluate("document.getElementById('bwrap').getBoundingClientRect().width")
+            check(f"{name}, page at its {where}: the page is not pushed aside (body padding-right {pad}, page {bw:.0f}px of {w}px wide)", pad == "0px" and bw >= w - 48, f"{pad} {bw}")
+            check(f"{name}, page at its {where}: the window is on top, at the right edge", abs(cb["x"] + cb["width"] - (w - 16)) <= 2 and page.evaluate("(() => { const r = document.querySelector('#chatcol .chat').getBoundingClientRect(); const e = document.elementFromPoint(r.x + r.width / 2, r.y + 30); return !!e && !!e.closest('#chatcol'); })()"), f"{cb}")
         if where == "bottom": check(f"{name}: the page behind is taller than the screen (so scrolling it was real)", phone or tall, str(page.evaluate("document.documentElement.scrollHeight")))
         if phone:
             page.evaluate("window.scrollBy(0, 400)"); page.wait_for_timeout(100)
@@ -104,7 +102,7 @@ with sync_playwright() as p:
         page.click("#tab-workshop"); page.wait_for_selector("#chatcol .chat"); page.wait_for_selector("#chatLog .slip")
         check(f"{tag}: on the Workshop tab the column is open beside the tickets", mode(page) == "open" and vis(page, "#chatcol .chat") and not vis(page, "#chatfab"))
         box = page.locator("#chatcol .chat").bounding_box(); wk = page.locator("#p-workshop .wk").bounding_box()
-        check(f"{tag}: the column is on the right (x {box['x']:.0f}, width {box['width']:.0f}) and the tickets keep the rest ({wk['width']:.0f} wide)", box["x"] > 800 and box["x"] + box["width"] <= 1280 and wk["x"] + wk["width"] <= box["x"] + 4)
+        check(f"{tag}: the window floats on the right (x {box['x']:.0f}, width {box['width']:.0f}) over the tickets, which keep the page's full width ({wk['width']:.0f} wide)", box["x"] > 800 and box["x"] + box["width"] <= 1280 and wk["width"] > 1100)
         head = text(page, "#chatcol .ch-h")
         check(f"{tag}: the header names Gremlin, with his portrait and the minimize button", head.startswith("Gremlin") and page.locator("#chatcol .ch-h .por svg").count() == 1 and page.locator('#chatcol [data-c="min"]').is_visible())
         check(f"{tag}: the log has the two turns (4 lines, more in the dark run: the light run added one) under a Today divider, in order, her words on the right", msgs(page) >= 4 and msgs(page) % 2 == 0 and text(page, "#chatLog .cday").lower() == "today" and page.locator("#chatLog .msg").nth(0).get_attribute("class") == "msg cme" and "low stone garden wall" in text(page, "#chatLog .msg >> nth=0"), f"{msgs(page)} lines; first class {page.locator('#chatLog .msg').nth(0).get_attribute('class')}; day {text(page, '#chatLog .cday')}")
@@ -135,7 +133,7 @@ with sync_playwright() as p:
             page.keyboard.press("Escape"); page.wait_for_timeout(250)
         # minimize
         page.click('#chatcol [data-c="min"]')
-        check(f"{tag}: minimize docks the column as the corner pill and the tab takes the full width", mode(page) == "min" and not vis(page, "#chatcol .chat") and vis(page, "#chatfab") and page.locator("#p-workshop .wk").bounding_box()["width"] > wk["width"] + 300)
+        check(f"{tag}: minimize docks the window as the corner pill; the tab's width does not change (the window was on top of it)", mode(page) == "min" and not vis(page, "#chatcol .chat") and vis(page, "#chatfab") and abs(page.locator("#p-workshop .wk").bounding_box()["width"] - wk["width"]) < 2)
         page.evaluate("document.getElementById('book').scrollIntoView()"); page.wait_for_timeout(200)
         shot(page, f"desktop-minimized-{tag}")
         page.reload(wait_until="domcontentloaded"); page.wait_for_selector("#tab-workshop"); page.wait_for_function("document.getElementById('rules').textContent.indexOf('Loading') < 0")
@@ -144,6 +142,8 @@ with sync_playwright() as p:
         page.click("#chatfab"); page.wait_for_selector("#chatcol .chat")
         check(f"{tag}: the pill opens the column again, with the log where it was", mode(page) == "open" and msgs(page) == n0 + 2 and vis(page, "#chatLog .slip"))
         # Commission something opens the chat on the new draft: the chat, not the card (the card would cover it)
+        # the open window floats over the tab's right side, where Commission something is: minimize, then click it (it opens the window again)
+        page.click('#chatcol [data-c="min"]'); page.wait_for_timeout(150)
         page.click('[data-w="open"]'); page.wait_for_function("(document.querySelector('.ch-in .chip') || {textContent: ''}).textContent.includes('W2')")
         check(f"{tag}: Commission something opens the chat attached to the new draft (a W2 chip beside the box) and no card: the chat stays usable", "W2" in text(page, ".ch-in .chip") and not vis(page, "#mroot .mcard") and mode(page) == "open" and vis(page, "#chatText"), text(page, ".ch-in"))
         check(f"{tag}: the slip is the new draft's: W2, nothing made, a dash for nights and price until Gremlin drafts it, and the label says Nights (not Estimate)", "W2" in text(page, "#chatLog .slip") and "Nothing" in text(page, "#chatLog .slip") and "0 points" not in text(page, "#chatLog .slip") and re.search(r"NIGHTS\s*—|Nights\s*—", text(page, "#chatLog .slip"), re.I) and "estimate" not in text(page, "#chatLog .slip").lower(), text(page, "#chatLog .slip"))
@@ -173,7 +173,7 @@ with sync_playwright() as p:
             page2.route(re.compile(r"/shop/api/chat/gremlin$"), lambda route: held2.append(route) if route.request.method == "GET" else route.continue_())
             page2.click("#tab-workshop"); page2.wait_for_timeout(800)
             check(f"{tag}: the window's first read is out and held", len(held2) == 1)
-            page2.click('[data-w="open"]'); page2.wait_for_function("(document.querySelector('.ch-in .chip') || {textContent: ''}).textContent.includes('W2')")
+            page2.eval_on_selector('[data-w="open"]', "e => e.click()"); page2.wait_for_function   # the race is the subject here, not reaching the button (the open window floats over it)("(document.querySelector('.ch-in .chip') || {textContent: ''}).textContent.includes('W2')")
             held2[0].continue_(); page2.wait_for_timeout(1200)
             page2.unroute(re.compile(r"/shop/api/chat/gremlin$"))
             check(f"{tag}: the late first read does not put W1's conversation under the new draft: W2's chip and slip, an empty log", "W2" in text(page2, ".ch-in .chip") and "W2" in text(page2, "#chatLog .slip") and msgs(page2) == 0 and "Ghost" not in text(page2, "#chatLog"), text(page2, "#chatLog"))
