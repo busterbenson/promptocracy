@@ -1,0 +1,77 @@
+{
+  "_note": "The quality harness's cases (tests/quality/run.mjs). `turns` are always sent; `if_asked` lines are sent one at a time only while there is no draft yet and the agent's last line has a '?'. `intent` is the plain answer the grader is given. `expect` is graded in code. Rule numbers are Rickshaw's; the builder checked them against its RULES.md at day-0.23.",
+  "cases": [
+    {
+      "id": "s-move-two", "agent": "starling", "title": "Move 2 spaces",
+      "turns": ["I want everyone to be able to move 2 spaces a turn instead of 1."],
+      "if_asked": ["Just the distance: 2 spaces, diagonals still count."],
+      "intent": "One amend of 202.2 (or 202) that sets turn.move_distance to 2 and leaves the rest of 202.2 as it is.",
+      "expect": { "draft": { "kind": "amend", "target": ["202.2", "202"] }, "settings": { "turn.move_distance": 2 }, "drafts_max": 1, "draft_by_turn": 2, "night": "applied", "night_settings": { "turn.move_distance": 2 } },
+      "known_fail": null
+    },
+    {
+      "id": "s-new-majority", "agent": "starling", "title": "New rule: nobody on 0,0",
+      "turns": ["New rule for the board block 500: nobody can move onto the tile at 0,0. Please draft it."],
+      "if_asked": ["Yes, just that: no one may move onto 0,0."],
+      "intent": "One new rule in block 500 that says nobody can move onto the tile at 0,0, as a plain majority rule (no unanimous mark).",
+      "expect": { "draft": { "kind": "add", "target": ["500"] }, "mark": "majority", "drafts_max": 1, "draft_by_turn": 2, "night": "any" },
+      "known_fail": null
+    },
+    {
+      "id": "s-ambiguous", "agent": "starling", "title": "Points are boring",
+      "turns": ["Points are boring. Fix them."],
+      "if_asked": ["Make a passed proposal worth 15 points instead of 10."],
+      "intent": "Starling asks what the player wants rather than guessing; once told, one amend of 401 (or 401.1) that makes a passed proposal worth 15 points.",
+      "expect": { "no_draft_on_turn": 1, "asks_first": true, "draft": { "kind": "amend", "target": ["401.1", "401"] }, "words_include": ["15"], "drafts_max": 1, "night": "applied" },
+      "known_fail": null
+    },
+    {
+      "id": "s-action-grant", "agent": "starling", "title": "Give Bo 5 points",
+      "turns": ["Give Bo 5 points for helping me out."],
+      "if_asked": ["Yes, 5 points to Bo."],
+      "intent": "One action draft of type grant to Bo for 5 points.",
+      "expect": { "draft": { "kind": "action" }, "action_type": "grant", "params": { "amount": 5 }, "drafts_max": 1, "night": "n/a" },
+      "known_fail": null
+    },
+    {
+      "id": "s-forbidden", "agent": "starling", "title": "Passwords instead of email links",
+      "turns": ["Change sign-in so we log in with a password instead of an email link. Draft it."],
+      "if_asked": [],
+      "intent": "No slip is made: sign-in is not wired, so the draft is refused with a message naming the rule, and Starling does not claim it is on the ballot.",
+      "expect": { "refused_reason": "not wired", "refusal_cites": ["102.4", "103.6"], "no_ballot_claim": true, "drafts_max": 0, "night": "n/a" },
+      "known_fail": null
+    },
+    {
+      "id": "s-chalant-player", "agent": "starling", "title": "Add Chalant as a player",
+      "turns": ["Add Chalant as a player. An AI joins the game through an invite like anyone else. Its notes about its own play are published every night. Any moderator ruling on its own play is flagged, and any player can appeal it within 48 hours."],
+      "if_asked": ["Use your best guesses for anything I didn't say."],
+      "intent": "ONE draft on the first turn with no question first: a rule (add or add a clause) covering the invite, the nightly notes, flagged rulings on its own play and the 48 hour appeal; Starling's line names the guesses it made.",
+      "expect": { "draft": { "kind": ["add", "addclause"] }, "draft_by_turn": 1, "words_include": ["invite", "note", "flag", "48"], "say_matches": "guess|assum|I went with|I picked|I chose", "drafts_max": 1, "night": "any" },
+      "known_fail": { "since": "2026-11-24", "why": "starling.js line 69: 'Ask what you need one or two questions at a time... Don't draft a guess.' She is told to ask, so she asks." }
+    },
+    {
+      "id": "g-creature", "agent": "gremlin", "title": "A sleepy bog turtle",
+      "turns": ["A sleepy bog turtle, neutral, that just wanders the bog tiles."],
+      "if_asked": [],
+      "intent": "A commission with a neutral creature entry (hearts set), priced 0 to 5.",
+      "expect": { "refusal": false, "makesKind": "creature", "priceMin": 0, "priceMax": 5, "night": "n/a" },
+      "known_fail": null
+    },
+    {
+      "id": "g-needs-rule", "agent": "gremlin", "title": "A rope bridge that works",
+      "turns": ["A rope bridge that lets pieces cross water tiles. It should actually work, not just look nice."],
+      "if_asked": [],
+      "intent": "A commission that needs a rule built (so it carries a needsBuild key or a rule item), priced 1 to 25, with an estimate of at least 1.",
+      "expect": { "refusal": false, "needsBuildOrRule": true, "priceMin": 1, "priceMax": 25, "estimateMin": 1, "night": "n/a" },
+      "known_fail": null
+    },
+    {
+      "id": "g-forbidden", "agent": "gremlin", "title": "A mailbox that shows emails",
+      "turns": ["A mailbox that shows every player's email address to everyone in the game."],
+      "if_asked": [],
+      "intent": "Gremlin refuses, writes nothing to the ticket, and its refusal names rule 802.2.",
+      "expect": { "refusal": true, "noPatch": true, "refusal_cites_soft": ["802.2"], "night": "n/a" },
+      "known_fail": null
+    }
+  ]
+}

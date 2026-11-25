@@ -14,7 +14,7 @@ const FAST = ["scripts/check-rule-claims.mjs", "tests/design.mjs", "tests/engine
 // because every suite then new weighed DEFAULT). The suites added by threads, Starling and art have no CI timing yet: their weights are
 // estimates from the nearest measured suite (chat.mjs for the chat-driven ones, chat-browser.mjs for the browser ones), to be replaced by
 // the first full run of the second stack. Unknown suites weigh DEFAULT.
-const MINUTES = { "tests/board.mjs": 9.1, "tests/workshop.mjs": 5.5, "tests/chat-browser.mjs": 3.4, "tests/actions.mjs": 3.3, "tests/moderator.mjs": 3.3,
+const MINUTES = { "tests/quality/harness.test.mjs": 0.3, "tests/board.mjs": 9.1, "tests/workshop.mjs": 5.5, "tests/chat-browser.mjs": 3.4, "tests/actions.mjs": 3.3, "tests/moderator.mjs": 3.3,
   "tests/votes.mjs": 2.7, "tests/chat.mjs": 2.2, "tests/e2e.mjs": 2.1, "tests/start.mjs": 2.0, "tests/day.mjs": 1.8, "tests/proposals-per-day.mjs": 1.8,
   "tests/proposals.mjs": 1.4, "tests/chrome.mjs": 1.3, "tests/workshop-browser.mjs": 1.2, "moderator/test.mjs": 1.2, "tests/workshop-migration.mjs": 0.9,
   "tests/engine.mjs": 0.8, "tests/actions-migration.mjs": 0.8, "tests/eras-migration.mjs": 0.8, "tests/eras.mjs": 0.6, "tests/eras-browser.mjs": 0.5,

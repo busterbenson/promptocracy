@@ -16,7 +16,8 @@ import { homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { ROOT } from "./lib.mjs";
-import { clauseText, draftOf, needsModel, notWiredParts, notWiredRefusal, parseBook, readRequest, textOf } from "../src/lib/proposals.js";
+import { clauseText, needsModel, notWiredParts, parseBook, readRequest, textOf } from "../src/lib/proposals.js";
+import { pipeline as runPipeline } from "./quality/pipeline.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PRICE_IN = 0.10 / 1e6, PRICE_OUT = 0.50 / 1e6;   // dollars per token (Haiku 5.5)
@@ -108,34 +109,8 @@ function loadCases() {
 }
 
 // ---------------------------------------------------------------- what the draft route does, step for step
-// (src/routes/api-proposals.ts draft(), minus the database). Keep this in step with it.
-async function pipeline(drafter, book, md, c, env) {
-  const body = { kind: c.kind || "amend", target: c.target, words: c.words, prefilled: c.prefilled === true };
-  if (c.to) body.to = c.to;
-  const req = readRequest(book, body);
-  if ("error" in req) return { outcome: "refused", reason: "request", message: req.error };
-  let after = null, settings = {}, modelConflicts = [];
-  try {
-    if (req.kind === "amend" && req.prefilled && drafter.drafterReady(env)) {
-      try { modelConflicts = (await drafter.draftRewording(env, book, md, req)).conflicts; } catch (e) { if (!(e instanceof drafter.DrafterError)) throw e; }
-    }
-    if (needsModel(req)) {
-      const a = await drafter.draftRewording(env, book, md, req);
-      after = a.after_text; settings = a.settings; modelConflicts = a.conflicts;
-    }
-  } catch (e) {
-    if (e instanceof CapReached) throw e;
-    if (!(e instanceof drafter.DrafterError)) throw e;
-    if (e.code === "refused") return { outcome: "refused", reason: e.reason || "declined", message: e.message };
-    return { outcome: e.code, reason: e.code, message: e.message };   // unavailable, failed, malformed
-  }
-  const d = draftOf(book, req, after);
-  if ("error" in d) return { outcome: "refused", reason: "request", message: d.error };
-  const refused = notWiredRefusal(book, { ...req, ...d, settings });
-  if (refused) return { outcome: "refused", reason: "not wired", message: refused };
-  const conflicts = [...new Set([...d.conflicts, ...modelConflicts])];
-  return { outcome: "drafted", req, before_text: d.before_text, after_text: d.after_text, conflicts, settings, drafted_by: after === null ? "code" : "model" };
-}
+// (tests/quality/pipeline.mjs, shared with the quality harness; the route is src/routes/api-proposals.ts draft(), minus the database.)
+const pipeline = (drafter, book, md, c, env) => runPipeline(drafter, book, md, c, env, { isCap: (e) => e instanceof CapReached });
 
 // ---------------------------------------------------------------- grading, in code
 const plain = (t) => String(t ?? "").replace(/\*\*|`/g, "").replace(/\s+/g, " ").trim();
