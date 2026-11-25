@@ -41,7 +41,9 @@ script runs them after you and tells you what failed.
    function carries a JSDoc `/** @rule <n> */` tag naming a rule or clause that exists in `RULES.md`. Import nothing but
    `promptocracy/engine` (tests may also import `node:test`, `node:assert/strict` and `promptocracy/engine/testing`). No
    `fetch`, `globalThis`, `eval`, `Function`, `process`, `env`, `caches` or dynamic `import(`.
-4. A `[setting: key]` value in the text is the value in `settings.json` (rule 109.2): change both together.
+4. A `[setting: key]` value in the text is the value in `settings.json` (rule 109.2): change both together. The draft is
+   written without the tags; keep each `[setting: key]` tag the clause had, in the same place in the sentence (the
+   word-for-word check leaves tags out).
 5. Add or update tests for what changed, in `rules/<n>.test.ts`.
 6. If the change conflicts with another rule (they can't both be followed, rule 108.1), still make the change, add at
    the end of the overridden rule one sentence saying it gives way to this rule ("... gives way to rule 402."; cite, don't
