@@ -283,8 +283,8 @@ try {
   await midnight();
   const bal = (await Ana.get("/wk/api/ballot")).data;
   const row = bal.items.find((i) => i.kind === "commission" && i.ticket.n === "W3");
-  check("the commission is a row on day 2's ballot with its title, brief, estimate and price (and the votes it needs, majority 2 of 3)",
-    bal.items.length === 3 && row && row.n === "P2" && row.ticket.title === "A dragon" && row.ticket.brief.startsWith("A dragon that") && row.ticket.estimate === 2 && row.ticket.price === 3 && row.ticket.price_reason === "Test price." && J(row.needs) === J({ mark: "majority", needed: 2, of: 3 }) && row.can_vote.allowed, J(row));
+  check("the commission is a row on day 2's ballot with its title, brief, estimate and price (and the mark it needs, majority)",
+    bal.items.length === 3 && row && row.n === "P2" && row.ticket.title === "A dragon" && row.ticket.brief.startsWith("A dragon that") && row.ticket.estimate === 2 && row.ticket.price === 3 && row.ticket.price_reason === "Test price." && J(row.needs) === J({ mark: "majority" }) && row.can_vote.allowed, J(row));
   check("the ballot row carries no player id or email", !/@example\.com/.test(J(bal)) && !J(bal).includes(id.Ana));
   const yes = async (c, n, v = "yes") => (await c.post("/wk/api/votes", { proposal: n, vote: v })).status;
   // P2 (Ana's W3, price 3): yes x3. P3 (Bo's W2): yes from Ana and Bo, no from Cy. P4 (Cy's ordinary): yes x2.
@@ -336,7 +336,7 @@ try {
   const d3 = await midnight();
   check("P5 approved, P6 failed", prop(5).status === "approved" && prop(6).status === "failed", J([prop(5), prop(6)]));
   check("the passed commission is second in the queue (first approved, first built, across nights; the Ready ticket holds no place); the failed one is Refused with the count's sentence",
-    tk(4).state === "Approved" && tk(4).queue_pos === 2 && tk(2).queue_pos === null && tk(5).state === "Refused" && /Refused: P6 did not pass\. 0 of 3 voted yes; it needed 2\./.test(d1(state, `SELECT text FROM ticket_log WHERE ticket_id = '${tk(5).id}' AND kind = 'refused'`)[0].text), J([tk(4).queue_pos, tk(5).state]));
+    tk(4).state === "Approved" && tk(4).queue_pos === 2 && tk(2).queue_pos === null && tk(5).state === "Refused" && /Refused: P6 did not pass\. 2 of 3 voted; 0 voted yes; it needed more than half of the votes cast\./.test(d1(state, `SELECT text FROM ticket_log WHERE ticket_id = '${tk(5).id}' AND kind = 'refused'`)[0].text), J([tk(4).queue_pos, tk(5).state]));
   check("a ballot with only commissions on it ends the night with no moderator: day 4 done, day 5 open, never 'processing'", d3.status === "done" && game().day === 5 && game().phase === "open", J([d3, game()]));
   check("a refused ticket's requester paid nothing (Cy keeps the 10 points P4 gave)", score("Cy") === 10 && tk(5).paid === null);
 
