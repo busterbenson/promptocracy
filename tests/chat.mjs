@@ -387,6 +387,15 @@ try {
   check("the moderator's route needs the token; with it, calls by outcome, the month against its budget, reasons and who hit the cap", (await mod("agents?day=1", "")).status === 401 && (await mod("agents?day=1", "wrong-token-wrong-token-wrong")).status === 401 && ag.status === 200 && agj.calls.some((c) => c.outcome === "ok" && c.calls > 0) && agj.month.budget_micro === 60e6 && agj.reasons.some((r) => r.outcome === "malformed" || r.outcome === "invalid" || r.outcome === "failed") && agj.reasons.some((r) => r.outcome === "refused" && r.reason === "commission refused") && agj.players_at_cap >= 1, ag.text.slice(0, 400));
   check("it never carries a player's words, his replies, a prompt or a player id", !ag.text.includes("stone") && !ag.text.includes(WALL.slice(0, 20)) && !ag.text.includes(id.Ana) && !ag.text.includes("Lovely"));
 
+  console.log("a hand-off to Starling (rule 106.3): the line carries it, the history keeps it, nothing is written");
+  const recH = REC["handoff-rule"].message;
+  const ho = await say(Ana, recH);
+  const hj = await say(Ana, "SYNTH-HANDOFF-JUNK is this one yours?");
+  const hh = await Ana.get(CH);
+  check("a recorded answer that points to Starling comes back with handoff: starling, writes no ticket field, and the line is stored with it (the history still says it after a reload)",
+    ho.status === 200 && ho.data.out === "ok" && ho.data.messages[1].handoff === "starling" && !ho.data.messages[1].patch && hh.data.messages.find((m) => m.id === ho.data.messages[1].id)?.handoff === "starling");
+  check("a handoff to anyone else is dropped: the line has none", hj.status === 200 && hj.data.messages[1].handoff === undefined && !hh.data.messages.find((m) => m.id === hj.data.messages[1].id)?.handoff);
+
   console.log("no key: he is out (section 4.4)");
   await srv.stop();
   srv = await startSrv(false);
