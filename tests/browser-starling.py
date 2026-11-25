@@ -13,6 +13,7 @@ from playwright.sync_api import sync_playwright
 base, out, ada_cookie, bo_cookie, cy_cookie, dee_cookie, eve_cookie = sys.argv[1:8]
 host = urlparse(base).hostname
 failed = []
+ROW_H = 44
 SLUG = "shop"
 
 def check(name, ok, detail=""):
@@ -38,6 +39,15 @@ def new_page(b, w, h, scheme, cookie=None, tab="rules"):
 def sideways(page, w, name):
     sw = page.evaluate("document.documentElement.scrollWidth")
     check(f"{name}: no sideways scroll (scrollWidth {sw} <= {w})", sw <= w)
+
+def row_ok(page, w, tag):
+    # The shared row (AGENTS.md "The two chat windows are one UI"): one .ch-row in both windows, directly under the header, inside the window, the same height
+    # (tests/browser-chat.py holds the same ROW_H), its pills scrolling sideways inside it
+    rb = page.locator("#chatcol .ch-row").bounding_box(); hb = page.locator("#chatcol .ch-h").bounding_box(); cb = page.locator("#chatcol .chat").bounding_box()
+    check(f"{tag}: the row is one .ch-row, directly under the header ({rb['y']:.0f} vs {hb['y'] + hb['height']:.0f}) and inside the window", page.locator("#chatcol .ch-row").count() == 1 and abs(rb["y"] - (hb["y"] + hb["height"])) <= 1.5 and rb["x"] >= cb["x"] - 0.5 and rb["x"] + rb["width"] <= cb["x"] + cb["width"] + 0.5)
+    check(f"{tag}: the row is {ROW_H}px high, as in the other window (is {rb['height']:.1f})", abs(rb["height"] - ROW_H) <= 1.5)
+    ov = page.evaluate("getComputedStyle(document.querySelector('#chatcol .ch-row .its')).overflowX")
+    check(f"{tag}: its pills scroll sideways inside the row (overflow-x {ov}), never the page", ov in ("auto", "scroll"))
 
 # Pinned to the bottom of the browser window (Buster, day 1): the open window's header (name, Minimize or Close) is always inside the viewport and its
 # bottom edge is the viewport's bottom, whether the page behind is scrolled to its end or its top; the log scrolls inside it and the composer stays under it.
@@ -90,7 +100,8 @@ with sync_playwright() as p:
         check(f"{tag}: on the Rulebook tab her column is open beside the rules, and it is hers", mode(page) == "open" and who(page) == "starling" and vis(page, "#chatcol .chat") and text(page, "#chatcol .ch-h").startswith("Starling") and not vis(page, "#chatfab"))
         box = page.locator("#chatcol .chat").bounding_box(); rb = page.locator("#p-rules").bounding_box()
         check(f"{tag}: the window floats on the right (x {box['x']:.0f}) over the rulebook, which keeps the page's full width ({rb['width']:.0f} wide)", box["x"] > 800 and box["x"] + box["width"] <= 1280 and rb["width"] > 1100)
-        check(f"{tag}: the Today strip says 3 of 3 left (the bar's count, not a different one)", "today" in text(page, ".ch-today").lower() and "3 of 3 left" in text(page, ".ch-today"), text(page, ".ch-today"))
+        check(f"{tag}: the Today row says 3 of 3 left (the bar's count, not a different one)", "today" in text(page, ".ch-row").lower() and "3 of 3 left" in text(page, ".ch-row"), text(page, ".ch-row"))
+        row_ok(page, 1280, tag)
         q = text(page, "#chatLog .q")
         check(f"{tag}: her answer carries her quote of 103.3, the rulebook's own words, with the rule's pill", q.startswith("103.3") and "withdraw a confirmed proposal until it goes on the ballot" in q and page.locator("#chatLog .q .rpill, #chatLog .q .pill").count() >= 1, q)
         check(f"{tag}: the player's message that came from the rule card shows the card's rule", "401" in text(page, "#chatLog .msg.cme .ctx"), text(page, "#chatLog .msg.cme >> nth=-1"))
@@ -106,11 +117,11 @@ with sync_playwright() as p:
         sideways(page, 1280, f"{tag} chat open")
         if scheme == "light":
             page.click('#chatLog .slip [data-c="lock"]'); page.wait_for_selector("#chatLog .slip.locked")
-            check(f"{tag}: Lock it in: the slip is LOCKED as its P-number with 'On tomorrow's ballot' and Unlock; the Today strip says P1 and 2 of 3 left; no message was spent",
-                  "LOCKED" in text(page, "#chatLog .slip") and re.search(r"P\d", text(page, "#chatLog .slip")) and page.locator('#chatLog .slip [data-c="unlock"]').is_enabled() and re.search(r"P\d", text(page, ".ch-today")) and "2 of 3 left" in text(page, ".ch-today"), text(page, "#chatLog .slip"))
+            check(f"{tag}: Lock it in: the slip is LOCKED as its P-number with 'On tomorrow's ballot' and Unlock; the Today row says P1 and 2 of 3 left; no message was spent",
+                  "LOCKED" in text(page, "#chatLog .slip") and re.search(r"P\d", text(page, "#chatLog .slip")) and page.locator('#chatLog .slip [data-c="unlock"]').is_enabled() and re.search(r"P\d", text(page, ".ch-row")) and "2 of 3 left" in text(page, ".ch-row"), text(page, "#chatLog .slip"))
             to_book(page); shot(page, f"desktop-locked-{tag}")
             page.click('#chatLog .slip [data-c="unlock"]'); page.wait_for_function("!document.querySelector('#chatLog .slip.locked')")
-            check(f"{tag}: Unlock: the slot is free again (3 of 3 left) and the slip is a collapsed line stamped UNLOCKED", "3 of 3 left" in text(page, ".ch-today") and "UNLOCKED" in text(page, "#chatLog .slip.past"), text(page, ".ch-today"))
+            check(f"{tag}: Unlock: the slot is free again (3 of 3 left) and the slip is a collapsed line stamped UNLOCKED", "3 of 3 left" in text(page, ".ch-row") and "UNLOCKED" in text(page, "#chatLog .slip.past"), text(page, ".ch-row"))
             check(f"{tag}: the collapsed UNLOCKED slip keeps the diff (del and ins)", page.locator("#chatLog .slip.past del").count() >= 1 and page.locator("#chatLog .slip.past ins").count() >= 1, text(page, "#chatLog .slip.past"))
             to_book(page); shot(page, f"desktop-unlocked-{tag}")
         # a rule card's own button attaches the rule, and the message that follows carries it
@@ -147,7 +158,7 @@ with sync_playwright() as p:
         page.click("#chatfab"); page.wait_for_selector("#chatcol .chat"); page.wait_for_selector("#chatLog .msg"); page.wait_for_timeout(300)
         cb = page.locator("#chatcol .chat").bounding_box()
         check(f"{tag}: the pill opens a bottom sheet: full width, from under the header to the bottom edge", sheet(page) == "open" and cb["width"] == 390 and cb["y"] < 80 and cb["y"] + cb["height"] >= 840 and not vis(page, "#chatfab"))
-        check(f"{tag}: the sheet has Close, not Minimize, and the Today strip", vis(page, '#chatcol [data-c="close"]') and not vis(page, '#chatcol [data-c="min"]') and " left" in text(page, ".ch-today"))
+        check(f"{tag}: the sheet has Close, not Minimize, and the Today row", vis(page, '#chatcol [data-c="close"]') and not vis(page, '#chatcol [data-c="min"]') and " left" in text(page, ".ch-row"))
         sideways(page, 390, f"{tag} sheet")
         shot(page, f"phone-sheet-{tag}")
         lg = page.locator("#chatLog").bounding_box()
@@ -182,9 +193,9 @@ with sync_playwright() as p:
         if w < 900: page.wait_for_selector("#chatfab"); page.click("#chatfab")
         page.wait_for_selector("#chatLog .slip"); page.wait_for_timeout(300)
         slip = text(page, "#chatLog .slip:not(.past)")
-        check(f"{tag} (3 of 3): the strip says P1 P2 P3 and 3 of 3; the draft is there and Lock it in is disabled with the reason beside it", "0 of 3 left" in text(page, ".ch-today") and "Lock it in" in slip and page.locator('#chatLog .slip [data-c="lock"]').is_disabled() and "most a day" in slip, slip)
+        check(f"{tag} (3 of 3): the row says P1 P2 P3 and 3 of 3; the draft is there and Lock it in is disabled with the reason beside it", "0 of 3 left" in text(page, ".ch-row") and "Lock it in" in slip and page.locator('#chatLog .slip [data-c="lock"]').is_disabled() and "most a day" in slip, slip)
         if w >= 900: to_book(page)
-        shot(page, f"limit-{tag}"); sideways(page, w, f"{tag} limit")
+        row_ok(page, w, tag + " limit"); shot(page, f"limit-{tag}"); sideways(page, w, f"{tag} limit")
         check(f"{tag} (3 of 3): no console errors", not errors, str(errors)); c.close()
     for scheme in ["light", "dark"]:
         tag = f"390-{scheme}-empty"
