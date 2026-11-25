@@ -105,6 +105,7 @@ with sync_playwright() as p:
                 mb = box(page, "#pzone .tkstep.pr .pmenu"); row = box(page, "#pzone .tkstep.pr")
                 check(f"{tag} {k}: Propose from the panel opens its menu, as wide as the row", abs(mb["x"] - row["x"]) <= 2 and abs(mb["width"] - row["width"]) <= 2, str((mb, row)))
                 page.keyboard.press("Escape")
+                (page.click('#chatcol [data-c="min"]') if page.locator('#chatcol [data-c="min"]').is_visible() else None); page.wait_for_timeout(100)   # the open chat window floats over the day panel's right side: minimize first, as a player would
                 page.click('#pzone [data-endturn="ask"]'); page.wait_for_selector("#pzone .tkask")
                 check(f"{tag} {k}: End turn asks first, in the panel: what you skip, End turn, Keep playing", re.match(r"You skip your move(, \d+ votes?)? and your proposal\. End turn Keep playing", text(page, "#pzone .tkask")) is not None and count(page, '#pzone .tkend [data-endturn="ask"]') == 0 and page.locator('#pzone [data-endturn="yes"]').is_visible(), text(page, "#pzone .tkask"))
                 page.click('#pzone [data-endturn="no"]'); page.wait_for_selector('#pzone .tkend [data-endturn="ask"]')

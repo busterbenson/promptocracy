@@ -21,6 +21,12 @@ def check(name, ok, detail=""):
 def shot(page, name, **kw):
     if out != "-": page.screenshot(path=f"{out}/{name}.png", **kw)
 
+# Gremlin's open window floats over the page's right side, where Commission something is (the window opens on the Workshop tab): a player minimizes it
+# first, and so do the tests. On a phone there is no open window, only the pill.
+def unblock(page):
+    page.wait_for_timeout(300)
+    if page.locator('#chatcol [data-c="min"]').is_visible(): page.click('#chatcol [data-c="min"]'); page.wait_for_timeout(100)
+
 def new_page(b, w, h, scheme, logged_in=True):
     c = b.new_context(viewport={"width": w, "height": h}, device_scale_factor=1, color_scheme=scheme, has_touch=w < 500)
     if logged_in: c.add_cookies([{"name": "s", "value": cookie, "domain": host, "path": "/" + SLUG}])
@@ -77,7 +83,8 @@ with sync_playwright() as p:
     for w, h, scheme in [(1280, 900, "light"), (1280, 900, "dark"), (390, 844, "light"), (390, 844, "dark")]:
         tag = f"{w}-{scheme}"
         c, page, errors = new_page(b, w, h, scheme)
-        page.click("#tab-workshop"); page.click('[data-w="open"]'); page.wait_for_selector("#wfTitle")
+        page.click("#tab-workshop"); unblock(page)
+        page.click('[data-w="open"]'); page.wait_for_selector("#wfTitle")
         page.fill("#wfTitle", "A kite"); page.fill("#wfBrief", "A kite that flies on its own."); page.click('[data-w="addentry"]'); page.fill("#wfEn0", "Kite")
         shot(page, f"draft-dialog-top-{tag}")
         facts = {t.inner_text().strip().lower(): d.inner_text().strip() for t, d in zip(page.locator("#mroot .wkset dt").all(), page.locator("#mroot .wkset dd").all())}
@@ -90,7 +97,7 @@ with sync_playwright() as p:
         check(f"{tag}: draft dialog has no console errors", not errors, str(errors)); c.close()
     # ---- the draft form at 390 dark: opened and filled, not saved (the draft is still blank to the server)
     c, page, errors = new_page(b, 390, 844, "dark")
-    page.click("#tab-workshop"); page.click('[data-w="open"]'); page.wait_for_selector("#wfTitle")
+    page.click("#tab-workshop"); unblock(page); page.click('[data-w="open"]'); page.wait_for_selector("#wfTitle")
     check("390-dark: Commission something opens a draft ticket (W3) with the form; 'Lock it in' is disabled until Gremlin has drafted it, with the reason beside it", "W3" in text(page, "#mroot .mcard") and page.locator('[data-w="confirm"]').is_disabled() and NOT_DRAFTED in text(page, '#mroot .mcard .row:has([data-w="confirm"])'))
     shot(page, "draft-empty-390-dark")
     page.fill("#wfTitle", "A kite"); page.fill("#wfBrief", "A kite that flies on its own."); page.click('[data-w="addentry"]'); page.fill("#wfEn0", "Kite")
@@ -103,7 +110,7 @@ with sync_playwright() as p:
     check("390-dark: no console errors", not errors, str(errors)); c.close()
     # ---- commissioning, once, at 1280 light
     c, page, errors = new_page(b, 1280, 900, "light")
-    page.click("#tab-workshop"); page.click('[data-w="open"]'); page.wait_for_selector("#wfTitle")
+    page.click("#tab-workshop"); unblock(page); page.click('[data-w="open"]'); page.wait_for_selector("#wfTitle")
     check("1280-light: the blank draft is opened again (still W3)", "W3" in text(page, "#mroot .mcard"))
     shot(page, "draft-blank-1280-light")
     page.fill("#wfTitle", "A kite"); page.fill("#wfBrief", "A kite that flies on its own."); page.click('[data-w="addentry"]'); page.fill("#wfEn0", "Kite")
@@ -129,7 +136,7 @@ with sync_playwright() as p:
     check("1280-light: no console errors", not errors, str(errors)); c.close()
     # ---- discarding a blank draft (rule 801.8): the button, and the draft gone from the list
     c, page, errors = new_page(b, 390, 844, "light")
-    page.click("#tab-workshop"); page.click('[data-w="open"]'); page.wait_for_selector("#wfTitle")
+    page.click("#tab-workshop"); unblock(page); page.click('[data-w="open"]'); page.wait_for_selector("#wfTitle")
     num = re.search(r"W\d+", text(page, "#mroot .mcard")).group(0)
     shot(page, "draft-blank-discard-390-light")
     page.click('[data-w="discard"]'); page.wait_for_selector("#mroot .mcard", state="detached")

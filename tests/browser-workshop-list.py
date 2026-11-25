@@ -32,6 +32,8 @@ with sync_playwright() as p:
         page.goto(base + f"/{SLUG}/", wait_until="domcontentloaded")
         page.wait_for_selector("#scores li"); page.wait_for_selector("#tab-workshop"); page.wait_for_timeout(500)
         page.click("#tab-workshop"); page.wait_for_selector("#p-workshop .tlist")
+        page.wait_for_timeout(300)   # Gremlin's open window floats over the tab's right side (All tickets, Back): minimize it, as a player would
+        if page.locator('#chatcol [data-c="min"]').is_visible(): page.click('#chatcol [data-c="min"]'); page.wait_for_timeout(100)
         rows = page.locator("#p-workshop .trow")
         closed = page.locator('#p-workshop .trow .tstate[data-state="Done"], #p-workshop .trow .tstate[data-state="Shelved"], #p-workshop .trow .tstate[data-state="Refused"]').count()
         check(f"{tag}: the Workshop list holds the live work and only the 5 latest closed tickets (not all 65)", closed == 5 and rows.count() == 9, f"{rows.count()} rows, {closed} closed")
