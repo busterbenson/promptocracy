@@ -46,8 +46,11 @@ export function codeChecks(c, res, night) {
       const say = (turns.find((t) => t.asked_for) || turns.at(-1))?.say || "";
       out.push(chk("her line names her guesses", new RegExp(e.say_matches, "i").test(say), say.slice(0, 160)));
     }
-    if (e.refused_reason) out.push(chk(`refused for "${e.refused_reason}"`, res.refusal?.reason === e.refused_reason, res.refusal ? `${res.refusal.reason}: ${res.refusal.message}` : "no refusal"));
-    if (e.refusal_cites) out.push(chk(`refusal names ${e.refusal_cites.join(" or ")}`, !!res.refusal && e.refusal_cites.some((r) => res.refusal.message.includes(r)), res.refusal?.message?.slice(0, 160) || ""));
+    // "not wired" is the drafter's refusal when Starling asks for a draft, or Starling's own refusal to ask for one (both keep the slip empty)
+    const ownSay = turns.find((t) => !t.asked_for && /not wired|isn'?t wired|can'?t (change|draft)|won'?t draft|cannot/i.test(t.say || ""));
+    if (e.refused_reason) out.push(chk(`refused as "${e.refused_reason}" (by the drafter, or in Starling's own words)`, res.refusal?.reason === e.refused_reason || (!d && !!ownSay), res.refusal ? `${res.refusal.reason}: ${res.refusal.message}` : ownSay ? `her own line: ${ownSay.say.slice(0, 120)}` : "no refusal"));
+    if (e.no_slip) out.push(chk("no slip was made", !d, d ? d.head : ""));
+    if (e.refusal_cites) out.push(chk(`refusal names ${e.refusal_cites.join(" or ")}`, e.refusal_cites.some((r) => (res.refusal?.message || "").includes(r) || (ownSay?.say || "").includes(r)), (res.refusal?.message || ownSay?.say || "").slice(0, 160), !res.refusal));
     if (e.no_ballot_claim) {
       const claim = turns.find((t) => /(locked in|is on (tomorrow'?s|the) ballot|i('ve| have) (drafted|locked))/i.test(t.say || "") && !/(can'?t|won'?t|only you|your (own )?click|not (been )?(drafted|locked))/i.test(t.say || ""));
       out.push(chk("does not claim it is on the ballot", !claim, claim?.say?.slice(0, 160) || ""));

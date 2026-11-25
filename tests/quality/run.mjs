@@ -26,7 +26,7 @@ const flag = (name, dflt = null) => { const i = argv.indexOf(`--${name}`); retur
 const has = (name) => argv.includes(`--${name}`);
 const HOME = process.env.QUALITY_HOME || join(homedir(), "chalantbot", "logs", "promptocracy-quality");
 const REPORTS = process.env.QUALITY_REPORTS_DIR || join(homedir(), "chalantbot", "repos", "chalant-reports", "_promptocracy-e2e");
-const VERDICTS = process.env.VERDICTS_LOG || join(HOME, "verdicts.jsonl");
+const VERDICTS = process.env.E2E_VERDICTS_LOG || join(HOME, "verdicts.jsonl");
 const die = (msg, code = 2) => { console.error(msg); process.exit(code); };
 
 const doc = JSON.parse(readFileSync(join(HERE, "cases.json"), "utf8"));
