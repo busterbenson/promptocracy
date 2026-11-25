@@ -12,6 +12,8 @@
 //     rpill(num)          a rule pill for a rule number (plain text when the rulebook has none)
 //     wpill(n)            a ticket pill
 //     onTicket(page)      called with the ticket page a turn returned (the Workshop redraws its card and list)
+//     onHandoff(to, text) the button under a line that points to the other helper (rule 106.3): the page opens that window with `text`, the
+//                         player's own message, in its box, unsent; canHandoff(to) -> { allowed, reason } says whether it can be used now
 //   CHAT.sync(tab, reread)  CHAT.attach(n, {open})  CHAT.open()  CHAT.load()
 // Nothing here decides what is allowed: the server's answers (the cap, the lock, a refusal) are shown as they come.
 
@@ -24,8 +26,8 @@ const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&
 // The characters. Each portrait is a static file, /portraits/<name>.svg (symbol #p), so it is cached and not part of this script.
 // Chalant has no window of his own: his portrait sits on his escalation answers only.
 export const AGENTS = {
-  gremlin: { key: "gremlin", name: "Gremlin", path: "gremlin", tab: "workshop", cls: "gr", placeholder: "Message Gremlin", portrait: "gremlin" },
-  starling: { key: "starling", name: "Starling", path: "starling", tab: "rules", cls: "st", placeholder: "Message Starling", portrait: "starling", proposals: true,
+  gremlin: { key: "gremlin", name: "Gremlin", path: "gremlin", tab: "workshop", cls: "gr", placeholder: "Message Gremlin", portrait: "gremlin", other: "starling" },
+  starling: { key: "starling", name: "Starling", path: "starling", tab: "rules", cls: "st", placeholder: "Message Starling", portrait: "starling", proposals: true, other: "gremlin",
     // Her first line in an empty window (Buster, 2026-11-24, on day 1): an agent line, not a caption. It is never stored or sent to the model.
     greeting: "Talk to me about how you'd like to change a rule, add a new rule, or propose an action, and we'll get it submitted to be voted on tomorrow." },
 };
@@ -43,7 +45,7 @@ export const settingsLine = (settings) => Object.entries(settings || {}).map(([k
 const byDraftThenNewest = (a, b) => (b.state === "Draft") - (a.state === "Draft") || Number(b.n.slice(1)) - Number(a.n.slice(1));
 const LEFT_SHOWN = 10;   // "N left" appears in the last ten messages of the day
 
-export function createChat({ api, root, me, slug, agent = AGENTS.gremlin, rpill, wpill, onTicket, onProposals, onSlip, onNew, canNew, started = () => true }) {
+export function createChat({ api, root, me, slug, agent = AGENTS.gremlin, rpill, wpill, onTicket, onProposals, onSlip, onNew, canNew, onHandoff, canHandoff, started = () => true }) {
   const S = { slipSeq: 0, pickSeq: 0, msgs: [], next: null, state: null, tickets: [], ticket: null, scope: undefined, seq: 0, rule: null, intent: null, live: null, slips: {}, lockErr: {}, slip: null, busy: false, draft: "", err: "", sheet: false, open: true, loaded: false, loading: false, tab: "", note: "" };
   const col = root.querySelector("#chatcol"), fab = root.querySelector("#chatfab");
   const mine = () => ACTIVE === agent.key;
@@ -188,6 +190,38 @@ ${sl.kind !== "action" && (sl.after_text || sl.before_text) ? `<div class="tx cd
   }
   const rowFor = () => (agent.proposals ? todayRow() : ticketsRow());
 
+  // ---- the handoff: a line that says the ask belongs to the other helper ------------------------------------------------------
+  /** Where the newest line is the agent's and it points to the other helper (an older one, or one the player has answered since, is not offered). @rule 106.3 */
+  function handoffAt() {
+    if (!onHandoff || S.busy || !AGENTS[agent.other]) return -1;
+    const i = S.msgs.map((m) => m.role).lastIndexOf("agent");
+    const after = S.msgs.slice(i + 1).some((m) => m.role !== "event");
+    return i >= 0 && !after && S.msgs[i].handoff === agent.other ? i : -1;
+  }
+  /** What the player asked: the message the line answers. @rule 106.3 */
+  function handoffText() {
+    for (let j = handoffAt() - 1; j >= 0; j--) if (S.msgs[j].role === "player") return S.msgs[j].body;
+    return "";
+  }
+  /** "Ask Gremlin ›", or the same disabled with its reason beside it (a turn that has ended, a cap reached, a helper that can't be reached). @rule 106.3 */
+  function handoffHTML() {
+    const can = canHandoff ? canHandoff(agent.other) : { allowed: true };
+    const why = !can.allowed ? `<span class="why">${esc(can.reason || "Not available right now.")}</span>` : "";
+    return `<div class="handoff"><button type="button" class="btn ghost small" data-c="handoff"${can.allowed ? "" : " disabled"}>Ask ${esc(AGENTS[agent.other].name)} ›</button>${why}</div>`;
+  }
+  /** The button: the page opens the other window and puts the player's words in its box. Nothing is sent from here. @rule 106.3 */
+  async function handoff() {
+    if (S.busy || handoffAt() < 0) return;
+    if (canHandoff && !canHandoff(agent.other).allowed) return;
+    await onHandoff(agent.other, handoffText());
+  }
+  /** Words in the box, unsent: the player's own text there is never overwritten. @rule 106.3 */
+  function prefill(text) {
+    if (!S.draft.trim()) S.draft = String(text || "").slice(0, 2000);
+    draw(true);
+    const ta = col && col.querySelector("#chatText"); if (ta && mine()) ta.focus();
+  }
+
   // ---- the log ------------------------------------------------------------------------------------------------------------
   /** One stored line. @rule 106.3 */
   function lineHTML(m, prev) {
@@ -213,6 +247,7 @@ ${sl.kind !== "action" && (sl.after_text || sl.before_text) ? `<div class="tx cd
     S.msgs.forEach((m, i) => {
       if (m.date && m.date !== day) { day = m.date; out.push(`<div class="cday">${esc(dayLabel(m.date))}</div>`); prev = null; }
       out.push(lineHTML(m, prev));
+      if (i === handoffAt()) out.push(handoffHTML());
       if (i === at) { out.push(agent.proposals ? proposalSlipHTML() : slipHTML()); prev = null; }
       else prev = m;
     });
@@ -419,6 +454,7 @@ ${sl.kind !== "action" && (sl.after_text || sl.before_text) ? `<div class="tx cd
     else if (a === "close") { S.sheet = false; place(); }
     else if (a === "send") await hold(el, send);
     else if (a === "pick") { if (!S.busy && el.dataset.n && el.dataset.n !== S.ticket) await attach(el.dataset.n); }
+    else if (a === "handoff") await hold(el, handoff);
     else if (a === "new") { if (!S.busy && onNew) await hold(el, onNew); }
     else if (a === "detach") { S.ticket = null; S.slip = null; if (!agent.proposals) await showScope(null); draw(); }
     else if (a === "detach-rule") { S.rule = null; draw(); }
@@ -486,5 +522,5 @@ ${sl.kind !== "action" && (sl.after_text || sl.before_text) ? `<div class="tx cd
   }
   /** Can he be reached? True until the server says there is no key. @rule 106.3 */
   const ready = () => !S.state || S.state.ready !== false;
-  return { sync, attach, attachRule, attachIntent, open, load, minimize, ready, state: () => S, draw, reduced };
+  return { sync, attach, attachRule, attachIntent, open, load, minimize, ready, prefill, state: () => S, draw, reduced };
 }

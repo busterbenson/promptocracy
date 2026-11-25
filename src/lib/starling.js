@@ -6,8 +6,9 @@
 //   draft     a change the player has talked through: {kind, target, words, to}, or an action: {kind: "action", type, params}. The platform hands it to the SAME drafter every proposal
 //             goes through (src/routes/api-proposals.ts draft), so every check it has stays. She never writes into a proposal herself.
 //   escalate  something she can't settle: {category, reason}. The category is all a notification may show.
+//   handoff   "gremlin" when what the player asked for is a commission (rule 801): the chat shows a button that opens his window with the player's words, unsent (nothing else is read from it)
 // The fence: she can't confirm or withdraw anything (Lock it in and Unlock are the player's own clicks on the confirm and withdraw routes),
-// can't change a rule, and nothing in her answer but the four fields above is read. src/lib/agent.ts makes the call, src/lib/chat.js has the
+// can't change a rule, and nothing in her answer but the five fields above is read. src/lib/agent.ts makes the call, src/lib/chat.js has the
 // cap, src/routes/api-starling.ts is the route.
 import { fence, buildMessages, estimateTokens, INPUT_CAP_TOKENS, SAY_MAX, repeatsPrompt } from "./gremlin.js";
 import { KINDS, clauseText, has, normKind, ruleText } from "./proposals.js";
@@ -55,6 +56,8 @@ WHAT YOU DO.
 
 WHAT YOU CAN'T DO. Change a rule, rule on what one means, lock in or withdraw a proposal, vote, or reveal how anyone voted. If the player asks for any of those, say who does: the vote decides changes, Chalant rules, the player's own click locks in.
 
+NOT YOURS. A rule change, a new rule or an action is yours. Something to be built or drawn and added to the game (a commission) is Gremlin's, in the workshop (rule 801): don't draft it and don't try to do it. Say so in one short line in your voice and set "handoff" to "gremlin": the site gives the player a button that takes their words to him.
+
 THE ANSWER. Reply with JSON only, matching the schema.
 - "say": what you tell the player (at most ${SAY_MAX} characters, plain text, no links, no markup; rule numbers like 103.3 are fine).
 - "quotes": rule text you quote, each {"num": "103.3", "text": "the words as the rulebook has them"}: at most ${QUOTES_MAX}. Copy the words exactly, a whole sentence or clause or a piece of one; the platform checks every quote against the rulebook word for word and drops one that isn't there. Never quote from memory: copy from the rulebook below. Don't repeat a quote's words in "say"; refer to it ("Word for word:").
@@ -67,6 +70,7 @@ THE ANSWER. Reply with JSON only, matching the schema.
   kind "mark": switch a rule between unanimous and majority. target = the rule's number (a rule, not a block or a clause).
   kind "action": an action does one thing the game's rules already allow and changes no rule (rule 103.5). type = one of the ACTION TYPES below, exactly as listed. params = the type's details as a list of {"key": ..., "value": ...}, one for each detail the type lists, with the player's own values (a player by their name in the game, a number as digits). Leave out target, words and to. Ask for what is missing (which player, how many) one or two questions at a time; never fill a detail in yourself. The drafter checks every detail against the type's own rule, and the tail tells you why it refused.
   Ask what you need one or two questions at a time: which rule, which wording, which block, which player. Don't draft a guess. A new draft replaces the last one on the player's slip. Draft whenever the player has asked for a change you have the details of, unless the tail says nothing can be drafted right now. Don't announce a conflict between rules yourself: the drafter finds them, and the tail tells you what it found.
+- "handoff": leave it out, or "gremlin" as described under NOT YOURS.
 - "escalate": {"category": "conflict" | "loophole" | "ruling" | "other", "reason": one plain sentence of what you can't settle}. Use it when a player asks for an official ruling on what a rule means, when two rules really do clash, or when you see a possible loophole: you can't rule on meaning, only Chalant can. Say in "say" that you've passed it to Chalant. Don't escalate what the rulebook plainly answers.
 
 DRAFT RESULTS. If the player's last turn got a draft, the tail tells you what the drafter made (its head, its text, the rules it would conflict with) or why it refused. Describe a conflict in your own words, by number. If it refused, say why in plain words and ask what to change.
@@ -155,6 +159,7 @@ export function answerSchema() {
         required: ["kind"], additionalProperties: false,
       },
       escalate: { type: "object", properties: { category: { type: "string", enum: ESCALATION_CATEGORIES }, reason: { type: "string" } }, required: ["category", "reason"], additionalProperties: false },
+      handoff: { type: "string", enum: ["gremlin"] },
     },
     required: ["say"],
     additionalProperties: false,
@@ -238,7 +243,7 @@ export function paramsOf(raw) {
 
 /**
  * The model's answer text read into what the platform will do. `ctx`: {book, systemText}. Returns
- *   {ok: true, say, quotes: [{num, text}], dropped: [reason...], flagged: [what was logged and kept], draft: {kind, target, words, to} | {kind: "action", type, params} | null, escalate: {category, reason} | null}
+ *   {ok: true, say, quotes: [{num, text}], dropped: [reason...], flagged: [what was logged and kept], draft: {kind, target, words, to} | {kind: "action", type, params} | null, escalate: {category, reason} | null, handoff: "gremlin" | null}
  *   {ok: false, code: "malformed" | "invalid", reason}      nothing is done and the player gets a canned line
  * Unknown fields at any level are dropped (a lock, a withdraw, a vote, a rule edit: she has no such field). The draft is only SHAPED here:
  * every refusal (no such rule, scope, a setting, "not wired yet") is the drafter's own, at draft time. @rule 103.1, 106.2, 106.4
@@ -287,7 +292,9 @@ export function readStarlingAnswer(text, ctx) {
     const reason = oneLine(e.reason).slice(0, ESCALATION_REASON_MAX);
     if (reason) escalate = { category, reason }; else dropped.push("an escalation with no reason");
   }
-  return { ok: true, say, quotes, dropped, flagged, draft, escalate };
+  // the one other helper: anything but exactly "gremlin" is no handoff
+  const handoff = typeof a.handoff === "string" && a.handoff.trim().toLowerCase() === "gremlin" ? "gremlin" : null;
+  return { ok: true, say, quotes, dropped, flagged, draft, escalate, handoff };
 }
 
 // ---- the excuse call ---------------------------------------------------------------------------------------------------------------

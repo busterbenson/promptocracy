@@ -75,6 +75,8 @@ function grade(c, a, plain) {
   if (e.estimateMin !== undefined && !(p.estimate >= e.estimateMin)) f.push(`estimate ${p.estimate} is under ${e.estimateMin}`);
   if (e.noState && /\b(approved|confirmed)\b/i.test(JSON.stringify(p))) f.push("wrote a state");
   if (e.noBuiltClaim && /(?<!nothing )\b(is|has been|it's|already|now) built\b/i.test(a.say)) f.push("claimed it is built");
+  if (e.handoff && a.handoff !== e.handoff) f.push(`handoff is ${JSON.stringify(a.handoff)}, not ${JSON.stringify(e.handoff)}`);
+  if (!e.handoff && a.handoff) f.push(`handed off to ${a.handoff} but the ask is his`);
   if (a.rejected.length && !e.allowRejected) f.push(`rejected parts: ${a.rejected.join(" | ")}`);
   return f;
 }

@@ -14,12 +14,18 @@
 const HELD = new Map();   // key -> { els: Map<button, did we set its disabled?> }
 let watcher = null;
 
-/** The same button before and after a redraw has the same key: its id, else its data-* attributes, else its text. */
+/**
+ * The same button before and after a redraw has the same key: its id, else its data-* attributes, else its text.
+ * Starling's and Gremlin's windows draw the same buttons (data-c="send" with no id), so a button inside a chat window
+ * (an ancestor with data-agent) is keyed with that agent too: one window's request never holds the other's button.
+ */
 export function keyOf(el) {
   const d = el.dataset || {};
   const names = Object.keys(d).sort();
+  const win = el.closest && el.closest("[data-agent]");
+  const scope = win ? `${win.dataset.agent}|` : "";
   if (el.id) return `#${el.id}`;
-  return names.length ? JSON.stringify(names.map((k) => [k, d[k]])) : `text:${(el.textContent || "").trim()}`;
+  return scope + (names.length ? JSON.stringify(names.map((k) => [k, d[k]])) : `text:${(el.textContent || "").trim()}`);
 }
 
 function mark(h, el) {

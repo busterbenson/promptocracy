@@ -5,13 +5,14 @@
 # Starling" attaches the rule, minimize and back, remembered per agent), Gremlin still being his on the Workshop tab, the corner pill and the bottom
 # sheet at 390, 3 of 3 with the reason, the cap's closed composer, light and dark, no sideways scroll and no console errors.
 # Eve has said nothing: her window opens on Starling's greeting (an agent line, never stored).
-# Usage: browser-starling.py <base> <screenshot dir or -> <Ada's session cookie> <Bo's> <Cy's> <Dee's> <Eve's>
+# Gus's last line points to Gremlin (a commission is his): "Ask Gremlin ›" opens his window on a draft ticket with the player's message in the box, unsent. Hal's has ended his turn: the button is disabled with its reason.
+# Usage: browser-starling.py <base> <screenshot dir or -> <Ada's session cookie> <Bo's> <Cy's> <Dee's> <Eve's> <Gus's> <Hal's> <the message Gus asked Starling>
 import re, sys
 from urllib.parse import urlparse
 from playwright.sync_api import sync_playwright
 from busy_check import busy_check
 
-base, out, ada_cookie, bo_cookie, cy_cookie, dee_cookie, eve_cookie = sys.argv[1:8]
+base, out, ada_cookie, bo_cookie, cy_cookie, dee_cookie, eve_cookie, gus_cookie, hal_cookie, HO_MSG = sys.argv[1:11]
 host = urlparse(base).hostname
 failed = []
 ROW_H = 44
@@ -218,6 +219,77 @@ with sync_playwright() as p:
             pinned(page, w, h, f"{w}x{h}-{scheme} Starling", w < 900)
             shot(page, f"pinned-{w}x{h}-{scheme}")
             check(f"{w}x{h}-{scheme} Starling pinned: no console errors", not errors, str(errors)); c.close()
+
+    # ---------------- the hand-off (rule 106.3): Starling's line says the ask is Gremlin's, and "Ask Gremlin ›" opens Gremlin's window with the player's words in its box, UNSENT.
+    # Gus has the recorded answer that points to Gremlin; Hal has it too but has ended his turn, so the button is disabled with its reason beside it.
+    def handoff_open(page, w, tab):
+        page.click("#tab-" + tab)
+        if w < 900: page.wait_for_selector("#chatfab"); page.click("#chatfab")
+        page.wait_for_selector("#chatcol .chat")
+    for scheme in ["light", "dark"]:
+        for w, h in [(1280, 900), (390, 844)]:
+            tag = f"{w}-{scheme} hand-off to Gremlin"
+            c, page, errors = new_page(b, w, h, scheme, gus_cookie)
+            sent = []
+            page.on("request", lambda r: sent.append(r.method + " " + urlparse(r.url).path) if r.method == "POST" else None)
+            handoff_open(page, w, "rules")
+            page.wait_for_selector('#chatLog [data-c="handoff"]')
+            btn = page.locator('#chatLog [data-c="handoff"]')
+            check(f"{tag}: the last line has ONE button, 'Ask Gremlin ›', enabled, with no reason beside it", btn.count() == 1 and text(page, '#chatLog [data-c="handoff"]') == "Ask Gremlin ›" and btn.is_enabled() and page.locator("#chatLog .handoff .why").count() == 0, text(page, "#chatLog .handoff"))
+            bb = btn.bounding_box(); last = page.locator("#chatLog .msg.cher").last.bounding_box(); cb = page.locator("#chatcol .chat").bounding_box()
+            check(f"{tag}: it sits under the reply, inside the window (button y {bb['y']:.0f} vs the reply's bottom {last['y'] + last['height']:.0f})", bb["y"] >= last["y"] + last["height"] - 1 and bb["x"] >= cb["x"] and bb["x"] + bb["width"] <= cb["x"] + cb["width"] + 0.5)
+            check(f"{tag}: the box is empty before the tap", page.input_value("#chatText") == "")
+            shot(page, f"handoff-from-{tag.split(' ')[0]}")
+            btn.click()
+            page.wait_for_selector('#chatcol .chat[data-agent="gremlin"]')
+            page.wait_for_function("document.getElementById('chatText') && document.getElementById('chatText').value.length > 0")
+            page.wait_for_timeout(500)
+            check(f"{tag}: Gremlin's window is open on the workshop tab (the tab is selected) and it is Gremlin's", page.get_attribute("#tab-workshop", "aria-selected") == "true" and page.get_attribute("#chatcol .chat", "data-agent") == "gremlin" and (w >= 900 or sheet(page) == "open"))
+            check(f"{tag}: the player's own message is in the box, unsent", page.input_value("#chatText") == HO_MSG, page.input_value("#chatText"))
+            check(f"{tag}: nothing was sent to either chat (POSTs: {sent}), and not as a line in Gremlin's log", not [s for s in sent if "/api/chat/" in s] and page.locator("#chatLog .msg.cme").filter(has_text=HO_MSG).count() == 0)
+            tk = page.locator("#chatcol .ch-row .it[aria-pressed='true']")
+            check(f"{tag}: Gremlin's window is on a draft ticket (a blank one reused, as + New does), selected in the row: {tk.first.inner_text() if tk.count() else None}", tk.count() == 1 and "draft" in tk.first.inner_text().lower())
+            check(f"{tag}: at most one ticket was made by the tap ({[s for s in sent if '/api/tickets' in s]})", len([s for s in sent if s.endswith("/api/tickets")]) <= 1)
+            shot(page, f"handoff-to-{tag.split(' ')[0]}")
+            sideways(page, w, tag)
+            check(f"{tag}: no console errors", not errors, str(errors)); c.close()
+    # ---------------- one tap, one request is per window: Starling's Send out on a request does not hold Gremlin's Send (both draw data-c="send" with no id)
+    c, page, errors = new_page(b, 1280, 900, "light", gus_cookie)
+    posts, held = [], []
+    def hold_chat(route):
+        if route.request.method != "POST": return route.continue_()
+        posts.append(urlparse(route.request.url).path); held.append(route)   # not answered: the request stays out
+    page.route("**/api/chat/*", hold_chat)
+    handoff_open(page, 1280, "rules")
+    page.fill("#chatText", "A question for Starling"); page.click('.ch-in [data-c="send"]')
+    for _ in range(60):
+        if posts: break
+        page.wait_for_timeout(50)
+    check("busy per window: Starling's Send is out on its request", [x.split("/api/")[-1] for x in posts] == ["chat/starling"], str(posts))
+    page.click("#tab-workshop"); page.wait_for_selector('#chatcol .chat[data-agent="gremlin"]')
+    page.fill("#chatText", "A question for Gremlin")
+    check("busy per window: Gremlin's Send is enabled and not marked busy while Starling's request is out", page.evaluate("() => { const b = document.querySelector('.ch-in [data-c=\"send\"]'); return !b.disabled && !b.hasAttribute('aria-busy'); }"))
+    page.click('.ch-in [data-c="send"]', timeout=3000)
+    for _ in range(60):
+        if len(posts) > 1: break
+        page.wait_for_timeout(50)
+    check("busy per window: one POST went to Gremlin's route (and one to Starling's)", sorted(x.split("/api/")[-1] for x in posts) == ["chat/gremlin", "chat/starling"], str(posts))
+    for r in held: r.abort()
+    c.close()
+    for scheme, w, h in [("light", 1280, 900), ("dark", 390, 844)]:
+        tag = f"{w}-{scheme} hand-off disabled"
+        c, page, errors = new_page(b, w, h, scheme, hal_cookie)
+        sent = []
+        page.on("request", lambda r: sent.append(r.method + " " + urlparse(r.url).path) if r.method == "POST" else None)
+        handoff_open(page, w, "rules")
+        page.wait_for_selector('#chatLog [data-c="handoff"]')
+        btn = page.locator('#chatLog [data-c="handoff"]'); why = text(page, "#chatLog .handoff .why") if page.locator("#chatLog .handoff .why").count() else ""
+        check(f"{tag}: after End turn the button is disabled and says why beside it ({why!r})", btn.is_disabled() and len(why) > 3, why)
+        bw = page.locator("#chatLog .handoff").bounding_box(); wb = page.locator("#chatcol .chat").bounding_box()
+        check(f"{tag}: the reason sits inside the window", bw["x"] + bw["width"] <= wb["x"] + wb["width"] + 0.5)
+        check(f"{tag}: the window did not move and nothing was sent", page.get_attribute("#chatcol .chat", "data-agent") == "starling" and not sent, str(sent))
+        shot(page, f"handoff-disabled-{tag.split(' ')[0]}")
+        check(f"{tag}: no console errors", not errors, str(errors)); c.close()
     b.close()
 
 print(f"\n{'FAILED: ' + str(len(failed)) if failed else 'all ok'}")
