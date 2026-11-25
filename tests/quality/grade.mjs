@@ -24,7 +24,20 @@ export function codeChecks(c, res, night) {
   out.push(chk("no dropped quote", !dropped.length, dropped.join("; ")));
   if (res.error) return out;
   const d = res.draft, n = res.draft_count || 0;
-  if (c.agent === "starling") {
+  // ---- one helper (PLAN section 7): where the case ended, and that no turn ends in a dead end ----
+  if (e.ends_in) {
+    const got = res.opened_ticket && res.ticket && (res.ticket.title || (res.ticket.makes || []).length) ? "ticket" : res.draft ? "proposal" : res.refusal ? "refusal" : "nothing";
+    out.push(chk(`ends in ${e.ends_in}`, got === e.ends_in, `got ${got}`));
+  }
+  if (e.no_escalation) out.push(chk("no escalation", !turns.some((t) => t.escalate), turns.find((t) => t.escalate)?.escalate?.reason || ""));
+  if (e.guesses) out.push(chk("a draft on turn 1 carries a guesses line", !!turns[0]?.asked_for && !!turns[0]?.guesses, turns[0]?.guesses || "no guesses"));
+  if (e.options_on_turn !== undefined) out.push(chk(`options on turn ${e.options_on_turn}`, (turns[e.options_on_turn - 1]?.options || []).length >= 2, JSON.stringify(turns[e.options_on_turn - 1]?.options || [])));
+  if (e.no_dead_end) {
+    // every answer that stands ends with something to act on: a draft, a ticket patch with a price, or choices (a ticket turn may write "A: ... B: ...")
+    const dead = turns.filter((t) => !t.moved && !(t.outcome === "drafted" || (t.options || []).length || (t.patch && "price" in t.patch) || /\bA:[^]*\bB:/.test(t.say || "")));
+    out.push(chk("no dead end: every turn ends in a draft, a price or options", !dead.length, dead.map((t) => (t.say || "").slice(0, 90)).join(" | ")));
+  }
+  {   // the general conversation's expectations (every key is guarded: a case without them is not asked)
     if (e.drafts_max !== undefined) out.push(chk(`at most ${e.drafts_max} draft(s)`, n <= e.drafts_max, `${n} drafted`));
     if (e.draft) {
       out.push(chk("a draft was made", !!d, d ? "" : (res.refusal ? `refused: ${res.refusal.message}` : "no draft")));
@@ -44,11 +57,11 @@ export function codeChecks(c, res, night) {
     }
     if (e.say_matches) {
       const say = (turns.find((t) => t.asked_for) || turns.at(-1))?.say || "";
-      out.push(chk("her line names her guesses", new RegExp(e.say_matches, "i").test(say), say.slice(0, 160)));
+      out.push(chk("his line names his guesses", new RegExp(e.say_matches, "i").test(say), say.slice(0, 160)));
     }
-    // "not wired" is the drafter's refusal when Starling asks for a draft, or Starling's own refusal to ask for one (both keep the slip empty)
+    // "not wired" is the drafter's refusal when Gremlin asks for a draft, or his own refusal to ask for one (both keep the slip empty)
     const ownSay = turns.find((t) => !t.asked_for && /not wired|isn'?t wired|can'?t (change|draft)|won'?t draft|cannot/i.test(t.say || ""));
-    if (e.refused_reason) out.push(chk(`refused as "${e.refused_reason}" (by the drafter, or in Starling's own words)`, res.refusal?.reason === e.refused_reason || (!d && !!ownSay), res.refusal ? `${res.refusal.reason}: ${res.refusal.message}` : ownSay ? `her own line: ${ownSay.say.slice(0, 120)}` : "no refusal"));
+    if (e.refused_reason) out.push(chk(`refused as "${e.refused_reason}" (by the drafter, or in his own words)`, res.refusal?.reason === e.refused_reason || (!d && !!ownSay), res.refusal ? `${res.refusal.reason}: ${res.refusal.message}` : ownSay ? `her own line: ${ownSay.say.slice(0, 120)}` : "no refusal"));
     if (e.no_slip) out.push(chk("no slip was made", !d, d ? d.head : ""));
     if (e.refusal_cites) out.push(chk(`refusal names ${e.refusal_cites.join(" or ")}`, e.refusal_cites.some((r) => (res.refusal?.message || "").includes(r) || (ownSay?.say || "").includes(r)), (res.refusal?.message || ownSay?.say || "").slice(0, 160), !res.refusal));
     if (e.no_ballot_claim) {
@@ -57,7 +70,8 @@ export function codeChecks(c, res, night) {
     }
     if (e.action_type) out.push(chk(`action type ${e.action_type}`, d?.action?.type === e.action_type, `got ${d?.action?.type}`));
     if (e.params) for (const [k, v] of Object.entries(e.params)) out.push(chk(`action param ${k} = ${v}`, String(d?.action?.params?.[k]) === String(v), `got ${JSON.stringify(d?.action?.params?.[k])}`));
-  } else {
+  }
+  {   // a ticket's expectations
     const t = res.ticket || {}, patches = turns.map((x) => x.patch || {});
     const entries = (t.makes || []).filter((m) => m.kind === "entry");
     const refused = turns.some((x) => x.refusal);

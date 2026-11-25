@@ -11,7 +11,7 @@ const oneLine = (h) => String(h).replace(/\s*\n\s*/g, " ");
 function chatHtml(c) {
   const rows = (c.turns || []).map((t) => {
     const mark = t.outcome && t.outcome !== "said" ? `<div class="qr-ev">${esc(t.outcome)}${t.pipeline?.message ? `: ${esc(t.pipeline.message)}` : ""}${t.pipeline?.head ? `: ${esc(t.pipeline.head)}` : ""}</div>` : "";
-    return `<div class="qr-turn"><div class="qr-p"><b>Player</b> ${esc(t.player)}</div><div class="qr-a"><b>${esc(c.agent === "gremlin" ? "Gremlin" : "Starling")}</b> ${t.say == null ? `<i>${esc(t.error || "no answer")}</i>` : esc(t.say)}</div>${mark}</div>`;
+    return `<div class="qr-turn"><div class="qr-p"><b>Player</b> ${esc(t.player)}</div><div class="qr-a"><b>${esc("Gremlin")}</b> ${t.say == null ? `<i>${esc(t.error || "no answer")}</i>` : esc(t.say)}</div>${mark}</div>`;
   });
   return rows.join("");
 }

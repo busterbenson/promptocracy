@@ -69,6 +69,7 @@ export function createStub() {
     "SYNTH-G-REFUSED-THEN": { say: "Drafting it.", draft: { kind: "amend", target: "999", words: "something" } },
     "SYNTH-G-OPTIONS": { say: "Two readings.", options: ["A: replace the move", "B: add a second way to move", "A: replace the move", "C: third", "D: fourth"], guesses: "I guessed the likelier one." },
       };
+  GENERAL_SYNTH["SYNTH-C-ESC"] = SYNTH["SYNTH-C-ESC"];   // an escalation asked outside any ticket (tests/threads.mjs)
   const calls = [];                                 // every request the stub saw
   const stubState = { mode: "ok", excuse: "ok", before: null, script: [], looks: [], drafter: null, retry: null };   // looks: the answers to the next pictures shown to the model (the art check), "yes" | "no" | "500" | "garbled" | "hang"; an empty list answers yes   // script: answers for the next thread calls, in order (the browser test's natural wording)
   const stubModel = createServer(async (req, res) => {

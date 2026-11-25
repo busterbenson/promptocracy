@@ -3,7 +3,7 @@
   "cases": [
     {
       "id": "s-move-two",
-      "agent": "starling",
+      "agent": "gremlin",
       "title": "Move 2 spaces",
       "turns": [
         "I want everyone to be able to move 2 spaces a turn instead of 1."
@@ -33,11 +33,12 @@
       "known_fail": {
         "since": "2026-11-24",
         "why": "Chat: Starling's quote of the tagged clause 202.2 is dropped as 'not the rule's words' (promptocracy#111). Night: the setting-tag apply failure is fixed by promptocracy#110; once #110 is on main this case's night should apply, and only the chat check keeps it a known fail."
-      }
+      },
+      "start": "general"
     },
     {
       "id": "s-new-majority",
-      "agent": "starling",
+      "agent": "gremlin",
       "title": "New rule: nobody on 0,0",
       "turns": [
         "New rule for the board block 500: nobody can move onto the tile 1N 1E. Please draft it."
@@ -58,11 +59,12 @@
         "draft_by_turn": 2,
         "night": "any"
       },
-      "known_fail": null
+      "known_fail": null,
+      "start": "general"
     },
     {
       "id": "s-ambiguous",
-      "agent": "starling",
+      "agent": "gremlin",
       "title": "Points are boring",
       "turns": [
         "Points are boring. Fix them."
@@ -70,10 +72,9 @@
       "if_asked": [
         "Make a passed proposal worth 15 points instead of 10."
       ],
-      "intent": "Starling asks what the player wants rather than guessing; once told, one amend of 401 (or 401.1) that makes a passed proposal worth 15 points.",
+      "intent": "No outcome was named, so no guess: two or three concrete readings as options on turn 1 (and a draft once one is picked).",
       "expect": {
         "no_draft_on_turn": 1,
-        "asks_first": true,
         "draft": {
           "kind": "amend",
           "target": [
@@ -85,16 +86,18 @@
           "15"
         ],
         "drafts_max": 1,
-        "night": "applied"
+        "night": "applied",
+        "options_on_turn": 1
       },
       "known_fail": {
         "since": "2026-11-24",
         "why": "Night: rickshaw rules/rulebook.test.ts line 184 pins 401.1 at \"gets 10 points\", so any amendment of 401 fails the game repo's tests and cannot apply (run 2026-11-24-1849-night). Fix is in the game repo, not the harness."
-      }
+      },
+      "start": "general"
     },
     {
       "id": "s-action-grant",
-      "agent": "starling",
+      "agent": "gremlin",
       "title": "Give Bo 5 points",
       "turns": [
         "Give Bo 5 points for helping me out."
@@ -114,11 +117,12 @@
         "drafts_max": 1,
         "night": "n/a"
       },
-      "known_fail": null
+      "known_fail": null,
+      "start": "general"
     },
     {
       "id": "s-forbidden",
-      "agent": "starling",
+      "agent": "gremlin",
       "title": "Passwords instead of email links",
       "turns": [
         "Change sign-in so we log in with a password instead of an email link. Draft it."
@@ -134,13 +138,15 @@
         "no_ballot_claim": true,
         "drafts_max": 0,
         "night": "n/a",
-        "no_slip": true
+        "no_slip": true,
+        "no_dead_end": true
       },
-      "known_fail": null
+      "known_fail": null,
+      "start": "general"
     },
     {
       "id": "s-chalant-player",
-      "agent": "starling",
+      "agent": "gremlin",
       "title": "Add Chalant as a player",
       "turns": [
         "Add Chalant as a player. An AI joins the game through an invite like anyone else. Its notes about its own play are published every night. Any moderator ruling on its own play is flagged, and any player can appeal it within 48 hours."
@@ -165,12 +171,14 @@
         ],
         "say_matches": "guess|assum|I went with|I picked|I chose",
         "drafts_max": 1,
-        "night": "any"
+        "night": "any",
+        "no_dead_end": true
       },
       "known_fail": {
         "since": "2026-11-24",
         "why": "starling.js line 69: 'Ask what you need one or two questions at a time... Don't draft a guess.' She is told to ask, so she asks."
-      }
+      },
+      "start": "general"
     },
     {
       "id": "g-creature",
@@ -188,7 +196,8 @@
         "priceMax": 5,
         "night": "n/a"
       },
-      "known_fail": null
+      "known_fail": null,
+      "start": "ticket"
     },
     {
       "id": "g-needs-rule",
@@ -207,7 +216,8 @@
         "estimateMin": 1,
         "night": "n/a"
       },
-      "known_fail": null
+      "known_fail": null,
+      "start": "ticket"
     },
     {
       "id": "g-forbidden",
@@ -225,6 +235,120 @@
           "802.2"
         ],
         "night": "n/a"
+      },
+      "known_fail": null,
+      "start": "ticket"
+    },
+    {
+      "id": "g-rule-in-window",
+      "agent": "gremlin",
+      "start": "general",
+      "title": "A rule change typed into his window",
+      "turns": [
+        "Let's make it so you lose a heart if you end your turn in the water."
+      ],
+      "if_asked": [
+        "Yes, that. One heart, every time."
+      ],
+      "intent": "A rule-change draft (add or add a clause), not a ticket and not an escalation, on turn 1.",
+      "expect": {
+        "ends_in": "proposal",
+        "draft": {
+          "kind": [
+            "add",
+            "addclause"
+          ]
+        },
+        "no_escalation": true,
+        "drafts_max": 1,
+        "draft_by_turn": 1,
+        "no_dead_end": true
+      },
+      "known_fail": null
+    },
+    {
+      "id": "g-commission-from-general",
+      "agent": "gremlin",
+      "start": "general",
+      "title": "A commission asked in the general conversation",
+      "turns": [
+        "I want a lighthouse on the coast that lights up the tiles around it."
+      ],
+      "if_asked": [],
+      "intent": "He sets a commission: a ticket is opened and drafted (a rule item or needsBuild, a price), and no proposal slip is made.",
+      "expect": {
+        "ends_in": "ticket",
+        "drafts_max": 0,
+        "needsBuildOrRule": true,
+        "priceMin": 1,
+        "no_escalation": true
+      },
+      "known_fail": null
+    },
+    {
+      "id": "c-fart-202",
+      "agent": "gremlin",
+      "start": "general",
+      "title": "Christin's fart rule conflicts with 202.2",
+      "turns": [
+        "Players can fart at any time. Replace the one-step move: instead a player's piece moves one step and leaves a smelly square behind, and nobody may step on a smelly square."
+      ],
+      "if_asked": [],
+      "intent": "An amendment to 202.2 (or 202) drafted at once, not an escalation; the answer says what it needs and offers the smelly tiles alone as an option. (Christin's own three Starling lines were not available to the builder: this paraphrases her request.)",
+      "expect": {
+        "draft": {
+          "kind": "amend",
+          "target": [
+            "202.2",
+            "202"
+          ]
+        },
+        "no_escalation": true,
+        "no_dead_end": true,
+        "draft_by_turn": 1
+      },
+      "known_fail": null
+    },
+    {
+      "id": "g-multipart-one-draft",
+      "agent": "gremlin",
+      "start": "general",
+      "title": "A multi-part change gets one draft",
+      "turns": [
+        "Ghosts should be able to vote, but only on proposals about Ghosts, and their vote counts half."
+      ],
+      "if_asked": [],
+      "intent": "ONE draft on turn 1 with a guesses line, at most one question (as options), not a questionnaire.",
+      "expect": {
+        "drafts_max": 1,
+        "draft_by_turn": 1,
+        "guesses": true,
+        "no_dead_end": true,
+        "no_escalation": true
+      },
+      "known_fail": null
+    },
+    {
+      "id": "g-rule-on-ticket",
+      "agent": "gremlin",
+      "start": "ticket",
+      "title": "A rule change asked on a ticket",
+      "turns": [
+        "A small brass bell that rings when you step on it.",
+        "Also, change the rule so proposals are worth 15 points."
+      ],
+      "if_asked": [],
+      "intent": "The commission continues on the ticket, and the second message (a rule change, not part of it) is moved to the general conversation and drafted there.",
+      "expect": {
+        "ends_in": "proposal",
+        "draft": {
+          "kind": "amend",
+          "target": [
+            "401",
+            "401.1"
+          ]
+        },
+        "no_escalation": true
       },
       "known_fail": null
     }
