@@ -207,6 +207,17 @@ with sync_playwright() as p:
         page.wait_for_selector("#chatLog .slip"); page.wait_for_timeout(300)
         lg = page.locator("#chatLog").bounding_box(); sl = page.locator("#chatLog .slip").bounding_box()
         check(f"{tag}: the sheet opens scrolled to the end: the slip is inside the log's visible area", sl["y"] >= lg["y"] - 1 and sl["y"] + sl["height"] <= lg["y"] + lg["height"] + 1, f"log {lg}, slip {sl}, scroll {page.evaluate('(() => { const l = document.getElementById(`chatLog`); return [l.scrollTop, l.scrollHeight, l.clientHeight]; })()')}")
+        if scheme == "light":
+            # a new message keeps the log at the end even when the browser applies a scroll late (iOS did: every message jumped the
+            # log to the top). Here every scrollTop write on the log lands 120 ms late, then a message is sent and answered.
+            page.evaluate("""() => { const d = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollTop');
+              Object.defineProperty(Element.prototype, 'scrollTop', { configurable: true, get() { return d.get.call(this); },
+                set(v) { if (this.id === 'chatLog') { const el = this; setTimeout(() => d.set.call(el, v), 120); } else d.set.call(this, v); } }); }""")
+            n0 = msgs(page)
+            page.fill("#chatText", "can a Ghost commission something?"); page.click('#chatcol [data-c="send"]')
+            page.wait_for_function(f"document.querySelectorAll('#chatLog .msg').length >= {n0 + 2}"); page.wait_for_timeout(600)
+            gap = page.evaluate("(() => { const l = document.getElementById('chatLog'); return l.scrollHeight - l.scrollTop - l.clientHeight; })()")
+            check(f"{tag}: after a message and its answer the log is at the end, even with late scrolls (gap {gap:.0f}px)", gap < 80, str(gap))
         shot(page, f"phone-sheet-{tag}")
         sideways(page, 390, f"{tag} sheet")
         fits(page, 390, 844, f"{tag} Gremlin sheet")
