@@ -128,6 +128,8 @@ try {
   const before = lines().length;
   await cron(); await cron();
   check("the cron run again writes no line twice", lines().length === before, `${before} -> ${lines().length}`);
+  const enactedLine = lines().find((l) => l.kind === "enacted");
+  check("the enacted line says the rule and the revision the proposal stored", !!enactedLine && JSON.parse(enactedLine.args).rule === 401 && JSON.parse(enactedLine.args).rev === d1(state, `SELECT rev FROM proposals WHERE game_id = '${gid}' AND number = 1`)[0].rev && JSON.parse(enactedLine.args).commit === SHA && JSON.parse(enactedLine.args).seq === 1, enactedLine?.args);
   check("P1 is in the rules and P4 was sent back, both written", lines().some((l) => l.kind === "enacted" && /^P1 is in the rules: rule 401, revision 1\.$/.test(l.text)) && lines().some((l) => l.kind === "not_applied" && /^P4 was not applied: /.test(l.text)), J(lines().filter((l) => ["enacted", "not_applied"].includes(l.kind)).map((l) => l.text)));
 
   console.log("the nights go on: creatures appear, step, bite and rest; players die");

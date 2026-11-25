@@ -273,7 +273,8 @@ export async function enactStatements(env: Env, game: any, n: number, nowMs: num
   const stillPassed = "EXISTS (SELECT 1 FROM proposals WHERE id = ? AND status = 'passed')";
   // The revision each enacted rule change gets, worked out as the UPDATE below does (1 + the changes enacted on that rule before), so the history line can say it.
   /** @rule 107.2 */
-  const ruleOf = (q: any) => { const r = Math.trunc(Number(q.kind === "add" ? q.new_num : q.target)); return Number.isFinite(r) ? r : null; };
+  // (SQL's CAST AS INTEGER: NULL stays NULL, the leading whole number of a text, 0 when there is none.)
+  const ruleOf = (q: any): number | null => { const v = q.kind === "add" ? q.new_num : q.target; if (v == null) return null; const m = /^\s*[+-]?\d+/.exec(String(v)); return m ? parseInt(m[0], 10) : 0; };
   const revs = new Map<number | null, number>();
   for (const r of (await env.DB.prepare("SELECT CAST(CASE WHEN kind = 'add' THEN new_num ELSE target END AS INTEGER) AS rule, COUNT(*) AS n FROM proposals WHERE game_id = ? AND status = 'enacted' AND kind != 'action' GROUP BY 1").bind(game.id).all()).results as any[]) revs.set(r.rule, r.n);
   const running: Record<string, number> = { ...before };
