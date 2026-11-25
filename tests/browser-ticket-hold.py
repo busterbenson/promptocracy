@@ -74,6 +74,9 @@ with sync_playwright() as p:
             shot(page, f"cancel-asks-{tag}")
             page.click('#mroot [data-w="keep"]')
             check(f"{tag}: No takes the question back, the ticket is untouched", text(page, "#mroot [data-w-hold]") == "Put on hold Cancel" and pill(page) == "Ready")
+            page.click('#mroot [data-w="askcancel"]'); page.wait_for_selector('#mroot [data-w="cancel"]')
+            page.keyboard.press("Escape"); page.wait_for_selector("#mroot", state="hidden"); open_ticket(page, "W1")
+            check(f"{tag}: closing the card with the question showing and opening it again does not bring the question back", text(page, "#mroot [data-w-hold]") == "Put on hold Cancel" and page.locator('#mroot [data-w="cancel"]').count() == 0)
             if tag == "390-light":
                 busy_check(page, check, "390-light busy Put on hold", '#mroot [data-w="hold"]', "**/api/tickets/*/hold", shot=lambda l: shot(page, "busy-hold-390-light"), errors=errors)
             page.click('#mroot [data-w="hold"]'); page.wait_for_function("document.querySelector('#mroot .mpill').textContent.trim() === 'On hold'")

@@ -219,7 +219,7 @@ export function registerTools(server: McpServer, ctx: Ctx, player: Player) {
   });
 
   server.registerTool("cancel_ticket", {
-    description: "Cancel a ticket of yours while it is Ready or on hold (rule 801.10): nothing is paid and it isn't built. It closes as Shelved and can't be reopened. Only your own ticket. Not during the midnight lock.",
+    description: "Cancel a ticket of yours while it is Ready or on hold (rule 801.10): nothing is paid and the ticket closes, as Shelved; it can't be reopened. Only your own ticket. Not during the midnight lock.",
     inputSchema: { ticket: z.string().describe("The ticket, like \"W3\"") },
     annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
   }, async ({ ticket }) => {

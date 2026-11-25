@@ -2,7 +2,7 @@
 // A real `wrangler dev` on a throwaway LOCAL D1 with the clock under the test's control, and the night run by the cron. Tickets are
 // seeded straight into the table in the state the count leaves them (Ready, unpaid); the routes, the MCP tools and the night are real.
 // Run: node tests/ticket-hold.mjs   (migration 0022 is the nullable column checked first; the table is not rebuilt)
-import { HOLD_SQL, HELD, SHOWN_STATES, STATES, shownState, shownWhere } from "../src/lib/tickets.js";
+import { CANCEL_SQL, HOLD_SQL, RESUME_SQL, HELD, readyStatements, SHOWN_STATES, STATES, shownState, shownWhere } from "../src/lib/tickets.js";
 import { lockOpenBinds } from "../src/lib/day-gate.js";
 import { client, connect, createGame, d1, join, migrate, newState, freePort, startRulesStub, startServer, tool } from "./lib.mjs";
 
@@ -133,6 +133,16 @@ try {
     const before = tk(3).held_at;
     check("the write's own guard: HOLD_SQL lands before midnight, not after it and not while the game is flagged locked", after === null && flagged === null && before === "2026-11-10T00:00:00.000Z", J([after, flagged, before]));
     d1(state, `UPDATE tickets SET held_at = NULL WHERE id = 'hd-t3'`);
+    // the same edge for resume and cancel: the lock is in each write, not only in HOLD_SQL
+    d1(state, `UPDATE tickets SET held_at = '2026-11-10T00:00:00.000Z' WHERE id = 'hd-t3'`);
+    const resumeAt = (nowMs, flag) => { if (flag) d1(state, `UPDATE games SET phase = 'locked' WHERE id = '${gid}'`); d1(state, edge(RESUME_SQL, ["2026-11-10T00:00:01.000Z", "hd-t3", id.Bo], nowMs)); if (flag) d1(state, `UPDATE games SET phase = 'open' WHERE id = '${gid}'`); return tk(3).held_at; };
+    const rAfter = resumeAt(ends + 1000, false), rFlag = resumeAt(ends - 60_000, true), rBefore = resumeAt(ends - 60_000, false);
+    check("the write's own guard: RESUME_SQL lands before midnight, not after it and not while the game is flagged locked", rAfter !== null && rFlag !== null && rBefore === null, J([rAfter, rFlag, rBefore]));
+    seed(10, "Cy", "Ready", { price: 6 });
+    const cancelAt = (nowMs, flag) => { if (flag) d1(state, `UPDATE games SET phase = 'locked' WHERE id = '${gid}'`); d1(state, edge(CANCEL_SQL, ["2026-11-10T00:00:02.000Z", "2026-11-10T00:00:02.000Z", "hd-t10", id.Cy], nowMs)); if (flag) d1(state, `UPDATE games SET phase = 'open' WHERE id = '${gid}'`); return tk(10).state; };
+    const cAfter = cancelAt(ends + 1000, false), cFlag = cancelAt(ends - 60_000, true), cBefore = cancelAt(ends - 60_000, false);
+    check("the write's own guard: CANCEL_SQL lands before midnight, not after it and not while the game is flagged locked", cAfter === "Ready" && cFlag === "Ready" && cBefore === "Shelved", J([cAfter, cFlag, cBefore]));
+    d1(state, `DELETE FROM ticket_log WHERE ticket_id = 'hd-t10'; DELETE FROM tickets WHERE id = 'hd-t10'`);
     dev("clock", "2026-11-10T19:00:00.000Z");
     const over = (d1(state, `UPDATE games SET status = 'over' WHERE id = '${gid}'`), await Ana.post(`${T}/W1/resume`, {}));
     d1(state, `UPDATE games SET status = 'playing' WHERE id = '${gid}'`);
@@ -163,6 +173,23 @@ try {
       d1(state, `SELECT COUNT(*) AS n FROM ticket_log WHERE ticket_id = 'hd-t1' AND kind = 'approved'`)[0].n === 1 && d1(state, `SELECT COUNT(*) AS n FROM notifications WHERE game_id = '${gid}' AND kind = 'commission_approved' AND body LIKE 'A commission W1 %'`)[0].n === 3);
     await midnight();
     check("nothing is charged twice on a later night", score("Ana") === 15 && tk(1).paid === 5);
+  }
+
+  console.log("801.9: the count's own statements skip a ticket put on hold after the ids were read");
+  {
+    // readyStatements is what the night runs for the Ready tickets it read just before; a hold that lands in between must not be paid over.
+    seed(11, "Ana", "Ready", { price: 1, held_at: "2026-11-10T00:00:00.000Z" });
+    setScore("Ana", 20);
+    const fake = { prepare: (sql) => ({ bind: (...b) => ({ sql, b }) }) };
+    const lit = (v) => (typeof v === "number" ? String(v) : `'${String(v).replace(/'/g, "''")}'`);
+    const runAll = () => { const now = "2026-11-12T08:00:00.000Z"; for (const st of readyStatements(fake, { id: gid, slug: "hd" }, ["hd-t11"], 3, now)) { let i = 0; d1(state, st.sql.replace(/\?/g, () => lit(st.b[i++]))); } };
+    runAll();
+    check("a held ticket whose requester can pay: the statements leave it Ready, unpaid, unqueued, with no log line and her points whole", tk(11).state === "Ready" && tk(11).paid === null && tk(11).queue_pos === null && logs(11).length === 0 && score("Ana") === 20, J(tk(11)));
+    d1(state, `UPDATE tickets SET held_at = NULL WHERE id = 'hd-t11'`);
+    runAll();
+    check("the same ticket not on hold is paid by the same statements (so the check above discriminates): Approved, 1 point taken", tk(11).state === "Approved" && tk(11).paid === 1 && score("Ana") === 19, J(tk(11)));
+    d1(state, `DELETE FROM ticket_log WHERE ticket_id = 'hd-t11'; DELETE FROM tickets WHERE id = 'hd-t11'`);   // out of the way of the sections below
+    setScore("Ana", 15);
   }
 
   console.log("801.10: cancel a Ready or on-hold ticket");

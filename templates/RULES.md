@@ -318,7 +318,7 @@ that a move onto it would chart (rule 504.1) is already charted.
 
 **801.9** You can put your Ready commission on hold, and take it off hold. While it's on hold it isn't paid and doesn't join the queue.
 
-**801.10** You can cancel your commission while it's Ready or on hold. Nothing is paid and it isn't built.
+**801.10** You can cancel your commission while it's Ready or on hold. Nothing is paid, and the ticket closes.
 
 ### 802 Limits [m]
 **802.1** Nothing the workshop builds can share players' private information, weaken the site's security, break the law, or reach outside this game.

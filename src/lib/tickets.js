@@ -189,7 +189,7 @@ export const EDIT_GUARD = `id = ? AND state = 'Draft' AND player_id = ? AND prop
 // write, the link to its old proposal and its place in the queue cleared. Nothing is refunded or charged. Binds: updated_at, ticket
 // id, player id, then dayOpenBinds.
 /** @rule 801.5, 107.1, 202.4 */
-export const REOPEN_SQL = `UPDATE tickets SET state = 'Draft', proposal_id = NULL, queue_pos = NULL, proposed_at = NULL, approved_at = NULL, decided_at = NULL, updated_at = ?
+export const REOPEN_SQL = `UPDATE tickets SET state = 'Draft', proposal_id = NULL, queue_pos = NULL, proposed_at = NULL, approved_at = NULL, decided_at = NULL, held_at = NULL, updated_at = ?
   WHERE id = ? AND player_id = ? AND state IN ('Refused', 'Failed') AND EXISTS (SELECT 1 FROM games g WHERE g.id = tickets.game_id AND ${dayOpenSql})`;
 // Settling a confirm that died (rule 801.1): clear the ticket's link to its stray draft proposal, only while that proposal is still a
 // draft IN THIS WRITE (the original confirm may land after the route read it). Binds: updated_at, ticket id, proposal id, proposal id.

@@ -74,7 +74,7 @@ export function createWorkshop({ api, me, pill, rpill, when, canCommission, refr
 
   /** @rule 801.2 */
   async function open(n, push) {
-    S.err = ""; S.note = "";
+    S.err = ""; S.note = ""; S.askCancel = "";   // a card opens without Cancel's question showing
     S.detail[n] = S.detail[n] || null;   // a card with its name and nothing else until the page arrives
     cards.open({ kind: "ticket", key: n }, { push: !!push });
     await loadOne(n);
