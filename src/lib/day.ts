@@ -180,11 +180,12 @@ export async function countBallot(env: Env, game: any, day: DayRow, nowMs: numbe
     const t = tally({ mark: q.mark, electorate: electors.length, electors, votes: votes.filter((v) => v.proposal_id === q.id), needed: q.needed, champion: !!q.champion, proposer: q.player_id });
     return { q, t };
   });
-  // History (rule 101.2): every vote cast or changed, in the order cast, then each proposal's count. Votes are hidden until now (rule 104.4), so these
+  // History (rule 101.2): every vote cast or changed, in the order it was stored (vote_events.id: a request's `at` is taken before its
+  // reads, so two overlapping requests can land in the other order), then each proposal's count. Votes are hidden until now (rule 104.4), so these
   // lines are written here, in the count's own batch, never when the vote is cast. Each carries the count's guard: its proposal was counted by THIS run.
   const names = new Map(((await env.DB.prepare("SELECT id, display_name, color FROM players WHERE game_id = ?").bind(game.id).all()).results as any[]).map((p) => [p.id, who(p.display_name, p.color)]));
   const numberOf = new Map(items.map((q) => [q.id, q.number]));
-  const cast = items.length ? ((await env.DB.prepare("SELECT proposal_id, player_id, vote, at FROM vote_events WHERE game_id = ? AND day = ? ORDER BY at, id").bind(game.id, day.n).all()).results as any[]).filter((v) => numberOf.has(v.proposal_id)) : [];
+  const cast = items.length ? ((await env.DB.prepare("SELECT proposal_id, player_id, vote, at FROM vote_events WHERE game_id = ? AND day = ? ORDER BY id").bind(game.id, day.n).all()).results as any[]).filter((v) => numberOf.has(v.proposal_id)) : [];
   const seenVote = new Set<string>();
   const countedBy = "EXISTS (SELECT 1 FROM proposals WHERE id = ? AND status <> 'on_ballot' AND decided_at = ?)";
   const lineSql = (guard: string) => `INSERT INTO events (game_id, kind, text, created_at, day, phase, template, args, player_id, night_seq)

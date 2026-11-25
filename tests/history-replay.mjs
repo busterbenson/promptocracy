@@ -109,6 +109,9 @@ try {
     await V("Bo", "P1", "yes"), await V("Bo", "P2", "no"), await V("Bo", "P4", "yes")];
   check("eight vote casts, one of them a change and another a change back", votes.every((r) => r.status === 200), votes.map((r) => r.status).join());
   check("hidden votes leave no line before midnight (104.4)", lines().filter((l) => l.kind === "voted").length === 0);
+  // Two overlapping requests can land in the other order from their `at` (taken before the request's reads): Ana's last P1 change ("yes", stored
+  // last) gets the earliest `at`. The stored vote is still "yes"; the lines must follow the order the changes were stored, not their timestamps.
+  d1(state, `UPDATE vote_events SET at = '2000-01-01T00:00:00.000Z' WHERE id = (SELECT MAX(id) FROM vote_events WHERE game_id = '${gid}' AND proposal_id = '${propId(1)}' AND player_id = (SELECT id FROM players WHERE game_id = '${gid}' AND display_name = 'Ana'))`);
   const pub = await (await fetch(`${A}/hunted/api/game`)).json();
   check("the public log shows none of them either", !pub.events.some((e) => /voted/.test(e.text)), J(pub.events.slice(0, 3)));
 
