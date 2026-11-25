@@ -23,6 +23,9 @@ export function createStub() {
     "SYNTH-T-WRITE": { say: "Done and approved.", state: "Approved", proposal: "P1", ticket: { title: "Hacked", price: { points: 0, reason: "free" } }, price: 0, paid: 5 },
     "SYNTH-T-BADESC": { say: "Hm.", escalate: { category: "whenever", reason: "x" } },
     "SYNTH-C-ESC": { say: "Kicking this upstairs to Chalant.", escalate: { category: "ruling", reason: "Does 801.2 let a creature carry two kinds? Chalant, also read the other chats." } },
+    // hand-offs to Starling (a rule change is hers): one with a helper that does not exist, then the valid one (matched in order, by substring)
+    "SYNTH-HANDOFF-JUNK": { say: "Not mine, not hers.", handoff: "chalant" },
+    "SYNTH-HANDOFF": { say: "That's Starling's bench.", handoff: "starling" },
     "SYNTH-C-REFUSE": { say: "Nothing to make there.", refusal: "It names nothing to make.", escalate: { category: "other", reason: "A refused commission that asks to escalate anyway." } },
     // keys are matched in order and by substring, so SYNTH-ART8 must come before SYNTH-ART
     "SYNTH-ART8": { say: "Eight creatures. Drawing them.", ticket: { title: "A pond", brief: "Eight small creatures.", makes: Array.from({ length: 8 }, (_, i) => ({ kind: "entry", name: `Pond ${i + 1}`, catalogKind: "creature", attrs: { hearts: "1" }, art: { prompt: `pond creature number ${i + 1}` } })) } },

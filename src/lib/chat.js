@@ -71,6 +71,7 @@ export function rowView(r) {
   if (meta.quotes) out.quotes = meta.quotes;                // Starling: rule text she quoted, each checked against the rulebook
   if (meta.refused) out.refused = meta.refused;             // Starling: the drafter said no, with its reason
   if (meta.escalated) out.escalated = meta.escalated;
+  if (meta.handoff === "gremlin" || meta.handoff === "starling") out.handoff = meta.handoff;   // the other helper this line points the player to
   return out;
 }
 // One page of a player's own history, newest rows first by id; `before` is the cursor (an id). Only this player's rows with this agent.

@@ -207,5 +207,16 @@
       "cache_read_input_tokens": 9130
     },
     "recorded_at": "2026-11-21"
+  },
+  "h-commission": {
+    "message": "make me a dragon that guards the pond",
+    "text": "{\"say\":\"A dragon that guards the pond! Ooh, fancy. But a new creature is something to be built and drawn, so it's a commission, and that's Gremlin's workshop (801). Tap the button and he'll take your words from here.\",\"handoff\":\"gremlin\"}",
+    "usage": {
+      "input_tokens": 81,
+      "output_tokens": 91,
+      "cache_creation_input_tokens": 10901,
+      "cache_read_input_tokens": 0
+    },
+    "recorded_at": "2026-11-25"
   }
 }

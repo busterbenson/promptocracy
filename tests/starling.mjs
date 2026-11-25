@@ -109,10 +109,15 @@ console.log("her answer: what the platform keeps");
   check("words over 2000 characters are no draft (the drafter would refuse them anyway)", ok({ say: "x", draft: { kind: "amend", target: "401", words: "w".repeat(2001) } })?.draft === null);
   const nasty = ok({ say: "Locked!", lock: true, confirm: "P1", withdraw: "P2", vote: "yes", state: "Approved", proposal: "P1", draft: { kind: "amend", target: "401", words: "w", lock: true, confirm: true, proposal_id: "x" } });
   check("a lock, a confirm, a withdraw, a vote or a state in her answer is not a field she has: nothing of it survives, whatever her words said",
-    nasty && J(Object.keys(nasty).sort()) === J(["dropped", "draft", "escalate", "flagged", "ok", "quotes", "say"].sort()) && J(Object.keys(nasty.draft).sort()) === J(["kind", "target", "to", "words"]) && !J(nasty).match(/Approved|P1|confirm|withdraw/));
+    nasty && J(Object.keys(nasty).sort()) === J(["dropped", "draft", "escalate", "flagged", "handoff", "ok", "quotes", "say"].sort()) && J(Object.keys(nasty.draft).sort()) === J(["kind", "target", "to", "words"]) && !J(nasty).match(/Approved|P1|confirm|withdraw/));
 
   const e = ok({ say: "x", escalate: { category: "ruling", reason: "Does ending my turn stop a withdrawal?" } });
   check("an escalation is a category from the fixed list and a reason", e && J(e.escalate) === J({ category: "ruling", reason: "Does ending my turn stop a withdrawal?" }));
+  check("a handoff is read only as the word gremlin (any case, spaces round it); anything else (another helper, none, a boolean, an object, a list) is no handoff, and she has none unless she says it",
+    ok({ say: "x", handoff: "gremlin" }).handoff === "gremlin" && ok({ say: "x", handoff: " Gremlin " }).handoff === "gremlin" && ok({ say: "x" }).handoff === null
+    && ["chalant", "starling", "none", "", true, 1, { to: "gremlin" }, ["gremlin"], null].every((v) => ok({ say: "x", handoff: v }).handoff === null));
+  check("the schema offers handoff as gremlin and nothing else, optional; the prompt tells her whose a commission is",
+    J(S.answerSchema().properties.handoff) === J({ type: "string", enum: ["gremlin"] }) && !S.answerSchema().required.includes("handoff") && /NOT YOURS[^]*"handoff" to "gremlin"/.test(S.systemStatic()));
   check("a category that is not on the list becomes 'other'; no reason is no escalation; a reason over 300 characters is cut", ok({ say: "x", escalate: { category: "mutiny", reason: "r" } })?.escalate.category === "other" && ok({ say: "x", escalate: { category: "ruling", reason: "  " } })?.escalate === null && ok({ say: "x", escalate: { category: "ruling", reason: "r".repeat(400) } })?.escalate.reason.length === 300);
 
   check("not JSON, not an object, and no 'say' are malformed (a canned line, nothing done); fenced JSON is read", read("sorry").code === "malformed" && read("[1]").code === "malformed" && read({ quotes: [] }).code === "malformed" && read("```json\n" + J({ say: "hi" }) + "\n```").ok === true);

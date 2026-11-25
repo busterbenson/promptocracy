@@ -103,9 +103,9 @@ under rule 101 or 102; a follow-up change claims them and moves `src/` into the 
 
 ## src/lib/gremlin.js (3)
 
-- line 309: `def`
-- line 354: `readGremlinAnswer`
-- line 489: `clip`
+- line 313: `def`
+- line 358: `readGremlinAnswer`
+- line 495: `clip`
 
 ## src/lib/history.js (1)
 
@@ -175,8 +175,8 @@ under rule 101 or 102; a follow-up change claims them and moves `src/` into the 
 
 ## src/lib/starling.js (2)
 
-- line 100: `detail`
-- line 228: `put`
+- line 104: `detail`
+- line 233: `put`
 
 ## src/lib/tickets.js (1)
 
