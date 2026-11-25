@@ -10,6 +10,7 @@
 import re, sys
 from urllib.parse import urlparse
 from playwright.sync_api import sync_playwright
+from busy_check import busy_check
 
 base, out, ada_cookie, bo_cookie, cy_cookie, dee_cookie, eve_cookie, gus_cookie, hal_cookie, HO_MSG = sys.argv[1:11]
 host = urlparse(base).hostname
@@ -117,10 +118,13 @@ with sync_playwright() as p:
         to_book(page); shot(page, f"desktop-draft-{tag}")
         sideways(page, 1280, f"{tag} chat open")
         if scheme == "light":
+            # one tap, one request: the chat's Lock it in (AGENTS.md: Gremlin's window is the same UI, tests/browser-chat.py holds the same check for his + New)
+            busy_check(page, check, f"{tag} busy Lock it in (Starling's slip)", '#chatLog .slip [data-c="lock"]', "**/api/proposals/*/confirm", shot=lambda l: shot(page, f"busy-lock-{tag}"), errors=errors)
             page.click('#chatLog .slip [data-c="lock"]'); page.wait_for_selector("#chatLog .slip.locked")
             check(f"{tag}: Lock it in: the slip is LOCKED as its P-number with 'On tomorrow's ballot' and Unlock; the Today row says P1 and 2 of 3 left; no message was spent",
                   "LOCKED" in text(page, "#chatLog .slip") and re.search(r"P\d", text(page, "#chatLog .slip")) and page.locator('#chatLog .slip [data-c="unlock"]').is_enabled() and re.search(r"P\d", text(page, ".ch-row")) and "2 of 3 left" in text(page, ".ch-row"), text(page, "#chatLog .slip"))
             to_book(page); shot(page, f"desktop-locked-{tag}")
+            busy_check(page, check, f"{tag} busy Unlock (Starling's slip)", '#chatLog .slip [data-c="unlock"]', "**/api/proposals/*/withdraw", errors=errors)
             page.click('#chatLog .slip [data-c="unlock"]'); page.wait_for_function("!document.querySelector('#chatLog .slip.locked')")
             check(f"{tag}: Unlock: the slot is free again (3 of 3 left) and the slip is a collapsed line stamped UNLOCKED", "3 of 3 left" in text(page, ".ch-row") and "UNLOCKED" in text(page, "#chatLog .slip.past"), text(page, ".ch-row"))
             check(f"{tag}: the collapsed UNLOCKED slip keeps the diff (del and ins)", page.locator("#chatLog .slip.past del").count() >= 1 and page.locator("#chatLog .slip.past ins").count() >= 1, text(page, "#chatLog .slip.past"))
@@ -249,6 +253,29 @@ with sync_playwright() as p:
             shot(page, f"handoff-to-{tag.split(' ')[0]}")
             sideways(page, w, tag)
             check(f"{tag}: no console errors", not errors, str(errors)); c.close()
+    # ---------------- one tap, one request is per window: Starling's Send out on a request does not hold Gremlin's Send (both draw data-c="send" with no id)
+    c, page, errors = new_page(b, 1280, 900, "light", gus_cookie)
+    posts, held = [], []
+    def hold_chat(route):
+        if route.request.method != "POST": return route.continue_()
+        posts.append(urlparse(route.request.url).path); held.append(route)   # not answered: the request stays out
+    page.route("**/api/chat/*", hold_chat)
+    handoff_open(page, 1280, "rules")
+    page.fill("#chatText", "A question for Starling"); page.click('.ch-in [data-c="send"]')
+    for _ in range(60):
+        if posts: break
+        page.wait_for_timeout(50)
+    check("busy per window: Starling's Send is out on its request", [x.split("/api/")[-1] for x in posts] == ["chat/starling"], str(posts))
+    page.click("#tab-workshop"); page.wait_for_selector('#chatcol .chat[data-agent="gremlin"]')
+    page.fill("#chatText", "A question for Gremlin")
+    check("busy per window: Gremlin's Send is enabled and not marked busy while Starling's request is out", page.evaluate("() => { const b = document.querySelector('.ch-in [data-c=\"send\"]'); return !b.disabled && !b.hasAttribute('aria-busy'); }"))
+    page.click('.ch-in [data-c="send"]', timeout=3000)
+    for _ in range(60):
+        if len(posts) > 1: break
+        page.wait_for_timeout(50)
+    check("busy per window: one POST went to Gremlin's route (and one to Starling's)", sorted(x.split("/api/")[-1] for x in posts) == ["chat/gremlin", "chat/starling"], str(posts))
+    for r in held: r.abort()
+    c.close()
     for scheme, w, h in [("light", 1280, 900), ("dark", 390, 844)]:
         tag = f"{w}-{scheme} hand-off disabled"
         c, page, errors = new_page(b, w, h, scheme, hal_cookie)

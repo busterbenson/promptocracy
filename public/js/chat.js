@@ -18,6 +18,7 @@
 // Nothing here decides what is allowed: the server's answers (the cap, the lock, a refusal) are shown as they come.
 
 import { diffOf } from "./propose.js";
+import { hold } from "./busy.js";
 import { nightsOf, pointsOf } from "./commission.js";
 
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -451,14 +452,14 @@ ${sl.kind !== "action" && (sl.after_text || sl.before_text) ? `<div class="tx cd
     const a = el.dataset.c;
     if (a === "min") minimize();
     else if (a === "close") { S.sheet = false; place(); }
-    else if (a === "send") await send();
+    else if (a === "send") await hold(el, send);
     else if (a === "pick") { if (!S.busy && el.dataset.n && el.dataset.n !== S.ticket) await attach(el.dataset.n); }
-    else if (a === "handoff") await handoff();
-    else if (a === "new") { if (!S.busy && onNew) await onNew(); }
+    else if (a === "handoff") await hold(el, handoff);
+    else if (a === "new") { if (!S.busy && onNew) await hold(el, onNew); }
     else if (a === "detach") { S.ticket = null; S.slip = null; if (!agent.proposals) await showScope(null); draw(); }
     else if (a === "detach-rule") { S.rule = null; draw(); }
     else if (a === "detach-intent") { S.intent = null; draw(); }
-    else if (a === "lock" || a === "unlock") await lockOrUnlock(el.dataset.id, a === "lock" ? "confirm" : "withdraw");
+    else if (a === "lock" || a === "unlock") await hold(el, () => lockOrUnlock(el.dataset.id, a === "lock" ? "confirm" : "withdraw"));
   });
   root.addEventListener("input", (e) => {
     if (e.target.id !== "chatText" || !mine()) return;

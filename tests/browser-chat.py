@@ -11,6 +11,7 @@
 import re, sys
 from urllib.parse import urlparse
 from playwright.sync_api import sync_playwright
+from busy_check import busy_check
 
 base, out, ada_cookie, bo_cookie, cy_cookie, dee_cookie, fay_cookie, eve_cookie, MSG_A, MSG_B, gus_cookie, hal_cookie, HO_MSG = sys.argv[1:14]
 host = urlparse(base).hostname
@@ -370,6 +371,7 @@ with sync_playwright() as p:
             heldq[0].continue_(); page.wait_for_function(f"document.querySelector('#chatLog .slip') && document.querySelector('#chatLog .slip').getAttribute('aria-label') === '{TA}'"); page.unroute(re.compile(rf"/shop/api/tickets/{TA}$"))
             page.fill("#chatText", "")
             # New: what "Commission something" does: a draft (her blank one again if she has one) and the chat attached to it
+            busy_check(page, check, f"{tag} busy + New (Gremlin's strip)", '#chatcol [data-c="new"]', "**/api/tickets", shot=lambda l: shot(page, f"busy-new-{tag}"), errors=errors)
             page.click('#chatcol [data-c="new"]')
             page.wait_for_function(f"(() => {{ const s = document.querySelector('#chatcol .ch-row .it[aria-pressed=true]'); return !!s && s.dataset.n !== '{TA}' && s.dataset.n !== '{TB}'; }})()")
             nn = selected(page).get_attribute("data-n")

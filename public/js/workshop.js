@@ -15,6 +15,7 @@
 // Nothing here decides what is allowed: the server's answers (the lock, one a day, a refusal) are shown as they come.
 import { nightsOf, pointsOf, wPill } from "/js/commission.js";
 import { creatureThumb } from "/js/pieces.js";
+import { hold } from "/js/busy.js";
 
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const lines = (s) => String(s || "").split("\n").map((x) => x.trim()).filter(Boolean);
@@ -415,8 +416,11 @@ ${editing ? formHTML(t) : factsHTML(t)}${unlockHTML(t)}${reopenHTML(t)}${editing
     if (c && c.ready()) { await c.attach(r.data.ticket, { open: true }); await refresh(); return; }
     await open(r.data.ticket, false);
   }
+  // The buttons that send a request: one tap, one request (busy.js).
+  const SENDS = new Set(["open", "art", "save", "confirm", "discard", "unlock", "reopen", "post"]);
   /** @rule 801.1, 801.2, 801.8, 804.1 */
-  async function click(el) {
+  const click = (el) => (SENDS.has(el.dataset.w) ? hold(el, () => run(el)) : run(el));
+  async function run(el) {
     const a = el.dataset.w;
     const cur = cards.current();
     const n = cur && cur.kind === "ticket" ? cur.key : null;

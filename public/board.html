@@ -86,6 +86,7 @@ import { rulingsHTML } from "/js/rulings.js";
 import { createWorkshop } from "/js/workshop.js";
   import { createYours } from "/js/yours.js";
 import { createChat, AGENTS } from "/js/chat.js";
+import { hold } from "/js/busy.js";
  import { commissionHTML, wPill } from "/js/commission.js";
   const SLUG = location.pathname.split("/")[1] || "";
   const BASE = "/" + SLUG;
@@ -179,7 +180,7 @@ import { createChat, AGENTS } from "/js/chat.js";
       try { await navigator.clipboard.writeText(INVITE.url); } catch (e) { inp.focus(); inp.select(); try { document.execCommand("copy"); } catch (e2) {} }   // no clipboard (or not allowed): the link is selected to copy by hand
       inp.focus(); inp.select(); ic.textContent = "Copied";
     };
-    const lo = $("logout"); if (lo) lo.onclick = async () => { await api("/api/logout", {}); location.reload(); };
+    const lo = $("logout"); if (lo) lo.onclick = () => hold(lo, async () => { await api("/api/logout", {}); location.reload(); });
   }
   // Opening one closes the other; closing the bell marks what it showed as read (the badge clears when it opens, the tint stays while it is open).
   function toggle(which) {
@@ -228,8 +229,10 @@ import { createChat, AGENTS } from "/js/chat.js";
   $("login-form").addEventListener("submit", async e => {
     e.preventDefault();
     const msg = $("login-msg");
+    const lb = e.target.querySelector("button[type=submit]");
     msg.textContent = "Sending…";
-    const r = await api("/api/login", { email: new FormData(e.target).get("email") });
+    const r = await hold(lb, () => api("/api/login", { email: new FormData(e.target).get("email") }), "login");
+    if (!r) return;   // a second tap while the first is out
     msg.className = r.ok ? "notice" : "notice err";
     msg.textContent = (r.data && (r.data.message || r.data.error)) || "Something went wrong.";
     if (r.ok && r.data.dev_link) {
@@ -579,25 +582,23 @@ import { createChat, AGENTS } from "/js/chat.js";
     if (VIEW && VIEW.setReach) VIEW.setReach(move.ok ? BOARD.tiles.filter(x => x.z === 0 && canMoveTo(x)).map(x => ({ x: x.x, y: x.y })) : []);
   }
   // Start (rules 102.2, 203.1): the host only. The game goes to play and day 1 begins; the page is read again.
-  async function startGame(button) {
-    button.disabled = true;
+  const startGame = (button) => hold(button, async () => {
     const r = await api("/api/start", {});
     if (r.ok) { await refresh(); return; }
     const text = (r.data && r.data.error) || "Something went wrong.";
     await refresh();
     const m = $("movebar"); const p = document.createElement("p"); p.className = "notice err"; p.setAttribute("role", "alert"); p.textContent = text; m.prepend(p);
-  }
+  });
   // The move is final at once (one a day, rule 202): the existing move route, then the bar says what happened.
-  async function makeMove(t, button) {
+  const makeMove = (t, button) => hold(button, async () => {
     const n = newlyCharted(t);
-    button.disabled = true;
     const r = await api("/api/action", { kind: "move", x: t.x, y: t.y, z: t.z });
     if (r.ok) { LASTMOVE = { day: DAY && DAY.day, n }; SEL = null; if (VIEW) VIEW.select(null, null); await refresh(); if (VIEW) VIEW.recenter(myKey()); return; }
     const text = (r.data && r.data.error) || "Something went wrong.";
     SEL = null; if (VIEW) VIEW.select(null, null);
     await refresh();
     const m = $("movebar"); const p = document.createElement("p"); p.className = "notice err"; p.setAttribute("role", "alert"); p.textContent = text; m.prepend(p);
-  }
+  });
   function select(q, r) {
     // a piece's tile opens that player's card (S1-PLY-03); a tile you may move to is picked (a pending move); any other tile is not
     const t = q == null ? null : tileAt(q, r), here = t ? piecesAt(t) : [];
@@ -617,10 +618,11 @@ import { createChat, AGENTS } from "/js/chat.js";
   document.addEventListener("click", async e => {
     const g = e.target.closest("[data-give]");
     if (!g || g.disabled) return;
-    g.disabled = true;
-    const r = await api("/api/give-heart", { player: g.dataset.give });
-    await refresh(); await loadDay();
-    if (!r.ok) { const c = $("mroot").querySelector(".mcard dl"); if (c) c.insertAdjacentHTML("beforeend", `<p class="notice err" role="alert">${esc((r.data && r.data.error) || "Something went wrong.")}</p>`); }
+    await hold(g, async () => {
+      const r = await api("/api/give-heart", { player: g.dataset.give });
+      await refresh(); await loadDay();
+      if (!r.ok) { const c = $("mroot").querySelector(".mcard dl"); if (c) c.insertAdjacentHTML("beforeend", `<p class="notice err" role="alert">${esc((r.data && r.data.error) || "Something went wrong.")}</p>`); }
+    });
   });
   $("tile-list").addEventListener("click", e => {
     const b = e.target.closest("button[data-x]");
@@ -687,7 +689,7 @@ import { createChat, AGENTS } from "/js/chat.js";
     if (vb) {
       if (vb.disabled || !BAL) return;
       const where = vb.closest("#mroot, #rules, #p-summary") ? "#" + vb.closest("#mroot, #rules, #p-summary").id : "#p-summary";   // a box lives in the card, the Rulebook tab or the Summary
-      await BAL.click(vb);
+      await hold(vb, () => BAL.click(vb));
       const again = document.querySelector(`${where} [data-vote="${vb.dataset.vote}"][data-pn="${vb.dataset.pn}"]`);   // the boxes were drawn again: keep the keyboard where it was
       if (again && !again.disabled) again.focus({ preventScroll: true });
       return;
@@ -697,12 +699,13 @@ import { createChat, AGENTS } from "/js/chat.js";
     const b = t.closest("[data-endturn]");
     if (!b) return;
     if (b.dataset.endturn !== "yes") { END_ASK = b.dataset.endturn === "ask"; drawBar(); if (END_ASK) { const y = document.querySelector('[data-endturn="yes"]'); if (y) y.focus(); } return; }
-    b.disabled = true;
-    const r = await api("/api/end-turn", {});
-    if (r.ok) { END_ASK = false; await refresh(); loadNotes(); return; }
-    const text = (r.data && r.data.error) || "Something went wrong.";
-    END_ASK = false; await refresh();
-    const m = $("day-msg"); if (m) { m.className = "notice err"; m.textContent = text; }
+    await hold(b, async () => {
+      const r = await api("/api/end-turn", {});
+      if (r.ok) { END_ASK = false; await refresh(); loadNotes(); return; }
+      const text = (r.data && r.data.error) || "Something went wrong.";
+      END_ASK = false; await refresh();
+      const m = $("day-msg"); if (m) { m.className = "notice err"; m.textContent = text; }
+    });
   });
 
   document.addEventListener("submit", async e => {
@@ -711,11 +714,11 @@ import { createChat, AGENTS } from "/js/chat.js";
     e.preventDefault();
     const btn = f.querySelector("button"), inp = $("era-name"), msg = $("era-msg");
     if (btn.disabled) return;
-    btn.disabled = true;
-    const r = await api("/api/era", { name: inp.value });
-    if (r.ok) { await refresh(); return; }
-    btn.disabled = false;
-    msg.hidden = false; msg.textContent = (r.data && r.data.error) || "Something went wrong.";
+    await hold(btn, async () => {
+      const r = await api("/api/era", { name: inp.value });
+      if (r.ok) { await refresh(); return; }
+      msg.hidden = false; msg.textContent = (r.data && r.data.error) || "Something went wrong.";
+    }, "era");
   });
   document.addEventListener("input", e => { if (WS) WS.input(e.target); });
   $("pzone").addEventListener("input", e => PROP && PROP.input(e.target));

@@ -18,6 +18,7 @@
 // (draft errors, the not-wired refusal, the lock, one a day) are shown as they come.
 
 import { commissionHTML, wPill } from "./commission.js";
+import { hold } from "./busy.js";
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const idOf = (num) => "r-" + String(num).replace(/\./g, "-");
 
@@ -422,8 +423,11 @@ ${S.ui.err ? `<p class="notice err" role="alert">${withPills(S.ui.err)}</p>` : "
     await refresh();
   }
 
+  // The buttons that send a request: one tap, one request (busy.js).
+  const SENDS = new Set(["draft", "confirm", "lock", "unlock", "bar-commission"]);
   /** @rule 103.1 */
-  async function click(el) {
+  const click = (el) => (SENDS.has(el.dataset.p) ? hold(el, () => run(el)) : run(el));
+  async function run(el) {
     const a = el.dataset.p;
     if (S.ui && S.ui.wId && a !== "unlock") S.ui = null;   // a withdraw error is said once
     const u = S.ui;

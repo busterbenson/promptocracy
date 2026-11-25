@@ -804,4 +804,12 @@ button.pill[aria-pressed="true"]{background:color-mix(in srgb,var(--accent) 16%,
   .pzone{padding:12px 16px 0}
   .ppanel{grid-template-columns:1fr}
 }
-}
+/* An action button out on its request (public/js/busy.js): disabled, dimmed, a small spinner after the label. */
+button[aria-busy="true"]:disabled{cursor:progress;opacity:.7}
+button[aria-busy="true"]::after{content:"";display:inline-block;box-sizing:border-box;width:.85em;height:.85em;margin-left:.55em;vertical-align:-.1em;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:busyspin .7s linear infinite}
+.chat .send[aria-busy="true"]:disabled{cursor:progress;opacity:.7}
+.chat .ch-row .it[aria-busy="true"]:disabled{cursor:progress;opacity:.7}
+.chat .send[aria-busy="true"] svg{display:none}
+.chat .send[aria-busy="true"]::after{margin:0;width:18px;height:18px}
+@keyframes busyspin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){button[aria-busy="true"]::after{animation:none;border:0;border-radius:0;width:auto;height:auto;content:"…"}.chat .send[aria-busy="true"]::after{width:auto;height:auto}}

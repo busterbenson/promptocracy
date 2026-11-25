@@ -6,6 +6,7 @@ import re, sys
 from urllib.parse import urlparse
 from playwright.sync_api import sync_playwright
 from pill_align import misaligned, npc_heights_match
+from busy_check import busy_check
 
 base, out, cookie, sam_cookie, dee_cookie, eli_cookie, lou_cookie, zed_cookie = sys.argv[1:9]
 host = urlparse(base).hostname
@@ -510,6 +511,7 @@ with sync_playwright() as pw:
     toast = lambda pn: text(page, f'#sballot [data-vbox="{pn}"] .vmsg')
     check("logged in as a player: the propose bar, the Yes / No buttons and End turn are all there", page.locator("#pzone .tk").count() == 1 and page.locator("#sballot .vbtn").count() == 4 and page.locator("[data-endturn]").count() == 1)
     check("ballot: before voting 'Vote 0 of 2' in the turn bar, and no vote is filled", re.search(r"Vote\s*0 of 2", text(page, "#pzone")) and not on(yes("P1")) and not on(no("P1")), text(page, "#pzone"))
+    busy_check(page, check, "1280-light busy vote Yes", '#sballot .vbtn[data-pn="P1"][data-vote="yes"]', "**/api/votes", shot=lambda l: shot(page, "busy-vote-1280-light"), errors=errors)
     yes("P1").click(); page.wait_for_function("document.querySelector('#sballot .vbtn[data-pn=\"P1\"][data-vote=\"yes\"]').getAttribute('aria-pressed') === 'true'")
     check("S1-VOT-04: your vote is filled and carries a check ('✓ Yes'); the other is plain", on(yes("P1")) and "✓ Yes" in text(page, '#sballot .vbtn[data-pn="P1"][data-vote="yes"]') and not on(no("P1")) and "✓" not in no("P1").inner_text())
     check("S1-VOT-06: the toast reads 'P1: you voted Yes. You can change it until midnight.'", toast("P1") == "P1: you voted Yes. You can change it until midnight.", toast("P1"))
@@ -560,6 +562,8 @@ with sync_playwright() as pw:
         check(f"ballot {tag}: no page errors", not errors, str(errors)); c.close()
     # End turn is final: the buttons go off with the reason in plain words, your votes stay shown, and the server refuses a late vote
     c, page, errors = new_page(b, 1280, 900, "light")
+    page.click('#pzone [data-endturn="ask"]'); page.wait_for_selector('#pzone [data-endturn="yes"]')
+    busy_check(page, check, "1280-light busy End turn", '#pzone [data-endturn="yes"]', "**/api/end-turn", back='#pzone [data-endturn="ask"]', shot=lambda l: shot(page, "busy-endturn-1280-light"), errors=errors)
     page.click('#pzone [data-endturn="ask"]'); page.click('#pzone [data-endturn="yes"]'); page.wait_for_selector("#pzone .tkended"); page.wait_for_timeout(400)
     check("S1-SUM-03 / rule 202.4: after End turn the End turn cell says 'Turn ended' (no rule pill), its check aligned with the other steps' marks, and nothing else is offered: no End turn, every step disabled; the clock stays; Move and Vote show what you did", "Turn ended" in text(page, "#pzone .tkend") and "202.4" not in text(page, "#pzone .tkend") and abs((page.locator("#pzone .tkended .tkm").bounding_box()["x"] - page.locator("#pzone .tkended").bounding_box()["x"]) - (page.locator("#pzone .tkstep.mv .tkm").first.bounding_box()["x"] - page.locator("#pzone .tkstep.mv").bounding_box()["x"])) <= 3 and page.locator("#pzone [data-endturn], #pzone .tkgo:not(:disabled), #pzone .tkstep.pr .tkdet").count() == 0 and page.locator("#clock").count() == 1 and re.search(r"Moved\s*1N 4E", text(page, "#pzone")) and re.search(r"Voted\s*2 of 2", text(page, "#pzone")), text(page, "#pzone"))
     tshot(page, "ended-1280-light")
