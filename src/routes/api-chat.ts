@@ -408,11 +408,11 @@ async function generalTurn(T: Turn, moved: boolean): Promise<Out> {
     // The drafter said no: one more try in the same turn, with its reason, for the nearest version that drafts (or options). Never a second retry, and
     // never when the day's gate is what refused (nothing he writes can pass that).
     if (res.refused && !noDraft) {
-      await logOnly(T, r, "ok", `draft refused: ${res.why}; retry after refusal`);
       const r2 = await ask(String(res.refused.error));
       later = await clockNow(env);
       const a2: any = r2.ok ? read(r2) : null;
       if (r2.ok && a2?.ok) {
+        await logOnly(T, r, "ok", `draft refused: ${res.why}; retry after refusal`);   // the first call is only logged when the second answer replaces it (a failed retry leaves it as the stored one, logged once)
         r = r2; a = a2;
         notes.push(`retry after refusal: ${res.why}`);
         res = a.draft ? await tryDraft(a) : { refused: res.refused, why: "no second draft" };
