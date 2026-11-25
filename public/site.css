@@ -406,6 +406,14 @@ button.me[aria-expanded="true"]{border-color:var(--ink)}
 .hdays{padding:0 24px;max-width:900px}
 .hrul{display:flex;flex-direction:column;gap:14px;margin:0 0 18px}
 .hrh{margin:0 0 6px;font-family:var(--font-display);font-weight:var(--display-weight);font-size:1.15rem}
+.hday{margin:0 0 16px}
+.hrows{list-style:none;margin:0;padding:0}
+.hrow{display:flex;align-items:flex-start;gap:6px 12px;padding:9px 0;border-top:1px solid var(--line)}
+.hrow:first-child{border-top:0}
+.hpills{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap;flex:0 0 auto;max-width:55%}
+.hsent{flex:1 1 220px;min-width:0;font-size:.88rem;line-height:1.7;overflow-wrap:anywhere}
+.hsent .rpill{vertical-align:middle}
+@media (max-width:560px){.hrow{flex-direction:column}.hpills{max-width:100%}.hsent{flex:0 1 auto}}
 .hrr{border:1px solid var(--line);border-radius:10px;background:var(--surface);padding:10px 14px;margin:0 0 8px;display:flex;flex-direction:column;gap:6px}
 .hrr p{margin:0}
 .hrn{font-family:var(--font-mono);font-size:.7rem;font-weight:700;color:var(--ink-muted)}
