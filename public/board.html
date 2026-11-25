@@ -326,12 +326,12 @@ import { createChat, AGENTS } from "/js/chat.js";
   const reduced = () => window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   // The one proposal's wording: "proposed a change to rule 402" and so on, and what it needs.
-  function sentence(p) {
+  function sentence(p, short) {
     const r = n => PROP.rpill(String(n));
     const k = p.kind, t = String(p.target);
     const what = k === "commission" ? `a commission ${p.ticket ? wPill(p.ticket.n) : ""}` : k === "action" && p.action ? `an action: ${esc(p.action.name)}` : k === "amend" ? `a change to ${t.includes(".") ? "clause" : "rule"} ${r(t)}` : k === "addclause" ? `a new clause for rule ${r(t.split(".")[0])}` : k === "add" ? `a new rule${p.new_num ? " " + r(p.new_num) : ""}` : k === "repeal" ? `to repeal ${t.includes(".") ? "clause" : "rule"} ${r(t)}` : k === "move" ? `to move rule ${r(t)}` : k === "mark" ? `a change to how ${BOOK && BOOK.rulebook.byNum[t] && BOOK.rulebook.byNum[t].kind === "block" ? "block" : "rule"} ${r(t)} is changed` : "a change";
     const need = p.needs && p.needs.champion ? (p.needs.needed ? `Stopped at ${p.needs.needed} of ${p.needs.needed} against.` : "") : p.needs ? (p.needs.mark === "unanimous" ? "It needs every vote cast to be yes." : "It needs more than half of the votes cast to be yes.") : "";
-    return `${p.champion ? `made the Champion's change ${r("402.4")}: ` : "proposed "}${what}. ${need}`;
+    return `${p.champion ? `made the Champion's change ${r("402.4")}: ` : "proposed "}${what}.${short ? "" : " " + need}`;
   }
   const ballotList = () => (PROP ? PROP.onBallot() : []);
   const votable = () => (BAL && BAL.hasYou() ? BAL.total() : ballotList().length);   // today's ballot items you can vote on
@@ -344,6 +344,18 @@ import { createChat, AGENTS } from "/js/chat.js";
     const form = e.you && e.you.can_name ? `<form class="eraform" data-eraform><input type="text" id="era-name" maxlength="60" autocomplete="off" aria-label="Name for Era ${esc(e.n)}"><button type="submit" class="btn small">Name the Era</button><span id="era-msg" class="notice err" role="alert" hidden></span></form>` : "";
     return `<section class="sw era" id="sera" aria-label="Era"><div class="swh"><h2>Era ${esc(e.n)}${e.name ? ` · ${esc(e.name)}` : ""}</h2>${e.champion ? `<span class="m">Champion</span>${pill(e.champion, false)}` : ""}</div>${form}</section>`;
   }
+  // Proposed today: everyone's locked-in proposals, the day they are locked in (votes stay hidden, rule 104.4). Left out when there are none.
+  function proposedHTML() {
+    const ps = PROP ? PROP.lockedToday() : [];
+    if (!ps.length) return "";
+    const row = p => {
+      const c = p.kind === "commission" && p.ticket;
+      const what = c ? `${wPill(p.ticket.n)}<button type="button" class="tlink" data-ticket="${esc(p.ticket.n)}" aria-haspopup="dialog"><span class="tt">${esc(p.ticket.title || "Untitled")}</span></button>`
+        : `<span class="tt">${sentence(p, true)}</span>`;
+      return `<li class="trow" id="sp-${esc(p.n)}"><span class="tmain prow">${PROP.pPill(p)}${pill(p.by, p.mine)}${what}</span></li>`;
+    };
+    return `<section class="sw prp" id="sproposed" aria-label="Proposed today"><div class="swh"><h2>Proposed today</h2><span class="m">${ps.length}</span></div><ul class="tlist">${ps.map(row).join("")}</ul></section>`;
+  }
   function summaryHTML() {
     const bl = ballotList();
     const ballot = `<section class="sw" id="sballot" aria-label="Vote on today's ballot items"><div class="swh"><h2>Vote on today's ballot items</h2><span class="m" data-slot="ballot-count">${!bl.length ? "" : BAL && BAL.hasYou() ? `${BAL.voted()} of ${BAL.total()} voted` : plural(bl.length, "proposal")}</span></div>
@@ -351,7 +363,7 @@ import { createChat, AGENTS } from "/js/chat.js";
         <div class="sdiff">${p.kind === "commission" && p.ticket ? commissionHTML(p.ticket) : p.kind === "action" && p.action ? PROP.actionBody(p) : `${p.title ? `<p class="sdh">${esc(p.title)}</p>` : ""}<p class="mono head">${esc(p.head || "")}</p><p>${diffOf(p)}</p>`}</div><div class="vrow slot" data-slot="ballot-vote" data-pn="${esc(p.n)}">${BAL ? BAL.box(p.n) : ""}</div></li>`).join("")}</ul>` : `<p class="mnote">Nothing is on today's ballot.</p>`}</section>`;
     const cat = WS ? WS.summaryHTML() : "";
     return `<div class="sgrid">${eraHTML()}<div class="slot recapw" data-slot="recap"></div>
-      <div class="scol">${ballot}${cat}</div>
+      <div class="scol">${ballot}${proposedHTML()}${cat}</div>
       <div class="scol"><div class="slot" data-slot="recent-days"></div><button type="button" class="linkbtn" data-tab="history">Full history →</button></div></div>`;
   }
   function drawBook() {

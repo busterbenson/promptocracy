@@ -485,11 +485,20 @@ try {
   const reconfirm = await bo.post(`${P}/${bd.data.proposal.id}/confirm`, {});
   check("confirming the same draft twice answers 409 'That is already P2.' (or P3), and another player's draft is not yours to confirm (404)", reconfirm.status === 409 && /already P[23]/.test(reconfirm.data.error) && (await bo.post(`${P}/${anaOther}/confirm`, {})).status === 404, reconfirm.text);
 
-  console.log("hidden until tomorrow; nothing about votes leaks");
+  console.log("locked-in proposals show the day they are locked in; nothing about votes leaks");
   d1(state, `UPDATE proposals SET yes = 7, no = 8, absent = 9, needed = 6, electorate = 5, why = 'qa-fixture-why' WHERE game_id = '${gid}' AND number IS NOT NULL`);
   const lb = await bo.get(P), la = await client(A).get(P);
-  check("today Bo sees only his own confirmed proposal (mine, with its id); signed out sees none: another player's proposal waits for the ballot",
-    lb.status === 200 && lb.data.proposals.length === 1 && lb.data.proposals[0].mine === true && lb.data.proposals[0].n === bc.data.proposal.n && !!lb.data.proposals[0].id && la.data.proposals.length === 0, lb.text + la.text);
+  const withdrawnId = d1(state, `SELECT id FROM proposals WHERE game_id = '${gid}' AND status = 'confirmed' AND number IS NOT NULL ORDER BY number LIMIT 1`)[0].id;
+  const draftsOpen = d1(state, `SELECT COUNT(*) AS n FROM proposals WHERE game_id = '${gid}' AND status = 'draft'`)[0].n;
+  const nConfirmed = d1(state, `SELECT COUNT(*) AS n FROM proposals WHERE game_id = '${gid}' AND status = 'confirmed' AND day_proposed = (SELECT day FROM games WHERE id = '${gid}')`)[0].n;
+  check("today everyone's locked-in proposals show (the day they are locked in, Buster 2026-11-24): Bo sees all of them, only his own with its id and words (mine); signed out sees them too, with no id, words or mine; no draft shows",
+    lb.status === 200 && lb.data.proposals.length === nConfirmed && nConfirmed >= 2 && lb.data.proposals.every((p) => p.status === "confirmed") && lb.data.proposals.filter((p) => p.mine).length === 1 && lb.data.proposals.find((p) => p.mine).n === bc.data.proposal.n && !!lb.data.proposals.find((p) => p.mine).id
+      && lb.data.proposals.filter((p) => !p.mine).every((p) => p.id === undefined && p.words === undefined)
+      && la.data.proposals.length === nConfirmed && la.data.proposals.every((p) => p.id === undefined && p.words === undefined && !p.mine && p.by && p.by.name) && draftsOpen >= 1 && !la.data.proposals.some((p) => p.status === "draft") && !lb.data.proposals.some((p) => p.status === "draft" && !p.mine), lb.text + la.text);
+  d1(state, `UPDATE proposals SET status = 'withdrawn' WHERE id = '${withdrawnId}'`);
+  const lw = await client(A).get(P);
+  check("a withdrawn proposal drops off the list", lw.data.proposals.length === nConfirmed - 1 && !lw.data.proposals.some((p) => p.n === `P${d1(state, `SELECT number FROM proposals WHERE id = '${withdrawnId}'`)[0].number}`), lw.text);
+  d1(state, `UPDATE proposals SET status = 'confirmed' WHERE id = '${withdrawnId}'`);
   const leak = (t) => /qa-fixture-why|"yes"|"no"|"absent"|"electorate"|"why"/.test(t);
   const gameView = await bo.get("/prop/api/game"), dayView = await bo.get("/prop/api/day");
   check("no view carries the count's columns (yes, no, absent, needed, electorate, why): /api/proposals, /api/game, /api/day, a draft, a confirm",

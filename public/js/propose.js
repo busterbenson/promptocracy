@@ -112,12 +112,14 @@ export function createProposer({ api, me, day, refresh, pill, vote, starling, wo
   const canWithdraw = () => active() && !day().locked && !day().you.ended;
   /** @rule 103.2 */
   const mineList = () => S.list.filter((p) => p.mine && p.status === "confirmed");
+  /** Everyone's locked-in proposals of today, shown the day they are locked in (the list holds no withdrawn one). @rule 103.2 */
+  const lockedToday = () => S.list.filter((p) => p.status === "confirmed");
   /** @rule 104 */
   const onBallot = () => S.list.filter((p) => p.status === "on_ballot" && p.day_ballot === S.today);
   /** @rule 103.1 */
   const touches = (p, num) => p.kind !== "add" && (p.target === num || String(p.target).startsWith(num + "."));
   /** @rule 103.1 */
-  const ghosts = (sec) => [...onBallot(), ...S.list.filter((p) => p.mine && p.status === "confirmed")].filter((p, i, a) => p.kind === "add" && p.target === sec.num && a.indexOf(p) === i);
+  const ghosts = (sec) => [...onBallot(), ...lockedToday()].filter((p, i, a) => p.kind === "add" && p.target === sec.num && a.indexOf(p) === i);
 
   /** @rule 103.1 */
   const rpill = (n) => (S.RB && S.RB.byNum[n] ? `<button type="button" class="rpill" data-seecard="${esc(n)}" data-clause="${esc(n)}" aria-haspopup="dialog" aria-label="Preview ${esc(n)}">${esc(n)}</button>` : esc(n));
@@ -489,7 +491,7 @@ ${S.ui.err ? `<p class="notice err" role="alert">${withPills(S.ui.err)}</p>` : "
 
   return {
     load, click, input, mineTouches, barHTML, proposeHTML, addCardHTML, addFlowHTML, pickHTML, boxHTML, ageChip, onBallotRule,
-    chgFor: chgHTML, actionBody: actionHTML, cardKey, rpill, pPill, mineList, onBallot: () => onBallot(), canPropose: () => can(), canCommission: () => base(),
+    chgFor: chgHTML, actionBody: actionHTML, cardKey, rpill, pPill, mineList, onBallot: () => onBallot(), lockedToday, canPropose: () => can(), canCommission: () => base(),
     ghostsOf: (sec) => ghosts(sec),
     ghostCount: () => (S.RB ? S.RB.sections.reduce((n, s) => n + ghosts(s).length, 0) : 0),
     attach({ RB, redraw, openAdd, openPick, closeAdd }) { S.RB = RB; S.redraw = redraw; S.openAdd = openAdd || S.openAdd; S.openPick = openPick || S.openPick; S.closeAdd = closeAdd || S.closeAdd; },
