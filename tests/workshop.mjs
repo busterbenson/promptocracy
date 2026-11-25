@@ -228,7 +228,7 @@ try {
   { const r = await Ana.post(`${T}/W3/discard`, {}); check("a confirmed ticket can't be discarded (409, rule 801.8: only a draft): it stays Proposed on its ballot; withdrawing it is the proposal's (103.3)", r.status === 409 && tk(3).state === "Proposed" && tk(3).proposal_id !== null, r.text); }
   const mineList = (await Ana.get("/wk/api/proposals")).data;
   const hidden = (await Bo.get("/wk/api/proposals")).data;
-  check("it is hidden from others until it is on the ballot (like any proposal), and Ana sees her own with its ticket", hidden.proposals.length === 0 && mineList.proposals.length === 1 && mineList.proposals[0].kind === "commission" && mineList.proposals[0].ticket.n === "W3");
+  check("others see it the day it's locked in (Buster, 2026-11-24), not as theirs and without its id, and Ana sees her own with its ticket", hidden.proposals.length === 1 && hidden.proposals[0].kind === "commission" && hidden.proposals[0].mine === false && !("id" in hidden.proposals[0]) && mineList.proposals.length === 1 && mineList.proposals[0].kind === "commission" && mineList.proposals[0].ticket.n === "W3");
   console.log("the day's limit is the proposals' own (rule 103.2)");
   const second = await commission(Ana, good({ title: "A second thing" }));
   check("a second commission the same day is refused with the proposals' own sentence, and leaves no stray proposal row", second.k.status === 409 && /the most a day/.test(second.k.data.error) && d1(state, "SELECT COUNT(*) AS n FROM proposals WHERE kind = 'commission'")[0].n === 1 && tk(4).state === "Draft" && tk(4).proposal_id === null, second.k.text);

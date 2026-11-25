@@ -566,7 +566,8 @@ try {
   const rp = await tool(A, "pilot", tokMia, "read_proposals");
   const rpWeb = await mia.get("/pilot/api/proposals");
   check("read_proposals returns what /api/proposals returns: my confirmed P2, with no votes and no emails", !rp.isError && rp.text === rpWeb.text && JSON.parse(rp.text).proposals.length === 1 && JSON.parse(rp.text).proposals[0].n === "P2" && JSON.parse(rp.text).proposals[0].mine === true && noLeak(rp.text) && !/"yes"|"no"|votes/.test(rp.text));
-  check("Max sees nothing of it until tomorrow", JSON.parse((await tool(A, "pilot", tokMax, "read_proposals")).text).proposals.length === 0);
+  { const seen = JSON.parse((await tool(A, "pilot", tokMax, "read_proposals")).text).proposals;   // shown the day it's locked in (Buster, 2026-11-24): not his, no id or words, no votes
+    check("Max sees Mia's locked-in P2 the same day, not as his, with no id, words or votes", seen.length === 1 && seen[0].n === "P2" && seen[0].mine === false && !("id" in seen[0]) && !("words" in seen[0]) && !("votes" in seen[0]), JSON.stringify(seen)); }
   const s3 = JSON.parse((await tool(A, "pilot", tokMia, "my_state")).text);
   check("my_state now says I have proposed and may still move and end my turn", s3.today.proposed === true && s3.today.moved === false && s3.you_can.propose.allowed === false && s3.you_can.propose.reason === webTwice.data.error && s3.you_can.move.allowed === true && s3.you_can.end_turn.allowed === true);
   const mv = await tool(A, "pilot", tokMia, "move", { label: "1N 2E" });
