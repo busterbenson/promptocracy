@@ -14,7 +14,7 @@ from urllib.parse import urlparse
 from playwright.sync_api import sync_playwright
 from busy_check import busy_check
 
-base, out, ada_cookie, bo_cookie, cy_cookie, dee_cookie, fay_cookie, eve_cookie, MSG_A, MSG_B, gus_cookie = sys.argv[1:12]
+base, out, ada_cookie, bo_cookie, cy_cookie, dee_cookie, fay_cookie, eve_cookie, MSG_A, MSG_B, gus_cookie, ivy_cookie = sys.argv[1:13]
 host = urlparse(base).hostname
 failed = []
 ROW_H = 44
@@ -467,6 +467,57 @@ with sync_playwright() as p:
         if phone:
             page.click("#chatfab"); page.wait_for_selector("#chatcol .chat", state="visible")
             check(f"{tag}: on the last page (Yours) the pill opens the sheet, Gremlin's, with his strip", "Gremlin" in text(page, "#chatcol .ch-h") and page.locator(f"{YOURS}").count() == 1)
+        check(f"{tag}: no console errors", not errors, str(errors)); c.close()
+
+    # ---------------- his choices come below the slip (Buster, 2026-11-26) and look like buttons: Ivy's one answer has a draft and options
+    for scheme, w, h in [("light", 1280, 900), ("light", 390, 844), ("dark", 1280, 900), ("dark", 390, 844)]:
+        tag = f"{w}-{scheme} options"; phone = w < 900
+        c, page, errors = new_page(b, w, h, scheme, ivy_cookie)
+        if phone: page.wait_for_selector("#chatfab"); page.click("#chatfab")
+        page.wait_for_selector("#chatLog .opts .btn"); page.wait_for_timeout(300)
+        order = page.evaluate("(() => { const log = document.getElementById('chatLog'); const k = [...log.children].map(e => e.classList.contains('opts') ? 'opts' : e.classList.contains('slip') && !e.classList.contains('past') ? 'slip' : e.classList.contains('msg') ? 'msg' : 'x'); return k.join(','); })()")
+        check(f"{tag}: the choices come after the slip, as the last thing in the log ({order})", order.endswith("slip,opts"), order)
+        bt = page.locator("#chatLog .opts .btn"); n = bt.count()
+        info = bt.evaluate_all("els => els.map(e => { const cs = getComputedStyle(e), r = e.getBoundingClientRect(), p = e.parentElement.getBoundingClientRect(); return { rad: cs.borderTopLeftRadius, bw: cs.borderTopWidth, h: r.height, w: r.width, pw: p.width, over: e.scrollWidth > e.clientWidth + 1, lines: Math.round(r.height / parseFloat(cs.lineHeight)) } })")
+        check(f"{tag}: {n} buttons, 8px corners, a border, 44px or taller, full width of the log, text never wider than the button", n == 2 and all(i["rad"] == "8px" and float(i["bw"].replace("px","")) >= 1 and i["h"] >= 43.5 and i["w"] >= i["pw"] - 1 and not i["over"] for i in info), str(info))
+        check(f"{tag}: the long one wraps onto more than one line inside its button", info[0]["h"] > info[1]["h"] + 10, str(info))
+        bt.first.click(); page.wait_for_timeout(150)
+        check(f"{tag}: tapping one puts its words in the box, unsent", page.input_value("#chatText").startswith("A: make it three days"), page.input_value("#chatText"))
+        sideways(page, w, tag); shot(page, f"options-{tag}")
+        check(f"{tag}: no console errors", not errors, str(errors)); c.close()
+
+    # ---------------- the Gremlin bar on the Summary (Gus: one locked-in proposal today, one draft): portrait, his last line, today's P-pills, "n of 3 left"
+    for scheme, w, h in [("light", 1280, 900), ("light", 390, 844), ("dark", 1280, 900), ("dark", 390, 844)]:
+        tag = f"{w}-{scheme} summary bar"; phone = w < 900
+        c, page, errors = new_page(b, w, h, scheme, gus_cookie)
+        page.wait_for_selector("#p-summary .gbar .gb-p"); page.wait_for_timeout(300)
+        bar = page.locator("#p-summary .gbar"); bb = bar.bounding_box(); gb = page.locator("#p-summary .sgrid").bounding_box()
+        today = [x.strip() for x in page.locator('#chatcol .ch-row[aria-label="Today"] .ppill').all_inner_texts()]
+        pills = [x.strip() for x in page.locator("#p-summary .gbar .gb-p").all_inner_texts()]
+        check(f"{tag}: the bar is at the top of the Summary, above the grid, with his portrait and his last line", bb is not None and bb["y"] + bb["height"] <= gb["y"] + 1 and bar.locator(".por").count() == 1 and len(text(page, ".gbar .gb-line")) > 3, str(bb))
+        check(f"{tag}: its P-pills are today's proposals, the same as the window's Today row, and it says 2 of 3 left", pills == today and len(pills) == 1 and text(page, ".gbar .gb-n") == "2 of 3 left", f"{pills} {today} {text(page, '.gbar .gb-n')}")
+        sz = page.locator(".gbar .gb-p, .gbar .gb-main").evaluate_all("els => els.map(e => { const r = e.getBoundingClientRect(); return [r.width, r.height] })")
+        check(f"{tag}: every tap target in it is 44px or more", all(x[1] >= 43.5 and x[0] >= 43.5 for x in sz), str(sz))
+        check(f"{tag}: the bar has no helper text: only the portrait, his line, pills and the count", text(page, ".gbar").replace(text(page, ".gbar .gb-line"), "").replace(text(page, ".gbar .gb-n"), "").replace(" ".join(pills), "").strip() in ("", "Gremlin"), text(page, ".gbar"))
+        if phone:
+            check(f"{tag}: the sheet is closed until the bar is tapped", sheet(page) == "closed")
+            bar.locator(".gb-main").click(); page.wait_for_function("document.getElementById('bwrap').dataset.sheet === 'open'")
+            check(f"{tag}: tapping the bar opens the sheet", sheet(page) == "open" and "Gremlin" in text(page, "#chatcol .ch-h"))
+            page.click('#chatcol [data-c="close"]'); page.wait_for_function("document.getElementById('bwrap').dataset.sheet === 'closed'")
+        else:
+            page.click("#chatcol [data-c='min']"); page.wait_for_function("document.getElementById('bwrap').dataset.chat === 'min'")
+            bar.locator(".gb-main").click(); page.wait_for_function("document.getElementById('bwrap').dataset.chat === 'open'")
+            check(f"{tag}: tapping the bar opens the window", mode(page) == "open")
+        shot(page, f"summary-bar-{tag}")
+        pn = pills[0]
+        if phone and sheet(page) == "open": page.click('#chatcol [data-c="close"]')
+        page.locator("#p-summary .gbar .gb-p").first.click()
+        page.wait_for_function(f"document.querySelector('#chatLog .slip:not(.past)') && document.querySelector('#chatLog .slip:not(.past)').getAttribute('aria-label') === '{pn}'")
+        check(f"{tag}: tapping the P-pill ({pn}) opens the window on that proposal's slip (LOCKED) in the general conversation", ("LOCKED" in text(page, "#chatLog .slip:not(.past)")) and (sheet(page) == "open" if phone else mode(page) == "open"))
+        if phone: page.click('#chatcol [data-c="close"]'); page.wait_for_function("document.getElementById('bwrap').dataset.sheet === 'closed'")
+        page.click("#tab-rules"); page.wait_for_timeout(200)
+        check(f"{tag}: the bar is only on the Summary; the corner pill stays on every tab", page.locator(".gbar:visible").count() == 0 and (mode(page) == "open" if not phone else page.locator("#chatfab").is_visible()))
+        sideways(page, w, tag)
         check(f"{tag}: no console errors", not errors, str(errors)); c.close()
 
     b.close()

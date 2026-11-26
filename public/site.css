@@ -710,6 +710,12 @@ button.pill[aria-pressed="true"]{background:color-mix(in srgb,var(--accent) 16%,
 .chat .slip.past .cstamp{font-size:.55rem;top:8px}
 .chat .slip.refused .cstamp{color:var(--err);border-color:var(--err)}
 .chat .slip.refused .tx{border-color:var(--err);color:var(--ink-muted)}
+/* Gremlin's choices (and a not-applied proposal's fixes): real buttons, raised, 8px corners, the words wrap inside, a finger's height, the full width */
+.chat .opts{display:grid;grid-template-columns:minmax(0,1fr);gap:8px}
+.chat .opts .btn{width:100%;box-sizing:border-box;min-height:44px;height:auto;border-radius:8px;padding:10px 14px;white-space:normal;overflow-wrap:anywhere;word-break:normal;text-align:left;justify-content:flex-start;line-height:1.3;background:var(--surface);color:var(--ink);border:1.5px solid var(--ink);box-shadow:0 2px 0 var(--ink)}
+.chat .opts .btn:hover{background:var(--surface-2)}
+.chat .opts .btn:active{transform:translateY(1px);box-shadow:0 1px 0 var(--ink)}
+.chat .opts .btn[aria-pressed="true"]{background:var(--accent-tint);border-color:var(--accent);box-shadow:0 2px 0 var(--accent)}
 /* ==== end of the chat window ==== */
 
 /* generated art (rules 701.1, 801.2): the drawing in the art slot, the strip of drawings, and the state beside it */
@@ -834,3 +840,15 @@ button[aria-busy="true"]::after{content:"";display:inline-block;box-sizing:borde
 .chat .send[aria-busy="true"]::after{margin:0;width:18px;height:18px}
 @keyframes busyspin{to{transform:rotate(360deg)}}
 @media (prefers-reduced-motion:reduce){button[aria-busy="true"]::after{animation:none;border:0;border-radius:0;width:auto;height:auto;content:"…"}.chat .send[aria-busy="true"]::after{width:auto;height:auto}}
+
+/* the Gremlin bar at the top of the Summary: a collapsed window inside the page (not fixed, not sticky) */
+.gbarw{padding:0 24px 16px}
+.gbarw:empty{display:none}
+.gbar{display:flex;flex-direction:column;gap:6px;background:var(--surface);border:1.5px solid var(--ink);border-radius:16px;padding:8px 12px;min-width:0;cursor:pointer}
+.gbar .gb-main{display:flex;align-items:center;gap:10px;min-height:44px;min-width:0;background:none;border:0;padding:0;color:var(--ink);font:inherit;text-align:left;cursor:pointer}
+.gbar .gb-main .por{flex:none;width:36px;height:36px;border-radius:50%;background:color-mix(in srgb,#8E9B78 30%,var(--portrait-ground));border:1.5px solid var(--portrait-ink);display:grid;place-items:center;overflow:hidden}
+.gbar .gb-main .por svg{width:32px;height:32px}
+.gbar .gb-line{min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.9rem}
+.gbar .gb-today{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-family:var(--font-mono);font-size:.64rem;color:var(--ink-muted)}
+.gbar .gb-p{min-height:44px;min-width:44px;display:inline-flex;align-items:center;justify-content:center;background:none;border:0;padding:0 2px;cursor:pointer}
+@media (max-width:899.98px){.gbarw{padding:0 16px 12px}}
