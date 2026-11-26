@@ -255,7 +255,7 @@ export async function draft(ctx: Ctx, player: any, body: any, nowMs: number, o: 
     // The draft is flagged in the same batch, so it is never a plain proposal the player meant as the Champion's change.
     env.DB.prepare("UPDATE proposals SET champion = 1 WHERE id = ? AND status = 'draft' AND ? = 1").bind(id, asChampion ? 1 : 0),
     env.DB.prepare("UPDATE proposals SET rule_check = ? WHERE id = ? AND status = 'draft' AND ? IS NOT NULL").bind(check ? JSON.stringify(check) : null, id, check ? 1 : null),
-    // only when there is something to record, so a draft with no `uses` does not need migration 0024 yet (deploy order)
+    // only when there is something to record: a draft with no `uses` works before migration 0024 is applied; one that records `uses` needs 0024 applied first (the PR says so)
     ...(uses.length ? [env.DB.prepare("UPDATE proposals SET uses = ? WHERE id = ? AND status = 'draft'").bind(JSON.stringify(uses), id)] : []),
   ]);
   if (!(res?.meta?.changes > 0)) return out({ error: "The day changed under you. Reload and try again." }, 409);

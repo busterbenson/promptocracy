@@ -615,6 +615,11 @@ try {
     check("with no uses sent, the one entry its words name is recorded (the fallback)", found.status === 200 && found.data.proposal.uses_note === `Uses Flower from ${w1}`, found.text);
     const two = await Ana.post(P, { kind: "addclause", target: "401", words: "A creature that eats a Flower puts it in a Vase." });
     check("words that name two entries record neither (several matches record nothing)", two.status === 200 && two.data.proposal.uses_note === null, two.text);
+    const o4 = await Cy.post(T, {}), w4 = o4.data?.ticket;
+    await fill(Cy, w4, { title: "A lamp", brief: "A lamp.", makes: [{ kind: "entry", name: "Lamp", catalogKind: "item" }], estimate: 1, running_cost: "None.", tasks: ["Draw it"] });
+    const priv = await Cy.post(P, { kind: "addclause", target: "401", words: "A Lamp glows at night.", uses: [w4] });
+    const privWords = await Cy.post(P, { kind: "addclause", target: "401", words: "A Lamp glows at night." });
+    check("a private Draft's entry is not an entry to use: neither a sent ref nor its name in the words is recorded (it is not an open commission, 801.1)", priv.status === 200 && priv.data.proposal.uses_note === null && privWords.status === 200 && privWords.data.proposal.uses_note === null, priv.text + privWords.text);
     const none = await Ana.post(P, { kind: "addclause", target: "401", words: "Points can't be given away." });
     check("a draft naming no entry says nothing", none.status === 200 && none.data.proposal.uses_note === null, none.text);
   }

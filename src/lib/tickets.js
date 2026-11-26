@@ -81,7 +81,7 @@ export function readUses(m, entries, stored = []) {
   if (found) return { item: { kind: "uses", name: found.name, catalogKind: found.catalogKind, num: found.ref } };
   // An item the ticket already holds stays as it is when it is sent back unchanged, even if the ticket that makes the entry has since closed (rule 703.4: nothing
   // automatic when it ends Refused, Failed or Shelved): a hand edit of the title, or his echo of the whole list, must not fail on it.
-  const had = (stored || []).find((x) => x && x.kind === "uses" && String(x.num).toUpperCase() === want.num && String(x.name).toLowerCase() === want.name.toLowerCase() && x.catalogKind === want.catalogKind);
+  const had = (stored || []).find((x) => x && x.kind === "uses" && String(x.num).toUpperCase() === want.num && String(x.name).toLowerCase() === want.name.toLowerCase() && String(x.catalogKind).toLowerCase() === want.catalogKind);
   return had ? { item: { kind: "uses", name: had.name, catalogKind: had.catalogKind, num: had.num } } : { reason: usesReason(want) };
 }
 

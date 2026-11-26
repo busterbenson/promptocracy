@@ -118,6 +118,10 @@ console.log("a closed ticket does not break an item the ticket already holds; a 
   const withDraft = { built: [], pending: [{ name: "Flower", catalogKind: "item", ticket: "W7", owner: "Ana", state: "Draft" }] };
   check("a Draft's entry can't be used (usedEntry) or matched by words (mentionedEntries): it is private and not an open commission (801.1)", usedEntry({ num: "W7", name: "Flower", catalogKind: "item" }, withDraft) === null && mentionedEntries("a Flower", withDraft).length === 0);
   check("but the ticket conversation still lists it, marked as private, so he does not make a second one", /W7 makes Flower \(item\), Ana, Draft/.test(G.pendingText(withDraft, [])) && /Draft is only the player's own, private/.test(G.pendingText(withDraft, [])));
+  const own = G.pendingText(withDraft, [{ kind: "entry", name: "Flower", catalogKind: "item" }]);
+  check("a duplicate that is the player's own Draft is named without 'use it' as an option (it can't be used yet)", /W7 \(Ana, Draft\) also makes/.test(own) && !/the first of them to use it/.test(own) && /rename this one/.test(own), own);
+  check("a duplicate of an open ticket still puts 'use it' first", /the first of them to use it/.test(G.pendingText(ENTRIES, [{ kind: "entry", name: "Flower", catalogKind: "item" }])));
+  check("a stored item whose name or kind differs from the one sent is refused", /W4 makes no item called Vase/.test(readMakes([{ ...U, name: "Vase" }], { entries: NONE, stored: [U] }).error) && /W4 makes no creature called Flower/.test(readMakes([{ ...U, catalogKind: "creature" }], { entries: NONE, stored: [U] }).error));
   check("and a duplicate of it is still named at lock-in (the player's own two drafts)", duplicatesOf([{ kind: "entry", name: "Flower", catalogKind: "item" }], withDraft).length === 1);
 }
 

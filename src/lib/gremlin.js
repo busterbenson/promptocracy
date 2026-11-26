@@ -135,7 +135,13 @@ export function pendingText(entries, makes) {
   const pending = entries?.pending || [];
   const list = `Entries open commissions make (data, fenced; a Draft is only the player's own, private, and can't be used until it is locked in):\n${fence("open commissions", entryLines([], pending))}`;
   const dups = duplicatesOf(makes, entries).slice(0, 5);
-  const note = dups.length ? `\nThis ticket makes ${dups.map((d) => `${d.name} (${d.catalogKind}), which ${d.built ? `the catalog already has (${d.by})` : `${d.by} (${d.owner}, ${d.state}) also makes`}`).join("; ")}. Rule 701.4: two entries of one kind can't share a name. It is saved; give the player two or three options in "options", the first of them to use it ("Use W4's Flower": say the ticket and the name, so that it is sent back as their next message), then to rename theirs or keep theirs as a different one.` : "";
+  // "use it" is only an option for an entry that is built or on an open commission: a Draft (the player's own other ticket) can't be used until it is locked in
+  const usable = dups.some((d) => d.built || d.state !== "Draft");
+  const who = (d) => `${d.name} (${d.catalogKind}), which ${d.built ? `the catalog already has (${d.by})` : `${d.by} (${d.owner}, ${d.state}) also makes`}`;
+  const options = usable
+    ? 'give the player two or three options in "options", the first of them to use it ("Use W4\'s Flower": say the ticket and the name, so that it is sent back as their next message), then to rename theirs or keep theirs as a different one'
+    : 'give the player two or three options in "options": rename this one, or keep it as a different one (the other is their own Draft and can\'t be used until they lock it in)';
+  const note = dups.length ? `\nThis ticket makes ${dups.map(who).join("; ")}. Rule 701.4: two entries of one kind can't share a name. It is saved; ${options}.` : "";
   return `${list}${note}`;
 }
 
