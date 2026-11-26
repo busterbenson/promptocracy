@@ -5,7 +5,7 @@
 import { mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { applyOne, auditOne, git, runModel } from "../../moderator/process-day.mjs";
-import { ROOT, assertScratch } from "./lib.mjs";
+import { ROOT, assertScratch, entriesOf } from "./lib.mjs";
 import { assertNoRemote, cloneCase } from "./scratch.mjs";
 
 const clip = (s, n) => { s = String(s ?? ""); return s.length > n ? `${s.slice(0, n)}\n... (cut at ${n} bytes)` : s; };
@@ -68,7 +68,7 @@ export async function runNight(c, res, i, x) {
   const out = { status: "error", reason: null, attempts: 0, events: [], diff_text: "", diff_code: "", check_tail: "", claude: calls, audit: null, ms: 0 };
   try {
     assertNoRemote(dir);
-    const r = await applyOne({ dir, job: { day: 1 }, p, tonight: [], budgetMs: 20 * 60_000, model, claude: x.claude, log: (e) => events.push(e), libraryDir: join(ROOT, "docs", "nomic-library") });
+    const r = await applyOne({ dir, job: { day: 1, entries: entriesOf(c, x.catalog) }, p, tonight: [], budgetMs: 20 * 60_000, model, claude: x.claude, log: (e) => events.push(e), libraryDir: join(ROOT, "docs", "nomic-library") });
     assertNoRemote(dir);
     out.status = r.applied ? "applied" : "not_applied";
     out.reason = r.reason ?? (r.error ? `${r.reason}: ${r.detail ?? ""}` : null);

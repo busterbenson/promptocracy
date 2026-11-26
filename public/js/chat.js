@@ -111,7 +111,9 @@ export function createChat({ api, root, me, slug, agent = AGENTS.gremlin, rpill,
     if (!t) return "";
     const last = [...S.msgs].reverse().find((m) => m.role === "agent");
     const refused = last && last.refusal && last.ticket === t.n;
-    const makes = (t.makes || []).map((m) => (m.kind === "rule"
+    const makes = (t.makes || []).map((m) => (m.kind === "uses"
+      ? `<span class="mk dim uses" data-uses="${esc(m.num)}">${esc(m.name)} · from ${/^W\d+$/.test(m.num) ? wpill(m.num) : esc(m.num)}</span>`
+      : m.kind === "rule"
       ? `<span class="mk${!m.num && String(m.draft || "").length > 40 ? " long" : ""}">${m.num ? rpill(m.num) : esc(m.draft || "New rule")}</span>`
       : `<span class="mkent">${artHTML(t, m)}<span class="mk">${esc(m.name)}${m.catalogKind ? `<small>${esc(m.catalogKind)}${m.attrs && m.attrs.size ? ` ${esc(sizeText(m.attrs.size))}` : ""}</small>` : ""}</span></span>`)).join("");
     const stamp = refused ? `<span class="cstamp err">REFUSED</span>` : t.state === "Draft" ? `<span class="cstamp">DRAFT</span>` : `<span class="cstamp">${esc(String(t.state).toUpperCase())}</span>`;
@@ -167,7 +169,7 @@ ${refused ? `<div class="tx">${esc(last.refusal)}</div>` : ""}
 ${sl.words ? `<div class="yw">${esc(`Your words: “${sl.words}”`)}</div>` : ""}
 ${sl.kind !== "action" && (sl.after_text || sl.before_text) ? `<div class="tx cdiff">${diffOf(sl)}</div>` : ""}
 <dl>${actionRows(sl)}<dt>Change</dt><dd>${esc(KIND[sl.kind] || sl.kind)}${sl.target ? ` ${rpill(sl.target)}` : ""}</dd>${sl.settings && Object.keys(sl.settings).length ? `<dt>Sets</dt><dd>${esc(settingsLine(sl.settings))}</dd>` : ""}<dt>Needs</dt><dd>${needs}</dd><dt>Conflicts</dt><dd>${sl.conflicts && sl.conflicts.length ? sl.conflicts.map((n) => rpill(n)).join(" ") : "none"}${prevailHTML(sl)}</dd></dl>
-<div class="act">${act}</div>${err}</section>`;
+${sl.uses_note ? `<p class="cnote unote">${textHTML(sl.uses_note)}</p>` : ""}<div class="act">${act}</div>${err}</section>`;
   }
   /** Which rule prevails in each conflict the rule check named (rule 108.1), beside the conflicts. @rule 108.1, 108.3 */
   const prevailHTML = (sl) => ((sl.check && sl.check.conflicts) || []).filter((c) => c.prevails !== null).map((c) => ` <span class="cwhy">${String(c.prevails) === String(c.num).split(".")[0] ? `${rpill(String(c.prevails))} prevails` : "this prevails"}</span>`).join("");

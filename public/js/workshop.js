@@ -185,12 +185,18 @@ export function createWorkshop({ api, me, pill, rpill, when, canCommission, refr
   function makesCard(v, dim) {
     return `<div class="mkc${dim ? " dim" : ""}">${artTile(v)}<div class="mkb"><h4 class="mkn">${esc(v.name)}</h4>${kindChip(v)}${attrsHTML(v)}${flavorHTML(v, false)}</div></div>`;
   }
+  /** An entry a ticket uses and does not make (rule 703.4): "Flower · from W4", a link to the ticket that makes it, or to the card when it is built. @rule 703.4 */
+  function usesPill(m) {
+    const from = /^W\d+$/.test(m.num) ? wPill(m.num) : `<button type="button" class="clink" data-entry="${esc(m.num)}" aria-haspopup="dialog">${esc(m.num)}</button>`;
+    return `<span class="mk dim uses" data-uses="${esc(m.num)}">${esc(m.name)} · from ${from}</span>`;
+  }
   /** The ticket's Makes: a card for each entry, a pill for each rule (the rule's number, or its draft sentence before it has one). @rule 801.2 */
   function makesHTML(t) {
     if (!t.makes.length) return '<span class="mnote">Nothing</span>';
     const dim = t.state !== "Done";
     const rules = t.makes.filter((m) => m.kind === "rule");
-    return `<div class="makes2">${(t.entry_views || []).map((v) => makesCard(v, dim)).join("")}${rules.length ? `<span class="makes">${rules.map((m) => (m.num ? `<span class="mk dim">${rpill(m.num)}</span>` : `<span class="mk dim">${esc(m.draft)}</span>`)).join("")}</span>` : ""}</div>`;
+    const uses = t.makes.filter((m) => m.kind === "uses");
+    return `<div class="makes2">${(t.entry_views || []).map((v) => makesCard(v, dim)).join("")}${uses.length ? `<span class="makes">${uses.map(usesPill).join("")}</span>` : ""}${rules.length ? `<span class="makes">${rules.map((m) => (m.num ? `<span class="mk dim">${rpill(m.num)}</span>` : `<span class="mk dim">${esc(m.draft)}</span>`)).join("")}</span>` : ""}</div>`;
   }
   /** A catalog card in the Workshop: the art slot, id and name, kind, attributes, 3 flavor rows, who made it. @rule 701.1 */
   function catalogCard(v) {
@@ -275,7 +281,7 @@ ${catalogHTML()}</div></div>`;
           vals: Object.fromEntries(Object.entries(m.attrs || {}).filter(([k]) => mine.has(k)).map(([k, v]) => [k, fieldValue(v)])),
           keep: { attrs: Object.fromEntries(Object.entries(m.attrs || {}).filter(([k]) => !mine.has(k))), flavor: m.flavor, needsBuild: m.needsBuild, art: m.art, copiedFrom: m.copiedFrom } };
       }),
-      ruleItems: t.makes.filter((m) => m.kind === "rule") };   // the rules, nights, running cost, tasks and price are Gremlin's (rules 801.2, 801.4): the form shows them and never sends them
+      ruleItems: t.makes.filter((m) => m.kind === "rule"), usesItems: t.makes.filter((m) => m.kind === "uses") };   // the rules, nights, running cost, tasks and price are Gremlin's (rules 801.2, 801.4): the form shows them and never sends them
     f.was = { makes: JSON.stringify(makesBody(f)), held: t.makes.length };   // what the lists made when the form opened
     S.touched = new Set();   // no field has been typed in yet
     return f;
@@ -303,7 +309,7 @@ ${catalogHTML()}</div></div>`;
   }
   /** What the form makes: its entries, then the rules Gremlin put on the ticket exactly as they are. @rule 801.2 */
   function makesBody(f) {
-    return [...f.entries.filter((e) => e.name.trim()).map(entryBody), ...f.ruleItems];
+    return [...f.entries.filter((e) => e.name.trim()).map(entryBody), ...f.ruleItems, ...(f.usesItems || [])];
   }
   /** @rule 801.3 */
   const makesNothing = (f) => { const m = makesBody(f); return f.was && JSON.stringify(m) === f.was.makes ? !f.was.held : !m.length; };

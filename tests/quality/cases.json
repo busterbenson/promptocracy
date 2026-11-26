@@ -375,6 +375,72 @@
         "no_escalation": true
       },
       "known_fail": null
+    },
+    {
+      "id": "g-flower-uses-w4",
+      "agent": "gremlin",
+      "start": "general",
+      "title": "A rule that needs a Flower W4 is making",
+      "pending": [
+        {
+          "ticket": 4,
+          "owner": "Sarah",
+          "state": "Ready",
+          "name": "Flower",
+          "catalogKind": "item"
+        }
+      ],
+      "turns": [
+        "Is there already a flower in the catalog?",
+        "Every night, each living player gets 1 point while a flower is in the catalog."
+      ],
+      "if_asked": [],
+      "intent": "He tells the player W4 (Sarah, Ready) is making a Flower, and drafts the rule at once, naming the Flower (W4) and recording uses W4. The rule check passes: an entry an open commission makes is not missing, and the rule has nothing to act on until it is built (703.4). He does not ask for a Flower to be made again. At night it is applied like any rule, and its test has an absent-Flower case.",
+      "expect": {
+        "say_names": "W4",
+        "draft": {
+          "kind": [
+            "add",
+            "addclause",
+            "amend"
+          ]
+        },
+        "uses": [
+          "W4"
+        ],
+        "check": "ok",
+        "drafts_max": 1,
+        "night": "applied",
+        "no_dead_end": true
+      },
+      "known_fail": null
+    },
+    {
+      "id": "w-flower-dup",
+      "agent": "gremlin",
+      "start": "ticket",
+      "title": "A commission for a Flower that W4 already makes",
+      "pending": [
+        {
+          "ticket": 4,
+          "owner": "Sarah",
+          "state": "Ready",
+          "name": "Flower",
+          "catalogKind": "item"
+        }
+      ],
+      "turns": [
+        "Make a Flower item."
+      ],
+      "if_asked": [],
+      "intent": "He sees that W4 (Sarah, Ready) already makes a Flower item and offers to use it: an option such as Use W4's Flower, or the ticket itself carries a uses item for W4. He does not just make a second one without saying so.",
+      "expect": {
+        "refusal": false,
+        "makes_uses": "W4",
+        "no_dead_end": true,
+        "night": "n/a"
+      },
+      "known_fail": null
     }
   ]
 }

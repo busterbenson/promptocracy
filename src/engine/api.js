@@ -14,3 +14,15 @@ export const ENGINE_VERSION = 1;
 export function attr(entry, key) {
   return entry && entry.attrs && Object.hasOwn(entry.attrs, key) ? entry.attrs[key] : undefined;
 }
+
+/**
+ * The entry a rule means when it names one by the commission that made it, "the Flower (W4)": the entry of `kind` that `ticket` made, or undefined while it is not built,
+ * and the rule's code then does nothing (its hooks allow and it has no effects). When the commission made more than one entry of the kind, `name` picks (case folded);
+ * with one, the entry is found by the commission and kind alone, so a later rename does not break the rule. @rule 703.4
+ */
+export function entryMadeBy(catalog, ticket, kind, name) {
+  const made = (catalog || []).filter((e) => e && e.madeBy === ticket && e.kind === kind);
+  if (made.length <= 1) return made[0];
+  const want = String(name ?? "").trim().toLowerCase();
+  return want ? made.find((e) => String(e.name ?? "").toLowerCase() === want) : undefined;
+}

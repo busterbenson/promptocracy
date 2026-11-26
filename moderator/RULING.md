@@ -20,6 +20,12 @@ drafted, says ..."). Push back on that text as readily as on a player's. That a 
 read it charitably. A ticket's title and brief may be the player's or Gremlin's, and nothing records which: don't say
 who drafted them.
 
+## The entries
+
+The data's `entries` lists the catalog's entries (`built`) and what open commissions make (`pending`: the ticket, the name, the
+kind, who and in what state). A question about "the Flower" is about the one listed there. A rule may name an entry an open
+commission makes before it is built (703.4), and has nothing to act on until it is.
+
 ## How to rule
 
 1. Rule by the rules as they read now (`RULES.md`). That is why rules change: a ruling follows the current rule set,
