@@ -27,6 +27,15 @@ export function bundleFor(game: { slug: string }): { bundle: Bundle; bundled: bo
   return { bundle: own ?? (STARTER as Bundle), bundled: !!own };
 }
 
+// The settings a game plays by: its rules' settings.json when it has a bundle, else the ones stored on the game row. A rule
+// that changes a setting changes settings.json (rule 109.2), so the day's board and checks must read the bundle, as the night
+// does. (2026-11-26: Rickshaw's P1 set turn.move_distance to 2 and the board kept offering 1.)
+/** @rule 101, 109.2 */
+export function gameSettings(game: { slug: string; settings: string }) {
+  const { bundle, bundled } = bundleFor(game);
+  return getSettings(bundled ? bundle.settings : game.settings);
+}
+
 /** @rule 101 */
 export function rulesFor(game: { slug: string }) {
   const { bundle } = bundleFor(game);
@@ -67,7 +76,7 @@ const turnOf = (game: any, today: Today) => ({ round: game.round, turn: game.tur
 // A context with no board in it: enough for the questions the turn guard asks (may this player move at all?).
 /** `me` is the acting player's row, so a rule can see their state (rule 603.1). @rule 202.2, 603.1 */
 export function lightContext(game: any, today?: Today, me?: PlayerRow) {
-  return makeContext({ day: game.day || null, now: nowIso(), settings: getSettings(game.settings), turn: turnOf(game, today), players: me ? playersOf([me]) : [] });
+  return makeContext({ day: game.day || null, now: nowIso(), settings: gameSettings(game), turn: turnOf(game, today), players: me ? playersOf([me]) : [] });
 }
 
 // The full context for a move or a spawn: the settings, every piece and every charted tile.
@@ -79,7 +88,7 @@ export async function boardContext(env: Env, game: any, today?: Today) {
     loadCreatures(env, game.id),
   ]);
   return makeContext({
-    day: game.day || null, now: nowIso(), settings: getSettings(game.settings), players: playersOf(pieces.results as PlayerRow[]),
+    day: game.day || null, now: nowIso(), settings: gameSettings(game), players: playersOf(pieces.results as PlayerRow[]),
     creatures: creaturesOf(creatures, game.day || null), catalog: catalogOf(game),
     tiles: makeTiles(tiles), turn: turnOf(game, today), rng: cryptoRng(),
   });
@@ -161,8 +170,7 @@ export async function chooseSpawn(env: Env, game: any) {
 /** @rule 401, 402 */
 async function nightContext(env: Env, game: any, nowMs: number) {
   const pieces = await env.DB.prepare(`SELECT ${PLAYER_COLS} FROM players WHERE game_id = ?`).bind(game.id).all();
-  const { bundle, bundled } = bundleFor(game);
-  return makeContext({ day: game.day || null, now: nowIso(nowMs), settings: getSettings(bundled ? bundle.settings : game.settings), players: playersOf(pieces.results as PlayerRow[]),
+  return makeContext({ day: game.day || null, now: nowIso(nowMs), settings: gameSettings(game), players: playersOf(pieces.results as PlayerRow[]),
     creatures: creaturesOf(await loadCreatures(env, game.id), game.day || null), catalog: catalogOf(game) });
 }
 
@@ -310,8 +318,7 @@ const BOARD_OPEN = "(SELECT board_at FROM days WHERE game_id = ? AND n = ?) IS N
 
 /** The hearts a new player starts with (rule 601.1). @rule 601.1 */
 export function heartsStart(game: { slug: string; settings: string }): number {
-  const { bundle, bundled } = bundleFor(game);
-  return getSettings(bundled ? bundle.settings : game.settings)["hearts.start"];
+  return gameSettings(game)["hearts.start"];
 }
 
 /**
