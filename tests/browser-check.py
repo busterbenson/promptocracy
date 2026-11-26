@@ -51,7 +51,7 @@ with sync_playwright() as p:
             # ---- the failed check in the chat
             c, page, errors = new_page(b, w, h, scheme)
             open_chat(page)
-            page.fill("#chatText", "SYNTH-ADD a rule about moving by fart")
+            page.fill("#chatText", "SYNTH-FART a rule about moving by fart")
             page.wait_for_timeout(300)
             page.click("#chatcol [data-c='send']")
             try: page.wait_for_selector("#chatLog .slip [data-c='lock']", timeout=30000)
