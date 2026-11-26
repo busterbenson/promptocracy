@@ -1,9 +1,8 @@
 // GET /<slug>/api/board: the charted tiles and the pieces on them. PUBLIC: no emails, no ids.
-import { bundleFor, stateOf } from "../engine/host";
+import { bundleFor, gameSettings, stateOf } from "../engine/host";
 import { ensureTiles, loadTiles } from "../lib/board";
 import { DIAGONAL_MOVES, SHARED_TILES } from "../lib/board-rules.js";
 import { tileLabel } from "../lib/geometry.js";
-import { getSettings } from "../lib/settings.js";
 import { Ctx, colorOf, json } from "../lib/util";
 
 /** @rule 501, 601, 602, 603.1, 404 */
@@ -16,7 +15,7 @@ export const get = async ({ env, data }: Ctx) => {
   const tiles = await loadTiles(env, g.id);
   const creatures = (await env.DB.prepare("SELECT id, entry_id, x, y, z, hearts, rests_night FROM creatures WHERE game_id = ? AND gone_day IS NULL ORDER BY id").bind(g.id).all()).results as any[];
   const entries = new Map(((bundleFor(g).bundle as any).catalog ?? []).map((e: any) => [e.id, e]));
-  const S = getSettings(g.settings);
+  const S = gameSettings(g);
   return json({
     settings: S, // the board's rules as data: public, like the rules text
     // What a move may be, for the page to offer only legal ones (the server checks them all again).
