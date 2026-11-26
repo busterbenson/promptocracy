@@ -316,6 +316,7 @@ export async function enactStatements(env: Env, game: any, n: number, nowMs: num
 // the points and their event are written only while the proposal is approved and has no points event yet, the update BEFORE the event, so a
 // second run gives nothing twice. Called by the count AFTER the commission's price is paid (rule 801.4 pays at the count on the points the
 // player has), so the points can't help pay the same commission. The price (801.4) is separate and unchanged.
+// 401.1 gives the points when a proposal passes and is applied; 801.1 makes a commission a proposal like any other, applied when it passes.
 /** @rule 401, 801.1 */
 export async function commissionPointsStatements(env: Env, game: any, n: number, nowMs: number, passed: { id: string; number: number; player_id: string; target: any }[]) {
   if (!passed.length) return [];
@@ -336,6 +337,27 @@ export async function commissionPointsStatements(env: Env, game: any, n: number,
     }
   }
   return stmts;
+}
+
+
+// The Era end for the points the count just gave (rules 402.2, 402.3): enactStatements runs dayEnd only on a night that passed a rule change or
+// action, so a commission-only night would never crown a player whose commission points took them to the winning score. Called right after the
+// count's batch, once per count: `before` is every score now minus the points the count gave (the price already came out), `given` is those
+// points in proposal order (401.1 gives them in that order). A night that already ended an Era does not end another.
+/** @rule 401, 402.2, 402.3 */
+export async function commissionEraStatements(env: Env, game: any, n: number, nowMs: number, numbers: number[]) {
+  if (!numbers.length) return [];
+  const ended: any = await env.DB.prepare("SELECT COUNT(*) AS c FROM events WHERE game_id = ? AND kind = 'era_ended' AND day = ?").bind(game.id, n).first();
+  if (ended?.c) return [];
+  const rows = (await env.DB.prepare(`SELECT player_id, json_extract(args, '$.delta') AS delta, json_extract(args, '$.proposal') AS proposal FROM events WHERE game_id = ? AND kind = 'points' AND day = ? AND json_extract(args, '$.proposal') IN (${numbers.map(() => "?").join(",")}) ORDER BY json_extract(args, '$.proposal'), id`).bind(game.id, n, ...numbers).all()).results as any[];
+  if (!rows.length) return [];
+  const ctx = await nightContext(env, game, nowMs);
+  const before: Record<string, number> = Object.fromEntries(ctx.players.map((p: any) => [p.ref, p.score]));
+  const given = rows.filter((r) => r.player_id in before).map((r) => ({ player: r.player_id as string, delta: r.delta as number }));
+  for (const g of given) before[g.player] -= g.delta;
+  const champ = rulesFor(game).dayEnd(ctx, { before, given, enacted: rows.map((r) => r.proposal) }).find((e: any) => e.player in before);
+  if (!champ) return [];
+  return eraEndStatements(env, game, n, nowIso(nowMs), champ, before, given, "EXISTS (SELECT 1 FROM proposals WHERE game_id = ? AND day_ballot = ? AND status = 'approved' AND kind = 'commission')");
 }
 
 

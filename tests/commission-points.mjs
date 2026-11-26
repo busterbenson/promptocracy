@@ -102,6 +102,21 @@ try {
   console.log("a re-run gives nothing twice");
   await cron(); await cron(); await midnight(); await midnight();
   check("the cron again, and two more nights: still 12 / 10 / 0 and two events (Bo's 40-point ticket stays Ready)", score("Ana") === 12 && score("Bo") === 10 && score("Cy") === 0 && events().length === 2, J([score("Ana"), score("Bo"), score("Cy"), events()]));
+  console.log("the Era (402.2, 402.3): a commission-only night whose 10 takes a player to 100 ends the Era that night");
+  const era = () => d1(state, `SELECT n, ended_day, champion_id, final_scores FROM eras WHERE game_id = '${gid}' ORDER BY n`);
+  d1(state, `UPDATE players SET score = 90 WHERE id = '${id.Cy}'`);
+  const e = await commission(Cy, good({ title: "A gong", makes: [{ kind: "entry", name: "Gong" }] }));
+  price(Number(e.n.slice(1)), 0);
+  await midnight();
+  const ep = e.k.data.ticket.proposal;
+  for (const p of [Ana, Bo, Cy]) await yes(p, ep);
+  const before = era().length;
+  await midnight();
+  check("Cy's commission passed on a night with no passed rule change", prop(Number(ep.slice(1))).status === "approved" && d1(state, `SELECT COUNT(*) AS n FROM proposals WHERE kind != 'commission' AND status IN ('passed', 'enacted') AND day_ballot = ${prop(Number(ep.slice(1))).day_ballot}`)[0].n === 0);
+  const rows = era();
+  check("the Era ended that night: Cy is the Champion with 100 (90 + the 10), the next Era is open", rows.length === before + 1 || rows.some((r) => r.champion_id === id.Cy), J(rows));
+  check("Cy is the Champion, final score 100, and points start again at 0 for everyone", rows.find((r) => r.champion_id === id.Cy)?.ended_day === prop(Number(ep.slice(1))).day_ballot && J(JSON.parse(rows.find((r) => r.champion_id === id.Cy)?.final_scores ?? "{}")[id.Cy]) === "100" && score("Cy") === 0 && score("Ana") === 0, J([rows, score("Cy"), score("Ana")]));
+  check("one era_ended event, and a second night and the cron end nothing more", (await cron(), await midnight(), d1(state, `SELECT COUNT(*) AS n FROM events WHERE kind = 'era_ended'`)[0].n === 1 && era().filter((r) => r.champion_id).length === 1), J(era()));
   console.log("the test store is not the live one");
   check("the local state dir is not under ~/chalantbot", !String(state).startsWith(`${homedir()}/chalantbot`), String(state));
 } catch (e) {
