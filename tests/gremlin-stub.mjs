@@ -71,7 +71,7 @@ export function createStub() {
       };
   GENERAL_SYNTH["SYNTH-C-ESC"] = SYNTH["SYNTH-C-ESC"];   // an escalation asked outside any ticket (tests/threads.mjs)
   const calls = [];                                 // every request the stub saw
-  const stubState = { mode: "ok", excuse: "ok", before: null, script: [], looks: [], drafter: null, retry: null, retryFail: false };   // looks: the answers to the next pictures shown to the model (the art check), "yes" | "no" | "500" | "garbled" | "hang"; an empty list answers yes   // script: answers for the next thread calls, in order (the browser test's natural wording)
+  const stubState = { check: null, mode: "ok", excuse: "ok", before: null, script: [], looks: [], drafter: null, retry: null, retryFail: false };   // looks: the answers to the next pictures shown to the model (the art check), "yes" | "no" | "500" | "garbled" | "hang"; an empty list answers yes   // script: answers for the next thread calls, in order (the browser test's natural wording)
   const stubModel = createServer(async (req, res) => {
     const chunks = []; for await (const c of req) chunks.push(c);
     const body = JSON.parse(Buffer.concat(chunks).toString());
@@ -79,7 +79,7 @@ export function createStub() {
     const lastText = typeof last === "string" ? last : last.map((b) => b.text ?? "").join("\n");
     const sys = typeof body.system === "string" ? body.system : (body.system || []).map((b) => b.text).join("\n");
     // which request this is: the general conversation, the ticket's (and the thread's), the small model's excuse, or the drafter (a system prompt that is none of his)
-    const kind = sys.includes("You are Gremlin, a scrappy workshop gremlin") ? "excuse" : sys.includes("WHAT YOU DO HERE (the conversation outside any ticket)") ? "general" : sys.includes("You are Gremlin") ? "ticket" : Array.isArray(last) && last.some((b) => b?.type === "image") || /^You describe how things look/.test(sys) ? "art" : "drafter";
+    const kind = sys.includes("You check one proposed change") ? "check" : sys.includes("You are Gremlin, a scrappy workshop gremlin") ? "excuse" : sys.includes("WHAT YOU DO HERE (the conversation outside any ticket)") ? "general" : sys.includes("You are Gremlin") ? "ticket" : Array.isArray(last) && last.some((b) => b?.type === "image") || /^You describe how things look/.test(sys) ? "art" : "drafter";
     calls.push({ model: body.model, kind, key: req.headers["x-api-key"], body, lastText, sys });
     if (stubState.before && kind !== "drafter") { const f = stubState.before; stubState.before = null; f(); }   // a hook that runs while the "model" is thinking (the tests move the clock)
     const send = (status, o) => { res.statusCode = status; res.setHeader("content-type", "application/json"); res.end(J(o)); };
@@ -93,6 +93,12 @@ export function createStub() {
     }
     // the description before a drawing (src/lib/art-check.ts describeFor): a fixed plain description, never an excuse
     if (/^You describe how things look/.test(String(body.system ?? ""))) return send(200, { content: [{ type: "text", text: "STUB-DETAILS a round green shape with two dark spots" }], stop_reason: "end_turn", usage: { input_tokens: 120, output_tokens: 20 } });
+    // the rule check (src/lib/draft-check.ts): `stubState.check` is the recorded answer ({conflicts, missing, fixes}), default nothing to report; "500" and "garbled" fail it
+    if (kind === "check") {
+      const c = stubState.check;
+      if (c === "500") return send(500, { error: "boom" });
+      return send(200, { content: [{ type: "text", text: c === "garbled" ? "Looks fine to me." : J(c ?? { conflicts: [], missing: [], fixes: [] }) }], stop_reason: "end_turn", usage: { input_tokens: 8500, output_tokens: 300 } });
+    }
     if (kind === "drafter") {
       const text = stubState.drafter ? stubState.drafter({ sys, lastText }) : J({ after_text: "unset", conflicts: [] });
       return send(200, { content: [{ type: "text", text }], stop_reason: "end_turn", usage: { input_tokens: 900, output_tokens: 150 } });
@@ -103,7 +109,7 @@ export function createStub() {
     if (stubState.mode === "garbled") return send(200, { content: [{ type: "text", text: "sorry, I lost my JSON" }], stop_reason: "end_turn", usage: { input_tokens: 5, output_tokens: 5 } });
     if (kind === "general") {
       const msg = lastText.slice(lastText.lastIndexOf("The player's new message:"));   // only the NEW message picks the answer: the slip and the rule card above it carry other words
-      const retry = lastText.includes("Your draft this turn was refused by the drafter");
+      const retry = lastText.includes("Your draft this turn was refused by the drafter") || lastText.includes("Draft the nearest version the game can carry out");   // a refusal, or the rule check's findings (rule 103.9)
       if (retry && stubState.retryFail) return send(500, { error: {} });   // the second call fails (tests/gremlin-general.mjs: the first call is logged once)
       if (retry && stubState.retry) return send(200, { content: [{ type: "text", text: J(stubState.retry) }], stop_reason: "end_turn", usage: { input_tokens: 400, output_tokens: 80 } });
       const m = Object.keys(GENERAL_SYNTH).sort((a, b) => b.length - a.length).find((k) => msg.includes(k));

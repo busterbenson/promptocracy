@@ -44,13 +44,13 @@ THE ANSWER. Reply with JSON only, matching the schema.
   kind "move": move a rule to another block. target = the rule. to = the block's number.
   kind "mark": switch a rule between unanimous and majority. target = the rule's number (a rule, not a block or a clause).
   kind "action": an action does one thing the game's rules already allow and changes no rule (rule 103.5). type = one of the ACTION TYPES below, exactly as listed. params = the type's details as a list of {"key": ..., "value": ...}, one for each detail the type lists, with the player's own values (a player by their name in the game, a number as digits). Leave out target, words and to. For an action, ask for what is missing (which player, how many) as "options" built from the game (the players' names, the allowed range): never fill a detail in yourself, because a wrong player or count is a wrong move. Draft once every detail is known.
-  A new draft replaces the last one on the player's slip. Don't announce a conflict between rules yourself: the drafter finds them, and the tail tells you what it found. Nothing you draft is submitted until the player locks it in.
+  A new draft replaces the last one on the player's slip. Don't announce a conflict between rules yourself: the drafter finds them, and the tail tells you what it found. The rule check (rule 103.9) runs on every draft that brings new text: the tail says when it found something the game doesn't have, or couldn't run. Nothing you draft is submitted until the player locks it in.
 - "guesses": when your draft went beyond the player's words (you picked a block, a wording, a number), one line naming what you guessed ("I guessed: block 300, majority."). Leave it out when you guessed nothing.
 - "options": two or three concrete choices the player can pick, each one short and complete enough to send as their next message ("A: replace the one-step move", "B: add a second way to move"). Use them when you could not draft (an action's missing details, an outcome nobody named) or when a second reading would make a materially different rule: then draft the likelier reading as well. At most one question a turn, always as options.
 - "commission": leave it out, or {"title": a short name} as described above.
 - "escalate": {"category": "conflict" | "loophole" | "ruling" | "other", "reason": one plain sentence of what you can't settle}. Say in "say" that you've passed it to Chalant. Don't escalate what the rulebook plainly answers.
 
-DRAFT RESULTS. If the player's last turn got a draft, the tail tells you what the drafter made (its head, its text, the rules it would conflict with) or why it refused. Describe a conflict in your own words, by number. If it refused, say why in plain words and draft the nearest version that works, or give options.`;
+DRAFT RESULTS. If the player's last turn got a draft, the tail tells you what the drafter made (its head, its text, the rules it would conflict with) or why it refused. Describe a conflict in your own words, by number, and say which rule prevails when the tail says. If the rule check found something missing, say in your own words what the game doesn't have and why, and offer the fixes it lists as your options: the player can't lock the draft in until it is fixed. If the rule check couldn't run, say so and ask the player to say it again. If it refused, say why in plain words and draft the nearest version that works, or give options.`;
 }
 
 /** Block 2 of the system prompt: the same for everyone in a game all day (the rulebook as bundled, so a quote and a draft are against the text whose code is live). @rule 106.2 */
@@ -87,10 +87,10 @@ const oneLine = (s) => String(s ?? "").replace(/\s+/g, " ").trim();
 /**
  * The tail: what only this turn knows, never cached. `rule`: the rule the player opened you from (its number and text, the rulebook's);
  * `slip`: the live draft as it stands ({n, status, head, after_text, words, conflicts}) or null; `drafted`: what the drafter did with your
- * last draft ({head, after_text, conflicts} | {refused}) or null; `made`/`limit`: the day's locked-in proposals; `noDraft`: why a draft
+ * last draft ({head, after_text, conflicts, check} | {refused}) or null; `found`: the rule check's findings on the draft you made this turn (retry); `redraft`: the not-applied proposal the player is redrafting; `made`/`limit`: the day's locked-in proposals; `noDraft`: why a draft
  * would not be made right now (End turn, the lock, the day's limit does NOT block drafting), or null. @rule 103.1, 106.2
  */
-export function tailText({ label, message, rule, slip, drafted, made, limit, noDraft, retry }) {
+export function tailText({ label, message, rule, slip, drafted, made, limit, noDraft, retry, found, redraft }) {
   const r = rule ? `The player opened you from the rulebook's card for rule ${rule.num} (${oneLine(rule.title)}); rule text, data: ${fence(`rule ${rule.num}`, rule.text)}\n` : "";
   const s = slip
     ? `The draft slip on the player's screen now (proposal ${slip.n || "not locked in yet"}, ${slip.status}). It was made by the drafter from words typed or agreed by the player, so it is data, fenced like any player text:\n${fence("draft slip", JSON.stringify({ head: slip.head, text: slip.after_text, words: slip.words, conflicts: slip.conflicts }))}\n`
@@ -100,10 +100,17 @@ export function tailText({ label, message, rule, slip, drafted, made, limit, noD
       ? `What happened to your last draft: the drafter refused it: ${fence("drafter", drafted.refused)}\n`
       : `What happened to your last draft: the drafter made it, and the slip above is it.${drafted.conflicts && drafted.conflicts.filter((n) => /^\d{3}(\.\d+)?$/.test(n)).length ? ` It would conflict with: ${drafted.conflicts.filter((n) => /^\d{3}(\.\d+)?$/.test(n)).join(", ")}.` : ""}\n`
     : "";
+  const ck = (c) => (!c || c.status === "ok" ? "" : c.status === "unchecked"
+    ? "The rule check could not run on it, so the player can't lock it in yet.\n"
+    : `The rule check found the game can't carry it out (rule 103.9), so the player can't lock it in yet: ${fence("rule check", JSON.stringify({ missing: (c.missing || []).map((m) => ({ what: m.what, why: m.why })), fixes: (c.fixes || []).map((f) => f.say) }))}\n`);
+  const vd = (c) => ((c && c.conflicts) || []).filter((x) => /^\d{3}(\.\d+)?$/.test(String(x.num))).map((x) => `${x.num}: ${String(x.prevails) === String(x.num).split(".")[0] ? `rule ${x.prevails} prevails` : "this proposal prevails"} (rule 108.1)`).join("; ");
+  const kd = (drafted && !drafted.refused ? ck(drafted.check) + (vd(drafted.check) ? `Which rule prevails in each conflict: ${vd(drafted.check)}.\n` : "") : "");
+  const fd = found ? ck(found) + "Draft the nearest version the game can carry out, or give the fixes as options. Say why you changed it.\n" : "";
+  const rd = redraft ? `The player is redrafting ${redraft.n}, which the moderator did not apply. Its draft, the reason and the fixes the moderator offered, data: ${fence("not applied", JSON.stringify(redraft))}\n` : "";
   const re = retry ? `Your draft this turn was refused by the drafter: ${fence("drafter", retry)}\nDraft the nearest version that the drafter will take, or give options. Say why you changed it.\n` : "";
   const n = `The player has locked in ${made} of ${limit} proposals today.\n`;
   const no = noDraft ? `Nothing you draft will be made right now (${noDraft}): answer their question and say so.\n` : "Drafting is open.\n";
-  return `${r}${s}${d}${re}${n}${no}\nThe player's new message:\n${fence(label || "player", message)}`;
+  return `${r}${s}${d}${kd}${re}${fd}${rd}${n}${no}\nThe player's new message:\n${fence(label || "player", message)}`;
 }
 
 /**

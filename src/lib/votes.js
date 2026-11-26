@@ -63,11 +63,11 @@ export const SUGGESTION = "Try splitting it into smaller proposals or simplifyin
 // The moderator's reason already ends with the suggestion (it is what the other players are shown), so it is taken off here and
 // said once, after "It gave no points". The claim route stores the reason without its final full stop, so it is matched without it.
 /** @rule 107.7 */
-export const returnedBody = (number, reason) => {
+export const returnedBody = (number, reason, fixes = []) => {
   const bare = SUGGESTION.replace(/\.$/, "");
   let r = String(reason ?? "").trim().replace(/[.\s]+$/, "");
   if (r.endsWith(bare)) r = r.slice(0, -bare.length).trim().replace(/[.\s]+$/, "");
-  return `P${number} passed but was not applied: ${r}${r.endsWith("…") ? "" : "."} It gave no points. ${SUGGESTION}`;
+  return `P${number} passed but was not applied: ${r}${r.endsWith("…") ? "" : "."} It gave no points. ${fixes.length ? `Changes that would fix it: ${fixes.map((f, i) => `(${i + 1}) ${String(f).trim().replace(/[.\s]+$/, "")}`).join("; ")}.` : SUGGESTION}`;
 };
 
 // Rule 107.7: an applied proposal whose change was not live by the deploy deadline (the deadline + DEPLOY_GRACE_MINUTES).

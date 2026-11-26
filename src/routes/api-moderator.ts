@@ -34,7 +34,7 @@ import { orderPassed } from "../engine/host";
 import { Ctx, json, nowIso, readJson, sha256Hex } from "../lib/util";
 
 const SHA = /^[0-9a-f]{40}$/;
-const MAX_REASON = 400, MAX_NOTE = 600;
+const MAX_REASON = 400, MAX_NOTE = 600, MAX_FIXES = 3, MAX_FIX = 200;
 
 // The game whose token this is, or null. Compares the hashes in constant time.
 /** @rule 106.1 */
@@ -64,12 +64,12 @@ export const pending = async (ctx: Ctx) => {
     const rows = (await env.DB.prepare(
       `SELECT q.number, q.title, q.kind, q.scope, q.target, q.new_num, q.to_block, q.words, q.draft_head, q.before_text, q.after_text,
               q.settings, q.conflicts, q.drafted_by, q.mark, q.yes, q.no, q.needed, q.budget_minutes, q.budget_effort, q.base_sha, q.commit_sha,
-              q.day_proposed, p.display_name AS player
+              q.day_proposed, q.rule_check, p.display_name AS player
        FROM proposals q JOIN players p ON p.id = q.player_id AND p.game_id = q.game_id
        WHERE q.game_id = ? AND q.day_ballot = ? AND q.status = 'passed' AND q.kind NOT IN ('commission', 'action') ORDER BY q.number`,
     ).bind(game.id, day.n).all()).results as any[];
     // A night with only actions (rule 103.8) is the site's own: the moderator has nothing to apply and sees no job.
-    const passed = (await orderPassed(env, game, rows, nowMs)).map((r) => ({ ...r, settings: JSON.parse(r.settings || "{}"), conflicts: JSON.parse(r.conflicts || "[]"), player: { name: r.player } }));
+    const passed = (await orderPassed(env, game, rows, nowMs)).map((r) => ({ ...r, settings: JSON.parse(r.settings || "{}"), conflicts: JSON.parse(r.conflicts || "[]"), rule_check: r.rule_check ? JSON.parse(r.rule_check) : null, player: { name: r.player } }));
     const deadline = Date.parse(day.deadline_at);
     if (!(day.status === "processing" && !passed.length)) job = { day: day.n, status: day.status, locked_at: day.locked_at, deadline_at: day.deadline_at, deploy_deadline_at: Number.isFinite(deadline) ? nowIso(deployDeadline(deadline)) : null, commit_sha: day.commit_sha, tag: day.tag, deploy_live: day.status === "deploying" && !!day.commit_sha && (await deployedSha(env, game)) === day.commit_sha, passed };
   }
@@ -130,7 +130,11 @@ export const claim = async (ctx: Ctx) => {
     if (!Number.isInteger(o.seq) || o.seq < 1 || o.seq > body.outcomes.length || seqs.has(o.seq)) return json({ error: `P${o.number}: each outcome needs its place in the order applied (seq 1 to ${body.outcomes.length}, each once).` }, 400);
     seqs.add(o.seq);
     if (o.applied === true) { if (typeof o.commit !== "string" || !SHA.test(o.commit)) return json({ error: `P${o.number}: an applied outcome needs its commit.` }, 400); }
-    else if (o.applied === false) { if (typeof o.reason !== "string" || !o.reason.trim() || o.reason.length > MAX_REASON) return json({ error: `P${o.number}: a not-applied outcome needs a reason (at most ${MAX_REASON} characters).` }, 400); }
+    else if (o.applied === false) {
+      if (typeof o.reason !== "string" || !o.reason.trim() || o.reason.length > MAX_REASON) return json({ error: `P${o.number}: a not-applied outcome needs a reason (at most ${MAX_REASON} characters).` }, 400);
+      // Up to three fixes (rule 107.7): one plain sentence each.
+      if (o.fixes !== undefined && (!Array.isArray(o.fixes) || o.fixes.length > MAX_FIXES || o.fixes.some((f: unknown) => typeof f !== "string" || !f.trim() || f.length > MAX_FIX))) return json({ error: `P${o.number}: fixes are up to ${MAX_FIXES} sentences of at most ${MAX_FIX} characters.` }, 400);
+    }
     else return json({ error: `P${o.number}: applied must be true or false.` }, 400);
   }
   if (seen.size !== passed.length) return json({ error: "The outcomes must name each passed proposal once." }, 400);
@@ -148,7 +152,7 @@ export const claim = async (ctx: Ctx) => {
     const q = byNum.get(o.number);
     if (o.applied) stmts.push(env.DB.prepare(`UPDATE proposals SET commit_sha = ?, apply_seq = ? WHERE id = ? AND status = 'passed'${mine}`).bind(o.commit, o.seq, q.id, game.id, n, body.sha));
     else {
-      stmts.push(...notAppliedStatements(env, game, q, o.reason.trim().replace(/[.\s]+$/, ""), now, mine, [game.id, n, body.sha]));
+      stmts.push(...notAppliedStatements(env, game, q, o.reason.trim().replace(/[.\s]+$/, ""), now, mine, [game.id, n, body.sha], (o.fixes ?? []).map((f: string) => f.trim())));
     }
   }
   for (const x of notes) {

@@ -693,6 +693,8 @@ import { hold } from "/js/busy.js";
     if (tab && !tab.disabled) { setTab(tab.dataset.tab, !tab.closest(".btabs")); return; }
     const j = t.closest("[data-jump]");
     if (j) { jumpTo(j.dataset.jump); return; }
+    const rd = t.closest("[data-redraft]");   // a not-applied proposal's fix on the Yours page (rule 107.7): Gremlin opens with the redraft in the box
+    if (rd && CHAT) { await closePanels(); await CHAT.redraft(rd.dataset.redraft, rd.dataset.fix); return; }
     const inCard = CARDS.isOpen();   // with a card up, anything it opens (from its text, or from the preview of one of its pills) goes on its back stack
     const see = t.closest("[data-seecard]");
     if (see && BOOK) {

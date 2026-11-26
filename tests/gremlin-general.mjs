@@ -363,6 +363,25 @@ try {
     const rt2 = await say(Ana, "SYNTH-G-REFUSED-THEN fix points again");
     stubState.retry = null;
     check("when the second draft is refused too there is no third call: his words and the refusal are shown", generalCallsNow() === g2 + 2 && !slipOf(rt2) && !!rt2.data.messages[1].refused);
+    // the rule check (rule 103.9): a draft the check finds the game can't carry out is made, with Lock it in off and the reason beside it, and he gets ONE more try
+    // with the findings; his options are the check's fixes (up to three); the retry's own draft is checked but never retried
+    const MISSING = { conflicts: [], missing: [{ what: "house tile", why: "No rule makes a house tile." }], fixes: [{ say: "Add a house tile to the catalog first." }, { say: "Protect points on a tile you can already name." }, { say: "Say it for the whole board." }, { say: "A fourth, dropped." }] };
+    const checks = () => calls.filter((c) => c.kind === "check").length;
+    const g3 = generalCallsNow(), k0 = checks();
+    stubState.check = MISSING; stubState.retry = { say: "No house tiles here. Pick one." };
+    const ck = await say(Ana, "SYNTH-ADD a rule about house tiles");
+    const cs = slipOf(ck);
+    check("a draft the check blocks: made with its slip, Lock it in off with the reason beside it, one retry carrying the findings, his options are the fixes (three at most)",
+      generalCallsNow() === g3 + 2 && checks() === k0 + 1 && !!cs && cs.can.lock.allowed === false && /house tile \(103\.9\)/.test(cs.can.lock.reason) && J(ck.data.messages[1].options) === J(["Add a house tile to the catalog first.", "Protect points on a tile you can already name.", "Say it for the whole board."]) &&
+      calls.filter((c) => c.kind === "general").at(-1).lastText.includes("house tile") && acalls("reason LIKE '%retry after rule check%'").length === 1, J([generalCallsNow() - g3, checks() - k0, cs && cs.can]));
+    const g4 = generalCallsNow();
+    stubState.retry = { say: "Try this one.", draft: { kind: "add", target: "300", words: "A player can't propose twice about the same rule in one day." } };
+    const ck2 = await say(Ana, "SYNTH-ADD another about house tiles");
+    check("when the retry's draft is blocked too there is no third call: its slip is the live one, checked, with the fixes as options", generalCallsNow() === g4 + 2 && !!slipOf(ck2) && slipOf(ck2).can.lock.allowed === false && ck2.data.messages[1].options.length === 3);
+    stubState.check = "500"; stubState.retry = { say: "Couldn't check that. Say it again." };
+    const ck3 = await say(Ana, "SYNTH-ADD a third about house tiles");
+    check("a check that could not run: the draft is unchecked, Lock it in off with 'couldn't check', one retry, no fixes to offer", !!slipOf(ck3) && /couldn't check/.test(slipOf(ck3).can.lock.reason) && (ck3.data.messages[1].options || []).length === 0);
+    stubState.check = null; stubState.retry = null;
     // the retry call itself fails: his first answer stands and its call is logged ONCE (it was logged twice: when the retry began and again with the stored line)
     const c0 = acalls("purpose = 'chat'").length;
     stubState.retryFail = true;

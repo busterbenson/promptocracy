@@ -25,13 +25,16 @@ export function createYours({ api, me, cardKey }) {
     if (r.ok) { S.data = r.data; S.err = ""; } else S.err = (r.data && r.data.error) || "Something went wrong.";
   }
 
-  /** @rule 103.2 */
+  /** @rule 103.2, 107.7 */
   function proposalRow(p) {
     // an enacted new rule is in the rulebook under its own number now, not its P-number (the ghost card is gone)
     const key = p.kind === "add" && p.status === "enacted" && p.new_num ? String(p.new_num).split(".")[0] : cardKey ? cardKey(p) : null, text = p.title || p.head || "";
     const inner = `${p.n ? `<span class="ppill">${esc(p.n)}</span>` : ""}<span class="tt">${esc(text)}</span>`;
     const main = p.n && key ? `<button type="button" class="tlink" data-seecard="${esc(key)}" aria-haspopup="dialog" aria-label="Open proposal ${esc(p.n)}">${inner}</button>` : `<span class="tlink">${inner}</span>`;
-    return `<li class="trow"><span class="tmain">${main}</span></li>`;
+    // a proposal the moderator did not apply (rule 107.7): each change that would fix it is a ghost button; it opens Gremlin with the redraft in the box
+    const fixes = p.status === "not_applied" && p.mine && p.result && Array.isArray(p.result.fixes) ? p.result.fixes : [];
+    const fx = fixes.length ? `<span class="opts" role="group" aria-label="Fixes">${fixes.map((f) => `<button type="button" class="btn ghost small" data-redraft="${esc(p.n)}" data-fix="${esc(f)}">${esc(f)}</button>`).join("")}</span>` : "";
+    return `<li class="trow"><span class="tmain">${main}</span>${fx}</li>`;
   }
   /** A Ready ticket, or one on hold (rule 801.9), waits to be paid (rule 801.4): its price, and the points you have. @rule 801.2, 801.4, 801.9 */
   function ticketRow(t, score) {

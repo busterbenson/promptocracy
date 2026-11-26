@@ -72,7 +72,7 @@ async function generalCase(c, x, res, o) {
     if (a.draft) {
       turn.asked_for = a.draft;
       const asked = a.draft.kind === "action" ? { kind: "action", type: a.draft.type, params: a.draft.params } : { kind: a.draft.kind, target: a.draft.target, words: a.draft.words, to: a.draft.to, mark: a.draft.mark };
-      let { value: p, slot: ps } = await x.meter.slotted(() => pipeline(x.drafter, x.book, x.rulesMd, asked, env, { actions: { catalog: x.actions, players: PLAYERS, proposer: "ada" }, isCap: (e) => e instanceof CapReached }));
+      let { value: p, slot: ps } = await x.meter.slotted(() => pipeline(x.drafter, x.book, x.rulesMd, asked, env, { actions: { catalog: x.actions, players: PLAYERS, proposer: "ada" }, draftcheck: x.draftcheck, catalog: x.catalog || [], isCap: (e) => e instanceof CapReached }));
       turn.micro += ps.micro; turn.ms += ps.ms;
       if (x.meter.capHit) throw new CapReached(x.meter.capHit);
       if (p.outcome !== "drafted" && !moved && !turn.retried) {
@@ -88,7 +88,7 @@ async function generalCase(c, x, res, o) {
           if (a.draft) {
             turn.asked_for = a.draft;
             const asked2 = a.draft.kind === "action" ? { kind: "action", type: a.draft.type, params: a.draft.params } : { kind: a.draft.kind, target: a.draft.target, words: a.draft.words, to: a.draft.to, mark: a.draft.mark };
-            const { value: p2, slot: ps2 } = await x.meter.slotted(() => pipeline(x.drafter, x.book, x.rulesMd, asked2, env, { actions: { catalog: x.actions, players: PLAYERS, proposer: "ada" }, isCap: (e) => e instanceof CapReached }));
+            const { value: p2, slot: ps2 } = await x.meter.slotted(() => pipeline(x.drafter, x.book, x.rulesMd, asked2, env, { actions: { catalog: x.actions, players: PLAYERS, proposer: "ada" }, draftcheck: x.draftcheck, catalog: x.catalog || [], isCap: (e) => e instanceof CapReached }));
             turn.micro += ps2.micro; turn.ms += ps2.ms;
             p = p2; asked.words = asked2.words; asked.kind = asked2.kind;
           }
@@ -101,7 +101,7 @@ async function generalCase(c, x, res, o) {
         state.draft = true;
         turn.outcome = "drafted";
         turn.pipeline = { head: p.head, drafted_by: p.drafted_by };
-        res.draft = { kind: p.req.kind, scope: p.req.scope, target: p.req.target, new_num: p.new_num, to_block: p.req.to_block, mark: p.req.mark ?? null, words: asked.words ?? "", head: p.head, before_text: p.before_text, after_text: p.after_text, settings: p.settings, conflicts: p.conflicts, drafted_by: p.drafted_by, action: p.req.action ?? null, turn: sent + 1 };
+        res.draft = { kind: p.req.kind, scope: p.req.scope, target: p.req.target, new_num: p.new_num, to_block: p.req.to_block, mark: p.req.mark ?? null, words: asked.words ?? "", head: p.head, before_text: p.before_text, after_text: p.after_text, settings: p.settings, conflicts: p.conflicts, drafted_by: p.drafted_by, action: p.req.action ?? null, check: p.check ?? null, turn: sent + 1 };
         res.refusal = null;
       } else {
         drafted = { refused: p.message };

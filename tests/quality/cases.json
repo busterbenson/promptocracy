@@ -294,7 +294,7 @@
         "New rule that replaces the normal one step move, smelly a tile thing"
       ],
       "if_asked": [],
-      "intent": "Christin's real words, verbatim, as two player turns (the first Starling lines of hers the builder could not reach have since been found). The result is a draft that replaces the one-step move (202.2 or a new rule), by the second turn at the latest, never an escalation, and every answer ends in a draft or options.",
+      "intent": "Christin's real words, verbatim, as two player turns (the first Starling lines of hers the builder could not reach have since been found). The result is a draft that replaces the one-step move (202.2 or a new rule), by the second turn at the latest, never an escalation, and every answer ends in a draft or options. The rule check (103.9) flags the first draft: a fart and the tiles a player has stood on are not in the game.",
       "expect": {
         "draft": {
           "kind": [
@@ -305,7 +305,31 @@
         },
         "no_escalation": true,
         "no_dead_end": true,
-        "draft_by_turn": 2
+        "draft_by_turn": 2,
+        "check_flagged": true
+      },
+      "known_fail": null
+    },
+    {
+      "id": "g-house-tile-405",
+      "agent": "gremlin",
+      "start": "general",
+      "title": "P7: a house tile protects points (day 2, as the player wrote it)",
+      "turns": [
+        "A player standing on a house tile can't have points taken away for up to 2 nights. A player gets onto a house tile by moving onto it, and may stay there for up to 2 nights."
+      ],
+      "if_asked": [],
+      "intent": "Rickshaw P7, the words that passed day 2 and were not applied: the game has no house tile and does not record how long a piece has stood anywhere, and 402.3 resets points. The draft is an added rule and the rule check (103.9) blocks it.",
+      "expect": {
+        "draft": {
+          "kind": [
+            "add",
+            "addclause"
+          ]
+        },
+        "check": "blocked",
+        "no_escalation": true,
+        "no_dead_end": true
       },
       "known_fail": null
     },

@@ -41,7 +41,7 @@ const byDraftThenNewest = (a, b) => (b.state === "Draft") - (a.state === "Draft"
 const LEFT_SHOWN = 10;   // "N left" appears in the last ten messages of the day
 
 export function createChat({ api, root, me, slug, agent = AGENTS.gremlin, rpill, wpill, onTicket, onProposals, onSlip, onNew, canNew, started = () => true }) {
-  const S = { slipSeq: 0, pickSeq: 0, msgs: [], next: null, state: null, tickets: [], proposals: [], pin: null, ticket: null, scope: undefined, seq: 0, rule: null, intent: null, live: null, slips: {}, lockErr: {}, slip: null, busy: false, draft: "", err: "", sheet: false, open: true, loaded: false, loading: false, tab: "", note: "" };
+  const S = { slipSeq: 0, pickSeq: 0, msgs: [], next: null, state: null, tickets: [], proposals: [], pin: null, ticket: null, scope: undefined, seq: 0, rule: null, redraft: null, intent: null, live: null, slips: {}, lockErr: {}, slip: null, busy: false, draft: "", err: "", sheet: false, open: true, loaded: false, loading: false, tab: "", note: "" };
   const col = root.querySelector("#chatcol"), fab = root.querySelector("#chatfab");
   const mine = () => true;
   /** The strip's two lists as the server last sent them: your tickets and proposals not yet voted on. @rule 103.1, 801.6 */
@@ -142,7 +142,7 @@ ${refused ? `<div class="tx">${esc(last.refusal)}</div>` : ""}
     const sl = S.slips[id];
     if (!sl) return "";
     const stamp = id === liveId() ? "" : sl.status === "draft" ? "REPLACED" : STAMPS[sl.status] || String(sl.status).toUpperCase();
-    return `<section class="slip past" aria-label="${esc(sl.n || "Draft")}"><span class="cstamp">${esc(stamp)}</span><div class="hd">${sl.n ? ppill(sl.n) : ""}<span class="hdt">${textHTML(sl.head || "")}</span></div>${sl.words ? `<div class="yw">${esc(`“${sl.words}”`)}</div>` : ""}${sl.kind === "action" && sl.action ? `<div class="tx">${(sl.action.shown || []).map(([l, v]) => `${esc(l)} ${esc(v)}`).join(" · ")}</div>` : sl.after_text || sl.before_text ? `<div class="tx cdiff">${diffOf(sl)}</div>` : ""}</section>`;
+    return `<section class="slip past" aria-label="${esc(sl.n || "Draft")}"><span class="cstamp">${esc(stamp)}</span><div class="hd">${sl.n ? ppill(sl.n) : ""}<span class="hdt">${textHTML(sl.head || "")}</span></div>${sl.words ? `<div class="yw">${esc(`“${sl.words}”`)}</div>` : ""}${sl.kind === "action" && sl.action ? `<div class="tx">${(sl.action.shown || []).map(([l, v]) => `${esc(l)} ${esc(v)}`).join(" · ")}</div>` : sl.after_text || sl.before_text ? `<div class="tx cdiff">${diffOf(sl)}</div>` : ""}${fixesHTML(sl)}</section>`;
   }
   /** An action's details as rows of the slip's list: each label and value, then the rules it touches. @rule 103.5 */
   const actionRows = (sl) => (sl.kind === "action" && sl.action ? `${(sl.action.shown || []).map(([l, v]) => `<dt>${esc(l)}</dt><dd>${esc(v)}</dd>`).join("")}<dt>Touches</dt><dd>${(sl.action.touches || []).map((n) => rpill(String(n))).join(" ")}</dd>` : "");
@@ -162,9 +162,14 @@ ${refused ? `<div class="tx">${esc(last.refusal)}</div>` : ""}
 <div class="hd">${sl.n ? ppill(sl.n) : ""}<span class="hdt">${textHTML(sl.head || "")}</span></div>
 ${sl.words ? `<div class="yw">${esc(`Your words: “${sl.words}”`)}</div>` : ""}
 ${sl.kind !== "action" && (sl.after_text || sl.before_text) ? `<div class="tx cdiff">${diffOf(sl)}</div>` : ""}
-<dl>${actionRows(sl)}<dt>Change</dt><dd>${esc(KIND[sl.kind] || sl.kind)}${sl.target ? ` ${rpill(sl.target)}` : ""}</dd>${sl.settings && Object.keys(sl.settings).length ? `<dt>Sets</dt><dd>${esc(settingsLine(sl.settings))}</dd>` : ""}<dt>Needs</dt><dd>${needs}</dd><dt>Conflicts</dt><dd>${sl.conflicts && sl.conflicts.length ? sl.conflicts.map((n) => rpill(n)).join(" ") : "none"}</dd></dl>
+<dl>${actionRows(sl)}<dt>Change</dt><dd>${esc(KIND[sl.kind] || sl.kind)}${sl.target ? ` ${rpill(sl.target)}` : ""}</dd>${sl.settings && Object.keys(sl.settings).length ? `<dt>Sets</dt><dd>${esc(settingsLine(sl.settings))}</dd>` : ""}<dt>Needs</dt><dd>${needs}</dd><dt>Conflicts</dt><dd>${sl.conflicts && sl.conflicts.length ? sl.conflicts.map((n) => rpill(n)).join(" ") : "none"}${prevailHTML(sl)}</dd></dl>
 <div class="act">${act}</div>${err}</section>`;
   }
+  /** Which rule prevails in each conflict the rule check named (rule 108.1), beside the conflicts. @rule 108.1, 108.3 */
+  const prevailHTML = (sl) => ((sl.check && sl.check.conflicts) || []).map((c) => ` <span class="cwhy">${String(c.prevails) === String(c.num).split(".")[0] ? `${rpill(String(c.prevails))} prevails` : "this prevails"}</span>`).join("");
+  /** A proposal the moderator did not apply, as its owner sees it: each fix is a ghost button that opens the conversation with the redraft in the box (rule 107.7). @rule 107.7 */
+  const fixesHTML = (sl) => (sl.mine && sl.status === "not_applied" && sl.result && (sl.result.fixes || []).length
+    ? `<div class="opts" role="group" aria-label="Fixes">${sl.result.fixes.map((f, k) => `<button type="button" class="btn ghost small" data-c="redraft" data-n="${esc(sl.n)}" data-i="${k}">${esc(f)}</button>`).join("")}</div>` : "");
   /** The drafter said no: the reason, no button. @rule 103.1, 110.1 */
   const refusedHTML = (m) => `<section class="slip refused" aria-label="Refused"><span class="cstamp err">REFUSED</span><div class="tx">${esc(m.refused.error)}</div></section>`;
   /**
@@ -254,6 +259,7 @@ ${sl.kind !== "action" && (sl.after_text || sl.before_text) ? `<div class="tx cd
     const closed = st && st.closed;
     const left = st && st.left <= LEFT_SHOWN && !closed ? `<span class="left">${esc(st.left)} left</span>` : "";
     const chip = S.ticket ? `<span class="chip">${wpill(S.ticket)}<button type="button" class="x" data-c="detach" aria-label="Detach ${esc(S.ticket)}">×</button></span>`
+      : S.redraft ? `<span class="chip">${ppill(S.redraft)}<button type="button" class="x" data-c="detach-redraft" aria-label="Detach ${esc(S.redraft)}">×</button></span>`
       : S.rule ? `<span class="chip">${rpill(S.rule)}<button type="button" class="x" data-c="detach-rule" aria-label="Detach rule ${esc(S.rule)}">×</button></span>`
       : "";
     if (closed) return `<div class="ch-in"><p class="closed" role="status">${esc(closed.text)}</p></div>`;
@@ -411,9 +417,10 @@ ${sl.kind !== "action" && (sl.after_text || sl.before_text) ? `<div class="tx cd
     const rule = general() ? S.rule : null;
     optimistic.rule = rule;
     const at = S.scope;   // the answer can take 30 s: if the window has moved to another ticket by then, it is not that window's line (rule 801.6)
-    const r = await api(`/api/chat/${agent.path}`, S.ticket ? { ticket: S.ticket, body: text } : rule ? { rule, body: text } : { body: text });
+    const redraft = general() ? S.redraft : null;
+    const r = await api(`/api/chat/${agent.path}`, S.ticket ? { ticket: S.ticket, body: text } : { ...(rule ? { rule } : {}), ...(redraft ? { proposal: redraft } : {}), body: text });
     S.busy = false;
-    if (r.ok && rule && r.data.out === "ok") S.rule = null;   // the rule rides on the first message that was answered (not at the cap, or when she is out)
+    if (r.ok && r.data.out === "ok") { if (rule) S.rule = null; if (redraft) S.redraft = null; }   // the rule rides on the first message that was answered (not at the cap, or when she is out)
     S.msgs = S.msgs.filter((m) => m !== optimistic);
     if (S.scope !== at) { if (r.ok && r.data.state) S.state = r.data.state; draw(); return; }
     if (!r.ok) {
@@ -462,6 +469,8 @@ ${sl.kind !== "action" && (sl.after_text || sl.before_text) ? `<div class="tx cd
     else if (a === "new") { if (!S.busy && onNew) await hold(el, onNew); }
     else if (a === "detach") { S.ticket = null; S.slip = null; await showScope(null); draw(); }
     else if (a === "detach-rule") { S.rule = null; draw(); }
+    else if (a === "detach-redraft") { S.redraft = null; draw(); }
+    else if (a === "redraft") { const sl = Object.values(S.slips).find((x) => x && x.n === el.dataset.n); const f = sl && sl.result && sl.result.fixes[Number(el.dataset.i)]; if (f) await redraft(el.dataset.n, f); }
     else if (a === "lock" || a === "unlock") await hold(el, () => lockOrUnlock(el.dataset.id, a === "lock" ? "confirm" : "withdraw"));
   });
   root.addEventListener("input", (e) => {
@@ -508,6 +517,15 @@ ${sl.kind !== "action" && (sl.after_text || sl.before_text) ? `<div class="tx cd
     if (S.ticket) { S.ticket = null; S.slip = null; if (S.loaded) await showScope(null); }
     if (o.open) open(); else draw();
   }
+  /** A not-applied proposal's fix (rule 107.7): the window opens in the general conversation with the redraft in the box, unsent, and that proposal riding on the next message. @rule 107.7 */
+  async function redraft(n, fix) {
+    S.redraft = n; S.rule = null;
+    if (S.ticket) { S.ticket = null; S.slip = null; if (S.loaded) await showScope(null); }
+    open();
+    if (!S.draft.trim()) S.draft = `Redraft ${n}: ${String(fix || "")}`.slice(0, 2000);   // the player's own words in the box are never overwritten
+    draw(true);
+    const ta = col && col.querySelector("#chatText"); if (ta && mine()) ta.focus();
+  }
   /** A ticket is what the next messages are about (and the window opens on it). @rule 801.2 */
   async function attach(n, o = {}) {
     const pick = ++S.pickSeq;
@@ -528,5 +546,5 @@ ${sl.kind !== "action" && (sl.after_text || sl.before_text) ? `<div class="tx cd
   }
   /** Can he be reached? True until the server says there is no key. @rule 106.3 */
   const ready = () => !S.state || S.state.ready !== false;
-  return { sync, attach, attachRule, open, load, minimize, ready, prefill, state: () => S, draw, reduced };
+  return { sync, attach, attachRule, redraft, open, load, minimize, ready, prefill, state: () => S, draw, reduced };
 }

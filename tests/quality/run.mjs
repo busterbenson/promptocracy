@@ -131,8 +131,8 @@ try {
   const actions = await actionsOf(join(runTmp, "scratch", "seed"), runTmp);
   const bundleDir = join(runTmp, "bundle");
   mkdirSync(bundleDir, { recursive: true });
-  const { agent, drafter } = await bundleAgents(bundleDir);
-  const x = { meter, agent, drafter, keys, rulesMd, book, actions };
+  const { agent, drafter, draftcheck } = await bundleAgents(bundleDir);
+  const x = { meter, agent, drafter, draftcheck, keys, rulesMd, book, actions };
   const run_id = `${date}-${pad(now.getHours())}${pad(now.getMinutes())}-${stage}-${platformSha}`;
   const run = { run_id, stage, date, platform_sha: platformSha, rules_ref: scratch.ref, rules_sha: scratch.sha, scrubbed_env_names: removed.length, cases: [], cost: {}, cap_hit: null };
 

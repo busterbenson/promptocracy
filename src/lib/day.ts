@@ -371,13 +371,13 @@ async function dropRefusedActions(env: Env, game: any, day: DayRow, nowMs: numbe
 
 // The statements that send one passed proposal back (rule 107.7), guarded by its status. Shared with the claim route.
 /** @rule 107.7 */
-export function notAppliedStatements(env: Env, game: any, q: { id: string; number: number; player_id: string }, reason: string, now: string, guard = "", guardBinds: unknown[] = []) {
+export function notAppliedStatements(env: Env, game: any, q: { id: string; number: number; player_id: string }, reason: string, now: string, guard = "", guardBinds: unknown[] = [], fixes: string[] = []) {
   return [
-    env.DB.prepare(`UPDATE proposals SET status = 'not_applied', not_applied_reason = ?, decided_at = ? WHERE id = ? AND status = 'passed'${guard}`).bind(reason, now, q.id, ...guardBinds),
+    env.DB.prepare(`UPDATE proposals SET status = 'not_applied', not_applied_reason = ?, decided_at = ?, fixes = ? WHERE id = ? AND status = 'passed'${guard}`).bind(reason, now, fixes.length ? JSON.stringify(fixes) : null, q.id, ...guardBinds),
     env.DB.prepare(
       `INSERT OR IGNORE INTO notifications (id, game_id, player_id, kind, body, link, created_at)
        SELECT ?, ?, ?, 'not_applied', ?, ?, ? WHERE EXISTS (SELECT 1 FROM proposals WHERE id = ? AND status = 'not_applied')`,
-    ).bind(`not-applied-${q.id}`, game.id, q.player_id, returnedBody(q.number, reason), `/${game.slug}/`, now, q.id),
+    ).bind(`not-applied-${q.id}`, game.id, q.player_id, returnedBody(q.number, reason, fixes), `/${game.slug}/`, now, q.id),
   ];
 }
 

@@ -20,6 +20,8 @@ export type Env = {
   MODEL_API_KEY?: string;
   MODEL_BASE_URL?: string;
   MODEL_NAME?: string;
+  // The model of the rule check before lock-in (src/lib/draft-check.ts); default MODEL_NAME. Set to a Sonnet to switch if the recorded cases miss.
+  CHECK_MODEL?: string;
   // Which drafter levers are on (src/lib/drafter.ts): "candidates,cache,structured", "none", or "-cache" to drop one from the default.
   DRAFTER_FLAGS?: string;
   // The agents' (Gremlin's) monthly budget per game, in dollars (src/lib/agent.ts): unset = the site's own limit. The tests lower it.
