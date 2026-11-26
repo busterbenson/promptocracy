@@ -380,7 +380,7 @@
       "id": "g-flower-uses-w4",
       "agent": "gremlin",
       "start": "general",
-      "title": "A rule about a Flower that W4 is making",
+      "title": "A rule that needs a Flower W4 is making",
       "pending": [
         {
           "ticket": 4,
@@ -392,10 +392,10 @@
       ],
       "turns": [
         "Is there already a flower in the catalog?",
-        "A hostile creature next to a player who gives it a flower eats it and loses 1 heart."
+        "Every night, each living player gets 1 point while a flower is in the catalog."
       ],
       "if_asked": [],
-      "intent": "He tells the player W4 (Sarah, Ready) is making a Flower, and drafts the rule at once as an amend or an added rule that names the Flower by W4 and records uses W4. The rule check passes (an entry an open commission makes is not missing). He does not ask for a Flower to be made again. At night it is applied like any rule, and its test has an absent-Flower case.",
+      "intent": "He tells the player W4 (Sarah, Ready) is making a Flower, and drafts the rule at once, naming the Flower (W4) and recording uses W4. The rule check passes: an entry an open commission makes is not missing, and the rule has nothing to act on until it is built (703.4). He does not ask for a Flower to be made again. At night it is applied like any rule, and its test has an absent-Flower case.",
       "expect": {
         "say_names": "W4",
         "draft": {

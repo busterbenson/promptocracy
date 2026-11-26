@@ -135,7 +135,7 @@ export function pendingText(entries, makes) {
   const pending = entries?.pending || [];
   const list = `Entries open commissions make (data, fenced; a Draft is only the player's own, private, and can't be used until it is locked in):\n${fence("open commissions", entryLines([], pending))}`;
   const dups = duplicatesOf(makes, entries).slice(0, 5);
-  const note = dups.length ? `\nThis ticket makes ${dups.map((d) => `${d.name} (${d.catalogKind}), which ${d.built ? `the catalog already has (${d.by})` : `${d.by} (${d.owner}, ${d.state}) also makes`}`).join("; ")}. Rule 701.4: two entries of one kind can't share a name. It is saved; offer the player two or three options (use it, rename theirs, or keep theirs as a different one).` : "";
+  const note = dups.length ? `\nThis ticket makes ${dups.map((d) => `${d.name} (${d.catalogKind}), which ${d.built ? `the catalog already has (${d.by})` : `${d.by} (${d.owner}, ${d.state}) also makes`}`).join("; ")}. Rule 701.4: two entries of one kind can't share a name. It is saved; give the player two or three options in "options", the first of them to use it ("Use W4's Flower": say the ticket and the name, so that it is sent back as their next message), then to rename theirs or keep theirs as a different one.` : "";
   return `${list}${note}`;
 }
 

@@ -89,7 +89,7 @@ export function codeChecks(c, res, night) {
     if (e.noPatch) out.push(chk("wrote nothing", patches.every((p) => !Object.keys(p).length), patches.flatMap((p) => Object.keys(p)).join(",")));
     if (e.makesKind) out.push(chk(`a ${e.makesKind} entry`, entries.some((m) => m.catalogKind === e.makesKind), `got ${entries.map((m) => m.catalogKind).join(",") || "none"}`));
     if (e.options_match) out.push(chk(`an option offers ${e.options_match}`, turns.some((x) => (x.options || []).some((o) => new RegExp(e.options_match, "i").test(o))), JSON.stringify(turns.flatMap((x) => x.options || []))));
-    if (e.makes_uses) out.push(chk(`the ticket uses ${e.makes_uses}, or its options offer to`, (t.makes || []).some((m) => m.kind === "uses" && m.num === e.makes_uses) || turns.some((x) => (x.options || []).some((o) => new RegExp(`${e.makes_uses}`, "i").test(o))), JSON.stringify((t.makes || []).map((m) => m.kind))));
+    if (e.makes_uses) out.push(chk(`the ticket uses ${e.makes_uses}, or an option says to use it`, (t.makes || []).some((m) => m.kind === "uses" && m.num === e.makes_uses) || turns.some((x) => (x.options || []).some((o) => /\buse\b/i.test(o) && new RegExp(`${e.makes_uses}`, "i").test(o))), JSON.stringify((t.makes || []).map((m) => m.kind))));
     if (e.needsBuildOrRule) out.push(chk("needs a build or a rule item", entries.some((m) => m.needsBuild?.length) || (t.makes || []).some((m) => m.kind === "rule")));
     if (e.priceMin !== undefined) out.push(chk(`price at least ${e.priceMin}`, (t.price ?? 0) >= e.priceMin, `price ${t.price}`));
     if (e.priceMax !== undefined) out.push(chk(`price at most ${e.priceMax}`, (t.price ?? 0) <= e.priceMax, `price ${t.price}`));

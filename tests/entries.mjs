@@ -67,7 +67,7 @@ console.log("the ticket conversation: built entries in the day block, pending in
   check("the day block lists the built entries", /C1 Blob \(creature\)/.test(day));
   check("the tail lists the pending ones", /W4 makes Flower \(item\), Sarah, Ready/.test(tail) && /W8 makes Flower \(item\), Christin, Proposed/.test(tail));
   check("the day block is the same with or without pending entries (cache)", J(a.system[1]) === J(b.system[1]));
-  check("a ticket that makes a Flower the game already has is saved, and the tail names W4 and W8 and 701.4, and the options to offer", /W4 \(Sarah, Ready\)/.test(tail) && /W8 \(Christin, Proposed\)/.test(tail) && /701\.4/.test(tail) && /use it/i.test(tail));
+  check("a ticket that makes a Flower the game already has is saved, and the tail names W4 and W8 and 701.4, and the options to offer", /W4 \(Sarah, Ready\)/.test(tail) && /W8 \(Christin, Proposed\)/.test(tail) && /701\.4/.test(tail) && /the first of them to use it/.test(tail));
   check("no duplicate, no note", !/Rule 701\.4/.test(b.messages[b.messages.length - 1].content[0].text));
   check("the persona says to use an entry that is there and that a rule can name it by the commission", /BEFORE you make a new entry/.test(a.system[0].text) && /the Flower \(W4\)/.test(a.system[0].text));
   check("the answer schema takes a uses item, and is still the live-verified 30 properties", J(G.answerSchema().properties.ticket.properties.makes.items.properties.kind.enum) === '["entry","rule","uses"]');
