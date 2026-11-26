@@ -1084,6 +1084,24 @@
           ]
         }
       ]
+    },
+    {
+      "id": "audit-rickshaw-1-d2-p9",
+      "group": "audit",
+      "kind": "amend",
+      "target": "202.2",
+      "words": "Players must use their farts to move around the board, instead of the normal one-space move. Any tile that a player has occupied previously smells bad and cannot be occupied for another turn.",
+      "expect": {
+        "outcome": "drafted",
+        "after_includes": [
+          "fart",
+          "instead of"
+        ],
+        "after_excludes": [
+          "1 space in any direction, diagonals included, but only by using a fart"
+        ]
+      },
+      "note": "Moderator's audit, rickshaw-1 day 2: Your words replace the one-space move with fart movement, but the draft keeps the one-space move and"
     }
   ]
 }
