@@ -75,6 +75,7 @@ with sync_playwright() as p:
         page.wait_for_selector("#mroot .tposts")
         card = text(page, "#mroot .mcard")
         check(f"{tag}: the ticket page: title, requester, state, brief, makes, estimate, price and its reason, queue place", all(s in card for s in ["A drum", "Cy", "Approved", "A drum that can be heard on every tile.", "Drum", "1 night", "2 points", "Free. I like drums.", "Place 1"]), card)
+        check(f"{tag}: an entry the ticket uses and does not make is a dim pill 'Lantern · from W1' that links to W1, and the Drum is still its one card (rule 703.4)", page.locator("#mroot .mk.uses").count() == 1 and "Lantern · from W1" in card and page.locator('#mroot .mk.uses [data-ticket="W1"], #mroot .mk.uses .wpill, #mroot .mk.uses a').count() >= 1 and page.locator("#mroot .mkc").count() == 1, card)
         check(f"{tag}: its tasks (one ticked), its log and its thread (a player, Gremlin and Chalant)", page.locator("#mroot .ttasks li.done").count() == 1 and page.locator("#mroot .ttasks li").count() == 2 and "Approved: P9 passed." in card and "Gremlin" in card and "Chalant" in card and "Is it loud?" in card, card)
         shot(page, f"ticket-{tag}"); sideways(page, w, f"{tag} ticket")
         # ---- posting

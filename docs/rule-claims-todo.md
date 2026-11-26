@@ -7,7 +7,7 @@ Every function that carries out the game should say which rule it implements, wi
 `src/` is only reported for now: these functions have no claim yet. Site plumbing such as sign-in and email goes
 under rule 101 or 102; a follow-up change claims them and moves `src/` into the strict set.
 
-193 of 582 functions outside `src/engine/` are unclaimed.
+194 of 601 functions outside `src/engine/` are unclaimed.
 
 ## src/index.ts (6)
 
@@ -107,16 +107,17 @@ under rule 101 or 102; a follow-up change claims them and moves `src/` into the 
 
 ## src/lib/gremlin-rules.js (4)
 
-- line 79: `detail`
-- line 103: `ck`
-- line 106: `vd`
-- line 223: `put`
+- line 83: `detail`
+- line 107: `ck`
+- line 110: `vd`
+- line 229: `put`
 
-## src/lib/gremlin.js (3)
+## src/lib/gremlin.js (4)
 
-- line 337: `def`
-- line 391: `readGremlinAnswer`
-- line 528: `clip`
+- line 140: `who`
+- line 378: `def`
+- line 432: `readGremlinAnswer`
+- line 569: `clip`
 
 ## src/lib/history.js (1)
 
@@ -179,8 +180,8 @@ under rule 101 or 102; a follow-up change claims them and moves `src/` into the 
 - line 70: `ruleNumOf`
 - line 112: `fence`
 - line 113: `catalogLine`
-- line 154: `own`
-- line 156: `clip`
+- line 155: `own`
+- line 157: `clip`
 
 ## src/lib/settings.js (12)
 
@@ -199,7 +200,7 @@ under rule 101 or 102; a follow-up change claims them and moves `src/` into the 
 
 ## src/lib/tickets.js (1)
 
-- line 221: `pts`
+- line 267: `pts`
 
 ## src/lib/util.ts (27)
 
@@ -245,12 +246,12 @@ under rule 101 or 102; a follow-up change claims them and moves `src/` into the 
 
 ## src/routes/api-chat.ts (6)
 
-- line 300: `stateNow`
-- line 381: `ask`
-- line 389: `read`
-- line 393: `stateNow`
-- line 435: `after`
-- line 436: `log`
+- line 302: `stateNow`
+- line 384: `ask`
+- line 392: `read`
+- line 396: `stateNow`
+- line 438: `after`
+- line 439: `log`
 
 ## src/routes/api-day.ts (1)
 
@@ -271,8 +272,8 @@ under rule 101 or 102; a follow-up change claims them and moves `src/` into the 
 
 ## src/routes/api-moderator.ts (2)
 
-- line 53: `unauthorized`
-- line 268: `num`
+- line 54: `unauthorized`
+- line 271: `num`
 
 ## src/routes/api-notifications-read.ts (1)
 
@@ -284,7 +285,7 @@ under rule 101 or 102; a follow-up change claims them and moves `src/` into the 
 
 ## src/routes/api-proposals.ts (1)
 
-- line 32: `out`
+- line 34: `out`
 
 ## src/routes/api-rules.ts (2)
 
@@ -293,10 +294,10 @@ under rule 101 or 102; a follow-up change claims them and moves `src/` into the 
 
 ## src/routes/api-tickets.ts (4)
 
-- line 38: `out`
-- line 50: `visible`
-- line 335: `undo`
-- line 471: `need`
+- line 39: `out`
+- line 51: `visible`
+- line 337: `undo`
+- line 473: `need`
 
 ## src/routes/landing.ts (2)
 

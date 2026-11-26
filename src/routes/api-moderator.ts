@@ -24,6 +24,7 @@
 //                                                day n is processing and before its deadline (107.6); the day goes to
 //                                                deploying. seq is the order the moderator applied them in (1..n, each
 //                                                once); the enactment follows it (107.2).
+import { publicEntriesFor } from "../lib/pending-entries";
 import { endGameStatements } from "../lib/end";
 import { logCall, monthSpend } from "../lib/agent";
 import { PRICES } from "../lib/chat.js";
@@ -71,7 +72,7 @@ export const pending = async (ctx: Ctx) => {
     // A night with only actions (rule 103.8) is the site's own: the moderator has nothing to apply and sees no job.
     const passed = (await orderPassed(env, game, rows, nowMs)).map((r) => ({ ...r, settings: JSON.parse(r.settings || "{}"), conflicts: JSON.parse(r.conflicts || "[]"), rule_check: r.rule_check ? JSON.parse(r.rule_check) : null, player: { name: r.player } }));
     const deadline = Date.parse(day.deadline_at);
-    if (!(day.status === "processing" && !passed.length)) job = { day: day.n, status: day.status, locked_at: day.locked_at, deadline_at: day.deadline_at, deploy_deadline_at: Number.isFinite(deadline) ? nowIso(deployDeadline(deadline)) : null, commit_sha: day.commit_sha, tag: day.tag, deploy_live: day.status === "deploying" && !!day.commit_sha && (await deployedSha(env, game)) === day.commit_sha, passed };
+    if (!(day.status === "processing" && !passed.length)) job = { day: day.n, status: day.status, locked_at: day.locked_at, deadline_at: day.deadline_at, deploy_deadline_at: Number.isFinite(deadline) ? nowIso(deployDeadline(deadline)) : null, commit_sha: day.commit_sha, tag: day.tag, entries: passed.length ? await publicEntriesFor(env, game) : null, deploy_live: day.status === "deploying" && !!day.commit_sha && (await deployedSha(env, game)) === day.commit_sha, passed };
   }
   const notApplied = (await env.DB.prepare("SELECT number, day_ballot AS day, not_applied_reason AS reason FROM proposals WHERE game_id = ? AND status = 'not_applied' ORDER BY number").bind(game.id).all()).results;
   const owed: any = await env.DB.prepare("SELECT COUNT(*) AS n FROM escalations WHERE game_id = ? AND ruling_owed_at IS NOT NULL AND answered_at IS NULL").bind(game.id).first();
@@ -192,8 +193,10 @@ const afterOf = (ctx: Ctx): number | "bad" => {
  * the draft its reply showed (rulings only, 106.5). @rule 106.4, 106.5 */
 async function escalationItems(env: Ctx["env"], game: any, open: any[], drafts = false) {
   const items: any[] = [];
+  // what the catalog holds and what open commissions make (rules 701.4, 703.4), so an answer about "the Flower" is about the one that is there; no drafts (they are private)
+  const entries = open.length ? await publicEntriesFor(env, game) : null;
   for (const e of open) {
-    const base = { id: e.id, agent: e.agent, category: e.category, reason: e.reason, player: e.player, created_at: e.created_at, delivered_at: e.delivered_at };
+    const base = { id: e.id, agent: e.agent, category: e.category, reason: e.reason, player: e.player, created_at: e.created_at, delivered_at: e.delivered_at, entries };
     if (e.ticket_id) {
       const t: any = await env.DB.prepare("SELECT number, title, brief, state, makes, estimate, price, price_reason FROM tickets WHERE id = ?").bind(e.ticket_id).first();
       const posts = ((await env.DB.prepare(

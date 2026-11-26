@@ -49,6 +49,9 @@ export function codeChecks(c, res, night) {
     // the rule check (rule 103.9): what the first draft's check said, and that a flagged draft ends in options or a draft that passes
     if (e.check) out.push(chk(`the rule check says ${e.check}`, !!d && d.check?.status === e.check, `got ${d?.check?.status ?? "no check"}`));
     if (e.check_flagged) out.push(chk("a flagged draft: the rule check flagged the draft, or the final answer has options or a draft whose check passed", !!d && (d.check?.status !== "ok" || turns.some((t) => (t.options || []).length)), `check ${d?.check?.status ?? "none"}`));
+    // an entry an open commission makes (rule 703.4): the draft records the refs it uses, and his line names the commission
+    if (e.uses) out.push(chk(`the draft uses ${e.uses.join(", ")}`, !!d && e.uses.every((u) => (d.uses || []).includes(u)), `got ${JSON.stringify(d?.uses ?? [])}`));
+    if (e.says_names) out.push(chk(`his line names ${e.says_names}`, turns.some((t) => new RegExp(e.says_names).test(t.say || "")), (turns[0]?.say || "").slice(0, 160)));
     if (e.draft_by_turn !== undefined) out.push(chk(`draft by turn ${e.draft_by_turn}`, !!d && d.turn <= e.draft_by_turn, d ? `drafted on turn ${d.turn}` : "no draft"));
     if (e.no_draft_on_turn !== undefined) out.push(chk(`no draft on turn ${e.no_draft_on_turn}`, !turns[e.no_draft_on_turn - 1]?.asked_for, ""));
     if (e.asks_first) out.push(chk("asks a question before drafting", /\?/.test(turns[0]?.say || ""), turns[0]?.say?.slice(0, 160) || ""));
@@ -85,6 +88,8 @@ export function codeChecks(c, res, night) {
     if (e.refusal === false) out.push(chk("not refused", !refused, turns.find((x) => x.refusal)?.refusal || ""));
     if (e.noPatch) out.push(chk("wrote nothing", patches.every((p) => !Object.keys(p).length), patches.flatMap((p) => Object.keys(p)).join(",")));
     if (e.makesKind) out.push(chk(`a ${e.makesKind} entry`, entries.some((m) => m.catalogKind === e.makesKind), `got ${entries.map((m) => m.catalogKind).join(",") || "none"}`));
+    if (e.options_match) out.push(chk(`an option offers ${e.options_match}`, turns.some((x) => (x.options || []).some((o) => new RegExp(e.options_match, "i").test(o))), JSON.stringify(turns.flatMap((x) => x.options || []))));
+    if (e.makes_uses) out.push(chk(`the ticket uses ${e.makes_uses}, or an option says to use it`, (t.makes || []).some((m) => m.kind === "uses" && m.num === e.makes_uses) || turns.some((x) => (x.options || []).some((o) => /\buse\b/i.test(o) && new RegExp(`${e.makes_uses}`, "i").test(o))), JSON.stringify((t.makes || []).map((m) => m.kind))));
     if (e.needsBuildOrRule) out.push(chk("needs a build or a rule item", entries.some((m) => m.needsBuild?.length) || (t.makes || []).some((m) => m.kind === "rule")));
     if (e.priceMin !== undefined) out.push(chk(`price at least ${e.priceMin}`, (t.price ?? 0) >= e.priceMin, `price ${t.price}`));
     if (e.priceMax !== undefined) out.push(chk(`price at most ${e.priceMax}`, (t.price ?? 0) <= e.priceMax, `price ${t.price}`));

@@ -428,6 +428,10 @@ with sync_playwright() as p:
         check(f"{tag}: the strip has a P-pill for the draft and one for the locked-in proposal, and a W-pill for the ticket, and New", ps.count() == 2 and ws.count() == 1 and page.locator(f"{YOURS} .it.new").count() == 1, f"{says} {ws.count()}")
         check(f"{tag}: drafts first: the draft ('Draft', its words) is before the locked one (P-number, 'Locked'); the tickets follow the proposals", says[0].startswith("Draft") and re.match(r"^P\d+ .*Locked$", says[1], re.I) is not None and page.evaluate("(() => { const a = [...document.querySelectorAll('#chatcol .ch-row[aria-label=Yours] .it')].map((e) => e.dataset.c); return a.join() })()") == "pickp,pickp,pick,new", str(says))
         check(f"{tag}: the window opens in the general conversation on the newest draft: its pill is the pressed one, its slip has Lock it in", ps.nth(0).get_attribute("aria-pressed") == "true" and ps.nth(1).get_attribute("aria-pressed") == "false" and ws.first.get_attribute("aria-pressed") == "false" and page.locator('#chatLog .slip:not(.past) [data-c="lock"]').count() == 1 and page.locator(".ch-in .chip").count() == 0)
+        # the general conversation's slip says what the draft uses (rule 703.4): both entries of one ticket, as a line inside the slip, beside no horizontal overflow
+        un = page.locator("#chatLog .slip:not(.past) .unote"); sl = page.locator("#chatLog .slip:not(.past)").bounding_box(); ub = un.bounding_box() if un.count() == 1 else None
+        check(f"{tag}: the draft's slip says 'Uses Flower from W4, Vase from W4' on one line of its own, inside the slip", un.count() == 1 and text(page, "#chatLog .slip:not(.past) .unote") == "Uses Flower from W4, Vase from W4" and ub is not None and ub["x"] >= sl["x"] - 1 and ub["x"] + ub["width"] <= sl["x"] + sl["width"] + 1 and un.is_visible(), text(page, "#chatLog .slip:not(.past)"))
+        shot(page, f"strip-proposals-uses-{tag}")
         strip_ok(page, w, tag)
         shot(page, f"strip-proposals-{tag}")
         pn = says[1].split()[0]

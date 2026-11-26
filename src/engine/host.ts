@@ -62,10 +62,10 @@ async function loadCreatures(env: Env, gameId: string) {
 }
 /** @rule 602.4 */
 const creaturesOf = (rows: CreatureRow[], tonight: number | null) => rows.map((c) => ({ id: c.id, entry: c.entry_id, x: c.x, y: c.y, z: c.z, hearts: c.hearts, resting: tonight !== null && c.rests_night === tonight }));
-/** The game's catalog entries as the rules read them (rule 701). @rule 701.1 */
+/** The game's catalog entries as the rules read them (rule 701): with the name and the commission that made it, so a rule can find an entry by either (rule 703.4). @rule 701.1, 703.4 */
 function catalogOf(game: { slug: string }) {
   const { bundle } = bundleFor(game);
-  return ((bundle as any).catalog ?? []).map((e: any) => ({ id: e.id, kind: e.kind, attrs: e.attrs ?? {} }));
+  return ((bundle as any).catalog ?? []).map((e: any) => ({ id: e.id, kind: e.kind, name: e.name ?? null, madeBy: e.madeBy ?? null, attrs: e.attrs ?? {} }));
 }
 // The acting player's turn today (rule 202.1: one turn a day each). `turn.moved` is whether they have moved in it; the
 // legacy round/turn numbers stay in ctx for the modules written against them (the engine is additive only).
