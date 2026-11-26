@@ -359,10 +359,11 @@ console.log("the night's fixes, miss classes and cases");
   const fx = ["Add a house tile to the catalog first.", "Say it for the whole board.", "x".repeat(300), "a fourth", "", 7];
   check("fixesOf: at most three strings, each fitted to 200 characters, junk dropped", fixesOf(fx).length === 3 && fixesOf(fx)[2].length <= 200 && fixesOf("no").length === 0 && fixesOf(undefined).length === 0);
   check("reasonFor: with fixes the reason stands alone (no fixed suggestion); without, the suggestion is added", !/splitting/.test(reasonFor("the game doesn't track which tiles", ["a fix"])) && /splitting it into smaller proposals/.test(reasonFor("the game doesn't track which tiles", [])) && reasonFor("r", ["a"]).length <= MAX_REASON);
-  const P7 = { rule_check: null, base_sha: "a" }, ok = { rule_check: { status: "ok" }, base_sha: "a" }, unch = { rule_check: { status: "unchecked" }, base_sha: "a" };
+  const P7 = { kind: "add", rule_check: null, base_sha: "a" }, ok = { kind: "add", rule_check: { status: "ok" }, base_sha: "a" }, unch = { kind: "add", rule_check: { status: "unchecked" }, base_sha: "a" };
   check("missClass: no check or an unchecked one is `unchecked`; a moved rulebook or a redraft is `rules_changed`; otherwise the check passed it: `disagreed`",
     missClass(P7, { redrafted: false, headSha: "a" }) === "unchecked" && missClass(unch, { redrafted: true, headSha: "b" }) === "unchecked" && missClass(ok, { redrafted: true, headSha: "a" }) === "rules_changed" &&
-    missClass(ok, { redrafted: false, headSha: "b" }) === "rules_changed" && missClass(ok, { redrafted: false, headSha: "a" }) === "disagreed");
+    missClass(ok, { redrafted: false, headSha: "b" }) === "rules_changed" && missClass(ok, { redrafted: false, headSha: "a" }) === "disagreed" &&
+    missClass({ ...ok, kind: "repeal" }, { redrafted: false, headSha: "a" }) === "unchecked_kind" && missClass({ ...ok, rule_check: { status: "ok", conflicts: [{ num: "402.3", prevails: 402 }] } }, { redrafted: false, headSha: "a", conflictRule: 402 }) === "warned");
   const c = nightCase("rickshaw-1", 2, { number: 7, kind: "add", target: "400", words: "x", after_text: "405.1 x", mark: null }, { miss: "unchecked", conflictRule: 402, full_reason: "it conflicts with rule 402" });
   check("nightCase: id night-<slug>-d<day>-p<n>, group night, the voted kind, target and words, and what the check should have said; none for rules_changed",
     c.id === "night-rickshaw-1-d2-p7" && c.group === "night" && c.kind === "add" && J(c.expect) === J({ conflicts_include: ["402"] }) && J(nightCase("g", 1, { number: 1, kind: "amend", target: "1", words: "w" }, { miss: "disagreed" }).expect) === J({ check: "blocked" }) && nightCase("g", 1, { number: 1 }, { miss: "rules_changed" }) === null);

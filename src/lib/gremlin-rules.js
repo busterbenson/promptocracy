@@ -103,7 +103,7 @@ export function tailText({ label, message, rule, slip, drafted, made, limit, noD
   const ck = (c) => (!c || c.status === "ok" ? "" : c.status === "unchecked"
     ? "The rule check could not run on it, so the player can't lock it in yet.\n"
     : `The rule check found the game can't carry it out (rule 103.9), so the player can't lock it in yet: ${fence("rule check", JSON.stringify({ missing: (c.missing || []).map((m) => ({ what: m.what, why: m.why })), fixes: (c.fixes || []).map((f) => f.say) }))}\n`);
-  const vd = (c) => ((c && c.conflicts) || []).filter((x) => /^\d{3}(\.\d+)?$/.test(String(x.num))).map((x) => `${x.num}: ${String(x.prevails) === String(x.num).split(".")[0] ? `rule ${x.prevails} prevails` : "this proposal prevails"} (rule 108.1)`).join("; ");
+  const vd = (c) => ((c && c.conflicts) || []).filter((x) => x.prevails !== null && /^\d{3}(\.\d+)?$/.test(String(x.num))).map((x) => `${x.num}: ${String(x.prevails) === String(x.num).split(".")[0] ? `rule ${x.prevails} prevails` : "this proposal prevails"} (rule 108.1)`).join("; ");
   const kd = (drafted && !drafted.refused ? ck(drafted.check) + (vd(drafted.check) ? `Which rule prevails in each conflict: ${vd(drafted.check)}.\n` : "") : "");
   const fd = found ? ck(found) + "Draft the nearest version the game can carry out, or give the fixes as options. Say why you changed it.\n" : "";
   const rd = redraft ? `The player is redrafting ${redraft.n}, which the moderator did not apply. Its draft, the reason and the fixes the moderator offered, data: ${fence("not applied", JSON.stringify(redraft))}\n` : "";

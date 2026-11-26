@@ -83,7 +83,8 @@ export function prevailVerdicts(rulesMd, draft, conflicts, ages = {}) {
   const out = [];
   for (const c of conflicts) {
     const n = ruleNumOf(c);
-    if (n === null || n === mine) continue;
+    if (n === null) continue;
+    if (n === mine) { out.push({ num: String(c), prevails: null }); continue; }   // another clause of the rule being changed: a conflict, but no rule prevails over itself
     const text = ruleText(rulesMd, n);
     const them = { number: n, mark: markOf(rulesMd, n) ?? "majority", added: ages[n] ?? 0, claims: claimsOf(text), yields: yieldsOf(text) };
     out.push({ num: String(c), prevails: prevailing(own, them) === own ? own.number : them.number });

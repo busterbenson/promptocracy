@@ -68,7 +68,7 @@ const fixesOf = (r: any): string[] => { try { const f = r.fixes ? JSON.parse(r.f
 /** The slip's conflict sentence, with which rule prevails when the check decided it (rules 108.1, 108.3). @rule 108.1, 108.3 */
 const conflictNote = (nums: string[], check: any) => {
   const base = conflictSentence(nums);
-  const says = (check?.conflicts ?? []).map((c: any) => (String(c.prevails) === String(c.num).split(".")[0] ? `Rule ${c.prevails} prevails (108.1).` : `This proposal prevails over rule ${c.num} (108.1).`));
+  const says = (check?.conflicts ?? []).filter((c: any) => c.prevails !== null).map((c: any) => (String(c.prevails) === String(c.num).split(".")[0] ? `Rule ${c.prevails} prevails (108.1).` : `This proposal prevails over rule ${c.num} (108.1).`));
   return base ? [base, ...says].join(" ") : base;
 };
 /** The reason a draft can't be locked in yet, or null (rule 103.9): the check found something missing, or couldn't run; only where the rulebook has rule 103.9. @rule 103.9 */

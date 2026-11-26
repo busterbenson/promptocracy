@@ -82,6 +82,7 @@ mark{background:color-mix(in srgb,var(--accent) 28%,transparent);color:inherit;b
 .pv .pname{font-weight:700;overflow-wrap:anywhere}
 .pv .pmeta{font-family:var(--font-mono);font-size:.68rem;color:var(--ink-muted)}
 .opts{display:grid;gap:8px}
+.opts .btn.small{height:auto;min-height:44px;white-space:normal;text-align:left;line-height:1.3;padding-top:8px;padding-bottom:8px}   /* Gremlin's choices and a not-applied proposal's fixes: whole sentences, a finger's height */
 .opts.shapes{grid-template-columns:repeat(3,1fr)}
 .opts.colors{grid-template-columns:repeat(4,1fr)}
 .opt{display:block;position:relative}

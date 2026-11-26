@@ -381,6 +381,15 @@ try {
     stubState.check = "500"; stubState.retry = { say: "Couldn't check that. Say it again." };
     const ck3 = await say(Ana, "SYNTH-ADD a third about house tiles");
     check("a check that could not run: the draft is unchecked, Lock it in off with 'couldn't check', one retry, no fixes to offer", !!slipOf(ck3) && /couldn't check/.test(slipOf(ck3).can.lock.reason) && (ck3.data.messages[1].options || []).length === 0);
+    // free text beside the fix buttons: the player types their own change instead of picking one; the failed check rides in the tail and the new draft is checked like any
+    stubState.check = MISSING; stubState.retry = { say: "No house tiles. Pick one." };
+    await say(Ana, "SYNTH-ADD a rule about house tiles, once more");
+    stubState.check = null; stubState.retry = null;
+    const k1 = checks(), g5 = generalCallsNow();
+    const ft = await say(Ana, "SYNTH-ADD instead make it about points on a tile I can already name");
+    const tail = calls.filter((c) => c.kind === "general").at(-1).lastText;
+    check("a free-text change typed after a failed check: the failed check's findings (what is missing) are in the tail, one general call, and the new draft is checked and can be locked in",
+      generalCallsNow() === g5 + 1 && /rule check found the game can't carry it out/.test(tail) && /house tile/.test(tail) && checks() === k1 + 1 && !!slipOf(ft) && slipOf(ft).can.lock.allowed === true, tail.slice(0, 300));
     stubState.check = null; stubState.retry = null;
     // the retry call itself fails: his first answer stands and its call is logged ONCE (it was logged twice: when the retry began and again with the stored line)
     const c0 = acalls("purpose = 'chat'").length;

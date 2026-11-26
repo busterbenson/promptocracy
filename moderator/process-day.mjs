@@ -544,7 +544,7 @@ export async function applyOne({ dir, job, p, tonight, budgetMs, model = runMode
           const by = tonight.find((t) => t.applied && ruleOf(t.target) === other);
           const prefix = `it conflicts with rule ${other}${by ? ` (as P${by.number} changed it tonight)` : ""}, which prevails over it (rule 108.4)`;
           const why = result.conflict.why ? clean(result.conflict.why, REASON_ROOM - prefix.length - 2) : "";
-          return { applied: false, reason: `${prefix}${why ? `: ${why}` : ""}`, full_reason: `${prefix}${result.conflict.why ? `: ${String(result.conflict.why)}` : ""}`, fixes: fixesOf(result.fixes), conflictRule: other, miss: missClass(p, { redrafted: earlier.length > 0, headSha: sha256(beforeMd) }) };
+          return { applied: false, reason: `${prefix}${why ? `: ${why}` : ""}`, full_reason: `${prefix}${result.conflict.why ? `: ${String(result.conflict.why)}` : ""}`, fixes: fixesOf(result.fixes), conflictRule: other, miss: missClass(p, { redrafted: earlier.length > 0, headSha: sha256(beforeMd), conflictRule: other }) };
         }
       }
       // Code checks what the model wrote: the paths, then the scope, then the game's own checks and tests.
@@ -632,8 +632,10 @@ const sha256 = (t) => createHash("sha256").update(String(t ?? ""), "utf8").diges
 //                  the draft was right for its rulebook;
 //   disagreed      the check passed it, or missed what the night found.
 /** @rule 106.6, 107.7 */
-export function missClass(p, { redrafted, headSha }) {
+export function missClass(p, { redrafted, headSha, conflictRule = null }) {
   const c = p.rule_check ?? null;
+  if (!["amend", "addclause", "add"].includes(p.kind)) return "unchecked_kind";   // a repeal, move or mark is never checked: no case can ask it to be
+  if ((c?.conflicts ?? []).some((x) => String(x.num).split(".")[0] === String(conflictRule))) return "warned";   // the check named that rule; the player locked in anyway (a warning)
   if (!c || c.status === "unchecked") return "unchecked";
   if (redrafted || (p.base_sha && headSha && p.base_sha !== headSha)) return "rules_changed";
   return "disagreed";

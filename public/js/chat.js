@@ -166,7 +166,7 @@ ${sl.kind !== "action" && (sl.after_text || sl.before_text) ? `<div class="tx cd
 <div class="act">${act}</div>${err}</section>`;
   }
   /** Which rule prevails in each conflict the rule check named (rule 108.1), beside the conflicts. @rule 108.1, 108.3 */
-  const prevailHTML = (sl) => ((sl.check && sl.check.conflicts) || []).map((c) => ` <span class="cwhy">${String(c.prevails) === String(c.num).split(".")[0] ? `${rpill(String(c.prevails))} prevails` : "this prevails"}</span>`).join("");
+  const prevailHTML = (sl) => ((sl.check && sl.check.conflicts) || []).filter((c) => c.prevails !== null).map((c) => ` <span class="cwhy">${String(c.prevails) === String(c.num).split(".")[0] ? `${rpill(String(c.prevails))} prevails` : "this prevails"}</span>`).join("");
   /** A proposal the moderator did not apply, as its owner sees it: each fix is a ghost button that opens the conversation with the redraft in the box (rule 107.7). @rule 107.7 */
   const fixesHTML = (sl) => (sl.mine && sl.status === "not_applied" && sl.result && (sl.result.fixes || []).length
     ? `<div class="opts" role="group" aria-label="Fixes">${sl.result.fixes.map((f, k) => `<button type="button" class="btn ghost small" data-c="redraft" data-n="${esc(sl.n)}" data-i="${k}">${esc(f)}</button>`).join("")}</div>` : "");

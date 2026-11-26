@@ -57,7 +57,7 @@ console.log("which rule prevails (rule 108.1), in code");
   check("a new rule the proposal marks unanimous prevails over a majority rule (core over majority)", v2[0].prevails === 405, J(v2));
   const v3 = prevailVerdicts(DAY2, { kind: "amend", target: "402.1", after_text: "402.1 It prevails over rule 504." }, ["504.1"], {});
   check("a rule's own claim wins within its kind; an amended rule keeps its own age (it is not newer)", v3[0].prevails === 402, J(v3));
-  check("the change's own rule is never named against itself", prevailVerdicts(DAY2, { kind: "amend", target: "402.1", after_text: "x" }, ["402.2"]).length === 0);
+  check("another clause of the rule being changed is still a conflict (P9: 202.3), with no rule prevailing over itself", J(prevailVerdicts(DAY2, { kind: "amend", target: "202.2", after_text: "x" }, ["202.3", "402.3"])) === J([{ num: "202.3", prevails: null }, { num: "402.3", prevails: 202 }]), J(prevailVerdicts(DAY2, { kind: "amend", target: "202.2", after_text: "x" }, ["202.3", "402.3"])));
   check("prevailing is the night's own function, unchanged: core over majority", prevailing({ number: 1, mark: "majority" }, { number: 2, mark: "unanimous" }).number === 2);
 }
 
