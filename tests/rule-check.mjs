@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { ROOT } from "./lib.mjs";
 import { parseBook } from "../src/lib/proposals.js";
-import { CHECK_CRITERIA, ENGINE_FACTS, blockedReason, checkPrompt, lockRefusalOf, checkSchema, prevailVerdicts, prevailing, readCheck } from "../src/lib/rule-check.js";
+import { CHECK_CRITERIA, ENGINE_FACTS, blockedReason, checkConflictNums, checkPrompt, lockRefusalOf, checkSchema, prevailVerdicts, prevailing, readCheck } from "../src/lib/rule-check.js";
 
 let pass = 0, fail = 0;
 const check = (name, ok, detail = "") => { if (ok) { pass++; console.log(`  ok    ${name}`); } else { fail++; console.log(`  FAIL  ${name}${detail ? "  -> " + detail : ""}`); } };
@@ -58,6 +58,7 @@ console.log("which rule prevails (rule 108.1), in code");
   const v3 = prevailVerdicts(DAY2, { kind: "amend", target: "402.1", after_text: "402.1 It prevails over rule 504." }, ["504.1"], {});
   check("a rule's own claim wins within its kind; an amended rule keeps its own age (it is not newer)", v3[0].prevails === 402, J(v3));
   check("another clause of the rule being changed is still a conflict (P9: 202.3), with no rule prevailing over itself", J(prevailVerdicts(DAY2, { kind: "amend", target: "202.2", after_text: "x" }, ["202.3", "402.3"])) === J([{ num: "202.3", prevails: null }, { num: "402.3", prevails: 202 }]), J(prevailVerdicts(DAY2, { kind: "amend", target: "202.2", after_text: "x" }, ["202.3", "402.3"])));
+  check("the draft's conflicts take the rules a check names but not another clause of the rule being changed (a not-wired clause must not refuse a draft that only touches its own rule)", J(checkConflictNums({ conflicts: [{ num: "202.3", prevails: null }, { num: "402.3", prevails: 402 }] })) === J(["402.3"]) && J(checkConflictNums(null)) === J([]));
   check("prevailing is the night's own function, unchanged: core over majority", prevailing({ number: 1, mark: "majority" }, { number: 2, mark: "unanimous" }).number === 2);
 }
 

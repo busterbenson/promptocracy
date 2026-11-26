@@ -177,3 +177,6 @@ export function blockedReason(check) {
 export function lockRefusalOf(book, check) {
   return check && (check.status === "blocked" || check.status === "unchecked") && book.byNum["103.9"] ? blockedReason(check) : null;
 }
+
+/** The rules a check names that the proposal conflicts with, for the draft's conflicts list: not another clause of the rule it changes (the drafter leaves those out too, so a clause that isn't wired can't refuse a draft that only touches its own rule). @rule 108.3 */
+export const checkConflictNums = (check) => ((check && check.conflicts) || []).filter((c) => c.prevails !== null).map((c) => c.num);

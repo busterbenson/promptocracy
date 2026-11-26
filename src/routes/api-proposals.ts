@@ -23,7 +23,7 @@ import { commissionsFor } from "../lib/ticket-view";
 import { COMMISSION_SNAPSHOT_SQL } from "../lib/tickets.js";
 import { ACTION_DRAFT_INSERT_SQL, CONFIRMED_TODAY_SQL, CONFIRM_SQL, DRAFT_INSERT_SQL, NOT_WIRED_REASON, WITHDRAW_SQL, conflictSentence, draftOf, markFor, needsModel, normKind, notWiredConflictRefusal, notWiredRefusal, parseBook, proposalLimitMessage, readRequest } from "../lib/proposals.js";
 import { checkDraft, CHECKED_KINDS } from "../lib/draft-check";
-import { lockRefusalOf } from "../lib/rule-check.js";
+import { lockRefusalOf, checkConflictNums } from "../lib/rule-check.js";
 import { catalogFor } from "./api-catalog";
 import { refusalBody, turnBlock } from "../lib/turn";
 import { Ctx, colorOf, json, nowIso, readJson, sha256Hex, siteUrl, who } from "../lib/util";
@@ -166,7 +166,7 @@ export async function prepareDraft(env: any, game: any, day: any, turn: any, pla
     const late = turnBlock(game, day, turn, player, "propose", nowMs);
     if (late) return { fail: out(refusalBody(late), late.status) };
   }
-  const conflicts = [...new Set([...d.conflicts, ...modelConflicts, ...(check?.conflicts ?? []).map((c: any) => c.num)])];
+  const conflicts = [...new Set([...d.conflicts, ...modelConflicts, ...checkConflictNums(check)])];
   const unwired = notWiredConflictRefusal(book, conflicts);
   if (unwired) return { fail: out({ error: unwired, drafting: "refused", reason: NOT_WIRED_REASON }, 422) };
   return { d, conflicts, settings, after, nowMs, check };
