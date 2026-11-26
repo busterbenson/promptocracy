@@ -9,7 +9,8 @@ import { draftOf, needsModel, notWiredConflictRefusal, notWiredRefusal, readRequ
  * @param actions for an action: {catalog, players, proposer} (the route builds it from the game and its players)
  * @param isCap   (e) => bool: a cap error thrown by the caller's fetch wrapper, which must stop the run, not become a draft failure
  */
-export async function pipeline(drafter, book, md, c, env, { actions, isCap = () => false, draftcheck = null, catalog = [] } = {}) {
+export async function pipeline(drafter, book, md, c, env, { actions, isCap = () => false, draftcheck = null, catalog = null } = {}) {
+  if (draftcheck && !Array.isArray(catalog)) throw new Error("pipeline: the rule check needs the game's catalog (an array, maybe empty); a run never checks blind");
   const body = c.kind === "action"
     ? { kind: "action", type: c.type, params: c.params }
     : { kind: c.kind || "amend", target: c.target, words: c.words, prefilled: c.prefilled === true };

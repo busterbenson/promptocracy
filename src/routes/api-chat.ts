@@ -28,6 +28,7 @@ import {
 import { generalRequest, generalSchema, nodeText, plainForQuote, readGeneralAnswer, systemStatic as generalStatic } from "../lib/gremlin-rules.js";
 import { refusalBody, turnBlock } from "../lib/turn";
 import { Ctx, json, nowIso, readJson } from "../lib/util";
+import { draftTurn } from "../lib/draft-turn.js";
 import { catalogFor } from "./api-catalog";
 import { bookFor, catalogOf, draft } from "./api-proposals";
 import { slipsOf, todayOf } from "./slips";
@@ -428,38 +429,14 @@ async function generalTurn(T: Turn, moved: boolean): Promise<Out> {
     return { refused: { error: String(d.body?.error ?? "The draft was refused.").slice(0, 400), ...(d.body?.reason ? { reason: String(d.body.reason).slice(0, 40) } : {}) }, why: String(d.body?.drafting || d.status) };
   };
   if (a.draft) {
-    let res = await tryDraft(a);
-    // The drafter said no: one more try in the same turn, with its reason, for the nearest version that drafts (or options). Never a second retry, and
-    // never when the day's gate is what refused (nothing he writes can pass that).
-    let retried = false;
-    if (res.refused && !noDraft) {
-      retried = true;
-      const r2 = await ask(String(res.refused.error));
-      later = await clockNow(env);
-      const a2: any = r2.ok ? read(r2) : null;
-      if (r2.ok && a2?.ok) {
-        await logOnly(T, r, "ok", `draft refused: ${res.why}; retry after refusal`);   // the first call is only logged when the second answer replaces it (a failed retry leaves it as the stored one, logged once)
-        r = r2; a = a2;
-        notes.push(`retry after refusal: ${res.why}`);
-        res = a.draft ? await tryDraft(a) : { refused: res.refused, why: "no second draft" };
-      } else { await logOnly(T, r2, r2.ok ? "invalid" : r2.code, "retry after refusal failed"); }
-    }
-    // The rule check (rule 103.9) found the game can't carry the draft out, or couldn't run: the draft stands (its slip says why Lock it in is off), and
-    // he gets one more try in the same turn with the findings, to say it in his voice and offer the fixes as options. The retry's draft is checked too, and
-    // there is never a second retry.
-    if (res.id && res.check && res.check.status !== "ok" && !noDraft && !retried) {
-      const r2 = await ask(undefined, res.check);
-      later = await clockNow(env);
-      const a2: any = r2.ok ? read(r2) : null;
-      if (r2.ok && a2?.ok) {
-        await logOnly(T, r, "ok", `rule check ${res.check.status}; retry after check`);
-        r = r2; a = a2;
-        notes.push(`retry after rule check: ${res.check.status}`);
-        if (a.draft) { const r3 = await tryDraft(a); if (r3.id) res = r3; }
-      } else { await logOnly(T, r2, r2.ok ? "invalid" : r2.code, "retry after rule check failed"); }
-    }
-    // His options are the check's fixes: each fills the box, unsent (up to three).
-    if (res.id && res.check && res.check.status === "blocked" && (res.check.fixes || []).length) a.options = res.check.fixes.slice(0, 3).map((f: any) => String(f.say));
+    // The retries (after a refusal, after a check that blocked or could not run) are src/lib/draft-turn.js, which the quality harness runs too.
+    const t = await draftTurn({
+      r, a, noDraft, ask, read, tryDraft,
+      after: async () => { later = await clockNow(env); },
+      log: (call, outcome, reason) => logOnly(T, call, outcome, reason),
+    });
+    r = t.r; a = t.a; notes.push(...t.notes);
+    const res = t.res;
     if (res.id) proposalId = res.id;
     else { meta.refused = res.refused; notes.push(`draft refused: ${res.why}`); }
   }

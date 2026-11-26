@@ -1,9 +1,11 @@
 // The chat stage: a scripted player talks to the REAL Gremlin, in the general conversation (generalRequest) or on a ticket (gremlinRequest), with
 // callModel + read*Answer; a commission asked in general continues on a ticket and a rule change asked on a ticket continues in general, once per
-// message, and a refused draft is retried once, as the route does (src/routes/api-chat.ts), and a draft goes through the REAL drafter pipeline (tests/quality/pipeline.mjs). History, slip and ticket are
+// message, and a draft goes through the REAL drafter pipeline (tests/quality/pipeline.mjs) and the REAL rule check, with the game's catalog, and the retries after a refusal and after a blocked
+// check are src/lib/draft-turn.js, the same function the route calls (api-chat.ts generalTurn). History, slip and ticket are
 // held in memory, built the way the route builds them (api-chat.ts generalTurn / ticketTurn); no database (plan section 1).
 import { CHAT_TIMEOUT_MS, MODEL, MOODS, OUTPUT_CAP_TOKENS, answerSchema as gremlinSchema, gremlinRequest, moodOf, readGremlinAnswer, systemStatic as gremlinSystem } from "../../src/lib/gremlin.js";
 import { checkQuote, generalSchema, plainForQuote, readGeneralAnswer, generalRequest, systemStatic as generalSystem } from "../../src/lib/gremlin-rules.js";
+import { draftTurn } from "../../src/lib/draft-turn.js";
 import { STARTER_CATALOG } from "../lib.mjs";
 import { CapReached } from "./lib.mjs";
 import { pipeline } from "./pipeline.mjs";
@@ -48,14 +50,14 @@ async function generalCase(c, x, res, o) {
   const env = { MODEL_API_KEY: x.keys.model };
   for (let message = nextLine(c, sent, state); message !== null; message = nextLine(c, ++sent, state)) {
     x.meter.guard(63_000, `${c.id} turn ${sent + 1}`);
-    const ask = (retry) => generalRequest({
+    const request = (retry, found) => generalRequest({
       rulesMd: x.rulesMd, localDate: LOCAL_DATE, perDay: PER_DAY, actions: x.actions, history, label: "Ada", message, rule: null,
-      slip, drafted, made: 0, limit: PER_DAY, noDraft: null, retry,
+      slip, drafted, made: 0, limit: PER_DAY, noDraft: null, retry, found, redraft: null,
     });
-    const { system, messages } = ask();
+    const { system, messages } = request();
     const turn = { player: message, say: null, quotes: [], dropped: [], escalate: null, asked_for: null, outcome: null, micro: 0, ms: 0, usage: null };
     res.turns.push(turn);
-    const { value: r, slot } = await x.meter.slotted(() => x.agent.callModel(env, { model: MODEL, system, messages, maxTokens: OUTPUT_CAP_TOKENS, timeoutMs: CHAT_TIMEOUT_MS, schema: generalSchema(), effort: "low" }));
+    let { value: r, slot } = await x.meter.slotted(() => x.agent.callModel(env, { model: MODEL, system, messages, maxTokens: OUTPUT_CAP_TOKENS, timeoutMs: CHAT_TIMEOUT_MS, schema: generalSchema(), effort: "low" }));
     Object.assign(turn, { micro: slot.micro, ms: slot.ms, usage: slot.usage });
     if (x.meter.capHit) throw new CapReached(x.meter.capHit);
     if (!r.ok) { turn.error = `call failed: ${r.code} ${clip(r.reason, 120)}`; res.error = turn.error; return; }
@@ -71,33 +73,40 @@ async function generalCase(c, x, res, o) {
     }
     if (a.draft) {
       turn.asked_for = a.draft;
-      const asked = a.draft.kind === "action" ? { kind: "action", type: a.draft.type, params: a.draft.params } : { kind: a.draft.kind, target: a.draft.target, words: a.draft.words, to: a.draft.to, mark: a.draft.mark };
-      let { value: p, slot: ps } = await x.meter.slotted(() => pipeline(x.drafter, x.book, x.rulesMd, asked, env, { actions: { catalog: x.actions, players: PLAYERS, proposer: "ada" }, draftcheck: x.draftcheck, catalog: x.catalog || [], isCap: (e) => e instanceof CapReached }));
-      turn.micro += ps.micro; turn.ms += ps.ms;
-      if (x.meter.capHit) throw new CapReached(x.meter.capHit);
-      if (p.outcome !== "drafted" && !moved && !turn.retried) {
-        // The drafter said no: one more try in the same turn, with its reason, for the nearest version that drafts (or options); never a second
-        turn.retried = true; turn.first_refusal = p.message;
-        const again = ask(p.message);
-        const { value: r2, slot: s2 } = await x.meter.slotted(() => x.agent.callModel(env, { model: MODEL, system: again.system, messages: again.messages, maxTokens: OUTPUT_CAP_TOKENS, timeoutMs: CHAT_TIMEOUT_MS, schema: generalSchema(), effort: "low" }));
-        turn.micro += s2.micro; turn.ms += s2.ms;
-        if (x.meter.capHit) throw new CapReached(x.meter.capHit);
-        const a2 = r2.ok ? readGeneralAnswer(r2.text, { book: x.book, systemText: generalSystem(), rulesPlain: plainForQuote(x.rulesMd), playerText: message }) : null;
-        if (a2 && a2.ok) {
-          a = a2; Object.assign(turn, { say: a.say, quotes: a.quotes, escalate: a.escalate, options: a.options, guesses: a.guesses });
-          if (a.draft) {
-            turn.asked_for = a.draft;
-            const asked2 = a.draft.kind === "action" ? { kind: "action", type: a.draft.type, params: a.draft.params } : { kind: a.draft.kind, target: a.draft.target, words: a.draft.words, to: a.draft.to, mark: a.draft.mark };
-            const { value: p2, slot: ps2 } = await x.meter.slotted(() => pipeline(x.drafter, x.book, x.rulesMd, asked2, env, { actions: { catalog: x.actions, players: PLAYERS, proposer: "ada" }, draftcheck: x.draftcheck, catalog: x.catalog || [], isCap: (e) => e instanceof CapReached }));
-            turn.micro += ps2.micro; turn.ms += ps2.ms;
-            p = p2; asked.words = asked2.words; asked.kind = asked2.kind;
-          }
-        }
-      }
+      const askedOf = (d) => (d.kind === "action" ? { kind: "action", type: d.type, params: d.params } : { kind: d.kind, target: d.target, words: d.words, to: d.to, mark: d.mark });
+      const tries = [];   // every draft the drafter was asked for this turn, with its pipeline result
+      const read = (call) => readGeneralAnswer(call.text, { book: x.book, systemText: generalSystem(), rulesPlain: plainForQuote(x.rulesMd), playerText: message });
+      // The route's draft-and-retry step, itself (src/lib/draft-turn.js): the refusal retry, the retry after a blocked check, the check's fixes as options.
+      // Only the I/O is the harness's: the model call, and the pipeline for the draft (which makes the check, with the game's catalog).
+      const t = await draftTurn({
+        r, a, noDraft: null, read,
+        ask: async (retry, found) => {
+          const again = request(retry, found);
+          const { value: r2, slot: s2 } = await x.meter.slotted(() => x.agent.callModel(env, { model: MODEL, system: again.system, messages: again.messages, maxTokens: OUTPUT_CAP_TOKENS, timeoutMs: CHAT_TIMEOUT_MS, schema: generalSchema(), effort: "low" }));
+          turn.micro += s2.micro; turn.ms += s2.ms;
+          if (x.meter.capHit) throw new CapReached(x.meter.capHit);
+          return r2;
+        },
+        tryDraft: async (ans) => {
+          const asked = askedOf(ans.draft);
+          const { value: p, slot: ps } = await x.meter.slotted(() => pipeline(x.drafter, x.book, x.rulesMd, asked, env, { actions: { catalog: x.actions, players: PLAYERS, proposer: "ada" }, draftcheck: x.draftcheck, catalog: x.catalog, isCap: (e) => e instanceof CapReached }));
+          turn.micro += ps.micro; turn.ms += ps.ms;
+          if (x.meter.capHit) throw new CapReached(x.meter.capHit);
+          tries.push({ p, asked });
+          return p.outcome === "drafted" ? { id: `draft${tries.length}`, check: p.check ?? null, p, asked } : { refused: { error: p.message }, why: p.reason, p, asked };
+        },
+      });
+      a = t.a; r = t.r;
+      Object.assign(turn, { say: a.say, quotes: a.quotes, escalate: a.escalate, options: a.options, guesses: a.guesses });
+      if (t.notes.length) turn.retry = t.notes;
+      if (t.notes.some((n) => /^retry after refusal/.test(n))) { turn.retried = true; turn.first_refusal = tries[0]?.p.message; }
+      if (a.draft) turn.asked_for = a.draft;
+      const fin = t.res.p ? t.res : { p: tries.at(-1).p, asked: tries.at(-1).asked };
+      const { p, asked } = fin;
       if (p.outcome === "drafted") {
-        // The route's own slip and "drafted" (api-chat.ts generalTurn): the draft is not locked in; she sees its head and text next turn.
+        // The route's own slip and "drafted" (api-chat.ts generalTurn): the draft is not locked in; she sees its head, text and check next turn.
         slip = { n: null, status: "a draft, not locked in", head: p.head, after_text: p.after_text, words: asked.words ?? "", conflicts: p.conflicts };
-        drafted = { head: p.head, after_text: p.after_text, conflicts: p.conflicts };
+        drafted = { head: p.head, after_text: p.after_text, conflicts: p.conflicts, check: p.check ?? null };
         state.draft = true;
         turn.outcome = "drafted";
         turn.pipeline = { head: p.head, drafted_by: p.drafted_by };
