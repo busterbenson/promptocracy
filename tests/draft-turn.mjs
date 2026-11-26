@@ -97,5 +97,18 @@ console.log("the options are the check's fixes");
   check("no fixes: his own options stay", (await e.run()).a.options.join() === "his own");
 }
 
+console.log("the first answer's guesses line survives a retry that makes no draft");
+// Case g-multipart-one-draft (quality run 2026-11-26-1207-chat-b39e650): the slip stays on screen after a blocked check, his retry explains and offers the fixes
+// without drafting again, and his first answer's "I guessed: ..." (about the slip that stands) was lost with the replaced answer: "no guesses".
+{
+  const t = rig({ answers: [ans("w1", { guesses: "I guessed: block 200." }), ans(null, { options: ["a"] })], drafts: [{ id: "p1", check: blocked }] });
+  const o = await t.run();
+  check("the retry's say stands and the first answer's guesses ride with the standing slip", o.res.id === "p1" && o.a.say === "say none" && o.a.guesses === "I guessed: block 200.", JSON.stringify(o.a.guesses));
+  const n = rig({ answers: [ans("w1", { guesses: "first" }), ans("w2", { guesses: "second" })], drafts: [{ id: "p1", check: blocked }, { id: "p2", check: { status: "ok" } }] });
+  check("a retry that drafts again keeps its own guesses line", (await n.run()).a.guesses === "second");
+  const m = rig({ answers: [ans("w1", { guesses: "first" }), ans("w2")], drafts: [{ id: "p1", check: blocked }, { id: "p2", check: { status: "ok" } }] });
+  check("a retry that drafts again without a guesses line does not inherit the old slip's", (await m.run()).a.guesses == null);
+}
+
 console.log(`${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

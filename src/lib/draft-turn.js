@@ -38,9 +38,14 @@ export async function draftTurn({ r, a, noDraft = null, ask, read, tryDraft, aft
     const a2 = r2.ok ? read(r2) : null;
     if (r2.ok && a2?.ok) {
       await log(r, "ok", `rule check ${res.check.status}; retry after check`);
+      const guessed = a.guesses;   // what he guessed in the draft that stands, if the retry makes no draft of its own
       r = r2; a = a2;
       notes.push(`retry after rule check: ${res.check.status}`);
-      if (a.draft) { const r3 = await tryDraft(a); if (r3.id) res = r3; }
+      let redrafted = false;
+      if (a.draft) { const r3 = await tryDraft(a); if (r3.id) { res = r3; redrafted = true; } }
+      // The first draft stays on the slip when the retry makes none (or its draft is refused): its guesses line stays with it, or the answer shown says "no guesses"
+      // for a slip that carries them (case g-multipart-one-draft, run 2026-11-26-1207-chat-b39e650).
+      if (!redrafted && !a.guesses && guessed) a.guesses = guessed;
     } else { await log(r2, r2.ok ? "invalid" : r2.code, "retry after rule check failed"); }
   }
   // His options are the check's fixes: each fills the box, unsent (up to three).
