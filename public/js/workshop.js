@@ -72,8 +72,10 @@ export function createWorkshop({ api, me, pill, rpill, when, canCommission, refr
     setTimeout(tick, 2500);
   }
 
+  let NAV = 0;   // bumped by every card the player opens: a lock-in that lands after a later pick must not take the player back (Codex, P2)
   /** @rule 801.2 */
   async function open(n, push) {
+    NAV++;
     S.err = ""; S.note = ""; S.askCancel = "";   // a card opens without Cancel's question showing
     S.detail[n] = S.detail[n] || null;   // a card with its name and nothing else until the page arrives
     cards.open({ kind: "ticket", key: n }, { push: !!push });
@@ -225,6 +227,7 @@ ${stripHTML(artOf(v), false, "", 1)}${attrsHTML(v)}${flavorHTML(v, open)}${more 
   }
   /** @rule 701.1 */
   async function openEntry(id, push) {
+    NAV++;
     cards.open({ kind: "entry", key: id }, { push: !!push });
   }
 
@@ -477,6 +480,7 @@ ${editing ? formHTML(t) : factsHTML(t)}${unlockHTML(t)}${reopenHTML(t)}${holdHTM
     if ((a === "askcancel" || a === "keep") && n && !S.busy) { S.askCancel = a === "askcancel" ? n : ""; S.err = ""; cards.redraw(); return; }
     if (!n || S.busy) return;
     S.busy = true; S.err = ""; S.note = ""; cards.redraw();
+    const nav0 = NAV, c0 = chat && chat(), st0 = c0 && c0.state ? c0.state() : null, pick0 = st0 ? st0.pickSeq : 0, tk0 = st0 ? st0.ticket : null;
     try {
       if (a === "save") { if (await save(n)) { S.form = null; S.note = "Saved."; } }
       else if (a === "confirm") {
@@ -486,7 +490,10 @@ ${editing ? formHTML(t) : factsHTML(t)}${unlockHTML(t)}${reopenHTML(t)}${holdHTM
           else { S.err = (r.data && r.data.error) || "Something went wrong."; await loadOne(n); S.form = null; }
           await refresh();
           // Locked in: the card goes away and the player lands in the chat on that ticket, whose slip says LOCKED (Buster, 2026-11-26)
-          if (r.ok) { cards.close(); const c = chat && chat(); if (c) await c.attach(n, { open: true }); }
+          // A later pick (another card, or another ticket picked in the chat) wins: this ticket is only refreshed, never put back in front
+          const st = c0 && c0.state ? c0.state() : null, moved = nav0 !== NAV || (st && (st.pickSeq !== pick0 || st.ticket !== tk0));
+          if (r.ok && moved) tellChat(n);
+          else if (r.ok) { cards.close(); const c = chat && chat(); if (c) await c.attach(n, { open: true }); }
         }
       } else if (a === "discard") {
         const r = await api(`/api/tickets/${encodeURIComponent(n)}/discard`, {});

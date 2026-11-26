@@ -129,6 +129,22 @@ with sync_playwright() as p:
             held[0].continue_(); page.wait_for_timeout(1500)
             page.unroute("**/api/tickets/*/confirm")
             check(f"{tag}: after the held lock-in lands, the window is still on the new ticket {new_n}: the box's chip and the slip are the same ticket", new_n != W and text(page, ".ch-in .chip").replace("×", "").strip() == new_n and page.get_attribute(SLIP, "aria-label") == new_n, f"{new_n} {page.get_attribute(SLIP, 'aria-label')}")
+        if who == "eli":
+            # a card's lock-in still out when the player has moved on to another ticket's card: its handoff must not close that card or switch the chat back (Codex, P2)
+            held = []
+            page.route("**/api/tickets/*/confirm", lambda route: held.append(route))
+            page.click(SLIP + " .wpill"); page.wait_for_selector("#wfTitle")
+            page.click('#mroot [data-w="confirm"]'); page.wait_for_function("window.__n = 1", timeout=2000); page.wait_for_timeout(300)
+            check(f"{tag}: the card's lock-in request is out and held", len(held) == 1)
+            page.keyboard.press("Escape"); page.wait_for_function("document.getElementById('mroot').hidden")
+            page.click('#chatcol [data-c="new"]'); page.wait_for_function(f"(document.querySelector('.ch-in .chip') || {{textContent: '{W}'}}).textContent.indexOf('{W}') < 0", timeout=15000)
+            new_n = text(page, ".ch-in .chip").replace("×", "").strip()
+            page.wait_for_selector(SLIP + " .wpill"); page.click(SLIP + " .wpill"); page.wait_for_selector("#wfTitle")
+            check(f"{tag}: the second ticket {new_n}'s card is open", card_open(page) and new_n in text(page, "#mroot .mcard"), new_n)
+            held[0].continue_(); page.wait_for_timeout(1500)
+            page.unroute("**/api/tickets/*/confirm")
+            check(f"{tag}: after the held lock-in lands, {new_n}'s card is still open and the chat is still on {new_n}", card_open(page) and text(page, ".ch-in .chip").replace("×", "").strip() == new_n, f"{card_open(page)} {text(page, '.ch-in .chip')}")
+            check(f"{tag}: the held lock-in still refreshed: the strip's {W} pill says Proposed", "Proposed" in text(page, f'#chatcol .ch-row .it[data-n="{W}"]'), text(page, "#chatcol .ch-row"))
         check(f"{tag}: no console errors", not errors, str(errors)); c.close()
     # ---- Ivy: a ticket Gremlin has not drafted: Lock it in is disabled with the reason beside it
     c, page, errors = new_page(b, 390, 844, "light", "ivy")
