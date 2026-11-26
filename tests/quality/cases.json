@@ -441,6 +441,29 @@
         "night": "n/a"
       },
       "known_fail": null
+    },
+    {
+      "id": "g-moon-real",
+      "agent": "gremlin",
+      "start": "general",
+      "title": "The real moon, worked out from the date (Buster, day 3)",
+      "turns": [
+        "Add a rule: each day has a moon, full, new or neither, following the real moon phase in the game's time zone. Other rules can use it as a condition; on its own it does nothing."
+      ],
+      "if_asked": [],
+      "intent": "Buster's day-3 moon rule, blocked three times on 11-26 because the check said the game can't know the real moon. A rule's code can work the phase out from the date (29.53-day cycle) with no outside source and no stored record, so the check passes it.",
+      "expect": {
+        "draft": {
+          "kind": [
+            "add",
+            "addclause"
+          ]
+        },
+        "check": "ok",
+        "no_escalation": true,
+        "no_dead_end": true
+      },
+      "known_fail": null
     }
   ]
 }
