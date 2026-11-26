@@ -311,6 +311,34 @@ export async function enactStatements(env: Env, game: any, n: number, nowMs: num
 }
 
 
+// A commission that passed is approved (rule 801), not passed, so enactStatements never sees it: it is applied the moment it passes, and
+// 401.1 gives its owner the points then (Buster, 2026-11-26). The same hook gives them (rule 401's own onEnacted decides how many), once:
+// the points and their event are written only while the proposal is approved and has no points event yet, the update BEFORE the event, so a
+// second run gives nothing twice. Called by the count AFTER the commission's price is paid (rule 801.4 pays at the count on the points the
+// player has), so the points can't help pay the same commission. The price (801.4) is separate and unchanged.
+/** @rule 401, 801.1 */
+export async function commissionPointsStatements(env: Env, game: any, n: number, nowMs: number, passed: { id: string; number: number; player_id: string; target: any }[]) {
+  if (!passed.length) return [];
+  const now = nowIso(nowMs);
+  const ctx = await nightContext(env, game, nowMs);
+  const rules = rulesFor(game);
+  const known = new Set<string>(ctx.players.map((p: any) => p.ref));
+  const open = "EXISTS (SELECT 1 FROM proposals WHERE id = ? AND status = 'approved') AND NOT EXISTS (SELECT 1 FROM events WHERE game_id = ? AND kind = 'points' AND day = ? AND json_extract(args, '$.proposal') = ?)";
+  const stmts: any[] = [];
+  for (const q of passed) {
+    for (const e of rules.onEnacted(ctx, { number: q.number, player: q.player_id, target: q.target, kind: "commission" })) {
+      if (!known.has(e.player)) continue;
+      stmts.push(env.DB.prepare(`UPDATE players SET score = score + ? WHERE game_id = ? AND id = ? AND ${open}`).bind(e.delta, game.id, e.player, q.id, game.id, n, q.number));
+      stmts.push(env.DB.prepare(
+        `INSERT INTO events (game_id, kind, text, created_at, day, phase, template, args, player_id, night_seq)
+         SELECT ?, 'points', ?, ?, ?, 'night', 'points', json_object('proposal', ?, 'delta', ?, 'rule', ?), ?, ${NEXT_NIGHT_SEQ} WHERE ${open}`,
+      ).bind(game.id, `+${e.delta}: ${e.reason}`, now, n, q.number, e.delta, e.rule, e.player, game.id, n, q.id, game.id, n, q.number));
+    }
+  }
+  return stmts;
+}
+
+
 // ---- the night's board (rules 602, 603, 404) -------------------------------------------------------------------------------
 // The guard every board statement carries: the night's board has not run (days.board_at is empty) and the game is still playing.
 // Binds: game id, night, game id.
