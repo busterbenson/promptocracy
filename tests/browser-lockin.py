@@ -118,6 +118,17 @@ with sync_playwright() as p:
         n2 = page.evaluate("history.length")
         page.click(SLIP + " .wpill"); page.wait_for_selector("#wfTitle"); page.click("#mroot .mx"); page.wait_for_function("document.getElementById('mroot').hidden"); page.wait_for_timeout(400)
         check(f"{tag}: closing with the X gives the entry back: the stack is as deep as before the card opened ({page.evaluate('history.length')} vs {n2}), the URL the same", page.evaluate("history.length") == n2 and page.url == url0)
+        if who == "hal":
+            # a lock-in still out when another ticket is picked must not put the first ticket's slip under the second's box (Codex, P1; rule 801.6)
+            held = []
+            page.route("**/api/tickets/*/confirm", lambda route: held.append(route))
+            page.click(SLIP + ' [data-c="lockt"]'); page.wait_for_function("window.__n = 1", timeout=2000); page.wait_for_timeout(300)
+            check(f"{tag}: the lock-in request is out and held", len(held) == 1)
+            page.click('#chatcol [data-c="new"]'); page.wait_for_function(f"(document.querySelector('.ch-in .chip') || {{textContent: '{W}'}}).textContent.indexOf('{W}') < 0", timeout=15000)
+            new_n = text(page, ".ch-in .chip").replace("×", "").strip()
+            held[0].continue_(); page.wait_for_timeout(1500)
+            page.unroute("**/api/tickets/*/confirm")
+            check(f"{tag}: after the held lock-in lands, the window is still on the new ticket {new_n}: the box's chip and the slip are the same ticket", new_n != W and text(page, ".ch-in .chip").replace("×", "").strip() == new_n and page.get_attribute(SLIP, "aria-label") == new_n, f"{new_n} {page.get_attribute(SLIP, 'aria-label')}")
         check(f"{tag}: no console errors", not errors, str(errors)); c.close()
     # ---- Ivy: a ticket Gremlin has not drafted: Lock it in is disabled with the reason beside it
     c, page, errors = new_page(b, 390, 844, "light", "ivy")

@@ -541,15 +541,18 @@ ${sl.kind !== "action" && (sl.after_text || sl.before_text) ? `<div class="tx cd
   async function lockTicket(n, what) {
     if (!n || S.locking) return;
     S.lockErr[n] = ""; S.locking = true;
-    let r;
+    let r, page = null;
     try {
       const unlockId = what === "withdraw" ? S.slip && S.slip.n === n && S.slip.unlock_id : null;
       if (what === "withdraw" && !unlockId) return;
       r = await api(what === "confirm" ? `/api/tickets/${encodeURIComponent(n)}/confirm` : `/api/proposals/${encodeURIComponent(unlockId)}/withdraw`, {});
       if (!r.ok) S.lockErr[n] = (r.data && r.data.error) || "Something went wrong.";
-      await loadSlip(n);
+      // the ticket's page is read again, but it only replaces the slip if the window is still on that ticket: a player who picked another one while the request was out keeps that one (rule 801.6)
+      const pr = await api(`/api/tickets/${encodeURIComponent(n)}`);
+      page = pr.ok && pr.data && pr.data.ticket && pr.data.ticket.mine ? pr.data.ticket : null;
+      if (page) { noteTicket(page); if (S.slip && S.slip.n === n) S.slip = page; }
     } finally { S.locking = false; }
-    if (S.slip && onTicket) await onTicket(S.slip);
+    if (page && onTicket) await onTicket(page);
     await readState();
     if (onProposals) await onProposals();
   }
