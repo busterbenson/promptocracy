@@ -456,6 +456,7 @@ ${editing ? formHTML(t) : factsHTML(t)}${unlockHTML(t)}${reopenHTML(t)}${holdHTM
       } finally { S.artBusy = false; }
       paintArt(n);
       watchArt(n);
+      tellChat(n);
       return;
     }
     if (a === "flavor") { S.flavorOpen[el.dataset.entry] = !S.flavorOpen[el.dataset.entry]; cards.redraw(); return; }
@@ -475,9 +476,11 @@ ${editing ? formHTML(t) : factsHTML(t)}${unlockHTML(t)}${reopenHTML(t)}${holdHTM
       else if (a === "confirm") {
         if (await save(n)) {
           const r = await api(`/api/tickets/${encodeURIComponent(n)}/confirm`, {});
-          if (r.ok) { S.detail[n] = r.data.ticket; S.form = null; S.note = r.data.message || ""; }
+          if (r.ok) { S.detail[n] = r.data.ticket; S.form = null; S.note = ""; }
           else { S.err = (r.data && r.data.error) || "Something went wrong."; await loadOne(n); S.form = null; }
           await refresh();
+          // Locked in: the card goes away and the player lands in the chat on that ticket, whose slip says LOCKED (Buster, 2026-11-26)
+          if (r.ok) { cards.close(); const c = chat && chat(); if (c) await c.attach(n, { open: true }); }
         }
       } else if (a === "discard") {
         const r = await api(`/api/tickets/${encodeURIComponent(n)}/discard`, {});
@@ -486,7 +489,7 @@ ${editing ? formHTML(t) : factsHTML(t)}${unlockHTML(t)}${reopenHTML(t)}${holdHTM
         const t = S.detail[n];
         const r = await api(`/api/proposals/${encodeURIComponent(t && t.unlock_id || "")}/withdraw`, {});
         if (!r.ok) S.err = (r.data && r.data.error) || "Something went wrong.";
-        S.form = null; await loadOne(n); await refresh();
+        S.form = null; await loadOne(n); await refresh(); tellChat(n);
       } else if (a === "hold" || a === "resume" || a === "cancel") {
         const r = await api(`/api/tickets/${encodeURIComponent(n)}/${a}`, {});
         if (r.ok) { S.askCancel = ""; S.detail[n] = r.data.ticket; await load(); if (S.view === "all") await loadAll(true); await refresh(); } else { S.err = (r.data && r.data.error) || "Something went wrong."; await loadOne(n); }
@@ -502,6 +505,8 @@ ${editing ? formHTML(t) : factsHTML(t)}${unlockHTML(t)}${reopenHTML(t)}${holdHTM
       }
     } finally { S.busy = false; cards.redraw(); }
   }
+  /** The chat's slip follows a ticket the card changed (unlocked, redrawn): it never says DRAFT over a locked one. @rule 801.2 */
+  function tellChat(n) { const c = chat && chat(); if (c && c.showTicket && S.detail[n]) c.showTicket(S.detail[n]); }
   const FIELD = { wfTitle: "title", wfBrief: "brief" };
   /** @rule 801.2, 804.1 */
   function input(el) {
