@@ -4,7 +4,8 @@ export type Tile = { x: number; y: number; z: number };
 export type Settings = Record<string, any>;
 export type Player = { ref: string; color: string; score: number; x: number; y: number; z: number; living: boolean; hearts: number; state: "living" | "dead" | "ghost"; deadDay: number | null };
 export type Creature = { id: number; entry: string; x: number; y: number; z: number; hearts: number | null; resting: boolean };
-export type CatalogEntry = { id: string; kind: string; attrs: Record<string, unknown> };
+/** An entry of the catalog. `madeBy` is the commission that made it ("W4"), `name` its name; null when the entry has none (rule 703.4). */
+export type CatalogEntry = { id: string; kind: string; name: string | null; madeBy: string | null; attrs: Record<string, unknown> };
 export type Tiles = { has(x: number, y: number, z?: number): boolean; get(x: number, y: number, z?: number): Tile | undefined; list(): Tile[]; size: number };
 export type Mark = "majority" | "unanimous";
 export type Ctx = {
@@ -116,4 +117,9 @@ export function validCoord(x: number, y: number, z?: number): boolean;
 export const DIAGONAL_MOVES: boolean;
 export const SHARED_TILES: boolean;
 export const ENGINE_VERSION: number;
+/**
+ * The entry a rule means when it names one by the commission that made it, "the Flower (W4)" (rule 703.4): the entry of `kind` that `ticket` made, or undefined while it is
+ * not built (the rule then has nothing to act on). `name` is only used when that commission made more than one entry of the kind.
+ */
+export function entryMadeBy(catalog: readonly CatalogEntry[] | null | undefined, ticket: string, kind: string, name?: string): CatalogEntry | undefined;
 export function attr(entry: { attrs?: Record<string, unknown> } | null | undefined, key: string): unknown;
