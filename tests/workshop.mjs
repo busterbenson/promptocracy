@@ -302,7 +302,10 @@ try {
   check("W2 (Bo has -3 of the 7 points it costs) is Ready: nothing paid, no place in the queue, and the log says why in plain words",
     tk(2).state === "Ready" && tk(2).queue_pos === null && tk(2).paid === null && tk(2).paid_at === null && !!tk(2).decided_at && tk(2).approved_at === null &&
     d1(state, `SELECT kind, text FROM ticket_log WHERE ticket_id = '${tk(2).id}' AND kind IN ('ready', 'approved')`).map((r) => `${r.kind}: ${r.text}`).join("|") === "ready: Ready: P3 passed. Bo has 0 of the 7 points it costs; it joins the queue when they can pay.", d1(state, `SELECT * FROM ticket_log WHERE ticket_id = '${tk(2).id}'`).map((r) => r.text).join("|"));
-  check("the price came out of Ana's points (5 to 2), once; Bo's score is untouched (-3): nothing is part-paid", score("Ana") === 2 && tk(3).paid === 3 && !!tk(3).paid_at && score("Bo") === -3, `${score("Ana")} ${score("Bo")}`);
+  // Each passed commission also gives its owner rule 401.1's 10 (tests/commission-points.mjs proves that): Ana 5 - 3 + 10, Bo -3 + 10.
+  check("the price came out of Ana's points (5 to 2 before the 10 for P2), once; Bo's own score moved only by the 10 for P3: nothing is part-paid", score("Ana") === 12 && tk(3).paid === 3 && !!tk(3).paid_at && score("Bo") === 7, `${score("Ana")} ${score("Bo")}`);
+  // The story below is about the prices and the Ready queue, so it goes on from the scores before those 10s.
+  d1(state, `UPDATE players SET score = 2 WHERE id = '${id.Ana}'; UPDATE players SET score = -3 WHERE id = '${id.Bo}'`);
   check("the day's log says W3 was approved and who paid, and that W2 is ready and not paid; Bo is told in a notification",
     d1(state, `SELECT text FROM events WHERE game_id = '${gid}' AND kind = 'commission_approved' ORDER BY id`).map((r) => r.text).join("|") === "W3 was approved. Ana paid 3 points." &&
     d1(state, `SELECT text FROM events WHERE game_id = '${gid}' AND kind = 'commission_ready' ORDER BY id`).map((r) => r.text).join("|") === "W2 is ready, not yet paid: Bo has 0 of the 7 points it costs." &&
@@ -345,6 +348,7 @@ try {
   check("the passed commission is second in the queue (first approved, first built, across nights; the Ready ticket holds no place); the failed one is Refused with the count's sentence",
     tk(4).state === "Approved" && tk(4).queue_pos === 2 && tk(2).queue_pos === null && tk(5).state === "Refused" && /Refused: P6 did not pass\. 2 of 3 voted; 0 voted yes; it needed more than half of the votes cast\./.test(d1(state, `SELECT text FROM ticket_log WHERE ticket_id = '${tk(5).id}' AND kind = 'refused'`)[0].text), J([tk(4).queue_pos, tk(5).state]));
   check("a ballot with only commissions on it ends the night with no moderator: day 4 done, day 5 open, never 'processing'", d3.status === "done" && game().day === 5 && game().phase === "open", J([d3, game()]));
+  d1(state, `UPDATE players SET score = 2 WHERE id = '${id.Ana}'`); // her 10 for P5 (tests/commission-points.mjs); what follows is about prices
   check("a refused ticket's requester paid nothing (Cy keeps the 10 points P4 gave)", score("Cy") === 10 && tk(5).paid === null);
 
   console.log("the list and the page");
@@ -438,6 +442,7 @@ try {
     await midnight();
     for (const c of [Ana, Bo, Cy]) { await yes(c, pn(cyT)); await yes(c, pn(anaT)); }
     const dn = await midnight();
+    d1(state, `UPDATE players SET score = 10 WHERE id = '${id.Cy}'; UPDATE players SET score = 2 WHERE id = '${id.Ana}'`); // the 10 each got at the count (401.1) is proved elsewhere; the prices were checked against what they had
     check("both passed and neither can pay: both Ready, nothing paid, no place in the queue; Bo's W2 is still Ready too",
       [cyT, anaT].every((x) => tk(num(x)).state === "Ready" && tk(num(x)).paid === null && tk(num(x)).paid_at === null && tk(num(x)).queue_pos === null) && tk(2).state === "Ready" && queueMax() === q0 && score("Cy") === 10 && score("Ana") === 2, J([dn, tk(num(cyT)), tk(num(anaT))]));
     check("the logs say why in plain words, with what they have and what it costs",
@@ -534,7 +539,7 @@ try {
     await midnight();
     const logs = d1(state, `SELECT kind, text FROM ticket_log WHERE ticket_id = '${tk(aW).id}' AND kind = 'approved' ORDER BY id`);
     check("a reopened ticket that was paid once and passes again is Approved with a new queue place, never charged again (even at 0 points), and the log and the day's log say so without a second payment",
-      tk(aW).state === "Approved" && tk(aW).queue_pos > 0 && tk(aW).paid === paidBefore && score("Ana") === 0 && logs.length === 2 && !/Paid/.test(logs[1].text) && /Place \d+ in the queue\./.test(logs[1].text) &&
+      tk(aW).state === "Approved" && tk(aW).queue_pos > 0 && tk(aW).paid === paidBefore && score("Ana") === 10 /* 0, plus the 10 for passing again (401.1): nothing was charged */ && logs.length === 2 && !/Paid/.test(logs[1].text) && /Place \d+ in the queue\./.test(logs[1].text) &&
       d1(state, `SELECT COUNT(*) AS n FROM events WHERE kind = 'commission_approved' AND text = 'W${aW} was approved.'`)[0].n === 1, J([tk(aW), logs]));
     const mcpR = await tool(A, "wk", (await connect(A, "wk", Bo, SITE)).access_token, "reopen_ticket", { ticket: "W2" });
     check("over MCP, reopen_ticket is the same route: Bo's Approved W2 is refused", mcpR.isError && /can't be reopened/.test(mcpR.text), mcpR.text);

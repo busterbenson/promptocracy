@@ -311,6 +311,56 @@ export async function enactStatements(env: Env, game: any, n: number, nowMs: num
 }
 
 
+// A commission that passed is approved (rule 801), not passed, so enactStatements never sees it: it is applied the moment it passes, and
+// 401.1 gives its owner the points then (Buster, 2026-11-26). The same hook gives them (rule 401's own onEnacted decides how many), once:
+// the points and their event are written only while the proposal is approved and has no points event yet, the update BEFORE the event, so a
+// second run gives nothing twice. Called by the count AFTER the commission's price is paid (rule 801.4 pays at the count on the points the
+// player has), so the points can't help pay the same commission. The price (801.4) is separate and unchanged.
+// 401.1 gives the points when a proposal passes and is applied; 801.1 makes a commission a proposal like any other, applied when it passes.
+/** @rule 401, 801.1 */
+export async function commissionPointsStatements(env: Env, game: any, n: number, nowMs: number, passed: { id: string; number: number; player_id: string; target: any }[]) {
+  if (!passed.length) return [];
+  const now = nowIso(nowMs);
+  const ctx = await nightContext(env, game, nowMs);
+  const rules = rulesFor(game);
+  const known = new Set<string>(ctx.players.map((p: any) => p.ref));
+  const open = "EXISTS (SELECT 1 FROM proposals WHERE id = ? AND status = 'approved') AND NOT EXISTS (SELECT 1 FROM events WHERE game_id = ? AND kind = 'points' AND day = ? AND json_extract(args, '$.proposal') = ?)";
+  const stmts: any[] = [];
+  for (const q of passed) {
+    for (const e of rules.onEnacted(ctx, { number: q.number, player: q.player_id, target: q.target, kind: "commission" })) {
+      if (!known.has(e.player)) continue;
+      stmts.push(env.DB.prepare(`UPDATE players SET score = score + ? WHERE game_id = ? AND id = ? AND ${open}`).bind(e.delta, game.id, e.player, q.id, game.id, n, q.number));
+      stmts.push(env.DB.prepare(
+        `INSERT INTO events (game_id, kind, text, created_at, day, phase, template, args, player_id, night_seq)
+         SELECT ?, 'points', ?, ?, ?, 'night', 'points', json_object('proposal', ?, 'delta', ?, 'rule', ?), ?, ${NEXT_NIGHT_SEQ} WHERE ${open}`,
+      ).bind(game.id, `+${e.delta}: ${e.reason}`, now, n, q.number, e.delta, e.rule, e.player, game.id, n, q.id, game.id, n, q.number));
+    }
+  }
+  return stmts;
+}
+
+
+// The Era end for the points the count just gave (rules 402.2, 402.3): enactStatements runs dayEnd only on a night that passed a rule change or
+// action, so a commission-only night would never crown a player whose commission points took them to the winning score. Called right after the
+// count's batch, once per count: `before` is every score now minus the points the count gave (the price already came out), `given` is those
+// points in proposal order (401.1 gives them in that order). A night that already ended an Era does not end another.
+/** @rule 401, 402.2, 402.3 */
+export async function commissionEraStatements(env: Env, game: any, n: number, nowMs: number, numbers: number[]) {
+  if (!numbers.length) return [];
+  const ended: any = await env.DB.prepare("SELECT COUNT(*) AS c FROM events WHERE game_id = ? AND kind = 'era_ended' AND day = ?").bind(game.id, n).first();
+  if (ended?.c) return [];
+  const rows = (await env.DB.prepare(`SELECT player_id, json_extract(args, '$.delta') AS delta, json_extract(args, '$.proposal') AS proposal FROM events WHERE game_id = ? AND kind = 'points' AND day = ? AND json_extract(args, '$.proposal') IN (${numbers.map(() => "?").join(",")}) ORDER BY json_extract(args, '$.proposal'), id`).bind(game.id, n, ...numbers).all()).results as any[];
+  if (!rows.length) return [];
+  const ctx = await nightContext(env, game, nowMs);
+  const before: Record<string, number> = Object.fromEntries(ctx.players.map((p: any) => [p.ref, p.score]));
+  const given = rows.filter((r) => r.player_id in before).map((r) => ({ player: r.player_id as string, delta: r.delta as number }));
+  for (const g of given) before[g.player] -= g.delta;
+  const champ = rulesFor(game).dayEnd(ctx, { before, given, enacted: rows.map((r) => r.proposal) }).find((e: any) => e.player in before);
+  if (!champ) return [];
+  return eraEndStatements(env, game, n, nowIso(nowMs), champ, before, given, "EXISTS (SELECT 1 FROM proposals WHERE game_id = ? AND day_ballot = ? AND status = 'approved' AND kind = 'commission')");
+}
+
+
 // ---- the night's board (rules 602, 603, 404) -------------------------------------------------------------------------------
 // The guard every board statement carries: the night's board has not run (days.board_at is empty) and the game is still playing.
 // Binds: game id, night, game id.

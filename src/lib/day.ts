@@ -16,7 +16,7 @@
 //      by itself)
 //   3. finalize: day N done (or timed_out, when the deadline ended it), day N+1 open with its electorate and ballot,
 //      the game unlocked, in one batch
-import { NEXT_NIGHT_SEQ, bundleFor, enactStatements, nightBoardStatements, refusedActions } from "../engine/host";
+import { NEXT_NIGHT_SEQ, bundleFor, commissionEraStatements, commissionPointsStatements, enactStatements, nightBoardStatements, refusedActions } from "../engine/host";
 import { getSettings, validTimeZone } from "./settings.js";
 import { Env, nowIso } from "./util";
 
@@ -168,10 +168,10 @@ export const NOT_FOR_MODERATOR = ["commission", "action"];
 // lock was set (in its own batch) before this runs, and every vote's write checks it. Each item's write is guarded by
 // status = 'on_ballot', so a second run counts nothing twice. If any passed, the day goes to processing with the
 // 2 am deadline (rule 107.6); otherwise the night goes straight on to finalize.
-/** @rule 104.1, 104.2, 104.5, 107.6, 402.4, 801.4, 803.1 */
+/** @rule 104.1, 104.2, 104.5, 107.6, 402.2, 402.3, 402.4, 801.4, 803.1 */
 export async function countBallot(env: Env, game: any, day: DayRow, nowMs: number): Promise<StepResult> {
   if (day.status !== "locked") { await announceCount(env, game, day.n, nowMs); return "done"; } // counted on an earlier run (its notices are written once, whenever they were missed)
-  const items = (await env.DB.prepare("SELECT id, number, mark, needed, kind, champion, player_id FROM proposals WHERE game_id = ? AND day_ballot = ? AND status = 'on_ballot' ORDER BY number").bind(game.id, day.n).all()).results as any[];
+  const items = (await env.DB.prepare("SELECT id, number, mark, needed, kind, champion, player_id, target FROM proposals WHERE game_id = ? AND day_ballot = ? AND status = 'on_ballot' ORDER BY number").bind(game.id, day.n).all()).results as any[];
   const electors = await electorsOf(env, game.id, day.n);
   const votes = items.length ? ((await env.DB.prepare("SELECT proposal_id, player_id, vote FROM votes WHERE game_id = ? AND day = ?").bind(game.id, day.n).all()).results as any[]) : [];
   const now = nowIso(nowMs);
@@ -182,6 +182,7 @@ export async function countBallot(env: Env, game: any, day: DayRow, nowMs: numbe
   const deadline = nowIso(deadlineAfter(timeZoneOf(game), Date.parse(day.ends_at)));
   const ready = await readyIds(env.DB, game.id); // the tickets already Ready before tonight, oldest pass first (rules 801.4, 803.1)
   const settings = settingsOf(game); // the budget per change (rule 107.5), fixed on each proposal as it passes
+  const commissionPoints = await commissionPointsStatements(env, game, day.n, nowMs, writes.filter(({ q, t }) => q.kind === "commission" && t.passed).map(({ q }) => q)); // rule 401.1: a commission is applied when it passes
   await env.DB.batch([
     ...writes.map(({ q, t }) => env.DB.prepare(
       `UPDATE proposals SET status = ?, yes = ?, no = ?, absent = ?, needed = ?, electorate = ?, why = ?, decided_at = ?,
@@ -192,6 +193,8 @@ export async function countBallot(env: Env, game: any, day: DayRow, nowMs: numbe
     // A commission that passed is approved, not passed: there is nothing for the moderator to apply (rule 107.2 is about rule
     // changes), so it never joins the night's list. Its ticket joins the queue and its price is paid, or waits as Ready (rules 801.4, 803.1).
     ...writes.filter(({ q }) => q.kind === "commission").flatMap(({ q, t }) => countTicketStatements(env.DB, game, q, { passed: t.passed, sentence: resultSentence(t) }, day.n, now)),
+    // The owner's points for it (rule 401.1), after its price was paid above (rule 801.4).
+    ...commissionPoints,
     // Then the tickets that were Ready: each whose requester can now pay the whole price pays it once and joins the queue, behind
     // tonight's approvals (rules 801.4, 803.1). Before the moderator.
     ...readyStatements(env.DB, game, ready, day.n, now, await readyNotices(env, game, ready)),
@@ -200,6 +203,9 @@ export async function countBallot(env: Env, game: any, day: DayRow, nowMs: numbe
          AND EXISTS (SELECT 1 FROM proposals WHERE game_id = ? AND day_ballot = ? AND status = 'passed')`,
     ).bind(deadline, game.id, day.n, game.id, day.n),
   ]);
+  // The points the count just gave a commission's owner count for the Era the same night, even with no rule change to enact (402.2, 402.3).
+  const eraEnd = await commissionEraStatements(env, game, day.n, nowMs, writes.filter(({ q, t }) => q.kind === "commission" && t.passed).map(({ q }) => q.number));
+  if (eraEnd.length) await env.DB.batch(eraEnd);
   // Read back what is stored, not what this run computed: an overlapping run may have counted the ballot first.
   const fresh: any = await env.DB.prepare("SELECT status, deadline_at FROM days WHERE game_id = ? AND n = ?").bind(game.id, day.n).first();
   if (fresh) { day.status = fresh.status; day.deadline_at = fresh.deadline_at; }
