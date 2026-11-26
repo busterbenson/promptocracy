@@ -288,7 +288,7 @@ try {
   const rev = (await cy.get(`${BAL}?day=2`)).data;
   check("after the count every vote is shown (rule 104.4): each item's result and its roll call, 'didn't vote' as null",
     J(rev.items[0].roll_call.map((r) => [r.name, r.vote])) === J([["Ana", "yes"], ["Bo", "yes"], ["Cy", "yes"], ["Dee", null], ["Eve", null]]) &&
-    J(rev.items[1].result) === J({ yes: 2, no: 2, didnt_vote: 1, needed: 3, electorate: 5, passed: false, applied: null, sentence: "4 of 5 voted; 2 voted yes; it needed more than half of the votes cast.", not_applied_reason: null }) &&
+    J(rev.items[1].result) === J({ yes: 2, no: 2, didnt_vote: 1, needed: 3, electorate: 5, passed: false, applied: null, sentence: "4 of 5 voted; 2 voted yes; it needed more than half of the votes cast.", not_applied_reason: null, fixes: [] }) &&
     rev.items[0].result.passed === true && rev.items.every((i) => i.can_vote.allowed === false), J(rev.items[0]));
   const results = () => d1(state, `SELECT player_id, body, link, id FROM notifications WHERE game_id = '${gid}' AND kind = 'proposal_result' ORDER BY id`);
   const r1 = results().filter((r) => r.id.startsWith(`count-${d1(state, `SELECT id FROM proposals WHERE game_id = '${gid}' AND number = 1`)[0].id}-`));
