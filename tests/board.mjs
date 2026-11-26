@@ -696,6 +696,21 @@ try {
     check("nothing moved", J(playersOf("bundled").map((p) => [p.x, p.y])) === "[[1,1],[1,0]]");
   }
 
+  // 2026-11-26, Rickshaw day 3: P1 changed turn.move_distance to 2 in the game's rules (settings.json, tag day-2), but the
+  // board and the move check read the settings stored on the game row (still 1), so the law did nothing.
+  console.log("a bundled game's settings come from its rules, not from the game row");
+  {
+    const cg = await createGame(state, { slug: "catalogued", name: "The Catalog", max: 2, ...R });
+    const cea = await join(A, "catalogued", cg.code, { email: "cea@example.com", name: "Cea", color: "teal" });
+    await join(A, "catalogued", cg.code, { email: "cid@example.com", name: "Cid", color: "cobalt" });
+    setTurn("catalogued", 0, false, '{"turn.move_distance":3}');
+    const board = await client(A).get("/catalogued/api/board");
+    check("the board offers the move distance the game's rules set (1), not the one stored on the game row (3)", board.status === 200 && board.data.rules.move_distance === 1 && board.data.settings["turn.move_distance"] === 1, J(board.data?.rules));
+    const me = posOf("catalogued", 0);
+    const far = await cea.post("/catalogued/api/action", { kind: "move", x: me.x + 2, y: me.y, z: me.z });
+    check("the move check uses the rules' distance too: a 2-step move is 'not within 1 step', whatever the game row says", far.status === 400 && far.data.error === "That is not within 1 step of you.", far.text);
+  }
+
   console.log("a rule that throws is a clean 500, not a crash");
   {
     const tg = await createGame(state, { slug: "throwing", name: "Throwing", max: 2, ...R });
