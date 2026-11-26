@@ -46,10 +46,33 @@ export function createCards({ root, describe, onClose }) {
   }
   // The phone's back gesture closes the card (Buster, 2026-11-26): an open card holds ONE history entry (the URL does not change), however many cards are
   // stacked in it. Closing any other way gives the entry back, so the stack stays balanced and the page is never left by accident.
-  function holdEntry() { if (!S.pushed && typeof history === "object" && history.pushState) { try { history.pushState({ card: 1 }, ""); S.pushed = true; } catch { /* no history here */ } } }
-  function giveEntryBack() { if (S.pushed) { S.pushed = false; S.ignorePop = true; try { history.back(); } catch { S.ignorePop = false; } } }
+  function holdEntry() {
+    if (!S.pushed && S.ignorePop && !S.traversing) { S.ignorePop = false; S.pushed = true; return; }   // a card closed a moment ago has not given its entry back yet: this one takes it over
+    if (!S.pushed && typeof history === "object" && history.pushState) { try { history.pushState({ card: 1 }, ""); S.pushed = true; } catch { /* no history here */ } }
+  }
+  // Giving the entry back is a history traversal, and a traversal cancels a smooth scroll that is under way (Move your piece closes the card and scrolls to the
+  // board). So it waits until the page has stopped scrolling (at most 2 s). If the player's own back gets there first it has already done the job.
+  function giveEntryBack() {
+    if (!S.pushed) return;
+    S.pushed = false; S.ignorePop = true; S.traversing = false;
+    let last = performance.now(); const start = last, moved = () => { last = performance.now(); };
+    window.addEventListener("scroll", moved, true);
+    const tick = () => {
+      if (!S.ignorePop) { window.removeEventListener("scroll", moved, true); return; }   // the player's own back came first
+      if (performance.now() - last < 150 && performance.now() - start < 2000) { S.timer = setTimeout(tick, 60); return; }
+      window.removeEventListener("scroll", moved, true);
+      S.traversing = true;
+      try { history.back(); } catch { S.ignorePop = false; S.traversing = false; }
+    };
+    S.timer = setTimeout(tick, 60);
+  }
   window.addEventListener("popstate", () => {
-    if (S.ignorePop) { S.ignorePop = false; if (isOpen() && !S.pushed) holdEntry(); return; }   // our own history.back(); a card opened meanwhile gets its entry again
+    if (S.ignorePop) {   // our own history.back() (or the player's back, which beat it: then ours is cancelled); a card opened meanwhile gets its entry again
+      if (!S.traversing) clearTimeout(S.timer);
+      S.ignorePop = false; S.traversing = false;
+      if (isOpen() && !S.pushed) holdEntry();
+      return;
+    }
     if (!isOpen() || !S.pushed) return;
     S.pushed = false;   // the browser took the entry
     if (S.stack.length) { back(); holdEntry(); } else close();
