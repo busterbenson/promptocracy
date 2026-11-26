@@ -580,6 +580,42 @@ try {
     const o2 = await Cy.post(T, {});
     check("and he can open a new blank draft: the discarded one no longer blocks it, and its number is not reused", o2.status === 200 && o2.data.existing === false && o2.data.ticket !== n);
   }
+
+  // ---- entries on the way (rules 701.4, 703.4, 801.3) ----
+  console.log("a commission can use an entry another open commission makes, and a duplicate is refused at lock-in");
+  {
+    setPerDay(3);
+    const FL = { kind: "entry", name: "Flower", catalogKind: "item" };
+    const first = await commission(Bo, { ...good(), title: "A flower", brief: "A flower, just because.", makes: [FL], estimate: 1, running_cost: "None.", tasks: ["Draw it"] });
+    const w1 = first.n, mk1 = tk(Number(String(w1).replace(/\D/g, "")));
+    check("the first Flower locks in (nothing else makes one)", first.k.status === 200 && mk1.state === "Proposed", first.k.text);
+    const o = await Cy.post(T, {}), w2 = o.data?.ticket;
+    await fill(Cy, w2, { title: "Another flower", brief: "A second flower.", makes: [FL], estimate: 1, running_cost: "None.", tasks: ["Draw it"] });
+    const dup = await Cy.post(`${T}/${w2}/confirm`, {});
+    check("a second ticket that makes a Flower item is refused at lock-in with 701.4's reason, naming the first, and stays a draft", dup.status === 400 && new RegExp(`^${w1} already makes an item called Flower \\(701\\.4\\)\\. Use it or rename yours\\.$`).test(dup.data?.error) && tk(Number(String(w2).replace(/\D/g, ""))).state === "Draft", dup.text);
+    const bad = await Cy.post(`${T}/${w2}/edit`, { makes: [{ kind: "uses", name: "Flower", catalogKind: "item", num: "W99" }] });
+    check("a hand edit that uses a ticket that makes no Flower is refused with the reason", bad.status === 400 && /W99 makes no item called Flower\./.test(bad.data?.error), bad.text);
+    const use = { kind: "uses", name: "Flower", catalogKind: "item", num: w1 };
+    const ok = await Cy.post(`${T}/${w2}/edit`, { makes: [use] });
+    check("using the first ticket's Flower is saved, and the ticket shows the uses item", ok.status === 200 && JSON.stringify(ok.data.ticket.makes) === JSON.stringify([use]), ok.text);
+    gset(w2, { makes: [use] });
+    const only = await Cy.post(`${T}/${w2}/confirm`, {});
+    check("a ticket of only uses items names nothing to make (801.3): refused, state Refused", only.status === 422 && /names nothing to make/.test(only.data?.error) && tk(Number(String(w2).replace(/\D/g, "")))?.state === "Refused", only.text);
+    const o3 = await Cy.post(T, {}), w3 = o3.data?.ticket;
+    const vase = { kind: "entry", name: "Vase", catalogKind: "item" };
+    await fill(Cy, w3, { title: "A vase for it", brief: "A vase for the flower.", makes: [use, vase], estimate: 1, running_cost: "None.", tasks: ["Draw it"] });
+    gset(w3, { makes: [use, vase], estimate: 1, running_cost: "None.", tasks: ["Draw it"] });
+    const both = await Cy.post(`${T}/${w3}/confirm`, {});
+    check("a ticket that uses the Flower and makes a Vase locks in; its page lists the uses item", both.status === 200 && (await visitor.get(`${T}/${w3}`)).data.ticket.makes.some((m) => m.kind === "uses" && m.num === w1), both.text);
+    // the general conversation's draft records what it uses (rule 703.4): a label on the slip, never a blocker
+    const P = "/wk/api/proposals", words = "A hostile creature next to a player who gives it a flower eats it and loses 1 heart.";
+    const named = await Ana.post(P, { kind: "addclause", target: "401", words: `${words} (the Flower)`, uses: [w1, "W99"] });
+    check("a draft that names W1's Flower records it: uses_note 'Uses Flower from W1'; an unknown ref is left out", named.status === 200 && named.data.proposal.uses_note === `Uses Flower from ${w1}` && !named.data.proposal.lock_refusal, named.text);
+    const found = await Ana.post(P, { kind: "addclause", target: "401", words: "A creature that eats a Flower loses a heart." });
+    check("with no uses sent, the one entry its words name is recorded (the fallback)", found.status === 200 && found.data.proposal.uses_note === `Uses Flower from ${w1}`, found.text);
+    const none = await Ana.post(P, { kind: "addclause", target: "401", words: "Points can't be given away." });
+    check("a draft naming no entry says nothing", none.status === 200 && none.data.proposal.uses_note === null, none.text);
+  }
 } catch (e) {
   fail++; console.log("  FAIL  harness:", e?.stack || e);
   if (srv) console.log(srv.log().slice(-3000));

@@ -25,6 +25,8 @@ import { ACTION_DRAFT_INSERT_SQL, CONFIRMED_TODAY_SQL, CONFIRM_SQL, DRAFT_INSERT
 import { checkDraft, CHECKED_KINDS } from "../lib/draft-check";
 import { lockRefusalOf, checkConflictNums } from "../lib/rule-check.js";
 import { catalogFor } from "./api-catalog";
+import { entriesFor } from "../lib/pending-entries";
+import { mentionedEntries, usedEntry, usesNote } from "../lib/entries.js";
 import { refusalBody, turnBlock } from "../lib/turn";
 import { Ctx, colorOf, json, nowIso, readJson, sha256Hex, siteUrl, who } from "../lib/util";
 
@@ -71,6 +73,8 @@ const conflictNote = (nums: string[], check: any) => {
   const says = (check?.conflicts ?? []).filter((c: any) => c.prevails !== null).map((c: any) => (String(c.prevails) === String(c.num).split(".")[0] ? `Rule ${c.prevails} prevails (108.1).` : `This proposal prevails over rule ${c.num} (108.1).`));
   return base ? [base, ...says].join(" ") : base;
 };
+/** The entries a stored draft uses (rule 703.4). @rule 703.4 */
+const usesOf_ = (r: any) => { try { return r.uses ? JSON.parse(r.uses) : []; } catch { return []; } };
 /** The reason a draft can't be locked in yet, or null (rule 103.9): the check found something missing, or couldn't run; only where the rulebook has rule 103.9. @rule 103.9 */
 export const lockRefusal = (book: any, row: any): string | null => lockRefusalOf(book, checkOf(row));
 
@@ -99,6 +103,7 @@ export function view(r: any, viewerId?: string | null, electorate?: number) {
     words: r.player_id === viewerId ? r.words : undefined,
     conflicts: JSON.parse(r.conflicts || "[]"),
     conflict_note: conflictNote(JSON.parse(r.conflicts || "[]"), checkOf(r)),
+    uses_note: usesNote(usesOf_(r)),
     check: r.player_id === viewerId ? checkOf(r) : undefined,
     settings: JSON.parse(r.settings || "{}"),
     drafted_by: r.drafted_by,
@@ -126,7 +131,7 @@ export function view(r: any, viewerId?: string | null, electorate?: number) {
  * can call the same function later, so a standalone change and a commission's rule are checked one way. Returns {d, conflicts, settings, after,
  * nowMs} (nowMs: the clock after the model call), or {fail: the Out to send}. @rule 103.1, 103.6, 103.9, 108.3
  */
-export async function prepareDraft(env: any, game: any, day: any, turn: any, player: any, md: string, book: any, req: any, nowMs: number): Promise<any> {
+export async function prepareDraft(env: any, game: any, day: any, turn: any, player: any, md: string, book: any, req: any, nowMs: number, entries?: any): Promise<any> {
   let after: string | null = null, settings: Record<string, unknown> = {}, modelConflicts: string[] = [], asked = false;
   // The rule check (103.9) names conflicts for every kind with new text; a rulebook that has no 103.9 yet keeps the conflicts-only call.
   if (req.kind === "amend" && req.prefilled && drafterReady(env) && !book.byNum["103.9"]) {
@@ -161,7 +166,7 @@ export async function prepareDraft(env: any, game: any, day: any, turn: any, pla
   let check: any = null;
   if (CHECKED_KINDS.includes(req.kind) && drafterReady(env) && book.byNum["103.9"]) {
     check = await checkDraft(env, game, timeZoneOf(game), player.id, md, book, catalogFor(game).entries,
-      { kind: req.kind, target: req.target, new_num: d.new_num, mark: req.mark, head: d.head, before_text: d.before_text, after_text: d.after_text, words: req.words }, nowMs);
+      { kind: req.kind, target: req.target, new_num: d.new_num, mark: req.mark, head: d.head, before_text: d.before_text, after_text: d.after_text, words: req.words }, nowMs, entries?.pending ?? []);
     nowMs = await clockNow(env);
     const late = turnBlock(game, day, turn, player, "propose", nowMs);
     if (late) return { fail: out(refusalBody(late), late.status) };
@@ -170,6 +175,25 @@ export async function prepareDraft(env: any, game: any, day: any, turn: any, pla
   const unwired = notWiredConflictRefusal(book, conflicts);
   if (unwired) return { fail: out({ error: unwired, drafting: "refused", reason: NOT_WIRED_REASON }, 422) };
   return { d, conflicts, settings, after, nowMs, check };
+}
+
+/**
+ * The entries a draft uses (rule 703.4), [{name, kind, ref}]: the refs he or the form sent (`body.uses`, "W4" or "C1") that the catalog or an open commission has; when none
+ * were sent, the single entry whose name the draft's new text names (several record nothing). It is a label on the slip, never a blocker. @rule 703.4
+ */
+function usesOf(body: any, req: any, d: any, entries: any): { name: string; kind: string; ref: string }[] {
+  if (Array.isArray(body?.uses)) {
+    const out: { name: string; kind: string; ref: string }[] = [];
+    for (const raw of body.uses.slice(0, 8)) {
+      const ref = String(raw ?? "").trim().toUpperCase();
+      const e = /^W\d+$/.test(ref) ? entries.pending.find((x: any) => x.ticket === ref) : entries.built.find((x: any) => String(x.id).toUpperCase() === ref);
+      if (e && !out.some((x) => x.ref === ref)) out.push({ name: e.name, kind: e.kind ?? e.catalogKind, ref });
+    }
+    return out;
+  }
+  if (!CHECKED_KINDS.includes(req.kind)) return [];
+  const found = mentionedEntries(d.after_text, entries);
+  return found.length === 1 ? found : [];
 }
 
 // Draft (rule 103.1). Returns the draft, or the refusal.
@@ -206,10 +230,13 @@ export async function draft(ctx: Ctx, player: any, body: any, nowMs: number, o: 
      ON CONFLICT (game_id, player_id, day) DO UPDATE SET n = n + 1 WHERE n < ?`,
   ).bind(game.id, player.id, game.day, draftCap).run();
   if (!(slot?.meta?.changes > 0)) return out({ error: `That's ${draftCap} drafts today, the most for one day. Try again tomorrow.` }, 429);
-  const prep = await prepareDraft(env, game, day, turn, player, md, book, req, nowMs);
+  // The entries in the catalog and the ones open commissions make (rules 701.4, 703.4): the rule check does not call them missing, and the draft records which it uses.
+  const entries = await entriesFor(env, game, player.id);
+  const prep = await prepareDraft(env, game, day, turn, player, md, book, req, nowMs, entries);
   if ("fail" in prep) return prep.fail;
   const { d, conflicts, settings, after, check } = prep;
   nowMs = prep.nowMs;
+  const uses = usesOf(body, req, d, entries);
 
   const id = crypto.randomUUID(), now = nowIso(nowMs);
   const insert = req.kind === "action"
@@ -228,6 +255,7 @@ export async function draft(ctx: Ctx, player: any, body: any, nowMs: number, o: 
     // The draft is flagged in the same batch, so it is never a plain proposal the player meant as the Champion's change.
     env.DB.prepare("UPDATE proposals SET champion = 1 WHERE id = ? AND status = 'draft' AND ? = 1").bind(id, asChampion ? 1 : 0),
     env.DB.prepare("UPDATE proposals SET rule_check = ? WHERE id = ? AND status = 'draft' AND ? IS NOT NULL").bind(check ? JSON.stringify(check) : null, id, check ? 1 : null),
+    env.DB.prepare("UPDATE proposals SET uses = ? WHERE id = ? AND status = 'draft' AND ? IS NOT NULL").bind(uses.length ? JSON.stringify(uses) : null, id, uses.length ? 1 : null),
   ]);
   if (!(res?.meta?.changes > 0)) return out({ error: "The day changed under you. Reload and try again." }, 409);
   const row = await env.DB.prepare("SELECT * FROM proposals WHERE id = ?").bind(id).first();

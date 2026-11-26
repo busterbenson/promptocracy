@@ -31,6 +31,7 @@ import { Ctx, colorOf, json, nowIso, readJson } from "../lib/util";
 import { PENDING_SHOWN_MS, finishReply, reserveReply } from "../lib/thread";
 import { bookFor, confirm as confirmProposal } from "./api-proposals";
 import { catalogFor, viewContext } from "./api-catalog";
+import { entriesFor } from "../lib/pending-entries";
 import { entryView } from "../lib/catalog.js";
 import { overlay, redrawFailed } from "../lib/art";
 
@@ -250,9 +251,10 @@ export async function edit(ctx: Ctx, player: any, raw: unknown, body: any, nowMs
   const { t, game } = m;
   const cat = catalogFor(game);
   // The nights, the running cost, the tasks, the rules it makes and the price are Gremlin's (rule 801.7): a hand edit of them is refused.
-  const refused = handEditRefusal(body, t.makes, { registry: cat.registry, required: cat.required });
+  const rctx = { registry: cat.registry, required: cat.required, entries: await entriesFor(env, game, player.id, t.id) };
+  const refused = handEditRefusal(body, t.makes, rctx);
   if (refused) return out({ error: refused }, 403);
-  const r = readFields(body, { registry: cat.registry, required: cat.required });
+  const r = readFields(body, rctx);
   if ("error" in r) return out({ error: r.error }, 400);
   const f = r.fields as any;
   const now = nowIso(nowMs);
@@ -316,7 +318,7 @@ export async function confirm(ctx: Ctx, player: any, raw: unknown, nowMs: number
   const { book, sha } = await bookFor(game);
   if (!book.byNum[WORKSHOP_RULE]) return out({ error: "This game has no workshop." }, 409);
   const now = nowIso(nowMs);
-  const problem = confirmProblem(t);
+  const problem = confirmProblem(t, await entriesFor(env, game, player.id, t.id), { unique: !!book.byNum["701.4"] });
   if (problem) {
     if (!problem.refuse) return out({ error: problem.error }, 400);
     // the refusal is a write of the day too: it re-checks the whole day gate (rule 107.1)

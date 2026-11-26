@@ -30,6 +30,7 @@ import { refusalBody, turnBlock } from "../lib/turn";
 import { Ctx, json, nowIso, readJson } from "../lib/util";
 import { draftTurn } from "../lib/draft-turn.js";
 import { catalogFor } from "./api-catalog";
+import { entriesFor } from "../lib/pending-entries";
 import { bookFor, catalogOf, draft } from "./api-proposals";
 import { slipsOf, todayOf } from "./slips";
 import { gremlinWrite, open as openTicket, pageOf } from "./api-tickets";
@@ -289,8 +290,9 @@ async function ticketTurn(T: Turn, ticket: any, moved: boolean): Promise<Out> {
   let noWrite: string | null = null;
   if (ticket.state !== "Draft") noWrite = `W${ticket.number} is ${ticket.state === "Proposed" ? "on the ballot" : shownState(ticket).toLowerCase()}`;
   else { const b = turnBlock(game, day, playerTurn, player, "propose", nowMs); if (b) noWrite = b.error; }
+  const entries = await entriesFor(env, game, player.id, ticket.id);   // the catalog's entries and what open commissions make (rules 701.4, 703.4)
   const { system, messages } = gremlinRequest({
-    ceiling, rulesMd, mood: moodOf(game.id, date), localDate: date, catalog: catalogFor(game), history: hist,
+    ceiling, rulesMd, mood: moodOf(game.id, date), localDate: date, catalog: catalogFor(game), history: hist, entries,
     ticket: { number: ticket.number, title: ticket.title, brief: ticket.brief, makes: JSON.parse(ticket.makes || "[]"), estimate: ticket.estimate, running_cost: ticket.running_cost, tasks, price: ticket.price, price_reason: ticket.price_reason },
     posts, queueDepth: queue?.n ?? 0, rejected, notes, label: player.display_name, message: text, noWrite,
   });
@@ -305,7 +307,7 @@ async function ticketTurn(T: Turn, ticket: any, moved: boolean): Promise<Out> {
     return out({ ok: true, out: code, messages: [mine, l.view], scope: `W${ticket.number}`, ...(await stripOf(env, game, player)), state: await stateNow() });
   };
   if (!r.ok) return canned(r.code, r.code, r.reason);
-  const a = readGremlinAnswer(r.text, { ceiling, systemText: systemStatic({ ceiling }), catalog: catalogFor(game), makes: JSON.parse(ticket.makes || "[]"), price: ticket.price ?? 0 });
+  const a = readGremlinAnswer(r.text, { ceiling, systemText: systemStatic({ ceiling }), catalog: catalogFor(game), entries, makes: JSON.parse(ticket.makes || "[]"), price: ticket.price ?? 0 });
   if (!a.ok) return canned(a.code === "invalid" ? "malformed" : a.code, a.code, a.reason);
 
   // What the player asked for is not part of this commission: the message goes to the general conversation, and he answers it there (rule 801.6).
@@ -377,16 +379,17 @@ async function generalTurn(T: Turn, moved: boolean): Promise<Out> {
   const t0 = await todayOf(ctx, game, player);
   const blocked = turnBlock(game, day, playerTurn, player, "propose", nowMs);
   const noDraft = blocked ? blocked.error : null;
+  const entries = await entriesFor(env, game, player.id);   // the catalog's entries and what open commissions make (rules 701.4, 703.4)
   const drafted = lastMeta.refused ? { refused: String(lastMeta.refused.error ?? "") } : lastRow?.proposal_id && slipRow && slipRow.id === lastRow.proposal_id ? { head: slipRow?.draft_head, after_text: slipRow?.after_text, conflicts: slipRow ? JSON.parse(slipRow.conflicts || "[]") : [], check: slipRow?.rule_check ? JSON.parse(slipRow.rule_check) : null } : null;
   const ask = async (retry?: string, found?: any) => {
     const { system, messages } = generalRequest({
       rulesMd, localDate: date, perDay: limit, actions: catalogOf(game), history: hist, label: player.display_name, message: text, rule,
       slip: slipRow ? { n: slipRow.number ? `P${slipRow.number}` : null, status: slipRow.status === "confirmed" ? "locked in" : "a draft, not locked in", head: slipRow.draft_head, after_text: slipRow.after_text, words: slipRow.words, conflicts: JSON.parse(slipRow.conflicts || "[]") } : null,
-      drafted, made: t0.made, limit, noDraft, retry, found, redraft,
+      drafted, made: t0.made, limit, noDraft, retry, found, redraft, entries,
     });
     return callModel(env, { model: MODEL, system, messages, maxTokens: OUTPUT_CAP_TOKENS, timeoutMs: CHAT_TIMEOUT_MS, schema: generalSchema(), effort: "low" });
   };
-  const read = (r: any) => readGeneralAnswer(r.text, { book, systemText: generalStatic(), rulesPlain: plainForQuote(rulesMd), playerText: text });
+  const read = (r: any) => readGeneralAnswer(r.text, { book, systemText: generalStatic(), rulesPlain: plainForQuote(rulesMd), playerText: text, entries });
 
   let r = await ask();
   let later = await clockNow(env);   // the model can take 30 s: everything from here on uses the clock NOW
@@ -423,7 +426,7 @@ async function generalTurn(T: Turn, moved: boolean): Promise<Out> {
   const tryDraft = async (x: any): Promise<any> => {
     if (noDraft) return { refused: { error: `Nothing was drafted: ${noDraft}` }, why: "day gate" };
     // an action goes through the SAME drafter as the form's (readAction: the type, each detail, the rule it comes from); he never writes one in himself
-    const asked = x.draft.kind === "action" ? { kind: "action", type: x.draft.type, params: x.draft.params } : { kind: x.draft.kind, target: x.draft.target, words: x.draft.words, to: x.draft.to, mark: x.draft.mark };
+    const asked = x.draft.kind === "action" ? { kind: "action", type: x.draft.type, params: x.draft.params } : { kind: x.draft.kind, target: x.draft.target, words: x.draft.words, to: x.draft.to, mark: x.draft.mark, uses: x.draft.uses };
     const d = await draft(ctx, player, asked, later, { atLimit: true });
     if (d.body?.ok && d.body.proposal?.id) return { id: d.body.proposal.id as string, check: d.body.proposal.check ?? null };
     return { refused: { error: String(d.body?.error ?? "The draft was refused.").slice(0, 400), ...(d.body?.reason ? { reason: String(d.body.reason).slice(0, 40) } : {}) }, why: String(d.body?.drafting || d.status) };

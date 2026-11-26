@@ -145,7 +145,7 @@ try {
     res.rule_text = ruleTextOf(rulesMd, res.draft?.target ?? def.expect?.draft?.target);
     let night = null;
     if (stage === "night") {
-      night = await runNight(def, res, i, { runTmp, bare, meter, claudeLog, libraryDir: null });
+      night = await runNight(def, res, i, { runTmp, bare, meter, claudeLog, libraryDir: null, catalog });
     }
     res.night = night;
     if (!res.notRun && nightCapped(night)) res.notRun = nightCapped(night);

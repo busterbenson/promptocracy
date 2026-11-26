@@ -53,6 +53,8 @@ try {
   const cid = d1(state, `SELECT id FROM tickets WHERE game_id = '${gid}' AND number = ${Number(cn.slice(1))}`)[0].id;
   d1(state, `UPDATE tickets SET state = 'Approved', queue_pos = 1, price = 2, price_reason = 'Free. I like drums.', paid = 2, paid_at = 'x', approved_at = '2026-11-19T08:00:00.000Z' WHERE id = '${cid}'`);
   d1(state, `UPDATE ticket_tasks SET done = 1, done_day = 1 WHERE ticket_id = '${cid}' AND pos = 1`);
+  // Cy's drum also uses an entry W1 makes (rule 703.4): the page shows a pill "Lantern · from W1", which links to W1
+  d1(state, `UPDATE tickets SET makes = '[{"kind":"entry","name":"Drum"},{"kind":"uses","name":"Lantern","catalogKind":"item","num":"W1"}]' WHERE id = '${cid}'`);
   d1(state, `INSERT INTO ticket_log (ticket_id, day, kind, text, at) VALUES ('${cid}', 1, 'approved', 'Approved: P9 passed. Paid 2 points. Place 1 in the queue.', '2026-11-19T08:00:00.000Z')`);
   d1(state, `INSERT INTO ticket_posts (ticket_id, game_id, author_kind, player_id, body, at) SELECT '${cid}', '${gid}', 'player', player_id, 'Is it loud?', '2026-11-19T08:30:00.000Z' FROM tickets WHERE id = '${cid}'`);
   d1(state, `INSERT INTO ticket_posts (ticket_id, game_id, author_kind, body, at) VALUES ('${cid}', '${gid}', 'gremlin', 'Kicking this upstairs to Chalant.', '2026-11-19T09:00:00.000Z'), ('${cid}', '${gid}', 'chalant', 'Noted. Louder than the crow.', '2026-11-19T10:00:00.000Z')`);
