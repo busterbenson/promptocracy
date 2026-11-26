@@ -105,6 +105,22 @@ console.log("readMakes (the player's own edit) and the lock-in (rules 701.4, 801
   check("usedEntry finds a built entry by id and a pending one by ticket, kind and name", usedEntry({ num: "C1", name: "blob", catalogKind: "creature" }, ENTRIES)?.built === true && usedEntry({ num: "W8", name: "Flower", catalogKind: "item" }, ENTRIES)?.ref === "W8" && usedEntry({ num: "W9", name: "Flower", catalogKind: "item" }, ENTRIES) === null);
 }
 
+console.log("a closed ticket does not break an item the ticket already holds; a Draft is not an entry to use (reviewer pass 1)");
+{
+  const U = { kind: "uses", name: "Flower", catalogKind: "item", num: "W4" };
+  const NONE = { built: BUILT, pending: [] };   // W4 has since been Refused, Failed or Shelved, or is Done and built under another id
+  check("a hand edit sends the item back unchanged after W4 closed: it stays (nothing automatic, D5)", J(readMakes([U], { entries: NONE, stored: [U] }).makes) === J([U]));
+  check("the same item that the ticket does not hold is refused", /W4 makes no item called Flower/.test(readMakes([U], { entries: NONE, stored: [] }).error));
+  const ctx = { ceiling: 25, systemText: "x", catalog: {}, entries: NONE, makes: [U] };
+  const ans = J({ say: "ok", refusal: "", escalate: { category: "none", reason: "" }, move: "none", options: [], ticket: { title: "", brief: "", estimate: 0, running_cost: "", tasks: [], makes: [U, { kind: "entry", name: "Vase", catalogKind: "item", attrs: [], flavor: [], needsBuild: [], num: "", draft: "", art: "" }], price: { points: 0, reason: "" } } });
+  const kept = G.readGremlinAnswer(ans, ctx);
+  check("his echo of the whole list keeps the stale item and saves the new entry beside it", kept.patch.makes?.length === 2 && kept.patch.makes[0].kind === "uses" && kept.rejected.length === 0, J(kept.rejected));
+  const withDraft = { built: [], pending: [{ name: "Flower", catalogKind: "item", ticket: "W7", owner: "Ana", state: "Draft" }] };
+  check("a Draft's entry can't be used (usedEntry) or matched by words (mentionedEntries): it is private and not an open commission (801.1)", usedEntry({ num: "W7", name: "Flower", catalogKind: "item" }, withDraft) === null && mentionedEntries("a Flower", withDraft).length === 0);
+  check("but the ticket conversation still lists it, marked as private, so he does not make a second one", /W7 makes Flower \(item\), Ana, Draft/.test(G.pendingText(withDraft, [])) && /Draft is only the player's own, private/.test(G.pendingText(withDraft, [])));
+  check("and a duplicate of it is still named at lock-in (the player's own two drafts)", duplicatesOf([{ kind: "entry", name: "Flower", catalogKind: "item" }], withDraft).length === 1);
+}
+
 console.log("the slip and the fallback (rule 703.4)");
 {
   check("the slip line: Uses Flower from W4", usesNote([{ name: "Flower", kind: "item", ref: "W4" }]) === "Uses Flower from W4" && usesNote([{ name: "Blob", kind: "creature", ref: "C1" }]) === "Uses Blob (C1)" && usesNote([]) === null && usesNote(null) === null);

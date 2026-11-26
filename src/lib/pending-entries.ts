@@ -23,3 +23,12 @@ export async function entriesFor(env: Env, game: { id: string; slug: string }, v
 
 /** The same for a reader with no viewer (the moderator's escalation items): open commissions only, no drafts. @rule 701.4, 703.4 */
 export const publicEntriesFor = (env: Env, game: { id: string; slug: string }) => entriesFor(env, game, null);
+
+/**
+ * The same without the viewer's own Drafts: what the general conversation, a draft's rule check and a draft's `uses` read. A Draft is private and not an open
+ * commission (rule 801.1), so a rule cannot lean on what it would make (rule 703.4). @rule 703.4
+ */
+export async function openEntriesFor(env: Env, game: { id: string; slug: string }, viewerId: string | null): Promise<Entries> {
+  const e = await entriesFor(env, game, viewerId);
+  return { built: e.built, pending: e.pending.filter((p) => p.state !== "Draft") };
+}

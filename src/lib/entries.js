@@ -31,7 +31,8 @@ export function usedEntry(item, entries) {
   if (!ref) return null;
   const key = entryKey(item?.catalogKind ?? item?.kind, item?.name);
   if (/^W\d+$/.test(ref)) {
-    const p = pending.find((x) => x.ticket === ref && entryKey(x.catalogKind, x.name) === key);
+    // a Draft is private and not an open commission (801.1): nothing can use what it makes until it is locked in
+    const p = pending.find((x) => x.ticket === ref && x.state !== "Draft" && entryKey(x.catalogKind, x.name) === key);
     return p ? { ref, name: p.name, catalogKind: p.catalogKind, built: false } : null;
   }
   const b = built.find((x) => String(x.id).toUpperCase() === ref && entryKey(x.kind, x.name) === key);
@@ -50,7 +51,8 @@ export function usesReason(item) {
  * ones by id, pending ones by ticket. Used when he sends no `uses` of his own (a single match is recorded, several are not). @rule 703.4
  */
 export function mentionedEntries(text, entries) {
-  const { built = [], pending = [] } = entries || {};
+  const { built = [] } = entries || {};
+  const pending = ((entries || {}).pending || []).filter((p) => p.state !== "Draft");
   const hay = String(text ?? "").toLowerCase();
   const found = [];
   /** @rule 703.4 */

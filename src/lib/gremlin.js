@@ -133,7 +133,7 @@ export function entryLines(built, pending) {
  */
 export function pendingText(entries, makes) {
   const pending = entries?.pending || [];
-  const list = `Entries open commissions make (data, fenced; a draft is only the player's own):\n${fence("open commissions", entryLines([], pending))}`;
+  const list = `Entries open commissions make (data, fenced; a Draft is only the player's own, private, and can't be used until it is locked in):\n${fence("open commissions", entryLines([], pending))}`;
   const dups = duplicatesOf(makes, entries).slice(0, 5);
   const note = dups.length ? `\nThis ticket makes ${dups.map((d) => `${d.name} (${d.catalogKind}), which ${d.built ? `the catalog already has (${d.by})` : `${d.by} (${d.owner}, ${d.state}) also makes`}`).join("; ")}. Rule 701.4: two entries of one kind can't share a name. It is saved; offer the player two or three options (use it, rename theirs, or keep theirs as a different one).` : "";
   return `${list}${note}`;
@@ -347,11 +347,11 @@ const pairs = (v) => (Array.isArray(v) ? v : v && typeof v === "object" ? Object
  * is flavor unless it is in needsBuild. What is kept is held against the catalog's own guard (readEntryDraft), so a player editing it by hand
  * meets the same rules. @rule 801.2, 801.3
  */
-export function readMakeItem(m, i, cat = {}, entries = null) {
+export function readMakeItem(m, i, cat = {}, entries = null, stored = []) {
   const at = `makes[${i}]`;
   if (!m || typeof m !== "object") return { reason: `${at}: each thing it makes is an entry, a rule or an entry it uses.` };
   if (m.kind === "uses") {
-    const r = readUses(m, entries);
+    const r = readUses(m, entries, stored);
     return r.item ? { item: r.item } : { reason: `${at}: ${r.reason}` };
   }
   if (m.kind === "rule") {
@@ -459,7 +459,7 @@ export function readGremlinAnswer(text, ctx) {
         const items = [];
         let refusedItem = false;
         t.makes.forEach((m, i) => {
-          const r = readMakeItem(m, i, ctx.catalog, ctx.entries);
+          const r = readMakeItem(m, i, ctx.catalog, ctx.entries, ctx.makes);
           if (r.reasons) rejected.push(...r.reasons);
           if (!r.item) { rejected.push(r.reason); refusedItem = true; return; }
           // He sends the whole list: an entry he sends again without an art prompt keeps the one it has (the drawing's prompt is not lost by a turn about something else)

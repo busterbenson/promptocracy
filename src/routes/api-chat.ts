@@ -30,7 +30,7 @@ import { refusalBody, turnBlock } from "../lib/turn";
 import { Ctx, json, nowIso, readJson } from "../lib/util";
 import { draftTurn } from "../lib/draft-turn.js";
 import { catalogFor } from "./api-catalog";
-import { entriesFor } from "../lib/pending-entries";
+import { entriesFor, openEntriesFor } from "../lib/pending-entries";
 import { bookFor, catalogOf, draft } from "./api-proposals";
 import { slipsOf, todayOf } from "./slips";
 import { gremlinWrite, open as openTicket, pageOf } from "./api-tickets";
@@ -379,7 +379,7 @@ async function generalTurn(T: Turn, moved: boolean): Promise<Out> {
   const t0 = await todayOf(ctx, game, player);
   const blocked = turnBlock(game, day, playerTurn, player, "propose", nowMs);
   const noDraft = blocked ? blocked.error : null;
-  const entries = await entriesFor(env, game, player.id);   // the catalog's entries and what open commissions make (rules 701.4, 703.4)
+  const entries = await openEntriesFor(env, game, player.id);   // the catalog's entries and what open commissions make (rules 701.4, 703.4); no Drafts: a rule can't lean on one
   const drafted = lastMeta.refused ? { refused: String(lastMeta.refused.error ?? "") } : lastRow?.proposal_id && slipRow && slipRow.id === lastRow.proposal_id ? { head: slipRow?.draft_head, after_text: slipRow?.after_text, conflicts: slipRow ? JSON.parse(slipRow.conflicts || "[]") : [], check: slipRow?.rule_check ? JSON.parse(slipRow.rule_check) : null } : null;
   const ask = async (retry?: string, found?: any) => {
     const { system, messages } = generalRequest({

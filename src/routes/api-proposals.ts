@@ -25,7 +25,7 @@ import { ACTION_DRAFT_INSERT_SQL, CONFIRMED_TODAY_SQL, CONFIRM_SQL, DRAFT_INSERT
 import { checkDraft, CHECKED_KINDS } from "../lib/draft-check";
 import { lockRefusalOf, checkConflictNums } from "../lib/rule-check.js";
 import { catalogFor } from "./api-catalog";
-import { entriesFor } from "../lib/pending-entries";
+import { openEntriesFor } from "../lib/pending-entries";
 import { mentionedEntries, usedEntry, usesNote } from "../lib/entries.js";
 import { refusalBody, turnBlock } from "../lib/turn";
 import { Ctx, colorOf, json, nowIso, readJson, sha256Hex, siteUrl, who } from "../lib/util";
@@ -179,9 +179,9 @@ export async function prepareDraft(env: any, game: any, day: any, turn: any, pla
 
 /**
  * The entries a draft uses (rule 703.4), [{name, kind, ref}]: the refs he or the form sent (`body.uses`, "W4" or "C1") that the catalog or an open commission has; when none
- * were sent, the single entry whose name the draft's new text names (several record nothing). It is a label on the slip, never a blocker. @rule 703.4
+ * were sent, the single entry whose name the player's words name (several record nothing). A private Draft ticket is never an entry to use (801.1). It is a label on the slip, never a blocker. @rule 703.4
  */
-function usesOf(body: any, req: any, d: any, entries: any): { name: string; kind: string; ref: string }[] {
+function usesOf(body: any, req: any, entries: any): { name: string; kind: string; ref: string }[] {
   if (Array.isArray(body?.uses)) {
     const out: { name: string; kind: string; ref: string }[] = [];
     for (const raw of body.uses.slice(0, 8)) {
@@ -192,7 +192,7 @@ function usesOf(body: any, req: any, d: any, entries: any): { name: string; kind
     return out;
   }
   if (!CHECKED_KINDS.includes(req.kind)) return [];
-  const found = mentionedEntries(d.after_text, entries);
+  const found = mentionedEntries(req.words, entries);
   return found.length === 1 ? found : [];
 }
 
@@ -231,12 +231,12 @@ export async function draft(ctx: Ctx, player: any, body: any, nowMs: number, o: 
   ).bind(game.id, player.id, game.day, draftCap).run();
   if (!(slot?.meta?.changes > 0)) return out({ error: `That's ${draftCap} drafts today, the most for one day. Try again tomorrow.` }, 429);
   // The entries in the catalog and the ones open commissions make (rules 701.4, 703.4): the rule check does not call them missing, and the draft records which it uses.
-  const entries = await entriesFor(env, game, player.id);
+  const entries = await openEntriesFor(env, game, player.id);
   const prep = await prepareDraft(env, game, day, turn, player, md, book, req, nowMs, entries);
   if ("fail" in prep) return prep.fail;
   const { d, conflicts, settings, after, check } = prep;
   nowMs = prep.nowMs;
-  const uses = usesOf(body, req, d, entries);
+  const uses = usesOf(body, req, entries);
 
   const id = crypto.randomUUID(), now = nowIso(nowMs);
   const insert = req.kind === "action"
@@ -255,7 +255,8 @@ export async function draft(ctx: Ctx, player: any, body: any, nowMs: number, o: 
     // The draft is flagged in the same batch, so it is never a plain proposal the player meant as the Champion's change.
     env.DB.prepare("UPDATE proposals SET champion = 1 WHERE id = ? AND status = 'draft' AND ? = 1").bind(id, asChampion ? 1 : 0),
     env.DB.prepare("UPDATE proposals SET rule_check = ? WHERE id = ? AND status = 'draft' AND ? IS NOT NULL").bind(check ? JSON.stringify(check) : null, id, check ? 1 : null),
-    env.DB.prepare("UPDATE proposals SET uses = ? WHERE id = ? AND status = 'draft' AND ? IS NOT NULL").bind(uses.length ? JSON.stringify(uses) : null, id, uses.length ? 1 : null),
+    // only when there is something to record, so a draft with no `uses` does not need migration 0024 yet (deploy order)
+    ...(uses.length ? [env.DB.prepare("UPDATE proposals SET uses = ? WHERE id = ? AND status = 'draft'").bind(JSON.stringify(uses), id)] : []),
   ]);
   if (!(res?.meta?.changes > 0)) return out({ error: "The day changed under you. Reload and try again." }, 409);
   const row = await env.DB.prepare("SELECT * FROM proposals WHERE id = ?").bind(id).first();

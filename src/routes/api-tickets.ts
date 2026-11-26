@@ -251,7 +251,7 @@ export async function edit(ctx: Ctx, player: any, raw: unknown, body: any, nowMs
   const { t, game } = m;
   const cat = catalogFor(game);
   // The nights, the running cost, the tasks, the rules it makes and the price are Gremlin's (rule 801.7): a hand edit of them is refused.
-  const rctx = { registry: cat.registry, required: cat.required, entries: await entriesFor(env, game, player.id, t.id) };
+  const rctx = { registry: cat.registry, required: cat.required, entries: await entriesFor(env, game, player.id, t.id), stored: JSON.parse(t.makes || "[]") };
   const refused = handEditRefusal(body, t.makes, rctx);
   if (refused) return out({ error: refused }, 403);
   const r = readFields(body, rctx);

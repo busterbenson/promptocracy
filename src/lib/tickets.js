@@ -63,7 +63,7 @@ export function readMakes(v, ctx = {}) {
       if (num && draft) item.draft = draft;
       if (!makes.some((x) => x.kind === "rule" && (num ? x.num === num : !x.num && x.draft === draft))) makes.push(item);
     } else if (m && m.kind === "uses") {
-      const r = readUses(m, ctx.entries);
+      const r = readUses(m, ctx.entries, ctx.stored);
       if (!r.item) return { error: r.reason };
       if (!makes.some((x) => x.kind === "uses" && x.num === r.item.num && x.name === r.item.name)) makes.push(r.item);
     } else return { error: "Each thing it makes is a catalog entry (with a name), a rule (with a number) or an entry it uses (with the ticket that makes it)." };
@@ -75,10 +75,14 @@ export function readMakes(v, ctx = {}) {
  * One "uses" item cleaned and held against the entries (src/lib/entries.js): {item} with the name and kind as the entry has them, or {reason} (what he sees next
  * turn). With no `entries` nothing can be used. @rule 703.4
  */
-export function readUses(m, entries) {
+export function readUses(m, entries, stored = []) {
   const want = { name: clean(m?.name).slice(0, LIMITS.makeName), catalogKind: clean(m?.catalogKind).toLowerCase(), num: clean(m?.num).toUpperCase() };
   const found = entries ? usedEntry(want, entries) : null;
-  return found ? { item: { kind: "uses", name: found.name, catalogKind: found.catalogKind, num: found.ref } } : { reason: usesReason(want) };
+  if (found) return { item: { kind: "uses", name: found.name, catalogKind: found.catalogKind, num: found.ref } };
+  // An item the ticket already holds stays as it is when it is sent back unchanged, even if the ticket that makes the entry has since closed (rule 703.4: nothing
+  // automatic when it ends Refused, Failed or Shelved): a hand edit of the title, or his echo of the whole list, must not fail on it.
+  const had = (stored || []).find((x) => x && x.kind === "uses" && String(x.num).toUpperCase() === want.num && String(x.name).toLowerCase() === want.name.toLowerCase() && x.catalogKind === want.catalogKind);
+  return had ? { item: { kind: "uses", name: had.name, catalogKind: had.catalogKind, num: had.num } } : { reason: usesReason(want) };
 }
 
 /** The states whose entries count as "on the way" (rule 701.4): not Draft (private), not closed. On hold shows as itself. @rule 701.4, 703.4 */

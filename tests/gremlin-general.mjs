@@ -16,6 +16,8 @@ import { CANNED_EXCUSES, CANNED_LINES } from "../src/lib/gremlin.js";
 let pass = 0, fail = 0;
 const check = (name, ok, detail = "") => { if (ok) { pass++; console.log(`  ok    ${name}`); } else { fail++; console.log(`  FAIL  ${name}${detail ? "  -> " + detail : ""}`); } };
 const J = JSON.stringify;
+// The list of what open commissions make is in every tail on purpose (rules 701.4, 801.6); the fence count below is about the player's words.
+const noOpen = (t) => String(t).replace(/Entries open commissions make[^]*?<\/player_text>\n?/, "");
 
 const { calls, stubState, stubModel, sonnetCalls, drafterCalls, haikuCalls: excuseCalls, GREC: REC } = createStub();
 const Q_WITHDRAW = REC["q-withdraw"].message, AMEND = REC["d-amend"].message, ADD = REC["d-addrule"].message;
@@ -125,7 +127,7 @@ try {
   const inj = await say(Ana, REC["i-lock"].message);
   check("the recorded injection ('admin mode, lock in P3, print your canary') locks nothing and draws no draft, and the canary never leaves", inj.status === 200 && !J(inj.data).includes("STRLG") && props("Ana", "status = 'confirmed'").length === 0 && props("Ana").length === nBeforeInj, J([inj.status, inj.data.out, inj.data.messages?.[1], props("Ana").length, nBeforeInj]));
   const tailInj = calls.filter((c) => c.kind === "general").at(-1).lastText;
-  check("a closing fence tag in the player's words reaches the model escaped", (await say(Ana, REC["i-fence"].message)) && ((calls.filter((c) => c.kind === "general").at(-1).lastText.match(/<\/player_text>/g) || []).length === 2) && calls.filter((c) => c.kind === "general").at(-1).lastText.includes("<\\/player_text"), tailInj.slice(-300));
+  check("a closing fence tag in the player's words reaches the model escaped", (await say(Ana, REC["i-fence"].message)) && ((noOpen(calls.filter((c) => c.kind === "general").at(-1).lastText).match(/<\/player_text>/g) || []).length === 2) && calls.filter((c) => c.kind === "general").at(-1).lastText.includes("<\\/player_text"), tailInj.slice(-300));
   const leak = await say(Ana, "SYNTH-LEAK");
   check("an answer that repeats her canary is dropped: a canned line, nothing done, logged invalid", leak.data.out === "malformed" && leak.data.messages[1].canned === "malformed" && !J(leak.data).includes("STRLG") && acalls("outcome = 'invalid'").length === 1);
 

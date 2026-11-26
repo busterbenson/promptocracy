@@ -613,6 +613,8 @@ try {
     check("a draft that names W1's Flower records it: uses_note 'Uses Flower from W1'; an unknown ref is left out", named.status === 200 && named.data.proposal.uses_note === `Uses Flower from ${w1}` && !named.data.proposal.lock_refusal, named.text);
     const found = await Ana.post(P, { kind: "addclause", target: "401", words: "A creature that eats a Flower loses a heart." });
     check("with no uses sent, the one entry its words name is recorded (the fallback)", found.status === 200 && found.data.proposal.uses_note === `Uses Flower from ${w1}`, found.text);
+    const two = await Ana.post(P, { kind: "addclause", target: "401", words: "A creature that eats a Flower puts it in a Vase." });
+    check("words that name two entries record neither (several matches record nothing)", two.status === 200 && two.data.proposal.uses_note === null, two.text);
     const none = await Ana.post(P, { kind: "addclause", target: "401", words: "Points can't be given away." });
     check("a draft naming no entry says nothing", none.status === 200 && none.data.proposal.uses_note === null, none.text);
   }
