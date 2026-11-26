@@ -427,7 +427,8 @@ try {
   const st = await Ana.get(CH);
   check("no key: a canned line, nothing stored, not counted; the window says she is not ready; the history still reads", nk.status === 200 && nk.data.out === "unavailable" && nk.data.messages[0].body === CANNED_LINES.unavailable && rows("Ana").length === nAna2 && st.data.state.ready === false && st.data.messages.length > 0);
   const stillLocks = await Ana.get(CH);
-  check("without a key the proposal routes (Lock it in, Unlock) still work: they are not hers", stillLocks.status === 200 && (await Ana.post(`${P}/${props("Ana", "status = 'draft'")[0].id}/confirm`, {})).status === 200);
+  const nkConfirm = await Ana.post(`${P}/${props("Ana", "status = 'draft'")[0].id}/confirm`, {});
+  check("without a key the proposal routes (Lock it in, Unlock) still work: they are not hers", stillLocks.status === 200 && nkConfirm.status === 200, `read ${stillLocks.status}; confirm ${nkConfirm.status} ${JSON.stringify(nkConfirm.data).slice(0, 200)}`);
 } catch (e) {
   fail++; console.log("  FAIL  harness error:", e?.message || e);
 } finally {
