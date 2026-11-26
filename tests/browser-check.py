@@ -74,6 +74,12 @@ with sync_playwright() as p:
             opts.first.click()
             val = page.input_value("#chatText")
             check(f"{tag}: a fix fills the box unsent (nothing was sent), words editable", val == "Leave out the fart and keep the one-space move." and page.locator("#chatLog .msg").count() == n0)
+            check(f"{tag}: the tapped option is marked pressed", opts.first.get_attribute("aria-pressed") == "true")
+            opts.nth(1).click()   # a second tap on an unedited fix replaces it
+            check(f"{tag}: a second tap replaces the unedited words, and marks the new option", page.input_value("#chatText").startswith("Ask for the tiles") and opts.nth(1).get_attribute("aria-pressed") == "true" and opts.first.get_attribute("aria-pressed") == "false", page.input_value("#chatText"))
+            page.fill("#chatText", val)
+            opts.nth(1).click()
+            check(f"{tag}: words the player changed are never overwritten by a tap", page.input_value("#chatText") == val)
             page.fill("#chatText", val + " Keep the 202.2 wording.")
             check(f"{tag}: the player can edit it and the send button is on", page.locator("#chatcol [data-c='send']").is_enabled())
             shot(page, f"check-chat-fix-in-box-{tag}")
@@ -87,6 +93,7 @@ with sync_playwright() as p:
             page.wait_for_selector('#p-yours [data-redraft]')
             fx = page.locator("#p-yours [data-redraft]")
             check(f"{tag}: the not-applied proposal lists its two fixes as buttons", fx.count() == 2, str(fx.count()))
+            check(f"{tag}: Yours shows the moderator's reason on the not-applied proposal, and no title ends in a colon", "fart" in page.locator("#p-yours .tnote").first.inner_text() and not page.locator("#p-yours .tt").first.inner_text().strip().endswith(":"))
             sw = page.evaluate("document.documentElement.scrollWidth")
             check(f"{tag}: Yours: no sideways scroll (scrollWidth {sw} <= {w})", sw <= w)
             if w < 500:
@@ -96,6 +103,13 @@ with sync_playwright() as p:
             fx.first.click()
             page.wait_for_selector("#chatText", state="visible")
             check(f"{tag}: a fix opens Gremlin with 'Redraft P9: ...' in the box, unsent, P9 attached as a chip", page.input_value("#chatText").startswith("Redraft P9: Leave out the fart") and page.locator("#chatcol .chip .ppill").count() == 1, page.input_value("#chatText"))
+            check(f"{tag}: the redraft shows P9's slip with why it failed, and no other draft's choices", page.locator("#chatLog .slip.past .ppill").filter(has_text="P9").count() == 1 and page.locator("#chatLog .opts[aria-label='Choices']").count() == 0)
+            if w < 500:
+                bb = page.locator("#chatcol .chip .x").bounding_box()
+                check(f"{tag}: the redraft chip's x is 44 px", bb["height"] >= 44 and bb["width"] >= 44, str(bb))
+            page.locator("#chatLog .slip.past [data-c='redraft']").nth(1).click()
+            check(f"{tag}: a second fix replaces the unedited redraft words", page.input_value("#chatText").startswith("Redraft P9: Say which tiles"), page.input_value("#chatText"))
+            page.locator("#chatLog .slip.past [data-c='redraft']").first.click()
             sw = page.evaluate("document.documentElement.scrollWidth")
             check(f"{tag}: the redraft chat: no sideways scroll", sw <= w)
             shot(page, f"check-redraft-chat-{tag}")
@@ -105,6 +119,13 @@ with sync_playwright() as p:
             check(f"{tag}: the redraft sends and he answers; the chip goes once it is answered", page.locator("#chatcol .chip").count() == 0)
             check(f"{tag}: no console errors", not errors, "; ".join(errors)[:200])
             c.close()
+    # the not-applied notification's link (/shop/#yours) lands on the Yours tab with the fixes
+    c = b.new_context(viewport={"width": 390, "height": 844}); c.add_cookies([{"name": "s", "value": cookie, "domain": host, "path": "/shop"}])
+    page = c.new_page(); page.goto(base + "/shop/#yours", wait_until="domcontentloaded")
+    try: page.wait_for_selector("#p-yours [data-redraft]", state="visible", timeout=15000); ok = True
+    except Exception: ok = False
+    check("the notification link /shop/#yours opens Yours with the fixes", ok)
+    c.close()
     b.close()
 print("\nFAILED: " + "; ".join(failed) if failed else "\nall ok")
 sys.exit(1 if failed else 0)

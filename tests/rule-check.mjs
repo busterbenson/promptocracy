@@ -74,7 +74,7 @@ console.log("P7 and P9 as drafted on the live game, with the answers a check mus
   const a9 = '{"conflicts": ["202.3"], "missing": [{"what": "a fart", "why": "No rule or catalog entry says what a fart is."}, {"what": "tiles a player has occupied", "why": "The game does not record where a piece has been."}], "fixes": [{"say": "Leave out the fart and the tile memory.", "kind": "amend", "target": "202.2", "words": "x"}]}';
   const r9 = readCheck(B, p9, a9);
   check("P9: relies on a fart and on tiles a player has occupied: blocked; 202.3 named", r9.ok && r9.missing.map((m) => m.what).join("|") === "a fart|tiles a player has occupied" && J(r9.conflicts) === J(["202.3"]));
-  check("the reason beside Lock it in names what is missing and cites 103.9; an unchecked draft says so", blockedReason({ status: "blocked", missing: r9.missing }) === "Needs what the game doesn't have: a fart, tiles a player has occupied (103.9)" && /couldn't check/.test(blockedReason({ status: "unchecked" })));
+  check("the reason beside Lock it in names what is missing and cites 103.9; an unchecked draft says so", blockedReason({ status: "blocked", missing: r9.missing }) === "The game doesn't have: a fart, tiles a player has occupied (103.9)" && /couldn't check/.test(blockedReason({ status: "unchecked" })));
 }
 console.log("the lock-in refusal is gated on the rulebook having rule 103.9");
 {

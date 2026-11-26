@@ -377,7 +377,7 @@ export function notAppliedStatements(env: Env, game: any, q: { id: string; numbe
     env.DB.prepare(
       `INSERT OR IGNORE INTO notifications (id, game_id, player_id, kind, body, link, created_at)
        SELECT ?, ?, ?, 'not_applied', ?, ?, ? WHERE EXISTS (SELECT 1 FROM proposals WHERE id = ? AND status = 'not_applied')`,
-    ).bind(`not-applied-${q.id}`, game.id, q.player_id, returnedBody(q.number, reason, fixes), `/${game.slug}/`, now, q.id),
+    ).bind(`not-applied-${q.id}`, game.id, q.player_id, returnedBody(q.number, reason, fixes), `/${game.slug}/#yours`, now, q.id),
   ];
 }
 

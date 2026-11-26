@@ -170,7 +170,7 @@ export function blockedReason(check) {
   if (!check) return "";
   if (check.status === "unchecked") return "Gremlin couldn't check this against the rules (103.9). Say it again.";
   const what = (check.missing || []).map((m) => m.what).join(", ");
-  return `Needs what the game doesn't have: ${what} (103.9)`;
+  return `The game doesn't have: ${what} (103.9)`;
 }
 
 /** The reason Lock it in is refused for a stored check, or null: only a blocked or unchecked check, and only in a rulebook that has rule 103.9 (no behaviour no rule states). @rule 103.9 */

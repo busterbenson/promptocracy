@@ -51,7 +51,7 @@ try {
   const v = b.data.proposal;
   check("it is drafted, with its check on it: blocked, what is missing, the fixes, and the conflict with which rule prevails (402, the older, 108.1)",
     b.status === 200 && stubs.calls.length === n0 + 1 && v.check.status === "blocked" && v.check.missing.length === 2 && v.check.fixes.length === 2 && J(v.conflicts) === J(["402.3"]) &&
-    /Rule 402 prevails \(108\.1\)/.test(v.conflict_note) && v.lock_refusal === "Needs what the game doesn't have: house tile, how long a player has stood there (103.9)", b.text);
+    /Rule 402 prevails \(108\.1\)/.test(v.conflict_note) && v.lock_refusal === "The game doesn't have: house tile, how long a player has stood there (103.9)", b.text);
   check("the check's call carries the rulebook, the criteria and the engine facts, the draft, and the player's words as data",
     /You check one proposed change/.test(stubs.calls[n0].system) && /ENGINE FACTS/.test(stubs.calls[n0].system) && stubs.calls[n0].messages[0].content[0].text.startsWith("The rulebook:") && stubs.calls[n0].messages[0].content[0].cache_control?.type === "ephemeral" &&
     /house tile/.test(stubs.calls[n0].messages[0].content[1].text) && stubs.calls[n0].model === "claude-haiku-5-5");

@@ -177,10 +177,10 @@ under rule 101 or 102; a follow-up change claims them and moves `src/` into the 
 - line 68: `claimsOf`
 - line 69: `yieldsOf`
 - line 70: `ruleNumOf`
-- line 111: `fence`
-- line 112: `catalogLine`
-- line 153: `own`
-- line 155: `clip`
+- line 112: `fence`
+- line 113: `catalogLine`
+- line 154: `own`
+- line 156: `clip`
 
 ## src/lib/settings.js (12)
 
