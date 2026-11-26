@@ -1,6 +1,7 @@
 // The Workshop's tickets, the pure parts (plain JavaScript, so the Worker and the plain-node tests share ONE
 // implementation): what a ticket's fields may hold (rules 801.2, 801.3), who may post in its discussion (rule 804.1), and
 // the SQL the count runs when a commission passes or fails (rules 801.4, 803.1). src/routes/api-tickets.ts is the routes.
+import { nightSeqSql } from "./history-lines.js";
 import { readEntryDraft } from "./catalog.js";
 import { dayOpenSql, lockOpenSql } from "./day-gate.js";
 
@@ -237,12 +238,14 @@ function payStatements(db, where, binds, game, text, day, now) {
        SELECT t.id, ?, 'approved', ${text}, ? FROM tickets t WHERE ${mine} AND t.state = 'Approved' AND t.approved_at = ?`,
     ).bind(day, now, ...binds, now),
     db.prepare(
-      `INSERT INTO events (game_id, kind, text, created_at, day, phase, player_id)
-       SELECT t.game_id, 'commission_approved', 'W' || t.number || ' was approved.' || CASE WHEN t.paid > 0 AND t.paid_at = '${now}' THEN ' ' || p.display_name || ' paid ' || ${pts("t.paid")} || '.' ELSE '' END, ?, ?, 'night', t.player_id
+      `INSERT INTO events (game_id, kind, text, created_at, day, phase, template, args, player_id, night_seq)
+       SELECT t.game_id, 'commission_approved', 'W' || t.number || ' was approved.' || CASE WHEN t.paid > 0 AND t.paid_at = '${now}' THEN ' ' || p.display_name || ' paid ' || ${pts("t.paid")} || '.' ELSE '' END, ?, ?, 'night', 'commissionApproved',
+              json_object('ticket', t.number, 'proposal', (SELECT number FROM proposals WHERE id = t.proposal_id), 'price', t.price, 'paid', CASE WHEN t.paid_at = '${now}' THEN t.paid ELSE 0 END, 'queue_pos', t.queue_pos,
+                          'score_after', (SELECT score FROM players WHERE game_id = t.game_id AND id = t.player_id)), t.player_id, ${nightSeqSql("t.game_id", "?")}
        FROM tickets t JOIN players p ON p.game_id = t.game_id AND p.id = t.player_id
        WHERE ${mine} AND t.state = 'Approved' AND t.approved_at = ? AND EXISTS (SELECT 1 FROM ticket_log l WHERE l.ticket_id = t.id AND l.kind = 'approved' AND l.at = ?)
          AND NOT EXISTS (SELECT 1 FROM events e WHERE e.game_id = t.game_id AND e.kind = 'commission_approved' AND e.created_at = ? AND e.text LIKE 'W' || t.number || ' was approved.%')`,
-    ).bind(now, day, ...binds, now, now, now),
+    ).bind(now, day, day, ...binds, now, now, now),
   ];
 }
 
@@ -263,6 +266,14 @@ export function countTicketStatements(db, game, q, result, day, now) {
     return [
       db.prepare(`UPDATE tickets SET state = 'Refused', decided_at = ?, updated_at = ? WHERE proposal_id = ? AND state IN ('Draft', 'Proposed') AND EXISTS (SELECT 1 FROM proposals WHERE id = ? AND status = 'failed')`).bind(now, now, q.id, q.id),
       db.prepare(`INSERT OR IGNORE INTO ticket_log (ticket_id, day, kind, text, at) SELECT t.id, ?, 'refused', ?, ? FROM tickets t WHERE ${mine} AND t.state = 'Refused' AND t.decided_at = ?`).bind(day, `Refused: P${q.number} did not pass. ${result.sentence}`, now, q.id, now),
+      // History says it too (rule 101.2): the ticket's W-number, which the count's own line (P3 failed) does not carry.
+      db.prepare(
+        `INSERT INTO events (game_id, kind, text, created_at, day, phase, template, args, player_id, night_seq)
+         SELECT t.game_id, 'commission_refused', 'W' || t.number || ' was refused: P' || CAST(? AS INTEGER) || ' did not pass.', ?, ?, 'night', 'commissionRefused',
+                json_object('ticket', t.number, 'proposal', CAST(? AS INTEGER)), t.player_id, ${nightSeqSql("t.game_id", "?")}
+         FROM tickets t WHERE ${mine} AND t.state = 'Refused' AND t.decided_at = ?
+           AND NOT EXISTS (SELECT 1 FROM events e WHERE e.game_id = t.game_id AND e.kind = 'commission_refused' AND e.created_at = ? AND json_extract(e.args, '$.ticket') = t.number)`,
+      ).bind(q.number, now, day, q.number, day, q.id, now, now),
     ];
   }
   const passedGuard = `proposal_id = ? AND state IN ('Draft', 'Proposed') AND EXISTS (SELECT 1 FROM proposals WHERE id = ? AND status = 'approved')`;
@@ -276,11 +287,12 @@ export function countTicketStatements(db, game, q, result, day, now) {
        FROM tickets t JOIN players p ON p.game_id = t.game_id AND p.id = t.player_id WHERE ${mine} AND t.state = 'Ready' AND t.decided_at = ?`,
     ).bind(day, q.number, now, q.id, now),
     db.prepare(
-      `INSERT INTO events (game_id, kind, text, created_at, day, phase, player_id)
-       SELECT t.game_id, 'commission_ready', 'W' || t.number || ' is ready, not yet paid: ' || p.display_name || ' has ' || ${have} || ' of the ' || ${pts("t.price")} || ' it costs.', ?, ?, 'night', t.player_id
+      `INSERT INTO events (game_id, kind, text, created_at, day, phase, template, args, player_id, night_seq)
+       SELECT t.game_id, 'commission_ready', 'W' || t.number || ' is ready, not yet paid: ' || p.display_name || ' has ' || ${have} || ' of the ' || ${pts("t.price")} || ' it costs.', ?, ?, 'night', 'commissionReady',
+              json_object('ticket', t.number, 'proposal', (SELECT number FROM proposals WHERE id = t.proposal_id), 'price', t.price, 'paid', 0, 'queue_pos', NULL, 'score_after', ${have}), t.player_id, ${nightSeqSql("t.game_id", "?")}
        FROM tickets t JOIN players p ON p.game_id = t.game_id AND p.id = t.player_id
        WHERE ${mine} AND t.state = 'Ready' AND t.decided_at = ? AND NOT EXISTS (SELECT 1 FROM events e WHERE e.game_id = t.game_id AND e.kind = 'commission_ready' AND e.created_at = ? AND e.text LIKE 'W' || t.number || ' is ready%')`,
-    ).bind(now, day, q.id, now, now),
+    ).bind(now, day, day, q.id, now, now),
     db.prepare(
       `INSERT OR IGNORE INTO notifications (id, game_id, player_id, kind, body, link, created_at)
        SELECT 'ready-' || t.id || '-' || ?, t.game_id, t.player_id, 'commission_ready', 'W' || t.number || ' is ready: P' || CAST(? AS INTEGER) || ' passed, but you have ' || ${have} || ' of the ' || ${pts("t.price")} || ' it costs. It joins the queue when you can pay.', ?, ?

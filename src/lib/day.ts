@@ -18,7 +18,8 @@
 //      the game unlocked, in one batch
 import { NEXT_NIGHT_SEQ, bundleFor, enactStatements, nightBoardStatements, refusedActions } from "../engine/host";
 import { getSettings, validTimeZone } from "./settings.js";
-import { Env, nowIso } from "./util";
+import { Env, nowIso, who } from "./util";
+import * as H from "./history-lines.js";
 
 export type DayRow = { game_id: string; n: number; starts_at: string; ends_at: string; status: string; electorate?: number | null; locked_at: string | null; deadline_at?: string | null; last_error: string | null };
 export type DayTurn = { moved_at: string | null; ended_at: string | null; gave_at?: string | null } | null;
@@ -118,10 +119,10 @@ export async function startDayOne(env: Env, game: any, nowMs: number) {
     env.DB.prepare("INSERT OR IGNORE INTO eras (game_id, n, started_day) SELECT ?, 1, 1 WHERE EXISTS (SELECT 1 FROM games WHERE id = ? AND day = 1)").bind(game.id, game.id),
     env.DB.prepare(
       `INSERT INTO events (game_id, kind, text, created_at, day, phase, template, args)
-       SELECT ?, 'day_started', 'Day 1 has begun.', ?, 1, 'day', 'dayStarted', '{"day":1}'
+       SELECT ?, 'day_started', 'Day 1 has begun.', ?, 1, 'day', 'dayStarted', json_object('day', 1, 'electorate', (SELECT electorate FROM days WHERE game_id = ? AND n = 1))
        WHERE NOT EXISTS (SELECT 1 FROM events WHERE game_id = ? AND kind = 'day_started' AND day = 1)
          AND EXISTS (SELECT 1 FROM games WHERE id = ? AND day = 1)`,
-    ).bind(game.id, starts, game.id, game.id),
+    ).bind(game.id, starts, game.id, game.id, game.id),
   ]);
 }
 
@@ -179,6 +180,26 @@ export async function countBallot(env: Env, game: any, day: DayRow, nowMs: numbe
     const t = tally({ mark: q.mark, electorate: electors.length, electors, votes: votes.filter((v) => v.proposal_id === q.id), needed: q.needed, champion: !!q.champion, proposer: q.player_id });
     return { q, t };
   });
+  // History (rule 101.2): every vote cast or changed, in the order it was stored (vote_events.id: a request's `at` is taken before its
+  // reads, so two overlapping requests can land in the other order), then each proposal's count. Votes are hidden until now (rule 104.4), so these
+  // lines are written here, in the count's own batch, never when the vote is cast. Each carries the count's guard: its proposal was counted by THIS run.
+  const names = new Map(((await env.DB.prepare("SELECT id, display_name, color FROM players WHERE game_id = ?").bind(game.id).all()).results as any[]).map((p) => [p.id, who(p.display_name, p.color)]));
+  const numberOf = new Map(items.map((q) => [q.id, q.number]));
+  const cast = items.length ? ((await env.DB.prepare("SELECT proposal_id, player_id, vote, at FROM vote_events WHERE game_id = ? AND day = ? ORDER BY id").bind(game.id, day.n).all()).results as any[]).filter((v) => numberOf.has(v.proposal_id)) : [];
+  const seenVote = new Set<string>();
+  const countedBy = "EXISTS (SELECT 1 FROM proposals WHERE id = ? AND status <> 'on_ballot' AND decided_at = ?)";
+  const lineSql = (guard: string) => `INSERT INTO events (game_id, kind, text, created_at, day, phase, template, args, player_id, night_seq)
+    SELECT ?, ?, ?, ?, ?, 'night', ?, json(?), ?, ${H.nightSeqSql("?", "?")} WHERE ${guard}`;
+  const voteLines = cast.map((v) => {
+    const key = `${v.proposal_id}:${v.player_id}`, changed = seenVote.has(key);
+    seenVote.add(key);
+    const l = H.voted(names.get(v.player_id) ?? "A player", numberOf.get(v.proposal_id), v.vote, changed, v.at);
+    return env.DB.prepare(lineSql(countedBy)).bind(game.id, l.kind, l.text, now, day.n, l.template, JSON.stringify(l.args), v.player_id, game.id, day.n, v.proposal_id, now);
+  });
+  const countLines = writes.map(({ q, t }) => {
+    const l = H.counted(q.number, t.passed ? (q.kind === "commission" ? "approved" : "passed") : "failed", resultSentence(t), { ...t, champion: !!q.champion });
+    return env.DB.prepare(lineSql(countedBy)).bind(game.id, l.kind, l.text, now, day.n, l.template, JSON.stringify(l.args), q.player_id, game.id, day.n, q.id, now);
+  });
   const deadline = nowIso(deadlineAfter(timeZoneOf(game), Date.parse(day.ends_at)));
   const ready = await readyIds(env.DB, game.id); // the tickets already Ready before tonight, oldest pass first (rules 801.4, 803.1)
   const settings = settingsOf(game); // the budget per change (rule 107.5), fixed on each proposal as it passes
@@ -189,6 +210,7 @@ export async function countBallot(env: Env, game: any, day: DayRow, nowMs: numbe
        WHERE id = ? AND status = 'on_ballot' AND EXISTS (SELECT 1 FROM days WHERE game_id = ? AND n = ? AND status = 'locked')`,
     ).bind(t.passed ? (q.kind === "commission" ? "approved" : "passed") : "failed", t.yes, t.no, t.absent, t.needed, t.electorate, resultSentence(t), now,
       t.passed && !NOT_FOR_MODERATOR.includes(q.kind) ? settings["night.apply_minutes"] : null, t.passed && !NOT_FOR_MODERATOR.includes(q.kind) ? settings["night.apply_effort"] : null, q.id, game.id, day.n)),
+    ...voteLines, ...countLines,
     // A commission that passed is approved, not passed: there is nothing for the moderator to apply (rule 107.2 is about rule
     // changes), so it never joins the night's list. Its ticket joins the queue and its price is paid, or waits as Ready (rules 801.4, 803.1).
     ...writes.filter(({ q }) => q.kind === "commission").flatMap(({ q, t }) => countTicketStatements(env.DB, game, q, { passed: t.passed, sentence: resultSentence(t) }, day.n, now)),
@@ -378,6 +400,12 @@ export function notAppliedStatements(env: Env, game: any, q: { id: string; numbe
       `INSERT OR IGNORE INTO notifications (id, game_id, player_id, kind, body, link, created_at)
        SELECT ?, ?, ?, 'not_applied', ?, ?, ? WHERE EXISTS (SELECT 1 FROM proposals WHERE id = ? AND status = 'not_applied')`,
     ).bind(`not-applied-${q.id}`, game.id, q.player_id, returnedBody(q.number, reason), `/${game.slug}/`, now, q.id),
+    // History says it (rules 101.2, 107.7): the reason is already shown on the ballot list. Only the run that sent it back writes the line.
+    env.DB.prepare(
+      `INSERT INTO events (game_id, kind, text, created_at, day, phase, template, args, player_id, night_seq)
+       SELECT ?, 'not_applied', ?, ?, p.day_ballot, 'night', 'notApplied', json_object('proposal', p.number, 'reason', ?), p.player_id, ${H.nightSeqSql("p.game_id", "p.day_ballot")}
+       FROM proposals p WHERE p.id = ? AND p.status = 'not_applied' AND p.decided_at = ?`,
+    ).bind(game.id, H.notAppliedText(q.number, reason), now, reason, q.id, now),
   ];
 }
 
@@ -478,6 +506,7 @@ export async function finalizeDay(env: Env, game: any, day: DayRow, nowMs: numbe
   const next = day.n + 1, now = nowIso(nowMs);
   const ends = nowIso(nextMidnight(tz, Math.max(ended, nowMs)));
   const DONE = "status IN ('done', 'timed_out')";
+  const going = (await env.DB.prepare("SELECT id, number FROM proposals WHERE game_id = ? AND day_proposed = ? AND status = 'confirmed' ORDER BY number").bind(game.id, day.n).all()).results as any[];
   await env.DB.batch([
     env.DB.prepare(
       `UPDATE days SET status = ?, processed_at = ?, last_error = NULL WHERE game_id = ? AND n = ? AND status IN ('locked', 'processing', 'deploying')
@@ -502,12 +531,19 @@ export async function finalizeDay(env: Env, game: any, day: DayRow, nowMs: numbe
          AND EXISTS (SELECT 1 FROM days WHERE game_id = ? AND n = ? AND ${DONE})
          AND EXISTS (SELECT 1 FROM days WHERE game_id = ? AND n = ?)`,
     ).bind(next, next, game.id, day.n, game.id, day.n, game.id, next),
+    // History (rule 101.2): each goes on the ballot, once, in P-number order, in the night's sequence.
+    ...going.map((q) => env.DB.prepare(
+      `INSERT INTO events (game_id, kind, text, created_at, day, phase, template, args, player_id, night_seq)
+       SELECT p.game_id, 'on_ballot', ?, ?, ?, 'night', 'onBallot', json_object('proposal', p.number, 'day', ?, 'electorate', p.electorate, 'needed', p.needed), p.player_id, ${H.nightSeqSql("p.game_id", "?")}
+       FROM proposals p WHERE p.id = ? AND p.status = 'on_ballot' AND p.day_ballot = ?
+         AND NOT EXISTS (SELECT 1 FROM events e WHERE e.game_id = p.game_id AND e.kind = 'on_ballot' AND json_extract(e.args, '$.proposal') = p.number)`,
+    ).bind(H.onBallotText(q.number, next), now, day.n, next, day.n, q.id, next)),
     env.DB.prepare(`UPDATE games SET day = ?, phase = 'open' WHERE id = ? AND day = ? AND EXISTS (SELECT 1 FROM days WHERE game_id = ? AND n = ? AND status = 'open')`).bind(next, game.id, day.n, game.id, next),
     env.DB.prepare(
       `INSERT INTO events (game_id, kind, text, created_at, day, phase, template, args)
-       SELECT ?, 'day_started', ?, ?, ?, 'day', 'dayStarted', json_object('day', ?)
+       SELECT ?, 'day_started', ?, ?, ?, 'day', 'dayStarted', json_object('day', ?, 'electorate', (SELECT electorate FROM days WHERE game_id = ? AND n = ?))
        WHERE NOT EXISTS (SELECT 1 FROM events WHERE game_id = ? AND kind = 'day_started' AND day = ?)
          AND EXISTS (SELECT 1 FROM games WHERE id = ? AND day = ?)`,
-    ).bind(game.id, `Day ${next} has begun.`, now, next, next, game.id, next, game.id, next),
+    ).bind(game.id, `Day ${next} has begun.`, now, next, next, game.id, next, game.id, next, game.id, next),
   ]);
 }

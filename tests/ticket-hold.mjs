@@ -251,6 +251,18 @@ try {
     const locked = await tool(A, "hd", tok.access_token, "hold_ticket", { ticket: "W7" });
     check("during the lock the tool is refused with the lock's sentence", locked.isError && /players are sleeping/.test(locked.text) && tk(7).held_at === null);
   }
+  console.log("History (rule 101.2): hold, resume and cancel each leave a line");
+  {
+    const hl = (kind) => d1(state, `SELECT text, template, args, player_id FROM events WHERE game_id = '${gid}' AND kind = '${kind}' ORDER BY id`);
+    // The ticket's own log has one row per tap that landed (a refused or repeated tap writes none, in both): the lines must be the same (ticket, count) pairs.
+    const pairs = (kind) => J(hl(kind).map((r) => JSON.parse(r.args).ticket).sort((x, y) => x - y));
+    const logPairs = (kind, text = "") => J(d1(state, `SELECT t.number AS n FROM ticket_log l JOIN tickets t ON t.id = l.ticket_id WHERE l.kind = '${kind}'${text ? ` AND l.text = '${text}'` : ""} ORDER BY t.number`).map((r) => r.n));
+    const held = hl("ticket_held"), resumed = hl("ticket_resumed"), cancelled = hl("ticket_cancelled");
+    check("each is written once per tap that landed, with the W-number, its template and the requester; the same (ticket, count) pairs as the ticket log: a refused or repeated tap writes nothing",
+      held.length >= 1 && resumed.length >= 1 && cancelled.length >= 1 && held.every((r) => /^W\d+ is on hold\.$/.test(r.text) && r.template === "ticketHeld" && JSON.parse(r.args).ticket > 0 && r.player_id) &&
+      resumed.every((r) => /^W\d+ is off hold\.$/.test(r.text) && r.template === "ticketResumed") && cancelled.every((r) => /^W\d+ was cancelled\.$/.test(r.text) && r.template === "ticketCancelled") &&
+      pairs("ticket_held") === logPairs("held") && pairs("ticket_resumed") === logPairs("resumed") && pairs("ticket_cancelled") === logPairs("shelved", "Cancelled by its requester."), [pairs("ticket_held"), logPairs("held"), pairs("ticket_cancelled"), logPairs("shelved", "Cancelled by its requester.")].join(" | "));
+  }
 } catch (e) {
   fail++; console.log("  FAIL  harness:", e?.stack || e);
   if (srv) console.log(srv.log().slice(-3000));

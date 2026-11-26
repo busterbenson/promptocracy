@@ -504,6 +504,12 @@ try {
         J([ed5.status, viaBallot?.ticket?.title, viaBallot?.ticket?.brief, viaList?.ticket?.title]));
       d1(state, `UPDATE tickets SET title = '${w5Before.title.replace(/'/g, "''")}', brief = '${w5Before.brief.replace(/'/g, "''")}' WHERE number = 5`);
     }
+    const hl = (kind) => d1(state, `SELECT text, args, template, player_id FROM events WHERE game_id = '${gid}' AND kind = '${kind}' ORDER BY id`);
+    check("History (rule 101.2): a ticket refused by the vote says so with its W-number, and its reopening is written; a ticket refused when drafted was never public, so its reopening is not",
+      hl("commission_refused").some((r) => /^W5 was refused: P\d+ did not pass\.$/.test(r.text) && JSON.parse(r.args).ticket === 5 && r.template === "commissionRefused") && J(hl("ticket_reopened").map((r) => r.text)) === J(["W5 is a draft again."]) && JSON.parse(hl("ticket_reopened")[0].args).ticket === 5, J([hl("commission_refused"), hl("ticket_reopened")]));
+    const apr = hl("commission_approved").map((r) => JSON.parse(r.args)), rdy = hl("commission_ready").map((r) => JSON.parse(r.args));
+    check("History (rule 101.2): the approval and the ready line carry the ticket, the proposal, the price, what was paid, the queue place and the points after",
+      apr.length > 0 && apr.every((a) => Number.isInteger(a.ticket) && Number.isInteger(a.proposal) && Number.isInteger(a.price) && Number.isInteger(a.paid) && Number.isInteger(a.queue_pos) && Number.isInteger(a.score_after)) && rdy.length > 0 && rdy.every((a) => Number.isInteger(a.ticket) && a.paid === 0 && a.queue_pos === null && Number.isInteger(a.score_after)), J([apr, rdy]));
     const cyOrd = await Cy.post("/wk/api/proposals", { kind: "repeal", target: "403" });
     await Cy.post(`/wk/api/proposals/${cyOrd.data.proposal.id}/confirm`, {});
     const again = await Cy.post(`${T}/W5/confirm`, {});

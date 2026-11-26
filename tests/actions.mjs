@@ -127,7 +127,7 @@ try {
   check("points: Bo gets the 5 (901), Ana the 10 for her applied proposal (401); the failed one gave none", score("Bo") === 5 && score("Ana") === 10 && score("Cy") === 0);
   const ev = events("action"), pts = events("points");
   check("History: one 'action' record in the night's sequence, with the proposal, the type and the details, then the points in order",
-    ev.length === 1 && ev[0].text === "P1 was applied: Grant points, to Bo, points 5." && ev[0].day === 2 && J(JSON.parse(ev[0].args)) === J({ proposal: 1, type: "grant", name: "Grant points", rule: 901, shown: [["To", "Bo"], ["Points", "5"]] }) && ev[0].player_id === id.Ana &&
+    ev.length === 1 && ev[0].text === "P1 was applied: Grant points, to Bo, points 5." && ev[0].day === 2 && J(JSON.parse(ev[0].args)) === J({ proposal: 1, type: "grant", name: "Grant points", rule: 901, shown: [["To", "Bo"], ["Points", "5"]], params: { to: id.Bo, amount: 5 } }) && ev[0].player_id === id.Ana &&
     J(pts.map((e) => e.text)) === J(["+10: P1 was applied", "+5: P1 granted points"]) && ev[0].night_seq < pts[0].night_seq, J([ev, pts]));
   const gm = await C.Cy.get("/act/api/game");
   check("the history the board reads carries it", gm.data.events.some((e) => e.kind === "action" && /P1 was applied: Grant points/.test(e.text)));
@@ -153,7 +153,7 @@ try {
   check("deploying, not live yet: the action waits too (nothing applied before the rules are)", prop(pAct).status === "passed" && score("Cy") === before.Cy);
   dev("bundle_sha:act", SHA1);
   await cron();
-  const seq = d1(state, `SELECT kind, text, night_seq FROM events WHERE game_id = '${gid}' AND day = 3 AND phase = 'night' ORDER BY night_seq`).map((e) => e.kind + ":" + e.text);
+  const seq = d1(state, `SELECT kind, text, night_seq FROM events WHERE game_id = '${gid}' AND day = 3 AND phase = 'night' AND kind IN ('points', 'action') ORDER BY night_seq`).map((e) => e.kind + ":" + e.text);
   check("live: both enacted, the rule change first and the action after it (the action acts on the rules as they stand tonight); P5's proposer gets 401's 10, Cy the 7 (+10 for P4)",
     prop(pRule).status === "enacted" && prop(pRule).rev === 1 && prop(pAct).status === "enacted" && score("Cy") === before.Cy + 10 + 7 && score("Bo") === before.Bo + 10 && game().rules_day === 3 && day(3).status === "done", J([prop(pRule), prop(pAct), seq, game()]));
   check("the night's records read in execution order: P4's points, then P5's action record, its points, then the grant", J(seq) === J([`points:+10: P${pRule} was applied`, `action:P${pAct} was applied: Grant points, to Cy, points 7.`, `points:+10: P${pAct} was applied`, `points:+7: P${pAct} granted points`]), J(seq));
@@ -173,7 +173,7 @@ try {
   await mod("POST", `days/${d5.n}/claim`, { sha: SHA3, outcomes: [{ number: pR3, applied: true, commit: SHA3, seq: 1 }] });
   dev("bundle_sha:act", SHA3);
   await cron();
-  const seq3 = d1(state, `SELECT kind, text FROM events WHERE game_id = '${gid}' AND day = ${d5.n} AND phase = 'night' ORDER BY night_seq`).map((e) => e.kind + ":" + e.text);
+  const seq3 = d1(state, `SELECT kind, text FROM events WHERE game_id = '${gid}' AND day = ${d5.n} AND phase = 'night' AND kind IN ('points', 'action') ORDER BY night_seq`).map((e) => e.kind + ":" + e.text);
   check("P(action) < P(rule): the rule change's points come first, then the action's record and its points (the action acts on the rules as they stand tonight)", prop(pA3).status === "enacted" && prop(pR3).status === "enacted" && seq3[0] === `points:+10: P${pR3} was applied` && seq3[1].startsWith(`action:P${pA3} was applied`) && game().rules_day === d5.n, J([seq3, game()]));
 
   console.log("an action of a type the rules no longer have is not applied (107.7)");

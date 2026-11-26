@@ -169,8 +169,9 @@ try {
   check("Era 1 (opened by Start) began on day 1 and ended on day 7; Era 2 opened on day 8, unnamed, with no end", eraRows.length === 2 && eraRows[0].n === 1 && eraRows[0].started_day === 1 && eraRows[0].ended_day === 7 && eraRows[1].n === 2 && eraRows[1].started_day === 8 && eraRows[1].ended_day === null && eraRows[1].name === null && game().day === 8, J([eraRows, game()]));
   check("History says so: the Era, the Champion, how, and the final scores", /^Era 1 ended\. Bo reached 108 points and is the Champion\. Final scores: Bo 108, Ana 105, Cy 0\.$/.test(ended[0].text), ended[0].text);
   check("the claim's sequence is stored with each proposal (apply_seq)", J(d1(state, `SELECT number, apply_seq FROM proposals WHERE game_id = '${gid}' AND number IN (${p6}, ${p7}) ORDER BY apply_seq`).map((r) => [r.number, r.apply_seq])) === J([[p7, 1], [p6, 2]]));
-  const night7 = d1(state, `SELECT kind, player_id, night_seq FROM events WHERE game_id = '${gid}' AND day = 7 AND phase = 'night' ORDER BY night_seq`);
-  check("every event the night writes carries its per-night sequence, 1..n in execution order: P7's points, P6's points, the Era's end", J(night7.map((e) => [e.kind, e.player_id, e.night_seq])) === J([["points", id.Bo, 1], ["points", id.Ana, 2], ["era_ended", id.Bo, 3]]), J(night7));
+  const night7all = d1(state, `SELECT kind, player_id, night_seq FROM events WHERE game_id = '${gid}' AND day = 7 AND phase = 'night' ORDER BY night_seq`);
+  const night7 = night7all.filter((e) => ["points", "era_ended"].includes(e.kind));
+  check("every event the night writes carries its per-night sequence, 1..n in execution order: P7's points, P6's points, the Era's end (the count's and enacted lines come before)", J(night7.map((e) => [e.kind, e.player_id])) === J([["points", id.Bo], ["points", id.Ana], ["era_ended", id.Bo]]) && night7all.every((e, i) => e.night_seq === i + 1) && night7all.slice(0, 4).map((e) => e.kind).join() === "counted,counted,enacted,points", J(night7all));
   check("rule 401's revisions, counted by rule: P6 (on clause 401.1) is the second change to rule 401 (rev 2)", prop(p6).rev === 2 && prop(p6).status === "enacted");
   const over = await client(A).get("/mod/api/day");
   check("play goes on: day 8 is open and the day status reads", over.status === 200 && over.data.day === 8 && over.data.locked === false, J(over.data));

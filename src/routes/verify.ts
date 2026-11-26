@@ -8,6 +8,7 @@
 //       browser form post (not JSON), it is guarded by an Origin check: the Origin
 //       header must match SITE_URL (or the request's own origin when SITE_URL is unset).
 import { createSession } from "../lib/auth";
+import * as H from "../lib/history-lines.js";
 import { clockNow } from "../lib/day";
 import { joinLock, joinOpenSql } from "../lib/invite";
 import { RuleError, chooseSpawn, heartsStart } from "../engine/host";
@@ -117,7 +118,9 @@ export const post = async (ctx: Ctx) => {
       const spawn = await chooseSpawn(env, game);
       if (!spawn) { noRoom = true; break; }
       const { x, y, z } = spawn.tile;
-      const r = await env.DB.prepare(
+      const hearts = heartsStart(game);
+      const jl = H.joined(who(t.display_name, color), { x, y, z, hearts, color, shape });
+      const [r] = await env.DB.batch([env.DB.prepare(
         `INSERT INTO players (id, game_id, email, display_name, color, shape, score, turn_order, is_host, joined_at, x, y, z, hearts)
          SELECT ?, g.id, ?, ?, ?, ?, 0,
                 (SELECT COUNT(*) FROM players WHERE game_id = g.id),
@@ -126,7 +129,10 @@ export const post = async (ctx: Ctx) => {
          WHERE g.id = ? AND g.status IN ('setup', 'playing') AND ${joinOpenSql} AND (SELECT COUNT(*) FROM players WHERE game_id = g.id) < ?
            AND EXISTS (SELECT 1 FROM tiles t WHERE t.game_id = g.id AND t.x = ? AND t.y = ? AND t.z = ?)
            AND (SELECT COUNT(*) FROM players o WHERE o.game_id = g.id AND o.x = ? AND o.y = ? AND o.z = ?) = ?`,
-      ).bind(playerId, t.email, t.display_name, color, shape, now, x, y, z, heartsStart(game), game.id, nowIso(nowMs), seatLimit(game), x, y, z, x, y, z, spawn.occupants).run();
+      ).bind(playerId, t.email, t.display_name, color, shape, now, x, y, z, hearts, game.id, nowIso(nowMs), seatLimit(game), x, y, z, x, y, z, spawn.occupants),
+        // History (rule 101.2): the join is written in the same batch as the player, and only if the player landed.
+        env.DB.prepare("INSERT INTO events (game_id, kind, text, created_at, day, phase, template, args, player_id) SELECT g.id, 'player_joined', ?, ?, g.day, 'day', ?, json(?), ? FROM games g WHERE g.id = ? AND EXISTS (SELECT 1 FROM players WHERE id = ?)")
+          .bind(jl.text, now, jl.template, JSON.stringify(jl.args), playerId, game.id, playerId)]);
       joined = (r.meta?.changes ?? 0) > 0;
       if (!joined) {
         // Ask again only if the seat is still there (the game is in setup and not full): a lost race for a tile.
@@ -141,8 +147,6 @@ export const post = async (ctx: Ctx) => {
   if (!joined) return back(game.slug, noRoom ? "no-room" : "join-failed");
 
   const name = t.display_name; // stored raw, escaped when drawn
-  await env.DB.prepare("INSERT INTO events (game_id, kind, text, created_at) VALUES (?, 'player_joined', ?, ?)")
-    .bind(game.id, `${who(name, color)} joined the game.`, now).run();
   // The seat is already taken: a notification problem must not cost them the session.
   try {
     await notify(env, ctx, game, {

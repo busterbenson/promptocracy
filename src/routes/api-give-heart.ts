@@ -42,9 +42,9 @@ export const post = async (ctx: Ctx) => {
                 AND COALESCE((SELECT t.gave_at FROM day_turns t WHERE t.game_id = g.id AND t.day = g.day AND t.player_id = ?), '') = ''
                 AND EXISTS (SELECT 1 FROM players p WHERE p.game_id = g.id AND p.id = ? AND p.hearts = ? AND p.x = ? AND p.y = ? AND p.z = ?)
                 AND EXISTS (SELECT 1 FROM players q WHERE q.game_id = g.id AND q.id = ? AND q.dead_day IS NOT NULL AND q.ghost_day IS NULL AND q.x = ? AND q.y = ? AND q.z = ?)
-                THEN ? ELSE NULL END, ?, g.day, 'day', 'heartGiven', json_object('from', ?, 'to', ?), ?
+                THEN ? ELSE NULL END, ?, g.day, 'day', 'heartGiven', json_object('from', ?, 'to', ?, 'giver_left', ?, 'at', json_object('x', ?, 'y', ?, 'z', ?)), ?
          FROM games g WHERE g.id = ?`,
-      ).bind(...dayOpenBinds(game.day, nowMs, player.id), player.id, player.id, me.hearts, me.x, me.y, me.z, target.id, target.x, target.y, target.z, text, now, player.id, target.id, player.id, game.id),
+      ).bind(...dayOpenBinds(game.day, nowMs, player.id), player.id, player.id, me.hearts, me.x, me.y, me.z, target.id, target.x, target.y, target.z, text, now, player.id, target.id, me.hearts - 1, target.x, target.y, target.z, player.id, game.id),
       env.DB.prepare("UPDATE players SET hearts = hearts - 1 WHERE game_id = ? AND id = ?").bind(game.id, player.id),
       env.DB.prepare("UPDATE players SET hearts = 1, dead_day = NULL, ghost_day = NULL WHERE game_id = ? AND id = ?").bind(game.id, target.id),
       env.DB.prepare(
