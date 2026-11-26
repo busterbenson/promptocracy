@@ -366,7 +366,7 @@ console.log("the night's fixes, miss classes and cases");
     missClass({ ...ok, kind: "repeal" }, { redrafted: false, headSha: "a" }) === "unchecked_kind" && missClass({ ...ok, rule_check: { status: "ok", conflicts: [{ num: "402.3", prevails: 402 }] } }, { redrafted: false, headSha: "a", conflictRule: 402 }) === "warned");
   const c = nightCase("rickshaw-1", 2, { number: 7, kind: "add", target: "400", words: "x", after_text: "405.1 x", mark: null }, { miss: "unchecked", conflictRule: 402, full_reason: "it conflicts with rule 402" });
   check("nightCase: id night-<slug>-d<day>-p<n>, group night, the voted kind, target and words, and what the check should have said; none for rules_changed",
-    c.id === "night-rickshaw-1-d2-p7" && c.group === "night" && c.kind === "add" && J(c.expect) === J({ conflicts_include: ["402"] }) && J(nightCase("g", 1, { number: 1, kind: "amend", target: "1", words: "w" }, { miss: "disagreed" }).expect) === J({ check: "blocked" }) && nightCase("g", 1, { number: 1 }, { miss: "rules_changed" }) === null);
+    c.id === "night-rickshaw-1-d2-p7" && c.group === "night" && c.kind === "add" && J(c.expect) === J({ outcome: "drafted", conflicts_include: ["402"] }) && J(nightCase("g", 1, { number: 1, kind: "amend", target: "1", words: "w" }, { miss: "disagreed" }).expect) === J({ outcome: "drafted", check: "blocked" }) && nightCase("g", 1, { number: 1 }, { miss: "rules_changed" }) === null);
 }
 {
   const t = await night({ scenario: { apply: { 3: { action: "nonsense", fixes: ["Propose it without the fart.", "Say it for rule 202.2 only."] }, 5: { action: "nonsense" } } }, state: { job: job([P(3, "401", { rule_check: null }), P(5, "402.2", { rule_check: { status: "ok" } })]) }, opts: { audit: false } });

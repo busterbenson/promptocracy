@@ -22,11 +22,11 @@ export const DEFAULT_CHECK_MODEL = "claude-haiku-5-5";
 /** @rule 103.9 */
 export const checkModelOf = (env: Env) => env.CHECK_MODEL || env.MODEL_NAME || DEFAULT_CHECK_MODEL;
 
-/** The day each added rule was added, from the proposals that added them: what a rule's age is (rule 108.1); a starter or operator-added rule is 0. @rule 108.1 */
+/** The day each rule got its number, from the proposals that added it or moved it there (the moderator's ruleAge: the first commit with that heading): what a rule's age is (rule 108.1); a starter or operator-added rule is 0. @rule 108.1 */
 async function agesOf(env: Env, gameId: string): Promise<Record<number, number>> {
-  const rows = (await env.DB.prepare("SELECT new_num, day_ballot FROM proposals WHERE game_id = ? AND status = 'enacted' AND kind = 'add' AND new_num IS NOT NULL").bind(gameId).all()).results as any[];
+  const rows = (await env.DB.prepare("SELECT new_num, day_ballot FROM proposals WHERE game_id = ? AND status = 'enacted' AND kind IN ('add', 'move') AND new_num IS NOT NULL ORDER BY day_ballot").bind(gameId).all()).results as any[];
   const ages: Record<number, number> = {};
-  for (const r of rows) { const n = parseInt(r.new_num, 10); if (Number.isInteger(n) && Number.isInteger(r.day_ballot)) ages[n] = r.day_ballot; }
+  for (const r of rows) { const n = parseInt(r.new_num, 10); if (Number.isInteger(n) && Number.isInteger(r.day_ballot) && !(n in ages)) ages[n] = r.day_ballot; }
   return ages;
 }
 

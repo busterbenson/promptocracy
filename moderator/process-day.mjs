@@ -642,11 +642,11 @@ export function missClass(p, { redrafted, headSha, conflictRule = null }) {
 }
 /**
  * The case a refusal the check should have caught adds to tests/drafter-cases.json (docs/drafter-eval.md): the voted kind, target and words, and what the
- * check should have said. t is the night's outcome for p ({miss, conflictRule}). null for `rules_changed`: the draft was right for its rulebook. @rule 106.6, 107.7
+ * check should have said (`outcome: "drafted"` is what tests/drafter-live.mjs compares first; it grades `conflicts_include`, and `check` waits until it runs the check). t is the night's outcome for p ({miss, conflictRule}). null for `rules_changed`: the draft was right for its rulebook. @rule 106.6, 107.7
  */
 export function nightCase(slug, day, p, t) {
   if (t.miss !== "unchecked" && t.miss !== "disagreed") return null;
-  const expect = t.conflictRule ? { conflicts_include: [String(t.conflictRule)] } : { check: "blocked" };
+  const expect = t.conflictRule ? { outcome: "drafted", conflicts_include: [String(t.conflictRule)] } : { outcome: "drafted", check: "blocked" };
   return { id: `night-${slug}-d${day}-p${p.number}`, group: "night", kind: p.kind, target: p.target, words: p.words, ...(p.to_block ? { to: p.to_block } : {}), ...(p.mark ? { mark: p.mark } : {}), after_text: p.after_text, expect,
     note: `The night refused P${p.number} (${t.miss}) in ${slug} day ${day}: ${t.full_reason || t.reason}` };
 }

@@ -87,6 +87,13 @@ try {
   const ca = await ana.post(`${P}/${again.data.proposal.id}/confirm`, {});
   check("with the budget back, drafting again checks again and a clean draft locks in", again.data.proposal.check.status === "ok" && ca.status === 200, ca.text);
 
+  console.log("a rule renumbered by an enacted move is as old as the move (108.1, the moderator's ruleAge)");
+  // 402 was added on day 3 as another number and moved to 402 then: it is newer than the starter rule 403, so 403 prevails (before the fix, 402 was age 0 and the lower number won)
+  sql(`UPDATE proposals SET status = 'enacted', kind = 'move', new_num = '402', day_proposed = 2, day_ballot = 3 WHERE id = '${c2.data.proposal.id}'`);
+  stubs.check = { status: 200, text: J({ conflicts: ["402.3"], missing: [], fixes: [] }) };
+  const mv = await ana.post(P, { kind: "addclause", scope: "rule", target: "403", words: "A Paradox needs a living player to name." });
+  check("403 (a starter rule) prevails over 402 (moved in on day 3)", mv.status === 200 && mv.data.proposal.check.conflicts[0].prevails === 403 && /This proposal prevails over rule 402\.3/.test(mv.data.proposal.conflict_note || ""), mv.text);
+
   console.log("no model key: nothing is checked, lock-in works as before");
   migrate(state2);
   const g2 = await createGame(state2, { slug: "nokey", name: "No key", max: 4, rulesBase: stub.base, repo: "busterbenson/nokey" });
