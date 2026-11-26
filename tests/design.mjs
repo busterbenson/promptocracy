@@ -298,7 +298,7 @@ check("a recently changed rule's warm sand is a token with a dark value too (no 
 // The chat window (rules 106.3, 106.7: a sticky column, a corner pill and a phone's sheet, the Starling mockup's design) is the one other thing that is
 // sticky or fixed, and its CSS sits between two markers; everything outside them keeps S1-SUM-07.
 const siteCss = read("public/site.css"), chatCss = siteCss.slice(siteCss.indexOf("/* ==== The chat window ==== */"), siteCss.indexOf("/* ==== end of the chat window ==== */")), plainCss = siteCss.replace(chatCss, "");
-check("the page has no sticky or fixed elements except the card layer (S1-SUM-07) and the chat window's column, pill and sheet", chatCss.length > 500 && !/position:\s*sticky/.test(plainCss) && (plainCss.match(/position:\s*fixed/g) || []).length === 2 && /position:\s*sticky/.test(chatCss));
+check("the page has no sticky or fixed elements except the card layer (S1-SUM-07: its close button stays pinned while the card scrolls) and the chat window's column, pill and sheet", chatCss.length > 500 && (plainCss.match(/position:\s*sticky/g) || []).length === 1 && /\.mx\{position:sticky/.test(plainCss) && (plainCss.match(/position:\s*fixed/g) || []).length === 2 && /position:\s*sticky/.test(chatCss));
 check("the pages no longer ship the WebGL board: no three.js in public/ or the Worker's routes", !readdirSync(pjoin(ROOT, "public")).includes("vendor") && !/three/i.test(read("src/index.ts")));
 
 console.log("citations link to their rule, in both voices");
