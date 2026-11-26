@@ -7,7 +7,7 @@ import { chmodSync, copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, re
 import { createServer } from "node:http";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
-import { ALLOWED, fence, markOf, prevailing, repairNote, repairsBlock, repairsOfBody, rulebookLinesOk, ruleAge, runOnce, ROOT, scopeProblems, votedWords } from "./process-day.mjs";
+import { ALLOWED, MAX_REASON, REASON_ROOM, clean, fence, fitText, reasonWithSuggestion, auditNote, markOf, prevailing, repairNote, repairsBlock, repairsOfBody, rulebookLinesOk, ruleAge, runOnce, ROOT, scopeProblems, votedWords } from "./process-day.mjs";
 
 let pass = 0, fail = 0;
 const check = (name, ok, detail = "") => { if (ok) pass++; else { fail++; console.log(`FAIL ${name}${detail ? `\n     ${detail}` : ""}`); } };
@@ -35,6 +35,25 @@ check("108.1: a core rule prevails over a majority rule", prevailing(R(402, "maj
 check("108.1: same kind, the older prevails", prevailing(R(402, "majority", { added: 0 }), R(410, "majority", { added: 3 })).number === 402 && prevailing(R(410, "majority", { added: 3 }), R(402, "majority", { added: 0 })).number === 402);
 check("108.1: same kind and age, the lower number prevails", prevailing(R(504, "majority"), R(402, "majority")).number === 402);
 check("108.2: a rule's own claim wins within its kind, never over a core rule", prevailing(R(504, "majority", { claims: [402] }), R(402, "majority")).number === 504 && prevailing(R(504, "majority", { claims: [107] }), R(107, "unanimous")).number === 107);
+
+// Reasons (rule 107.7): cut at a word with "…", and no reason the moderator builds passes the API's MAX_REASON.
+check("fitText: short text is only normalized; long text is cut at a word and ends with an ellipsis, within n", fitText("  a  b\n c ", 20) === "a b c" && fitText("alpha beta gamma delta", 14) === "alpha beta…" && fitText("x".repeat(50), 10) === "x".repeat(9) + "…");
+check("clean: keeps 300 characters (the cut was 100) and strips trailing dots", clean("a ".repeat(140) + "end.").length > 250 && !clean("hello...").endsWith(".") && clean("w ".repeat(300)).length <= 300);
+{
+  const bad = [];
+  for (const len of [0, 1, 50, 99, 100, 101, 250, 314, 315, 316, 399, 400, 401, 600, 5000]) for (const text of ["word ".repeat(1000).slice(0, len), "x".repeat(len), `${"ab ".repeat(1000).slice(0, len)}.`]) {
+    const r = reasonWithSuggestion(text);
+    if (r.length > MAX_REASON || !r.endsWith("propose it again.")) bad.push(len);
+  }
+  check("reasonWithSuggestion: every reason, at any length, is at most 400 and ends with the whole suggestion", bad.length === 0 && REASON_ROOM > 0 && MAX_REASON === 400, J(bad));
+}
+{
+  // 2026-11-26: P1's note read "...the words ask for 'up to 2' P1 was repaired before it was applied", the audit's gap and the repair note
+  // joined with no full stop between them.
+  const n = auditNote(1, "The draft says 'move your piece 2 spaces', which reads as exactly 2, but the words ask for 'up to 2'");
+  const joined = `${n} ${repairNote(1, [{ what: "kept the tag", why: "rule 109.2" }])}`;
+  check("auditNote: the audit's gap ends as a sentence, so a repair note after it starts a new one", /'up to 2'\. P1 was repaired/.test(joined) && auditNote(2, "It differs.").endsWith("differs.") && auditNote(3, "cut here…").endsWith("here…") && !auditNote(4, "ok?").endsWith("?."), joined);
+}
 
 // ---- fixtures ----------------------------------------------------------------------------------------------------
 let n = 0;
@@ -341,6 +360,28 @@ console.log("moderator runner");
   check("108: the marks come from the rules as they stood, so a change that flips rule 107 itself to majority still loses to 107", tf.claims[0]?.outcomes[0]?.applied === false && /rule 107, which prevails/.test(tf.claims[0].outcomes[0].reason), J(tf.claims[0]?.outcomes));
   const t2 = await night({ scenario: { apply: { 8: { action: "win", to: 50, conflict: { rule: 504, why: "x" } } } }, state: { job: job([P(8, "402.2")]) } });
   check("108: when the proposal prevails (402 over 504: same kind and age, lower number) it is applied", t2.claims[0]?.outcomes[0]?.applied === true);
+}
+// Not-applied reasons are not cut at 100 characters (the 2026-11-26 count), are cut at a word with "…" when they must be cut, never pass the
+// API's 400 (src/routes/api-moderator.ts MAX_REASON), and the night log keeps the model's whole text.
+{
+  const sentence = (n) => { let s = ""; for (let i = 0; s.length < n; i++) s += `word${i} `; return s.trim().slice(0, n - 1) + "x"; };
+  const long250 = `${sentence(250)}.`, long600 = sentence(600);
+  const nl = (t) => readFileSync(join(t.stateDir, "g.night.jsonl"), "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l));
+  const tn = await night({ scenario: { apply: { 8: { action: "ops", ops: [], result: { outcome: "not_applied", reason: long250 } } } }, state: { job: job([P(8, "402.2")]) }, opts: { audit: false } });
+  const on = tn.claims[0]?.outcomes[0];
+  check("reasons: a 250-character model reason is kept whole (it was cut at 100), then the suggestion", on && !on.applied && on.reason.startsWith(long250.replace(/\.$/, "")) && /Try splitting it into smaller proposals or simplifying it, and propose it again\.$/.test(on.reason), J(on));
+  const tl = await night({ scenario: { apply: { 8: { action: "ops", ops: [], result: { outcome: "not_applied", reason: long600 } } } }, state: { job: job([P(8, "402.2")]) }, opts: { audit: false } });
+  const ol = tl.claims[0]?.outcomes[0];
+  check("reasons: a 600-character reason is cut at a word with an ellipsis, the suggestion is whole, and the whole is at most 400", ol && ol.reason.length <= 400 && /word\d+…\s/.test(ol.reason) && ol.reason.endsWith("propose it again."), J(ol));
+  check("reasons: the night log keeps the model's whole reason", nl(tl).some((e) => e.event === "not_applied" && e.full_reason === long600), J(nl(tl).filter((e) => e.event === "not_applied")));
+  const why250 = sentence(250);
+  const tc = await night({ scenario: { apply: { 8: { action: "win", to: 50, conflict: { rule: 107, why: why250 } } } }, state: { job: job([P(8, "402.2")]) }, opts: { audit: false } });
+  const oc = tc.claims[0]?.outcomes[0];
+  check("reasons: a conflict reason with a long why stays at most 400 with its prefix and the suggestion whole", oc && oc.reason.length <= 400 && /which prevails over it \(rule 108\.4\): word0 /.test(oc.reason) && oc.reason.endsWith("propose it again."), J(oc));
+  check("reasons: the night log keeps the conflict's whole why", nl(tc).some((e) => e.event === "not_applied" && String(e.full_reason).includes(why250)), J(nl(tc).filter((e) => e.event === "not_applied")));
+  const ta = await night({ scenario: { apply: { 3: { action: "points", to: 15 } }, audit: { 3: { material: false, reading: sentence(300), gap: sentence(300) } } }, state: { job: job([P(3, "401")]) } });
+  const au = nl(ta).find((e) => e.event === "audit");
+  check("reasons: an audit's reading and gap keep 300 characters (they were cut at 100)", au && au.reading.length >= 290 && au.gap.length >= 290, J(au));
 }
 {
   const t = await night({ scenario: { apply: { 3: { action: "points", to: 15 } } }, state: { job: job([P(3, "401")]), refuseClaim: true }, opts: { audit: false } });
