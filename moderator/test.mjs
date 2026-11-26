@@ -7,7 +7,7 @@ import { chmodSync, copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, re
 import { createServer } from "node:http";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
-import { ALLOWED, MAX_REASON, REASON_ROOM, clean, fence, fitText, reasonWithSuggestion, markOf, prevailing, repairNote, repairsBlock, repairsOfBody, rulebookLinesOk, ruleAge, runOnce, ROOT, scopeProblems, votedWords } from "./process-day.mjs";
+import { ALLOWED, MAX_REASON, REASON_ROOM, clean, fence, fitText, reasonWithSuggestion, auditNote, markOf, prevailing, repairNote, repairsBlock, repairsOfBody, rulebookLinesOk, ruleAge, runOnce, ROOT, scopeProblems, votedWords } from "./process-day.mjs";
 
 let pass = 0, fail = 0;
 const check = (name, ok, detail = "") => { if (ok) pass++; else { fail++; console.log(`FAIL ${name}${detail ? `\n     ${detail}` : ""}`); } };
@@ -46,6 +46,13 @@ check("clean: keeps 300 characters (the cut was 100) and strips trailing dots", 
     if (r.length > MAX_REASON || !r.endsWith("propose it again.")) bad.push(len);
   }
   check("reasonWithSuggestion: every reason, at any length, is at most 400 and ends with the whole suggestion", bad.length === 0 && REASON_ROOM > 0 && MAX_REASON === 400, J(bad));
+}
+{
+  // 2026-11-26: P1's note read "...the words ask for 'up to 2' P1 was repaired before it was applied", the audit's gap and the repair note
+  // joined with no full stop between them.
+  const n = auditNote(1, "The draft says 'move your piece 2 spaces', which reads as exactly 2, but the words ask for 'up to 2'");
+  const joined = `${n} ${repairNote(1, [{ what: "kept the tag", why: "rule 109.2" }])}`;
+  check("auditNote: the audit's gap ends as a sentence, so a repair note after it starts a new one", /'up to 2'\. P1 was repaired/.test(joined) && auditNote(2, "It differs.").endsWith("differs.") && auditNote(3, "cut here…").endsWith("here…") && !auditNote(4, "ok?").endsWith("?."), joined);
 }
 
 // ---- fixtures ----------------------------------------------------------------------------------------------------

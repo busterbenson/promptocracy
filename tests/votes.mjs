@@ -69,6 +69,14 @@ console.log("the 3 am deadline (rule 107.6), by the wall clock");
   check("a summer night: midnight PDT (07:00Z) -> 3:00 am PDT (10:00Z)", at("2026-07-01T07:00:00.000Z") === "2026-07-01T10:00:00.000Z");
   check("what the proposer is told names the reason, says it gave no points and suggests splitting or simplifying it",
     returnedBody(7, DEADLINE_REASON) === "P7 passed but was not applied: Chalant did not finish processing by 3:00 am. It gave no points. Try splitting it into smaller proposals or simplifying it, and propose it again.");
+  // 2026-11-26: the moderator's reason already ends with the suggestion (reasonWithSuggestion), and the proposer's note said it twice.
+  const S = "Try splitting it into smaller proposals or simplifying it, and propose it again.";
+  const twice = (b) => b.split(S).length - 1;
+  check("a reason that already carries the suggestion: the proposer is told it once, after 'It gave no points'",
+    returnedBody(9, `the game doesn't track which tiles you've been on. ${S}`) === `P9 passed but was not applied: the game doesn't track which tiles you've been on. It gave no points. ${S}` &&
+    returnedBody(7, `it conflicts with rule 402, which prevails over it… ${S}`) === `P7 passed but was not applied: it conflicts with rule 402, which prevails over it… It gave no points. ${S}` &&
+    returnedBody(9, `the game doesn't track which tiles you've been on. ${S.slice(0, -1)}`) === `P9 passed but was not applied: the game doesn't track which tiles you've been on. It gave no points. ${S}` &&
+    twice(returnedBody(1, DEADLINE_REASON)) === 1);
 }
 
 // ---------------------------------------------------------------- migration 0007 on a database with data

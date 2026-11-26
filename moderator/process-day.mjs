@@ -664,6 +664,12 @@ export function repairsOfBody(body) {
   if (!m) return [];
   return repairList(m[1].split("\n").filter(Boolean).map((l) => { const x = /^- (.*?)(?: \(because (.*)\))?$/.exec(l); return { what: x?.[1], why: x?.[2] ?? "" }; }));
 }
+/** The note a proposer gets when the audit finds their words and the draft differ (rule 106.6). The gap ends as a sentence, so the
+ * repair note that may follow it (repairNote) starts a new one. @rule 106.6 */
+export function auditNote(number, gap) {
+  const g = String(gap ?? "").trim();
+  return `P${number}: the draft you voted on may not say what you asked for. ${/[.!?…]$/.test(g) ? g : `${g}.`}`;
+}
 /** The note a proposer gets about a proposal's repairs; the claim's notes carry it, and a note is at most 600 characters. @rule 107.9 */
 export function repairNote(number, repairs, max = 300) {
   const head = `P${number} was repaired before it was applied (rule 107.9): `, tail = " What you voted on is unchanged. You can appeal a repair (rule 301).";
@@ -1257,7 +1263,7 @@ const lastDay = Math.max(0, ...processed.map((d) => d.n));
         const a = await auditOne({ p, model: opts.model, claude: opts.claude, cwd: auditDir, timeoutMs: Math.min(AUDIT_MIN * 60_000, left) });
         log({ event: "audit", ...a });
         if (a.ok && a.material) {
-          notes.push({ number: p.number, body: `P${p.number}: the draft you voted on may not say what you asked for. ${a.gap}`.slice(0, 600) });
+          notes.push({ number: p.number, body: auditNote(p.number, a.gap).slice(0, 600) });
           cases.push(auditCase(slug, job.day, p, a));
         }
       }
