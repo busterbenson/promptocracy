@@ -43,6 +43,7 @@ export const RULING_FAILS_BEFORE_NOTICE = 2; // nights a ruling may fail before 
 export const QUESTION_MAX = 300, RULING_MAX = 1500;
 export const LIBRARY_DIR = join(ROOT, "docs", "nomic-library"); // the Nomic library, written separately; optional
 export const AUTHOR = { name: "Chalant (moderator)", email: "chalant@promptocracy.us" };
+export const MAX_REASON = 400; // the Worker refuses a reason longer than this (src/routes/api-moderator.ts)
 const SUGGESTION = "Try splitting it into smaller proposals or simplifying it, and propose it again.";
 
 // ---- small helpers -------------------------------------------------------------------------------------------------
@@ -543,7 +544,7 @@ export async function applyOne({ dir, job, p, tonight, budgetMs, model = runMode
       // changes words and calls it a repair is refused there; what it lists here is for the night's report.
       const modelRepairs = repairList(result?.repairs);
       if (!r.ok && !result) { discard(dir); return { applied: false, error: true, reason: "the moderator could not run", detail: r.out.slice(-500) }; }
-      if (result?.outcome === "not_applied") { discard(dir); return { applied: false, reason: clean(result.reason) || "it no longer makes sense (rule 107.3)" }; }
+      if (result?.outcome === "not_applied") { discard(dir); return { applied: false, reason: clean(result.reason, REASON_ROOM) || "it no longer makes sense (rule 107.3)", full_reason: String(result.reason ?? "") }; }
       const strays = syncBack(copy, dir);
       if (strays.length) { discard(dir); return { applied: false, reason: `its change touched files the moderator may not change (${strays.slice(0, 3).join(", ")})` }; }
       // 108: a conflict the model found. The code decides who prevails, from the marks as they stood before tonight's
@@ -561,7 +562,9 @@ export async function applyOne({ dir, job, p, tonight, budgetMs, model = runMode
         if (prevailing(us, them) === them) {
           discard(dir);
           const by = tonight.find((t) => t.applied && ruleOf(t.target) === other);
-          return { applied: false, reason: `it conflicts with rule ${other}${by ? ` (as P${by.number} changed it tonight)` : ""}, which prevails over it (rule 108.4)${result.conflict.why ? `: ${clean(result.conflict.why)}` : ""}` };
+          const prefix = `it conflicts with rule ${other}${by ? ` (as P${by.number} changed it tonight)` : ""}, which prevails over it (rule 108.4)`;
+          const why = result.conflict.why ? clean(result.conflict.why, REASON_ROOM - prefix.length - 2) : "";
+          return { applied: false, reason: `${prefix}${why ? `: ${why}` : ""}`, full_reason: `${prefix}${result.conflict.why ? `: ${String(result.conflict.why)}` : ""}` };
         }
       }
       // Code checks what the model wrote: the paths, then the scope, then the game's own checks and tests.
@@ -609,8 +612,27 @@ export async function applyOne({ dir, job, p, tonight, budgetMs, model = runMode
     return { applied: false, reason: lastScope ? `its change went outside the rule it changes (${lastScope})` : `its code and tests couldn't be made to pass after ${MAX_FIXES} fixes` };
   } finally { rmSync(dirname(copy), { recursive: true, force: true }); }
 }
-const oneLine = (s) => String(s ?? "").replace(/\s+/g, " ").trim().slice(0, 100);
-const clean = (s) => oneLine(s).replace(/[.\s]+$/, "").slice(0, 300);
+/**
+ * One line of at most n characters. Text that must be shortened is cut at the last word boundary before the limit and ends with "…",
+ * never mid-word (a single word longer than the limit is cut where it stands).
+ * @rule 107.7
+ */
+export function fitText(s, n) {
+  const t = String(s ?? "").replace(/\s+/g, " ").trim();
+  if (t.length <= n) return t;
+  const room = Math.max(0, n - 1), head = t.slice(0, room), sp = head.lastIndexOf(" ");
+  return `${(sp > room / 2 ? head.slice(0, sp) : head).replace(/[\s.,;:]+$/, "")}…`;
+}
+const oneLine = (s, n = 100) => fitText(s, n);
+/** A not-applied reason's text: one line, without trailing dots, fitted to n. @rule 107.7 */
+export const clean = (s, n = 300) => fitText(String(s ?? "").replace(/\s+/g, " ").trim().replace(/[.\s]+$/, ""), n);
+/** The most the moderator's own words may take in a reason, so that reason, ". " and the suggestion stay within the API's MAX_REASON. @rule 107.7 */
+export const REASON_ROOM = MAX_REASON - 2 - SUGGESTION.length;
+/** The reason a not-applied outcome carries to the site: the reason, then the suggestion, never more than MAX_REASON. @rule 107.7 */
+export function reasonWithSuggestion(reason) {
+  const r = fitText(reason, REASON_ROOM);
+  return `${r}${r.endsWith("…") ? "" : "."} ${SUGGESTION}`;
+}
 
 // ---- repairs (rule 107.9) ---------------------------------------------------------------------------------------
 // If a passed proposal can't be applied as written because of how Gremlin wrote it, the moderator repairs that and applies it,
@@ -660,7 +682,7 @@ export async function auditOne({ p, model = runModel, claude, cwd, timeoutMs = A
   let a = null;
   try { const j = JSON.parse(r.out); a = JSON.parse(String(j.result ?? "").replace(/^```(json)?\s*|\s*```$/g, "").trim()); } catch {}
   if (!a || typeof a.material !== "boolean") return { number: p.number, ok: false };
-  return { number: p.number, ok: true, material: a.material, reading: oneLine(a.reading).slice(0, 400), gap: oneLine(a.gap).slice(0, 400), expect: a.expect && typeof a.expect === "object" ? a.expect : null };
+  return { number: p.number, ok: true, material: a.material, reading: oneLine(a.reading, 400), gap: oneLine(a.gap, 400), full_reading: String(a.reading ?? ""), full_gap: String(a.gap ?? ""), expect: a.expect && typeof a.expect === "object" ? a.expect : null };
 }
 
 // The case a material gap adds to tests/drafter-cases.json (docs/drafter-eval.md).
@@ -1086,7 +1108,7 @@ const lastDay = Math.max(0, ...processed.map((d) => d.n));
         git(["revert", "--abort"], dir, { allowFail: true });
         throw new Error(`could not revert P${q.number} (${c.sha.slice(0, 7)}) cleanly`);
       }
-      git(["commit", "-q", "--amend", "-m", `Revert P${q.number}: not applied (day ${q.day})\n\nIt passed but was not applied: ${clean(q.reason)}.\n\nReverts-Proposal: P${q.number}`], dir);
+      git(["commit", "-q", "--amend", "-m", `Revert P${q.number}: not applied (day ${q.day})\n\nIt passed but was not applied: ${clean(q.reason, MAX_REASON)}.\n\nReverts-Proposal: P${q.number}`], dir);
       log({ event: "reconciled", number: q.number, reverted: c.sha });
       pushed = true;
     }
@@ -1221,7 +1243,7 @@ const lastDay = Math.max(0, ...processed.map((d) => d.n));
       catch (e) { discard(dir); r = { applied: false, error: true, reason: "the moderator could not apply it", detail: String(e.message || e).slice(0, 500) }; }
       if (r.error) log({ event: "model_error", number: p.number, detail: r.detail });
       tonight.push({ number: p.number, target: p.target, ...r });
-      log({ event: r.applied ? "applied" : "not_applied", number: p.number, commit: r.commit, reason: r.reason, redrafted: r.redrafted });
+      log({ event: r.applied ? "applied" : "not_applied", number: p.number, commit: r.commit, reason: r.reason, full_reason: r.full_reason, redrafted: r.redrafted });
     }
 
     // The drafter audit (rule 106.6): a separate reading of each passed proposal's own words.
@@ -1262,7 +1284,7 @@ const lastDay = Math.max(0, ...processed.map((d) => d.n));
 
     const head = git(["rev-parse", "HEAD"], dir).trim();
     // seq: the order they were applied and committed in (tonight's order), which the enactment follows (rule 107.2).
-    const outcomes = tonight.map((t, i) => (t.applied ? { number: t.number, seq: i + 1, applied: true, commit: t.commit } : { number: t.number, seq: i + 1, applied: false, reason: `${t.reason}. ${SUGGESTION}`.slice(0, 400) }));
+    const outcomes = tonight.map((t, i) => (t.applied ? { number: t.number, seq: i + 1, applied: true, commit: t.commit } : { number: t.number, seq: i + 1, applied: false, reason: reasonWithSuggestion(t.reason) }));
     if (opts.dryRun) return { status: "dry-run", outcomes, head };
     if (tonight.some((t) => t.applied && !t.resumed) || rulingMade.some((m) => !m.resumed) || pushed) git(["push", "-q", "origin", "HEAD:main"], dir);
     const c = await api("POST", `days/${job.day}/claim`, { sha: head, outcomes, notes, rulings: rulingMade.filter((m) => !m.resumed).map((m) => m.id) });
