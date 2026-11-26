@@ -1084,6 +1084,23 @@
           ]
         }
       ]
+    },
+    {
+      "id": "audit-rickshaw-1-d2-p1",
+      "group": "audit",
+      "kind": "amend",
+      "target": "202.2",
+      "words": "Players can move their piece up to 2 spaces per day instead of 1, in any direction, diagonals included.",
+      "expect": {
+        "outcome": "drafted",
+        "after_includes": [
+          "up to 2 spaces"
+        ],
+        "after_excludes": [
+          "move your piece 2 spaces"
+        ]
+      },
+      "note": "Moderator's audit, rickshaw-1 day 2: The draft says 'move your piece 2 spaces', which reads as exactly 2, but the words ask for 'up to 2'"
     }
   ]
 }
