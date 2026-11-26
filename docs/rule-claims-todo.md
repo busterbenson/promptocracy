@@ -73,7 +73,7 @@ under rule 101 or 102; a follow-up change claims them and moves `src/` into the 
 
 ## src/lib/day.ts (1)
 
-- line 190: `lineSql`
+- line 191: `lineSql`
 
 ## src/lib/drafter.ts (1)
 
