@@ -282,7 +282,7 @@ import { hold } from "/js/busy.js";
     YOURS = createYours({ api, me: () => ME, cardKey: p => PROP.cardKey(p) });
     HIST = createHistory({ api, pill, rpill: n => PROP.rpill(n), pPill: p => PROP.pPill(p), wPill });
     drawTabs(); drawBook();
-    loadMe();
+    const meLoaded = loadMe();
     const [g] = await Promise.all([api("/api/game"), loadDay()]);
     if (!g.ok) $("movebar").innerHTML = '<span class="err">No game has been set up yet.</span>';
     else drawGame(g.data);
@@ -295,6 +295,7 @@ import { hold } from "/js/busy.js";
     RULES_OK = true;
     drawTabs(); drawBook();
     if (location.hash.startsWith("#r-")) { setTab("rules"); BOOK.fromHash(); }
+    if (location.hash === "#yours") meLoaded.then(openYours);   // the not-applied notification's link
   }
 
   // ---- the book: tabs, and what each shows --------------------------------------------------------------------------
@@ -693,6 +694,8 @@ import { hold } from "/js/busy.js";
     if (tab && !tab.disabled) { setTab(tab.dataset.tab, !tab.closest(".btabs")); return; }
     const j = t.closest("[data-jump]");
     if (j) { jumpTo(j.dataset.jump); return; }
+    const rd = t.closest("[data-redraft]");   // a not-applied proposal's fix on the Yours page (rule 107.7): Gremlin opens with the redraft in the box
+    if (rd && CHAT) { await closePanels(); await CHAT.redraft(rd.dataset.redraft, rd.dataset.fix, YOURS && YOURS.find ? YOURS.find(rd.dataset.redraft) : null); return; }
     const inCard = CARDS.isOpen();   // with a card up, anything it opens (from its text, or from the preview of one of its pills) goes on its back stack
     const see = t.closest("[data-seecard]");
     if (see && BOOK) {

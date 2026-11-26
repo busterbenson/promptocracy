@@ -73,7 +73,7 @@ check("the renumbering is a map, not a rewrite: old 101-105 stay, 209 to 201, 20
 {
   const clauses = {};
   for (const m of read("templates/RULES.md").replace(/<!--[\s\S]*?-->/g, "").matchAll(/\*\*(\d{3}\.\d+)\*\*([\s\S]*?)(?=\n\*\*\d{3}\.\d+\*\*|\n#|$)/g)) clauses[m[1]] = m[2].replace(/\s+/g, " ");
-  const owners = [[/\b\d+ points wins\b/, "402.2"], [/next day's ballot|ballot holds/, "104.3"], [/more than half/, "104.1"], [/up to \d+ proposals/, "103.2"], [/does something only when/, "703.1"], [/joins the (workshop's )?queue/, "803.1"], [/rules on what the rules mean/, "106.5"], [/names any (other )?rule/, "108.3"], [/propose one|one proposal a day/, null], [/drafts your|sets their price|names any rule they'd/, null]];
+  const owners = [[/\b\d+ points wins\b/, "402.2"], [/next day's ballot|ballot holds/, "104.3"], [/more than half/, "104.1"], [/up to \d+ proposals/, "103.2"], [/does something only when/, "703.1"], [/joins the (workshop's )?queue/, "803.1"], [/rules on what the rules mean/, "106.5"], [/names any (other )?rule the\s+proposal would conflict with/, "108.3"], [/propose one|one proposal a day/, null], [/drafts your|sets their price|names any rule they'd/, null]];
   const where = (re) => Object.keys(clauses).filter((n) => re.test(clauses[n]));
   check("each known fact is stated in one clause of the starter rules: the audit's table (regression test; 106.2 and 106.3 only point at the rules that own their jobs)", owners.every(([re, o]) => J(where(re)) === J(o ? [o] : [])), owners.map(([re, o]) => `${re}: ${where(re)}`).join(" | "));
 }
@@ -85,15 +85,15 @@ check("the day model replaces the turn model: 103 is proposals (no join order), 
   rules.includes("there is no order of play") && rules.includes("Ending is final: after it they can't move, propose, withdraw a proposal or vote until the next day") && rules.includes("A day runs from midnight to midnight in the game's time zone. [setting: game.timezone]") &&
   rules.includes("A day always runs to midnight, even if every player has ended their turn.") && rules.includes("the game is locked: nobody can move, vote, propose, post in a ticket's discussion, talk to Gremlin or end their turn, on the site or through an AI client (rule 204)"));
 console.log("the proposal rules (step 1, PR 3)");
-check("103 Proposals is 103.1-103.8 (103.5, 103.7 and 103.8 are the action rules; 103.6 is not wired yet) and 105 Votes needed is 105.1-105.5, worded as approved; the moderator moved to 106",
-  T.byNum["103"].clauses.map((c) => c.num).join() === "103.1,103.2,103.3,103.4,103.5,103.6,103.7,103.8" && T.byNum["105"].title === "Votes needed" && T.byNum["105"].clauses.map((c) => c.num).join() === "105.1,105.2,105.3,105.4,105.5" &&
+check("103 Proposals is 103.1-103.9 (103.5, 103.7 and 103.8 are the action rules; 103.6 is not wired yet; 103.9 is the rule check before lock-in) and 105 Votes needed is 105.1-105.5, worded as approved; the moderator moved to 106",
+  T.byNum["103"].clauses.map((c) => c.num).join() === "103.1,103.2,103.3,103.4,103.5,103.6,103.7,103.8,103.9" && T.byNum["105"].title === "Votes needed" && T.byNum["105"].clauses.map((c) => c.num).join() === "105.1,105.2,105.3,105.4,105.5" &&
   T.byNum["106"].title === "The moderator" && rules.includes("Locking it in confirms it, and unlocking it withdraws it (103.3).") && !/Drafting costs nothing/.test(rules) &&
   rules.includes("Each confirmed proposal gets the next number (P1, P2, ...) and goes on the ballot (104.3).") && rules.includes("You can confirm up to 3 proposals a day. [setting: proposals.per_day]") && rules.includes("A withdrawn proposal doesn't count toward the limit (103.2).") &&
   rules.includes("Every rule is marked [unanimous] or [majority]; [u] and [m] are short for them. The mark sets the votes needed to change or repeal that rule.") && rules.includes("A proposal that adds a rule makes it majority unless the proposal marks it unanimous. Adding a rule marked unanimous needs a unanimous vote.") && rules.includes("A proposal's mark is set when it is confirmed, from the marks in effect then.") &&
   rules.includes("Rules marked unanimous are the core rules."));
 check("108.3 (Gremlin names conflicts when drafting) is in",
   T.byNum["108"].clauses.map((c) => c.num).join() === "108.1,108.2,108.3,108.4,108.5" &&
-  rules.includes("When drafting, Gremlin names any other rule the proposal would conflict with, so the proposer can change that rule too."));
+  rules.replace(/\s+/g, " ").includes("When drafting, Gremlin names any other rule the proposal would conflict with, and which one would prevail (108.1), so the proposer can change that rule too."));
 check("rule 110 (what no proposal can change) is retired: no rule or clause 110, nothing cites it, no helper text about parts the site runs",
   !T.byNum["110"] && !T.byNum["110.1"] && !/rule 110|\(110(\.\d)?\)|what no proposal can change|no proposal can change/i.test(rules));
 check("what 110.1 listed is ordinary rules, each unanimous: sign-in 102.4, the proposal limit 103.2, hidden votes 104.4, votes counted by code 104.5, the lock 107.1, the deadline 107.6, End turn 202.4, the day 203.1",
@@ -105,7 +105,7 @@ check("104 Voting is 104.1-104.5 and 107 has 107.6 (the 3 am deadline, live by 4
   rules.includes("counted among the players who voted on it.") && rules.replace(/\s+/g, " ").includes("A proposal nobody votes on fails. Not voting counts neither for nor against, and the Champion's change is counted by 402.4.") && !rules.includes("and who count for what a vote needs") && rules.includes("are the living players (603.1) when the day starts.") && !/votes from the next day/.test(rules) &&
   rules.includes("yes or no on each one until midnight, and may change their vote until then.") &&
   rules.includes("During the day everyone can see who has voted on a proposal, and how many have. After midnight every vote is shown.") &&
-  rules.replace(/\s+/g, " ").includes(`The moderator has until ${DEADLINE_CLOCK} to process the day; a passed proposal not applied by then is not applied (rule 107.7). The changes it made must be live by ${DEPLOY_CLOCK}; a change not live by then is not applied either.`) && DEADLINE_CLOCK === "3:00 am" && DEPLOY_CLOCK === "4:00 am" && rules.includes("it goes back to its proposer with the moderator's reason and a suggestion") &&
+  rules.replace(/\s+/g, " ").includes(`The moderator has until ${DEADLINE_CLOCK} to process the day; a passed proposal not applied by then is not applied (rule 107.7). The changes it made must be live by ${DEPLOY_CLOCK}; a change not live by then is not applied either.`) && DEADLINE_CLOCK === "3:00 am" && DEPLOY_CLOCK === "4:00 am" && rules.includes("it goes back to its proposer with the moderator's reason and up to three changes that would fix it") &&
   !/48 hours/.test(rules) && ["104.4", "104.5", "107.6"].every((n) => T.byNum[n] && markOf(T.byNum[n.slice(0, 3)]) === "unanimous"));
 console.log("the night's rules (step 1, PR 5)");
 check("106 is 106.1-106.7 (Gremlin's rules are 106.2, his workshop 106.3; he is in 106.4 and 106.7; rulings 106.5; the drafter audit is 106.6), 107 is 107.1-107.9 (order, redraft, text + code + tests, the budget, the day tag, repairs), 108 is 108.1-108.5, 402 is 402.1-402.4 (Eras)",

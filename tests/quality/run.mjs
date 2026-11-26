@@ -19,7 +19,7 @@ import { nightCapped } from "./night.mjs";
 import { CapReached, Meter, ROOT, assertNoKeys, bundleAgents, loadKeys, makeRunTmp, scrubEnv } from "./lib.mjs";
 import { runNight } from "./night.mjs";
 import { agreementLine, renderPage } from "./page.mjs";
-import { actionsOf, scratchGame } from "./scratch.mjs";
+import { actionsOf, catalogOf, scratchGame } from "./scratch.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const argv = process.argv.slice(2);
@@ -129,10 +129,11 @@ try {
   const settings = JSON.parse(readFileSync(join(runTmp, "scratch", "seed", "settings.json"), "utf8"));
   const book = parseBook(rulesMd);
   const actions = await actionsOf(join(runTmp, "scratch", "seed"), runTmp);
+  const catalog = catalogOf(join(runTmp, "scratch", "seed"));   // the rule check reads the game's catalog entries, as api-proposals.ts hands them
   const bundleDir = join(runTmp, "bundle");
   mkdirSync(bundleDir, { recursive: true });
-  const { agent, drafter } = await bundleAgents(bundleDir);
-  const x = { meter, agent, drafter, keys, rulesMd, book, actions };
+  const { agent, drafter, draftcheck } = await bundleAgents(bundleDir);
+  const x = { meter, agent, drafter, draftcheck, keys, rulesMd, book, actions, catalog };
   const run_id = `${date}-${pad(now.getHours())}${pad(now.getMinutes())}-${stage}-${platformSha}`;
   const run = { run_id, stage, date, platform_sha: platformSha, rules_ref: scratch.ref, rules_sha: scratch.sha, scrubbed_env_names: removed.length, cases: [], cost: {}, cap_hit: null };
 

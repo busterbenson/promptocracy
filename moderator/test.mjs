@@ -7,7 +7,8 @@ import { chmodSync, copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, re
 import { createServer } from "node:http";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
-import { ALLOWED, MAX_REASON, REASON_ROOM, clean, fence, fitText, reasonWithSuggestion, auditNote, markOf, prevailing, repairNote, repairsBlock, repairsOfBody, rulebookLinesOk, ruleAge, runOnce, ROOT, scopeProblems, votedWords } from "./process-day.mjs";
+import { CHECK_CRITERIA, ENGINE_FACTS } from "../src/lib/rule-check.js";
+import { ALLOWED, MAX_REASON, fixesOf, missClass, nightCase, reasonFor, REASON_ROOM, clean, fence, fitText, reasonWithSuggestion, auditNote, markOf, prevailing, repairNote, repairsBlock, repairsOfBody, rulebookLinesOk, ruleAge, runOnce, ROOT, scopeProblems, votedWords } from "./process-day.mjs";
 
 let pass = 0, fail = 0;
 const check = (name, ok, detail = "") => { if (ok) pass++; else { fail++; console.log(`FAIL ${name}${detail ? `\n     ${detail}` : ""}`); } };
@@ -351,6 +352,29 @@ console.log("moderator runner");
   const t = await night({ scenario: { apply: { 3: { action: "points", to: 15 }, 5: { action: "nonsense" } } }, state: { job: job([P(3, "401"), P(5, "401")]) } });
   const o5 = t.claims[0]?.outcomes.find((o) => o.number === 5);
   check("same rule twice: a redraft that no longer makes sense is not applied, with the model's reason", o5 && !o5.applied && /no longer makes sense/.test(o5.reason));
+}
+// ---- the night's fixes and how a refusal got through the site's check (rules 106.6, 107.7, 103.9) ----
+console.log("the night's fixes, miss classes and cases");
+{
+  const fx = ["Add a house tile to the catalog first.", "Say it for the whole board.", "x".repeat(300), "a fourth", "", 7];
+  check("fixesOf: at most three strings, each fitted to 200 characters, junk dropped", fixesOf(fx).length === 3 && fixesOf(fx)[2].length <= 200 && fixesOf("no").length === 0 && fixesOf(undefined).length === 0);
+  check("reasonFor: with fixes the reason stands alone (no fixed suggestion); without, the suggestion is added", !/splitting/.test(reasonFor("the game doesn't track which tiles", ["a fix"])) && /splitting it into smaller proposals/.test(reasonFor("the game doesn't track which tiles", [])) && reasonFor("r", ["a"]).length <= MAX_REASON);
+  const P7 = { kind: "add", rule_check: null, base_sha: "a" }, ok = { kind: "add", rule_check: { status: "ok" }, base_sha: "a" }, unch = { kind: "add", rule_check: { status: "unchecked" }, base_sha: "a" };
+  check("missClass: no check or an unchecked one is `unchecked`; a moved rulebook or a redraft is `rules_changed`; otherwise the check passed it: `disagreed`",
+    missClass(P7, { redrafted: false, headSha: "a" }) === "unchecked" && missClass(unch, { redrafted: true, headSha: "b" }) === "unchecked" && missClass(ok, { redrafted: true, headSha: "a" }) === "rules_changed" &&
+    missClass(ok, { redrafted: false, headSha: "b" }) === "rules_changed" && missClass(ok, { redrafted: false, headSha: "a" }) === "disagreed" &&
+    missClass({ ...ok, kind: "repeal" }, { redrafted: false, headSha: "a" }) === "unchecked_kind" && missClass({ ...ok, rule_check: { status: "ok", conflicts: [{ num: "402.3", prevails: 402 }] } }, { redrafted: false, headSha: "a", conflictRule: 402 }) === "warned");
+  const c = nightCase("rickshaw-1", 2, { number: 7, kind: "add", target: "400", words: "x", after_text: "405.1 x", mark: null }, { miss: "unchecked", conflictRule: 402, full_reason: "it conflicts with rule 402" });
+  check("nightCase: id night-<slug>-d<day>-p<n>, group night, the voted kind, target and words, and what the check should have said; none for rules_changed",
+    c.id === "night-rickshaw-1-d2-p7" && c.group === "night" && c.kind === "add" && J(c.expect) === J({ outcome: "drafted", conflicts_include: ["402"] }) && J(nightCase("g", 1, { number: 1, kind: "amend", target: "1", words: "w" }, { miss: "disagreed" }).expect) === J({ outcome: "drafted", check: "blocked" }) && nightCase("g", 1, { number: 1 }, { miss: "rules_changed" }) === null);
+}
+{
+  const t = await night({ scenario: { apply: { 3: { action: "nonsense", fixes: ["Propose it without the fart.", "Say it for rule 202.2 only."] }, 5: { action: "nonsense" } } }, state: { job: job([P(3, "401", { rule_check: null }), P(5, "402.2", { rule_check: { status: "ok" } })]) }, opts: { audit: false } });
+  const o3 = t.claims[0]?.outcomes.find((o) => o.number === 3), o5 = t.claims[0]?.outcomes.find((o) => o.number === 5);
+  check("a not-applied outcome with fixes: the claim carries them and the reason has no fixed suggestion; without fixes the suggestion stays", J(o3.fixes) === J(["Propose it without the fart.", "Say it for rule 202.2 only."]) && !/splitting/.test(o3.reason) && !o5.fixes && /splitting it into smaller proposals/.test(o5.reason), J([o3, o5]));
+  check("the night's prompt carries the same criteria and engine facts as the site's check", t.claude.calls().filter((c) => !c.audit).every((c) => c.criteria === true) && CHECK_CRITERIA.length > 100 && ENGINE_FACTS.length > 100);
+  check("each refusal's class is in the night log; an unchecked one (P3) opens a case through the audit path, a check that passed it (P5, on the same rulebook) is a `disagreed` case too",
+    t.cases.some((c) => c.id === "night-g-d1-p3" && c.group === "night") && t.cases.some((c) => c.id === "night-g-d1-p5") && /"event":"miss"[^\n]*"class":"unchecked"/.test(readFileSync(join(t.stateDir, "g.night.jsonl"), "utf8")), J(t.cases.map((c) => c.id)));
 }
 {
   const t = await night({ scenario: { apply: { 8: { action: "win", to: 50, conflict: { rule: 107, why: "it would change the night's order" } } } }, state: { job: job([P(8, "402.2")]) } });

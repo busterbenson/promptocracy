@@ -371,14 +371,19 @@ console.log("migration 0006");
 
 // ---------------------------------------------------------------- the model stub (recorded answers)
 // POST /v1/messages answers whatever `next` holds: a recorded good answer, a malformed one, or a 500.
-const model = { next: null, before: null, calls: [] };
+// The rule check (rule 103.9) is a second kind of call to the same endpoint, told apart by its system prompt: it answers `check` (a recorded answer, default
+// "nothing to report"), and is counted in `checkCalls`, so `calls` stays the drafter's.
+const model = { next: null, before: null, calls: [], check: null, checkCalls: [] };
 const stubModel = createServer((req, res) => {
   let body = "";
   req.on("data", (c) => (body += c));
   req.on("end", () => {
-    model.calls.push({ url: req.url, key: req.headers["x-api-key"] === "stub-key-not-real", version: req.headers["anthropic-version"], body: JSON.parse(body || "{}") });
-    if (model.before) { const f = model.before; model.before = null; f(); }
-    const n = model.next ?? { status: 200, text: '{"after_text": "A player whose proposal passes gets 15 points.", "conflicts": ["402"], "settings": {}}' };
+    const parsed = JSON.parse(body || "{}");
+    const isCheck = String(parsed.system ?? "").includes("You check one proposed change");
+    if (isCheck) model.checkCalls.push({ url: req.url, key: req.headers["x-api-key"] === "stub-key-not-real", body: parsed });
+    else model.calls.push({ url: req.url, key: req.headers["x-api-key"] === "stub-key-not-real", version: req.headers["anthropic-version"], body: parsed });
+    if (!isCheck && model.before) { const f = model.before; model.before = null; f(); }
+    const n = isCheck ? (model.check ?? { status: 200, text: '{"conflicts": [], "missing": [], "fixes": []}' }) : model.next ?? { status: 200, text: '{"after_text": "A player whose proposal passes gets 15 points.", "conflicts": ["402"], "settings": {}}' };
     res.statusCode = n.status;
     res.setHeader("content-type", "application/json");
     res.end(n.status === 200 ? J({ content: [{ type: "text", text: n.text }] }) : '{"error":"boom"}');
@@ -428,12 +433,13 @@ try {
     dm.data.proposal.head === "Edit clause 401.1 (Points) to read:" && dm.data.proposal.after_text === "A player whose proposal passes gets 15 points." && dm.data.proposal.drafted_by === "model" &&
     J(dm.data.proposal.conflicts) === J(["402"]) && /rule 402 \(rule 108\.3\)/.test(dm.data.proposal.conflict_note), dm.text);
   const callsPre = model.calls.length;
-  model.next = { status: 200, text: '{"after_text": "IGNORED", "conflicts": ["202.2"], "settings": {}}' };
+  const checksPre = model.checkCalls.length;
+  model.check = { status: 200, text: '{"conflicts": ["202.2"], "missing": [], "fixes": []}' };
   const pre = await ana.post(P, { kind: "reword", target: "401.1", words: "Every player must move twice every day.", prefilled: true });
-  model.next = null;
-  check("an exact rewording (prefilled) keeps the player's text word for word, and the model still names the conflicts (rule 108.3): 202.2",
-    pre.status === 200 && pre.data.proposal.after_text === "Every player must move twice every day." && J(pre.data.proposal.conflicts) === J(["202.2"]) && model.calls.length === callsPre + 1 &&
-    model.calls.at(-1).body.messages[0].content.includes("Only name the conflicts"), pre.text);
+  model.check = null;
+  check("an exact rewording (prefilled) keeps the player's text word for word, and the rule check names the conflicts (rule 108.3): 202.2, with which rule prevails (108.1); the drafter is not asked",
+    pre.status === 200 && pre.data.proposal.after_text === "Every player must move twice every day." && J(pre.data.proposal.conflicts) === J(["202.2"]) && model.calls.length === callsPre && model.checkCalls.length === checksPre + 1 &&
+    /Rule 202 prevails \(108\.1\)/.test(pre.data.proposal.conflict_note) && pre.data.proposal.check.status === "ok", pre.text);
   model.next = { status: 500 };
   const preDown = await ana.post(P, { kind: "reword", target: "401.1", words: "Every player gets 12 points.", prefilled: true });
   model.next = null;
@@ -460,9 +466,9 @@ try {
     fx3.status === 422 && fx3.data.drafting === "refused" && fx3.data.reason === "not wired" && /rule 203\.1/.test(fx3.data.error) && rows().length === 4, fx3.text);
   const fx4 = await ana.post(P, { kind: "repeal", target: "204" });
   check("103.6 'or conflicts with one': a repeal of 204 (107.1, the lock, cites it) is refused over the route, naming 107.1, nothing stored", fx4.status === 422 && fx4.data.reason === "not wired" && fx4.data.error === "This would conflict with rule 107.1, which is not wired yet." && rows().length === 4, fx4.text);
-  model.next = { status: 200, text: '{"after_text": "x", "conflicts": ["203.1"], "settings": {}}' };
+  model.check = { status: 200, text: '{"conflicts": ["203.1"], "missing": [], "fixes": []}' };
   const fx5 = await ana.post(P, { kind: "reword", target: "401.1", words: "A player whose proposal passes gets 12 points.", prefilled: true });
-  model.next = null;
+  model.check = null;
   check("and so is an edit in place (the player's exact text) whose model-named conflicts include a not-wired part", fx5.status === 422 && fx5.data.reason === "not wired" && /rule 203\.1/.test(fx5.data.error) && rows().length === 4, fx5.text);
   const cf = await ana.post(P, { kind: "repeal", target: "504" });
   check("a repeal names the rules it would leave pointing at nothing (505 cites 504.1)", cf.status === 200 && cf.data.proposal.conflicts.includes("505.1") && /rule 505/.test(cf.data.proposal.conflict_note), cf.text);

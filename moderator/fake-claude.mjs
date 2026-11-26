@@ -13,7 +13,7 @@ const data = JSON.parse(/<proposal-data>\n([\s\S]*?)\n<\/proposal-data>/.exec(pr
 const audit = /drafter audit/.test(prompt);
 const fix = /Your last attempt failed the checks/.test(prompt);
 const args = process.argv.slice(2);
-appendFileSync(join(here, "fake-claude.calls.jsonl"), JSON.stringify({ number: data.number, escalation: data.escalation ?? null, rulingPrompt: data.escalation !== undefined ? prompt : null, auditPrompt: audit ? prompt : null, audit, fix, redraft_onto: data.redraft_onto ?? null, effort: args[args.indexOf("--effort") + 1], restricted: args.includes("--restricted"), addDir: args.includes("--add-dir") ? args[args.indexOf("--add-dir") + 1] : null, libraryIndex: args.includes("--add-dir") && existsSync(join(args[args.indexOf("--add-dir") + 1], "index.md")), tools: args[args.indexOf("--tools") + 1], env: Object.keys(process.env).sort() }) + "\n");
+appendFileSync(join(here, "fake-claude.calls.jsonl"), JSON.stringify({ criteria: prompt.includes("CAN THE GAME CARRY IT OUT") && prompt.includes("ENGINE FACTS"), number: data.number, escalation: data.escalation ?? null, rulingPrompt: data.escalation !== undefined ? prompt : null, auditPrompt: audit ? prompt : null, audit, fix, redraft_onto: data.redraft_onto ?? null, effort: args[args.indexOf("--effort") + 1], restricted: args.includes("--restricted"), addDir: args.includes("--add-dir") ? args[args.indexOf("--add-dir") + 1] : null, libraryIndex: args.includes("--add-dir") && existsSync(join(args[args.indexOf("--add-dir") + 1], "index.md")), tools: args[args.indexOf("--tools") + 1], env: Object.keys(process.env).sort() }) + "\n");
 
 if (audit) {
   const a = scenario.audit?.[data.number] ?? { material: false, reading: "as drafted", gap: "" };
@@ -98,7 +98,7 @@ test("402.2: reaching ${step.to} wins", () => {
     await new Promise((r) => setTimeout(r, step.ms));
     break;
   case "nonsense":
-    result({ outcome: "not_applied", reason: "it no longer makes sense on the new text of rule 401" });
+    result({ outcome: "not_applied", reason: "it no longer makes sense on the new text of rule 401", ...(step.fixes ? { fixes: step.fixes } : {}) });
     break;
   default:
     throw new Error(`no scenario for P${data.number}`);

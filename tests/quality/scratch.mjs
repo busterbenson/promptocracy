@@ -5,6 +5,7 @@ import { cpSync, existsSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { git } from "../../moderator/process-day.mjs";
+import { readCatalog } from "../../src/lib/catalog.js";
 import { ROOT, assertScratch } from "./lib.mjs";
 
 export const RICKSHAW_URL = "https://github.com/busterbenson/promptocracy-rickshaw.git";
@@ -76,6 +77,18 @@ export async function actionsOf(dir, runTmp) {
     } catch { /* a module that cannot load here has no action type to offer */ }
   }
   return out;
+}
+
+/**
+ * The game's catalog entries, as the Worker holds them (scripts/bundle-games.mjs reads catalog.json with readCatalog; src/routes/api-catalog.ts
+ * catalogFor hands `bundle.catalog` to the rule check, api-proposals.ts draft). Throws if the file is not a valid catalog, so a run never
+ * checks blind: a game with no catalog.json has [] (as the bundler has it).
+ */
+export function catalogOf(dir) {
+  const f = join(dir, "catalog.json");
+  const read = readCatalog(existsSync(f) ? JSON.parse(readFileSync(f, "utf8")) : [], {});
+  if ("errors" in read) throw new Error(`the scratch game's catalog.json is not a valid catalog: ${read.errors[0]}`);
+  return read.entries;
 }
 
 export const readGameFile = (dir, f) => readFileSync(join(dir, f), "utf8");

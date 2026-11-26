@@ -66,6 +66,10 @@ script runs them after you and tells you what failed.
    library (`docs/nomic-library/index.md`; where your copy is, below) for precedent, and name each page you relied on in
    the result file's `library` list, so it goes in the night log. If the library isn't there, go on without it.
 
+9. **Can the game carry it out?** Under "The check the site made" below are the criteria the site used before the proposal could be
+   locked in, and what the game records. If the proposal relies on something the game doesn't have, and its code can't work it out from
+   what is recorded, it can't be applied: write the result file with outcome `not_applied`, say what is missing, and give `fixes`.
+
 ## The result file
 
 Before you finish, write `MODERATOR-RESULT.json` at the top of the repo (the script reads and deletes it):
@@ -75,6 +79,11 @@ Before you finish, write `MODERATOR-RESULT.json` at the top of the repo (the scr
 { "outcome": "not_applied", "reason": "one sentence the proposer can act on" }
 { "outcome": "applied", "conflict": { "rule": 402, "why": "one sentence", "other_claims": [], "other_yields": [], "proposal_claims": [] } }
 ```
+
+`not_applied` (and an `applied` with a `conflict` that the script then finds prevails) may add
+`"fixes": ["one change the proposer could propose instead", ...]`: one to three, each one plain sentence to the proposer, only when
+there are real alternatives (a smaller or reworded proposal the game CAN carry out). With none, leave `fixes` out and the proposer is
+given the general suggestion to split or simplify.
 
 Any of them may add `"library": ["docs/nomic-library/<page>.md"]`, the library pages you relied on,
 `"restates": ["<clause>"]`, the clauses the draft repeats from another clause (step 1), and

@@ -82,6 +82,7 @@ mark{background:color-mix(in srgb,var(--accent) 28%,transparent);color:inherit;b
 .pv .pname{font-weight:700;overflow-wrap:anywhere}
 .pv .pmeta{font-family:var(--font-mono);font-size:.68rem;color:var(--ink-muted)}
 .opts{display:grid;gap:8px}
+.opts .btn.small{justify-content:flex-start;height:auto;min-height:44px;white-space:normal;text-align:left;line-height:1.3;padding-top:8px;padding-bottom:8px}   /* Gremlin's choices and a not-applied proposal's fixes: whole sentences, a finger's height */
 .opts.shapes{grid-template-columns:repeat(3,1fr)}
 .opts.colors{grid-template-columns:repeat(4,1fr)}
 .opt{display:block;position:relative}
@@ -481,6 +482,7 @@ button.me[aria-expanded="true"]{border-color:var(--ink)}
 .tlist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
 .trow{display:flex;align-items:center;justify-content:space-between;gap:6px 14px;flex-wrap:wrap;padding:10px 0;border-top:1px solid var(--line)}
 .trow:first-child{border-top:0}
+.trow .opts{flex:1 0 100%;grid-template-columns:1fr}
 .tmain{min-width:0;flex:1 1 220px}
 .prow{display:flex;align-items:center;gap:6px 8px;flex-wrap:wrap}
 .tlink{display:inline-flex;align-items:center;gap:10px;background:none;border:0;padding:4px 0;min-height:36px;font:inherit;color:inherit;text-align:left;cursor:pointer;max-width:100%}
@@ -611,7 +613,9 @@ button.pill[aria-pressed="true"]{background:color-mix(in srgb,var(--accent) 16%,
 @media (prefers-reduced-motion:reduce){.chat .typing i{animation:none}}
 .chat .ch-in{border-top:1px solid var(--line);padding:8px 10px 10px;display:flex;flex-direction:column;gap:6px;background:var(--chat-head)}
 .chat .ch-in .chip{align-self:flex-start;display:inline-flex;gap:6px;align-items:center;font-size:.78rem;font-weight:700;padding:2px 4px 2px 2px;border-radius:999px;border:1px solid var(--line);background:var(--sea)}
-.chat .ch-in .chip .x{font-family:var(--font-mono);font-size:.8rem;color:var(--ink-muted);background:none;border:0;padding:0 6px;min-height:26px;cursor:pointer}
+.chat .ch-in .chip .x{font-family:var(--font-mono);font-size:.8rem;color:var(--ink-muted);background:none;border:0;padding:0 6px;min-height:44px;min-width:44px;cursor:pointer}
+.opts .btn[aria-pressed="true"]{background:var(--accent-tint);border-color:var(--accent)}
+.trow .tnote{flex:1 0 100%;font-size:.84rem;color:var(--ink)}
 .chat .ch-in .row{display:flex;gap:8px;align-items:flex-end}
 .chat .ch-in textarea{flex:1;min-width:0;min-height:44px;max-height:120px;resize:none;border:1.5px solid var(--line);border-radius:14px;background:var(--sea);color:var(--ink);padding:10px 12px;font:inherit;font-size:.92rem;box-sizing:border-box}
 .chat .ch-in textarea:disabled{opacity:.6}
@@ -696,7 +700,7 @@ button.pill[aria-pressed="true"]{background:color-mix(in srgb,var(--accent) 16%,
 .chat .slip .tx{padding-left:10px;border-left:1.5px solid var(--ink);font-size:.88rem;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--ink)}
 .chat .slip .tx.del{text-decoration:line-through;color:var(--ink-muted)}
 .chat .slip .act{display:flex;gap:6px 10px;align-items:center;flex-wrap:wrap;border-top:1px solid color-mix(in srgb,var(--accent) 30%,transparent);padding-top:8px}
-.chat .slip .act .why{font-family:var(--font-mono);font-size:.62rem;color:var(--ink-muted);flex:1 1 8em}
+.chat .slip .act .why{font-family:var(--font-body);font-size:.82rem;color:var(--ink);flex:1 1 8em}
 .chat .slip .act .linkbtn{margin-left:auto}
 .chat .handoff{display:flex;gap:6px 10px;align-items:center;flex-wrap:wrap;margin:-2px 0 0 35px}
 .chat .handoff .why{font-family:var(--font-mono);font-size:.62rem;color:var(--ink-muted);flex:1 1 8em}

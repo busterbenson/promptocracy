@@ -46,6 +46,9 @@ export function codeChecks(c, res, night) {
         if (e.draft.target) out.push(chk("draft target", list(e.draft.target).includes(d.target), `got ${d.target}, wanted ${list(e.draft.target).join(" or ")}`));
       }
     }
+    // the rule check (rule 103.9): what the first draft's check said, and that a flagged draft ends in options or a draft that passes
+    if (e.check) out.push(chk(`the rule check says ${e.check}`, !!d && d.check?.status === e.check, `got ${d?.check?.status ?? "no check"}`));
+    if (e.check_flagged) out.push(chk("a flagged draft: the rule check flagged the draft, or the final answer has options or a draft whose check passed", !!d && (d.check?.status !== "ok" || turns.some((t) => (t.options || []).length)), `check ${d?.check?.status ?? "none"}`));
     if (e.draft_by_turn !== undefined) out.push(chk(`draft by turn ${e.draft_by_turn}`, !!d && d.turn <= e.draft_by_turn, d ? `drafted on turn ${d.turn}` : "no draft"));
     if (e.no_draft_on_turn !== undefined) out.push(chk(`no draft on turn ${e.no_draft_on_turn}`, !turns[e.no_draft_on_turn - 1]?.asked_for, ""));
     if (e.asks_first) out.push(chk("asks a question before drafting", /\?/.test(turns[0]?.say || ""), turns[0]?.say?.slice(0, 160) || ""));

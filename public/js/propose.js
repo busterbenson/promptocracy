@@ -215,7 +215,7 @@ ${p.words && !S.ui.prefilled ? `<p class="quote">You wrote: â€œ${esc(p.words)}â€
 <div class="draft">${p.kind === "action" && p.action ? actionHTML(p) : `<p class="mono head"><b>${esc(p.head)}</b></p><p class="cdiff">${diffOf(p)}</p>`}${settingsHTML(p)}</div>
 ${p.conflict_note ? `<p class="cnote">${withPills(p.conflict_note)}</p>` : ""}<p class="needline mono">${esc(needText(p))}</p>
 ${S.ui.err ? `<p class="notice err" role="alert">${withPills(S.ui.err)}</p>` : ""}
-<div class="row"><button class="btn" type="button" data-p="confirm"${off}>Lock it in</button><button class="btn ghost small" type="button" data-p="edit"${off}>${p.kind === "action" ? "Change it" : "Change my words"}</button><button class="linkbtn" type="button" data-p="cancel">Cancel</button></div></article>`;
+<div class="row"><button class="btn" type="button" data-p="confirm"${off || p.lock_refusal ? " disabled" : ""}>Lock it in</button>${p.lock_refusal ? `<span class="why">${esc(p.lock_refusal)}</span>` : ""}<button class="btn ghost small" type="button" data-p="edit"${off}>${p.kind === "action" ? "Change it" : "Change my words"}</button><button class="linkbtn" type="button" data-p="cancel">Cancel</button></div></article>`;
   }
 
   // The form for an action (rule 103.5): the type, then one field for each of its details, as the game's rules describe them.
@@ -322,13 +322,13 @@ ${S.ui.err ? `<p class="notice err" role="alert">${withPills(S.ui.err)}</p>` : "
 
   /** One of your proposals, open under the bar: its number, its state, the change, and what you can do with it. @rule 103.1, 103.2, 103.3 */
   function barCardHTML(p, isDraft) {
-    const lockOk = base().allowed, unlock = !isDraft && p.mine && canWithdraw();
+    const lockOk = base().allowed && !p.lock_refusal, unlock = !isDraft && p.mine && canWithdraw();
     const err = S.lockErr[p.id] ? `<p class="notice err" role="alert">${esc(S.lockErr[p.id])}</p>` : "";
     const body = p.kind === "commission" && p.ticket ? `<div class="sdiff">${wPill(p.ticket.n)}${commissionHTML(p.ticket)}</div>`
       : p.kind === "action" && p.action ? actionHTML(p) : `<p class="mono head"><b>${esc(p.head || "")}</b></p><p class="cdiff">${diffOf(p)}</p>`;
     const open = p.kind === "commission" && p.ticket ? `<button type="button" class="linkbtn" data-p="bar-workshop" data-t="${esc(p.ticket.n)}">Open in Workshop</button>`
       : helperReady() ? `<button type="button" class="linkbtn" data-p="bar-helper">Open in Gremlin</button>` : "";
-    const lock = isDraft ? `<button type="button" class="btn" data-p="lock" data-id="${esc(p.id)}"${lockOk ? "" : " disabled"}>Lock it in</button>${lockOk ? "" : `<span class="why">${esc(base().reason || "")}</span>`}` : "";
+    const lock = isDraft ? `<button type="button" class="btn" data-p="lock" data-id="${esc(p.id)}"${lockOk ? "" : " disabled"}>Lock it in</button>${lockOk ? "" : `<span class="why">${esc(p.lock_refusal || base().reason || "")}</span>`}` : "";
     return `<article class="pcard${isDraft ? " draft" : ""}" data-pn="${esc(p.n || "")}"><div class="ch">${p.n ? pPill(p) : ""}<span class="pill ${isDraft ? "acc" : "dash"}">${isDraft ? "Draft" : "On tomorrow's ballot"}</span>${p.champion ? `<span class="pill core">Champion's change</span>` : ""}${unlock ? `<button type="button" class="linkbtn" data-p="unlock" data-id="${esc(p.id)}">Unlock</button>` : ""}</div>${body}${settingsHTML(p)}${p.conflict_note ? `<p class="cnote">${withPills(p.conflict_note)}</p>` : ""}<p class="needline mono">${esc(needText(p))}</p><div class="row">${lock}${open}</div>${err}</article>`;
   }
 

@@ -138,7 +138,7 @@ export class Meter {
 export async function bundleAgents(dir) {
   const { build } = await import("esbuild");
   const out = {};
-  for (const [name, entry] of [["agent", "src/lib/agent.ts"], ["drafter", "src/lib/drafter.ts"]]) {
+  for (const [name, entry] of [["agent", "src/lib/agent.ts"], ["drafter", "src/lib/drafter.ts"], ["draftcheck", "src/lib/draft-check.ts"]]) {
     const outfile = join(dir, `${name}.mjs`);
     await build({ entryPoints: [join(ROOT, entry)], bundle: true, format: "esm", platform: "node", outfile, logLevel: "silent", loader: { ".json": "json" } });
     out[name] = await import(pathToFileURL(outfile).href);

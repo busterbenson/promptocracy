@@ -73,6 +73,14 @@ console.log("the template pins rules 801.7 to 801.10 (the refusals cite 801.7; t
   const flat = readFileSync(pjoin(ROOT, "templates/RULES.md"), "utf8").replace(/\s+/g, " ");
   check("801.7 to 801.10 are in the template, word for word, right after 801.6, and 801.4 points at the hold", flat.includes("**801.7** Gremlin sets a commission's nights, price, running cost, tasks and the rules it makes, and you change them by talking to him. You can lock it in once he has drafted it (103.1). **801.8** You can discard your commission while it's still a draft. **801.9** You can put your Ready commission on hold, and take it off hold. While it's on hold it isn't paid and doesn't join the queue. **801.10** You can cancel your commission while it's Ready or on hold. Nothing is paid, and the ticket closes. ### 802") && flat.indexOf("**801.6**") < flat.indexOf("**801.7**") && flat.includes("you pay on the first night you can (803.1), unless it's on hold (801.9). Points you pay no longer count toward winning (402.2)."));
 }
+console.log("the template pins rules 103.9, 107.7 and 108.3 (the rule check before lock-in; the game's own RULES.md carries the same text)");
+{
+  const flat = readFileSync(pjoin(ROOT, "templates/RULES.md"), "utf8").replace(/\s+/g, " ");
+  check("103.9 is in the template after 103.8, word for word", flat.includes("**103.9** Before you can lock a proposal in, Gremlin checks it against the rules. He names any other rule it would conflict with and which one prevails (108.3), and anything it relies on that no rule, catalog entry (701.1) or record of the game provides. A proposal that relies on something the game doesn't have can't be locked in, and neither can one he couldn't check. He offers up to three changes that would fix it.") && flat.indexOf("**103.8**") < flat.indexOf("**103.9**") && flat.indexOf("**103.9**") < flat.indexOf("### 104"));
+  check("107.7 offers up to three fixes (or the suggestion when there are none) and says a redraft is a new proposal; 108.3 names which rule would prevail",
+    flat.includes("with the moderator's reason and up to three changes that would fix it, or, when there are none, a suggestion such as splitting it into smaller proposals or simplifying it. The proposer can propose it again on a later day, as it was or with one of those changes (103.1). It is a new proposal (103.2).") &&
+    flat.includes("When drafting, Gremlin names any other rule the proposal would conflict with, and which one would prevail (108.1), so the proposer can change that rule too."));
+}
 console.log("his mood and his excuses");
 {
   const moods = new Set(), days = Array.from({ length: 60 }, (_, i) => `2026-12-${String((i % 28) + 1).padStart(2, "0")}-${i}`);

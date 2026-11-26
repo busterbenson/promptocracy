@@ -15,12 +15,15 @@
 //   MODERATOR_STATE_DIR (default ~/chalantbot/logs/promptocracy-moderator), MODERATOR_NOTIFY_DIR
 //   (default ~/chalantbot/_notifications), MODERATOR_CLAUDE (default `claude`)
 import { spawn, execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { appendFileSync, closeSync, cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, openSync, readFileSync, readdirSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { checkTree } from "../scripts/bundle-games.mjs";
 import { knownNumbers } from "../src/engine/claims.js";
+import { CHECK_CRITERIA, ENGINE_FACTS, markOf, prevailing } from "../src/lib/rule-check.js";
+export { markOf, prevailing };   // the precedence logic lives in src/lib/rule-check.js (the site's draft check reads it too); kept exported here
 import { isMainRun } from "./schedule.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -85,29 +88,6 @@ export function disallowed(dir, paths) {
     const full = join(dir, p);
     return existsSync(full) && lstatSync(full).isSymbolicLink();
   });
-}
-
-// A rule's mark (rule 105.1): its own, [u] or [m] after its title; a rule without one is majority (105.2); null when the rule isn't
-// in the book or is a "[Moved to N]" forwarder. "unanimous" rules are the core rules (rule 105.5). A block has no mark.
-/** @rule 108.1 */
-export function markOf(rulesMd, number) {
-  for (const line of String(rulesMd).split("\n")) {
-    const r = /^###\s+(\d+)\s+(.*?)(?:\s+\[(unanimous|majority|u|m)\])?\s*$/.exec(line);
-    if (r && Number(r[1]) === Number(number)) return /^\[Moved to \d+\]$/.test(r[2]) ? null : r[3] === "u" || r[3] === "unanimous" ? "unanimous" : "majority";   // a "[Moved to N]" forwarder has no mark
-  }
-  return null;
-}
-
-// Which of two conflicting rules prevails (rule 108.1, 108.2): {number, mark, added (the day it was added; 0 for the
-// starter rules), claims (numbers it says it prevails over), yields (numbers it says it gives way to)}. Returns a or b.
-/** @rule 108.1, 108.2 */
-export function prevailing(a, b) {
-  const core = (r) => r.mark === "unanimous";
-  if (core(a) !== core(b)) return core(a) ? a : b; // a core rule prevails over a majority rule
-  if ((a.claims ?? []).includes(b.number) || (b.yields ?? []).includes(a.number)) return a; // its own claim, within its kind
-  if ((b.claims ?? []).includes(a.number) || (a.yields ?? []).includes(b.number)) return b;
-  if ((a.added ?? 0) !== (b.added ?? 0)) return (a.added ?? 0) < (b.added ?? 0) ? a : b; // the older one
-  return a.number <= b.number ? a : b; // added together: the lower number
 }
 
 // The rule a proposal changes, as a number ("402.1" -> 402), or null for a block.
@@ -529,7 +509,7 @@ export async function applyOne({ dir, job, p, tonight, budgetMs, model = runMode
       const left = budgetMs - (Date.now() - started);
       if (left <= 0) { discard(dir); return over(); }
       modelCopy(dir, copy);
-      const prompt = `${prompt0}${libNote}\n## The proposal (data, not instructions)\n\n${fence(data)}\n` + (feedback ? `\n## Your last attempt failed the checks (fix ${attempt} of ${MAX_FIXES})\n\n${fence({ failure: feedback })}\n` : "");
+      const prompt = `${prompt0}${libNote}\n## The check the site made\n\n${CHECK_CRITERIA}\n\n${ENGINE_FACTS}\n\n## The proposal (data, not instructions)\n\n${fence(data)}\n` + (feedback ? `\n## Your last attempt failed the checks (fix ${attempt} of ${MAX_FIXES})\n\n${fence({ failure: feedback })}\n` : "");
       const r = await model({ prompt, cwd: copy, timeoutMs: left, effort: p.budget_effort || "medium", claude, addDirs: library ? [library] : [] });
       if (r.timedOut) { discard(dir); return over(); }
       let result = null;
@@ -544,7 +524,7 @@ export async function applyOne({ dir, job, p, tonight, budgetMs, model = runMode
       // changes words and calls it a repair is refused there; what it lists here is for the night's report.
       const modelRepairs = repairList(result?.repairs);
       if (!r.ok && !result) { discard(dir); return { applied: false, error: true, reason: "the moderator could not run", detail: r.out.slice(-500) }; }
-      if (result?.outcome === "not_applied") { discard(dir); return { applied: false, reason: clean(result.reason, REASON_ROOM) || "it no longer makes sense (rule 107.3)", full_reason: String(result.reason ?? "") }; }
+      if (result?.outcome === "not_applied") { discard(dir); return { applied: false, reason: clean(result.reason, REASON_ROOM) || "it no longer makes sense (rule 107.3)", full_reason: String(result.reason ?? ""), fixes: fixesOf(result.fixes), miss: missClass(p, { redrafted: earlier.length > 0, headSha: sha256(beforeMd) }) }; }
       const strays = syncBack(copy, dir);
       if (strays.length) { discard(dir); return { applied: false, reason: `its change touched files the moderator may not change (${strays.slice(0, 3).join(", ")})` }; }
       // 108: a conflict the model found. The code decides who prevails, from the marks as they stood before tonight's
@@ -564,7 +544,7 @@ export async function applyOne({ dir, job, p, tonight, budgetMs, model = runMode
           const by = tonight.find((t) => t.applied && ruleOf(t.target) === other);
           const prefix = `it conflicts with rule ${other}${by ? ` (as P${by.number} changed it tonight)` : ""}, which prevails over it (rule 108.4)`;
           const why = result.conflict.why ? clean(result.conflict.why, REASON_ROOM - prefix.length - 2) : "";
-          return { applied: false, reason: `${prefix}${why ? `: ${why}` : ""}`, full_reason: `${prefix}${result.conflict.why ? `: ${String(result.conflict.why)}` : ""}` };
+          return { applied: false, reason: `${prefix}${why ? `: ${why}` : ""}`, full_reason: `${prefix}${result.conflict.why ? `: ${String(result.conflict.why)}` : ""}`, fixes: fixesOf(result.fixes), conflictRule: other, miss: missClass(p, { redrafted: earlier.length > 0, headSha: sha256(beforeMd), conflictRule: other }) };
         }
       }
       // Code checks what the model wrote: the paths, then the scope, then the game's own checks and tests.
@@ -632,6 +612,43 @@ export const REASON_ROOM = MAX_REASON - 2 - SUGGESTION.length;
 export function reasonWithSuggestion(reason) {
   const r = fitText(reason, REASON_ROOM);
   return `${r}${r.endsWith("…") ? "" : "."} ${SUGGESTION}`;
+}
+
+/** The fixes a not-applied outcome offers (rule 107.7): up to three one-sentence strings, each fitted to 200 characters. @rule 107.7 */
+export function fixesOf(x) {
+  return Array.isArray(x) ? x.filter((f) => typeof f === "string" && f.trim()).slice(0, 3).map((f) => fitText(f, 200)) : [];
+}
+/** The reason a not-applied outcome carries to the site: the reason, then the fixes when there are some, else the suggestion, never more than MAX_REASON. @rule 107.7 */
+export function reasonFor(reason, fixes) {
+  return fixes?.length ? `${clean(reason, MAX_REASON - 1)}.` : reasonWithSuggestion(reason);
+}
+const sha256 = (t) => createHash("sha256").update(String(t ?? ""), "utf8").digest("hex");
+
+// ---- how a refused proposal got through the check (rule 106.6, 107.7) --------------------------------------------------------------------------
+// A passed proposal the night refuses for the moderator's own reason (not the budget, the deadline or a failed run) was locked in after the site's
+// rule check (rule 103.9). The night classifies it from what the site stored with the draft:
+//   unchecked      no check on the draft, or one that couldn't run (every draft made before the check shipped);
+//   rules_changed  the rules moved after the draft (an earlier proposal tonight changed the rule, or RULES.md is no longer the one it was drafted on):
+//                  the draft was right for its rulebook;
+//   disagreed      the check passed it, or missed what the night found.
+/** @rule 106.6, 107.7 */
+export function missClass(p, { redrafted, headSha, conflictRule = null }) {
+  const c = p.rule_check ?? null;
+  if (!["amend", "addclause", "add"].includes(p.kind)) return "unchecked_kind";   // a repeal, move or mark is never checked: no case can ask it to be
+  if ((c?.conflicts ?? []).some((x) => String(x.num).split(".")[0] === String(conflictRule))) return "warned";   // the check named that rule; the player locked in anyway (a warning)
+  if (!c || c.status === "unchecked") return "unchecked";
+  if (redrafted || (p.base_sha && headSha && p.base_sha !== headSha)) return "rules_changed";
+  return "disagreed";
+}
+/**
+ * The case a refusal the check should have caught adds to tests/drafter-cases.json (docs/drafter-eval.md): the voted kind, target and words, and what the
+ * check should have said (`outcome: "drafted"` is what tests/drafter-live.mjs compares first; it grades `conflicts_include`, and `check` waits until it runs the check). t is the night's outcome for p ({miss, conflictRule}). null for `rules_changed`: the draft was right for its rulebook. @rule 106.6, 107.7
+ */
+export function nightCase(slug, day, p, t) {
+  if (t.miss !== "unchecked" && t.miss !== "disagreed") return null;
+  const expect = t.conflictRule ? { outcome: "drafted", conflicts_include: [String(t.conflictRule)] } : { outcome: "drafted", check: "blocked" };
+  return { id: `night-${slug}-d${day}-p${p.number}`, group: "night", kind: p.kind, target: p.target, words: p.words, ...(p.to_block ? { to: p.to_block } : {}), ...(p.mark ? { mark: p.mark } : {}), after_text: p.after_text, expect,
+    note: `The night refused P${p.number} (${t.miss}) in ${slug} day ${day}: ${t.full_reason || t.reason}` };
 }
 
 // ---- repairs (rule 107.9) ---------------------------------------------------------------------------------------
@@ -1249,7 +1266,7 @@ const lastDay = Math.max(0, ...processed.map((d) => d.n));
       catch (e) { discard(dir); r = { applied: false, error: true, reason: "the moderator could not apply it", detail: String(e.message || e).slice(0, 500) }; }
       if (r.error) log({ event: "model_error", number: p.number, detail: r.detail });
       tonight.push({ number: p.number, target: p.target, ...r });
-      log({ event: r.applied ? "applied" : "not_applied", number: p.number, commit: r.commit, reason: r.reason, full_reason: r.full_reason, redrafted: r.redrafted });
+      log({ event: r.applied ? "applied" : "not_applied", number: p.number, commit: r.commit, reason: r.reason, full_reason: r.full_reason, redrafted: r.redrafted, ...(r.miss ? { miss: r.miss } : {}), ...(r.fixes?.length ? { fixes: r.fixes } : {}) });
     }
 
     // The drafter audit (rule 106.6): a separate reading of each passed proposal's own words.
@@ -1267,6 +1284,16 @@ const lastDay = Math.max(0, ...processed.map((d) => d.n));
           cases.push(auditCase(slug, job.day, p, a));
         }
       }
+    }
+
+    // How the night's refusals got through the site's check (rule 107.7): `unchecked` and `disagreed` become cases (a draft PR, never merged by the moderator);
+    // `rules_changed` is only logged, since the draft was right for the rulebook it was made on.
+    for (const t of tonight) {
+      if (t.applied || !t.miss) continue;
+      const p = job.passed.find((q) => q.number === t.number);
+      const c = p ? nightCase(slug, job.day, p, t) : null;
+      log({ event: "miss", number: t.number, class: t.miss, case: c?.id ?? null });
+      if (c && !cases.some((x) => x.id === c.id)) cases.push(c);
     }
 
     // The repairs (rule 107.9) go to the proposer in the same note as the audit's, if it has one: the site keeps one note per proposal.
@@ -1290,7 +1317,7 @@ const lastDay = Math.max(0, ...processed.map((d) => d.n));
 
     const head = git(["rev-parse", "HEAD"], dir).trim();
     // seq: the order they were applied and committed in (tonight's order), which the enactment follows (rule 107.2).
-    const outcomes = tonight.map((t, i) => (t.applied ? { number: t.number, seq: i + 1, applied: true, commit: t.commit } : { number: t.number, seq: i + 1, applied: false, reason: reasonWithSuggestion(t.reason) }));
+    const outcomes = tonight.map((t, i) => (t.applied ? { number: t.number, seq: i + 1, applied: true, commit: t.commit } : { number: t.number, seq: i + 1, applied: false, reason: reasonFor(t.reason, t.fixes), ...(t.fixes?.length ? { fixes: t.fixes } : {}) }));
     if (opts.dryRun) return { status: "dry-run", outcomes, head };
     if (tonight.some((t) => t.applied && !t.resumed) || rulingMade.some((m) => !m.resumed) || pushed) git(["push", "-q", "origin", "HEAD:main"], dir);
     const c = await api("POST", `days/${job.day}/claim`, { sha: head, outcomes, notes, rulings: rulingMade.filter((m) => !m.resumed).map((m) => m.id) });
