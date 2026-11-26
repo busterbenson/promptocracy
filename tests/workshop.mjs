@@ -620,6 +620,13 @@ try {
     const priv = await Cy.post(P, { kind: "addclause", target: "401", words: "A Lamp glows at night.", uses: [w4] });
     const privWords = await Cy.post(P, { kind: "addclause", target: "401", words: "A Lamp glows at night." });
     check("a private Draft's entry is not an entry to use: neither a sent ref nor its name in the words is recorded (it is not an open commission, 801.1)", priv.status === 200 && priv.data.proposal.uses_note === null && privWords.status === 200 && privWords.data.proposal.uses_note === null, priv.text + privWords.text);
+    // one ticket that makes two entries: "uses W-x" is the entry the words name, not the ticket's first (Codex on #140)
+    const two_ = await commission(Bo, { ...good(), title: "An urn and a wreath", brief: "An urn, and a wreath for it.", makes: [{ kind: "entry", name: "Urn", catalogKind: "item" }, { kind: "entry", name: "Wreath", catalogKind: "item" }], estimate: 1, running_cost: "None.", tasks: ["Draw it"] });
+    const wUrn = two_.n;
+    const second = await Ana.post(P, { kind: "addclause", target: "401", words: "A creature that eats a Wreath loses a heart.", uses: [wUrn] });
+    check("a ticket that makes an Urn then a Wreath, used by words that name the Wreath: the slip says Wreath, not the first entry", two_.k.status === 200 && second.status === 200 && second.data.proposal.uses_note === `Uses Wreath from ${wUrn}`, two_.k.text + second.text);
+    const neither = await Ana.post(P, { kind: "addclause", target: "401", words: "A creature that eats a Flower loses a heart.", uses: [wUrn] });
+    check("words that name neither of the ticket's two entries record none of them", neither.status === 200 && !String(neither.data.proposal.uses_note ?? "").includes(wUrn), neither.text);
     const none = await Ana.post(P, { kind: "addclause", target: "401", words: "Points can't be given away." });
     check("a draft naming no entry says nothing", none.status === 200 && none.data.proposal.uses_note === null, none.text);
   }

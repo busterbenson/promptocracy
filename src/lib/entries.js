@@ -53,18 +53,42 @@ export function usesReason(item) {
 export function mentionedEntries(text, entries) {
   const { built = [] } = entries || {};
   const pending = ((entries || {}).pending || []).filter((p) => p.state !== "Draft");
-  const hay = String(text ?? "").toLowerCase();
   const found = [];
-  /** @rule 703.4 */
-  const has = (name) => {
-    const n = String(name ?? "").toLowerCase().replace(/\s+/g, " ").trim();
-    if (!n) return false;
-    const esc = n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    return new RegExp(`(^|[^a-z0-9])${esc}(?:e?s)?($|[^a-z0-9])`).test(hay);
-  };
-  for (const b of built) if (has(b.name)) found.push({ name: b.name, kind: b.kind, ref: b.id });
-  for (const p of pending) if (has(p.name) && !found.some((f) => f.ref === p.ticket && f.name === p.name)) found.push({ name: p.name, kind: p.catalogKind, ref: p.ticket });
+  for (const b of built) if (namedIn(text, b.name)) found.push({ name: b.name, kind: b.kind, ref: b.id });
+  for (const p of pending) if (namedIn(text, p.name) && !found.some((f) => f.ref === p.ticket && f.name === p.name)) found.push({ name: p.name, kind: p.catalogKind, ref: p.ticket });
   return found;
+}
+
+/** Whether `text` names `name`: a whole word, case-insensitive, a trailing "s" allowed. @rule 703.4 */
+function namedIn(text, name) {
+  const n = String(name ?? "").toLowerCase().replace(/\s+/g, " ").trim();
+  if (!n) return false;
+  const esc = n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(^|[^a-z0-9])${esc}(?:e?s)?($|[^a-z0-9])`).test(String(text ?? "").toLowerCase());
+}
+
+/**
+ * The entries a draft uses, from the refs Gremlin sent ("W4", "C1"): a built entry by its id, a pending one by its ticket and the entry's name. A ticket that makes
+ * several entries is only a ref to the one the draft's words name (D7: ticket + kind, and the name when several): the words naming two record both, naming none record
+ * none. A Draft's entry is private, not an open commission (801.1), so it is never recorded. [{name, kind, ref}], each entry once. @rule 703.4
+ */
+export function resolveUses(refs, words, entries) {
+  const { built = [] } = entries || {};
+  const pending = ((entries || {}).pending || []).filter((p) => p.state !== "Draft");
+  const out = [];
+  /** @rule 703.4 */
+  const add = (u) => { if (!out.some((x) => x.ref === u.ref && x.name === u.name && x.kind === u.kind)) out.push(u); };
+  for (const raw of (Array.isArray(refs) ? refs : []).slice(0, 8)) {
+    const ref = String(raw ?? "").trim().toUpperCase();
+    if (/^W\d+$/.test(ref)) {
+      const mine = pending.filter((x) => x.ticket === ref);
+      for (const p of mine.length === 1 ? mine : mine.filter((x) => namedIn(words, x.name))) add({ name: p.name, kind: p.catalogKind, ref });
+    } else {
+      const b = built.find((x) => String(x.id).toUpperCase() === ref);
+      if (b) add({ name: b.name, kind: b.kind, ref });
+    }
+  }
+  return out;
 }
 
 /** The slip's line for what a draft uses: "Uses Flower from W4", or "Uses Blob (C1)" for a built entry. @rule 703.4 */

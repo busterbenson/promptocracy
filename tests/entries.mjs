@@ -7,7 +7,7 @@ import { ROOT } from "./lib.mjs";
 import * as G from "../src/lib/gremlin.js";
 import * as R from "../src/lib/gremlin-rules.js";
 import { confirmProblem, pendingFrom, readMakes } from "../src/lib/tickets.js";
-import { duplicatesOf, mentionedEntries, usedEntry, usesNote } from "../src/lib/entries.js";
+import { duplicatesOf, mentionedEntries, resolveUses, usedEntry, usesNote } from "../src/lib/entries.js";
 import { CHECK_CRITERIA, ENGINE_FACTS, checkPrompt } from "../src/lib/rule-check.js";
 import { parseBook } from "../src/lib/proposals.js";
 import { entryMadeBy } from "../src/engine/api.js";
@@ -152,6 +152,25 @@ console.log("the template's rule text (rules 701.4, 703.2, 703.4, 801.6, 103.9)"
   check("701.4 exists and says one name per kind and 'use that one instead'", /No two entries of one kind share a name/.test(RULES) && /It can use that one instead\./.test(RULES) && !!BOOK.byNum["701.4"]);
   check("703.2 allows naming an entry by its id or its commission; 703.4 exists", /Rules use attributes, or name an entry by its id or by the commission that makes it \(703\.4\)\./.test(RULES) && !!BOOK.byNum["703.4"] && /the Flower \(W4\)/.test(RULES) && /has nothing to act on/.test(RULES));
   check("801.6 says he knows the catalog and what open commissions make; 103.9 counts such an entry as provided", /In every conversation he also knows the catalog and what each open commission makes\./.test(RULES) && /entry an open commission makes \(703\.4\)/.test(RULES) && clause("103.9") !== null);
+}
+
+console.log("one ticket, two entries: the second is not lost, and a ref resolves to the entry the words name (Codex on #140)");
+{
+  const MULTI = { built: BUILT, pending: [{ name: "Vase", catalogKind: "item", ticket: "W4", owner: "Sarah", state: "Ready" }, { name: "Flower", catalogKind: "item", ticket: "W4", owner: "Sarah", state: "Ready" }, { name: "Lamp", catalogKind: "item", ticket: "W6", owner: "Dee", state: "Ready" }] };
+  const ctx = { ceiling: 25, systemText: G.systemStatic({ ceiling: 25 }), catalog: {}, entries: MULTI };
+  const ans = (makes) => J({ say: "ok", refusal: "", escalate: { category: "none", reason: "" }, move: "none", options: [], ticket: { title: "", brief: "", estimate: 0, running_cost: "", tasks: [], makes, price: { points: 0, reason: "" } } });
+  const U = (name) => ({ kind: "uses", name, catalogKind: "item", num: "W4", attrs: [], flavor: [], needsBuild: [], draft: "", art: "" });
+  const both = G.readGremlinAnswer(ans([U("Flower"), U("Vase")]), ctx);
+  check("Gremlin's answer: uses Flower and Vase, both from W4, saves both", both.patch.makes?.length === 2 && both.patch.makes.map((m) => m.name).join() === "Flower,Vase", J(both.patch.makes));
+  check("the same item twice is still one", G.readGremlinAnswer(ans([U("Flower"), U("flower")]), ctx).patch.makes?.length === 1);
+  const own = readMakes([{ kind: "uses", name: "Flower", catalogKind: "item", num: "W4" }, { kind: "uses", name: "Vase", catalogKind: "item", num: "W4" }], { entries: MULTI, stored: [] });
+  check("a hand edit keeps both too", own.makes?.length === 2, J(own));
+  const r = (refs, words) => J(resolveUses(refs, words, MULTI));
+  check("W4 makes Vase then Flower; the words name the Flower: it is the Flower, not the first entry", r(["W4"], "A creature that eats a Flower loses a heart.") === J([{ name: "Flower", kind: "item", ref: "W4" }]), r(["W4"], "A creature that eats a Flower loses a heart."));
+  check("the words name both: both are recorded, each under W4", r(["W4"], "A Flower goes in a Vase.") === J([{ name: "Vase", kind: "item", ref: "W4" }, { name: "Flower", kind: "item", ref: "W4" }]));
+  check("W4 makes two and the words name neither: nothing is recorded (no guess)", r(["W4"], "Points can't be given away.") === "[]");
+  check("a ticket with one entry needs no name in the words", r(["W6"], "Points can't be given away.") === J([{ name: "Lamp", kind: "item", ref: "W6" }]));
+  check("a built entry by its id, an unknown ref left out, a repeated ref once", r(["c1", "W99", "W6", "w6"], "x") === J([{ name: "Blob", kind: "creature", ref: "C1" }, { name: "Lamp", kind: "item", ref: "W6" }]));
 }
 
 console.log("the moderator (rules 106.4, 703.4)");

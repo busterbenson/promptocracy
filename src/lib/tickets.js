@@ -65,7 +65,7 @@ export function readMakes(v, ctx = {}) {
     } else if (m && m.kind === "uses") {
       const r = readUses(m, ctx.entries, ctx.stored);
       if (!r.item) return { error: r.reason };
-      if (!makes.some((x) => x.kind === "uses" && x.num === r.item.num && x.name === r.item.name)) makes.push(r.item);
+      if (!makes.some((x) => x.kind === "uses" && x.num === r.item.num && x.catalogKind === r.item.catalogKind && String(x.name).toLowerCase() === String(r.item.name).toLowerCase())) makes.push(r.item);
     } else return { error: "Each thing it makes is a catalog entry (with a name), a rule (with a number) or an entry it uses (with the ticket that makes it)." };
   }
   return { makes };

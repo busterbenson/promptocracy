@@ -473,7 +473,7 @@ export function readGremlinAnswer(text, ctx) {
             const was = (ctx.makes || []).find((x) => x && x.kind === "entry" && x.art && x.art.prompt && String(x.name).toLowerCase() === r.item.name.toLowerCase() && (x.catalogKind ?? null) === r.item.catalogKind);
             if (was) r.item.art = { prompt: was.art.prompt };
           }
-          const dup = items.some((x) => x.kind === r.item.kind && (r.item.kind === "rule" ? x.num === r.item.num && x.draft === r.item.draft : r.item.kind === "uses" ? x.num === r.item.num : x.name.toLowerCase() === r.item.name.toLowerCase() && x.catalogKind === r.item.catalogKind));
+          const dup = items.some((x) => x.kind === r.item.kind && (r.item.kind === "rule" ? x.num === r.item.num && x.draft === r.item.draft : r.item.kind === "uses" ? x.num === r.item.num && x.name.toLowerCase() === r.item.name.toLowerCase() && x.catalogKind === r.item.catalogKind : x.name.toLowerCase() === r.item.name.toLowerCase() && x.catalogKind === r.item.catalogKind));
           if (!dup) items.push(r.item);
         });
         // An item that was refused (an unknown kind, no name) leaves the list unsaved as a whole: a half-written list would silently

@@ -26,7 +26,7 @@ import { checkDraft, CHECKED_KINDS } from "../lib/draft-check";
 import { lockRefusalOf, checkConflictNums } from "../lib/rule-check.js";
 import { catalogFor } from "./api-catalog";
 import { openEntriesFor } from "../lib/pending-entries";
-import { mentionedEntries, usedEntry, usesNote } from "../lib/entries.js";
+import { mentionedEntries, resolveUses, usedEntry, usesNote } from "../lib/entries.js";
 import { refusalBody, turnBlock } from "../lib/turn";
 import { Ctx, colorOf, json, nowIso, readJson, sha256Hex, siteUrl, who } from "../lib/util";
 
@@ -182,15 +182,8 @@ export async function prepareDraft(env: any, game: any, day: any, turn: any, pla
  * were sent, the single entry whose name the player's words name (several record nothing). A private Draft ticket is never an entry to use (801.1). It is a label on the slip, never a blocker. @rule 703.4
  */
 function usesOf(body: any, req: any, entries: any): { name: string; kind: string; ref: string }[] {
-  if (Array.isArray(body?.uses)) {
-    const out: { name: string; kind: string; ref: string }[] = [];
-    for (const raw of body.uses.slice(0, 8)) {
-      const ref = String(raw ?? "").trim().toUpperCase();
-      const e = /^W\d+$/.test(ref) ? entries.pending.find((x: any) => x.ticket === ref) : entries.built.find((x: any) => String(x.id).toUpperCase() === ref);
-      if (e && !out.some((x) => x.ref === ref)) out.push({ name: e.name, kind: e.kind ?? e.catalogKind, ref });
-    }
-    return out;
-  }
+  // A ref names a ticket or a built entry; a ticket that makes several is the one entry the words name (D7), so "W4" is never just its first.
+  if (Array.isArray(body?.uses)) return resolveUses(body.uses, req.words, entries);
   if (!CHECKED_KINDS.includes(req.kind)) return [];
   const found = mentionedEntries(req.words, entries);
   return found.length === 1 ? found : [];
