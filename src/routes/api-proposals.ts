@@ -274,14 +274,13 @@ export async function confirm(ctx: Ctx, player: any, id: string, nowMs: number):
   if (row.base_sha !== sha) return out({ error: "The rules have changed since this was drafted. Draft it again." }, 409);
   // The rule check (rule 103.9): a draft that relies on something the game doesn't have, or that couldn't be checked, is not locked in.
   // A check made on other criteria or another model than today's (or one that never completed) is made again first: a fix that deployed after the draft unblocks it without a redraft.
-  const checkBefore = row.rule_check;
   await refreshCheck(env, game, timeZoneOf(game), player.id, md, book, catalogFor(game).entries, (await openEntriesFor(env, game, player.id)).pending ?? [], row, nowMs);
   // The re-check may have made a model call (up to 30 s, and one that failed or returned the same answer leaves the row as it was): the write below uses the clock NOW, and meets the lock if the call ran past midnight (rule 107.1).
   nowMs = await clockNow(env);
   const late = turnBlock(game, day, turn, player, "propose", nowMs);
   if (late) return out(refusalBody(late), late.status);
-  // A check made again can name a conflict with a not-wired clause that the first one missed: refused like the same draft would be (103.6), as `prepareDraft` does
-  const unwired = row.rule_check !== checkBefore ? notWiredConflictRefusal(book, JSON.parse(row.conflicts || "[]")) : null;
+  // The stored conflicts are held to the not-wired parts on every lock-in (103.6), as `prepareDraft` does: a check made again can add one, and it stays stored for the next try
+  const unwired = notWiredConflictRefusal(book, JSON.parse(row.conflicts || "[]"));
   if (unwired) return out({ error: unwired, drafting: "refused", reason: NOT_WIRED_REASON }, 422);
   const why = lockRefusal(book, row);
   if (why) return out({ error: why, check: row.rule_check ? JSON.parse(row.rule_check) : null }, 409);

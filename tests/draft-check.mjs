@@ -117,6 +117,14 @@ try {
   await ana.post(`${P}/${st3.data.proposal.id}/confirm`, {});
   check("a check made again at lock-in that names a conflict puts it on the draft's conflicts too (the warning voters see), keeping the drafter's own", JSON.parse(sql(`SELECT conflicts FROM proposals WHERE id = '${st3.data.proposal.id}'`)[0].conflicts).includes("402.3"));
   sql(`UPDATE proposals SET status = 'withdrawn' WHERE id = '${st3.data.proposal.id}'`);   // it locked in (a conflict only warns): frees the day's slot
+  // a stale check made again that names a not-wired part (107.1) is refused (103.6) on the first lock-in AND on every one after it: the refreshed check is stored, so the second try meets a current check
+  const st4 = await draftAdd("A player on a house tile loses no points for 2 nights, a fourth stale one.");
+  sql(`UPDATE proposals SET rule_check = json_set(rule_check, '$.v', '00000000'), conflicts = '[]' WHERE id = '${st4.data.proposal.id}'`);
+  stubs.check = { status: 200, text: J({ conflicts: ["107.1"], missing: [], fixes: [] }) };
+  const nw1 = await ana.post(`${P}/${st4.data.proposal.id}/confirm`, {});
+  const nw2 = await ana.post(`${P}/${st4.data.proposal.id}/confirm`, {});
+  check("a stale check made again that names a not-wired conflict (107.1) is refused 422, and refused again on the next lock-in, with no P-number", nw1.status === 422 && nw2.status === 422 && /not wired/.test(nw2.data.error || "") && sql(`SELECT status, number FROM proposals WHERE id = '${st4.data.proposal.id}'`)[0].status === "draft" && sql(`SELECT number FROM proposals WHERE id = '${st4.data.proposal.id}'`)[0].number === null, `${nw1.status} ${nw2.status} ${nw2.text}`);
+  sql(`DELETE FROM proposals WHERE id = '${st4.data.proposal.id}'`);
   sql(`DELETE FROM proposals WHERE id = '${st2.data.proposal.id}'`);
   sql(`UPDATE proposals SET status = 'withdrawn' WHERE id = '${st.data.proposal.id}'`);   // frees the day's slot for the tests below
   stubs.check = { status: 200, text: J({ ...OK, engine: [{ what: "moving a player's piece", why: "No effect moves a player." }] }) };
