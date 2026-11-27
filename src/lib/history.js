@@ -93,7 +93,11 @@ export function noticeLink(slug, r, ticket) {
   return `/${slug}/#${r.kind === "commission" && ticket ? `w-${ticket.n}` : `p-P${r.number}`}`;
 }
 
-/** A commission that was waiting for its price and is now paid and approved, as a notification. @rule 801.4, 803.1 */
+/**
+ * A commission that was waiting for its price (Ready) and was paid and approved at the count, as a notification. It says what happened, that it was paid:
+ * the notice is written only when the count approved it, and the count pays it in the same batch, so "can pay now" would be told after the payment.
+ * @rule 801.4, 803.1
+ */
 export function readyApprovedNotice(ticket, name) {
-  return `${whatSentence({ kind: "commission" }, ticket)}. Approved: ${name} can pay now.`;
+  return `${whatSentence({ kind: "commission" }, ticket)}. Approved: ${name} paid ${ticket.price} ${Number(ticket.price) === 1 ? "point" : "points"}.`;
 }

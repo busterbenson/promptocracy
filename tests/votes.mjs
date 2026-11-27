@@ -77,6 +77,14 @@ console.log("the 3 am deadline (rule 107.6), by the wall clock");
     returnedBody(7, `it conflicts with rule 402, which prevails over it… ${S}`) === `P7 passed but was not applied: it conflicts with rule 402, which prevails over it… It gave no points. ${S}` &&
     returnedBody(9, `the game doesn't track which tiles you've been on. ${S.slice(0, -1)}`) === `P9 passed but was not applied: the game doesn't track which tiles you've been on. It gave no points. ${S}` &&
     twice(returnedBody(1, DEADLINE_REASON)) === 1);
+  // 2026-11-27 (night 3, P14): a reason that already tells the owner what to do next ("propose it again once the engine has that power") is an engine gap:
+  // splitting or simplifying cannot help, so the generic suggestion is not added, and the note still ends in a full stop.
+  const GAP = "The game can't give a charted tile a catalog entry yet: charting records only a tile's position, and you can propose this clause again once the engine has that power";
+  check("an engine-gap reason (it says to propose again later) is told without the generic suggestion, as whole sentences",
+    returnedBody(14, `${GAP}. ${S}`) === `P14 passed but was not applied: ${GAP}. It gave no points.` &&
+    returnedBody(14, GAP) === `P14 passed but was not applied: ${GAP}. It gave no points.` &&
+    returnedBody(14, `${GAP}.`) === `P14 passed but was not applied: ${GAP}. It gave no points.` && twice(returnedBody(14, `${GAP}. ${S}`)) === 0);
+  check("an over-budget or tests-failed reason still gets the suggestion", /Try splitting it/.test(returnedBody(5, "it ran out of its time budget")) && /Try splitting it/.test(returnedBody(6, "the game's tests failed after the change")));
 }
 
 // ---------------------------------------------------------------- migration 0007 on a database with data

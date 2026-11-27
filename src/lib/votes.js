@@ -60,14 +60,23 @@ export const DEPLOY_CLOCK = nightClock(DEADLINE_HOUR * 60 + DEPLOY_GRACE_MINUTES
 export const DEADLINE_REASON = `Chalant did not finish processing by ${DEADLINE_CLOCK}`;
 /** @rule 107.7 */
 export const SUGGESTION = "Try splitting it into smaller proposals or simplifying it, and propose it again.";
-// The moderator's reason already ends with the suggestion (it is what the other players are shown), so it is taken off here and
+/**
+ * A reason that already tells the owner what to do next: "...you can propose this clause again once the engine has that power". That is a refusal for
+ * a missing engine capability, and splitting or simplifying the proposal cannot help it, so the generic suggestion is not added (night 3, P14). The
+ * moderator's reason carries no structured flag for it, so the words are what is read: "propose" followed, in the same sentence, by "again".
+ * @rule 107.7
+ */
+export const saysWhatNext = (reason) => /\bpropose\b[^.!?]*\bagain\b/i.test(String(reason ?? ""));
+// The moderator's reason may end with the suggestion (it is what the other players are shown), so it is taken off here and
 // said once, after "It gave no points". The claim route stores the reason without its final full stop, so it is matched without it.
+// A reason that already says what to do next (saysWhatNext) is told without it.
 /** @rule 107.7 */
 export const returnedBody = (number, reason, fixes = []) => {
   const bare = SUGGESTION.replace(/\.$/, "");
   let r = String(reason ?? "").trim().replace(/[.\s]+$/, "");
   if (r.endsWith(bare)) r = r.slice(0, -bare.length).trim().replace(/[.\s]+$/, "");
-  return `P${number} passed but was not applied: ${r}${r.endsWith("…") ? "" : "."} It gave no points. ${fixes.length ? `Changes that would fix it: ${fixes.map((f, i) => `(${i + 1}) ${String(f).trim().replace(/[.\s]+$/, "")}`).join("; ")}.` : SUGGESTION}`;
+  const tail = fixes.length ? `Changes that would fix it: ${fixes.map((f, i) => `(${i + 1}) ${String(f).trim().replace(/[.\s]+$/, "")}`).join("; ")}.` : saysWhatNext(r) ? "" : ` ${SUGGESTION}`.trim();
+  return `P${number} passed but was not applied: ${r}${r.endsWith("…") ? "" : "."} It gave no points.${tail ? ` ${tail}` : ""}`;
 };
 
 // Rule 107.7: an applied proposal whose change was not live by the deploy deadline (the deadline + DEPLOY_GRACE_MINUTES).
