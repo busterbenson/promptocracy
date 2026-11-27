@@ -44,7 +44,7 @@ export async function pipeline(drafter, book, md, c, env, { actions, isCap = () 
   let check = null;
   if (draftcheck && ["amend", "addclause", "add"].includes(req.kind)) {
     const run = await draftcheck.runCheck(env, md, book, catalog, { kind: req.kind, target: req.target, new_num: d.new_num, mark: req.mark, head: d.head, before_text: d.before_text, after_text: d.after_text, words: req.words }, {}, pending);
-    check = run.check ?? { status: "unchecked", conflicts: [], missing: [], fixes: [] };
+    check = run.check ?? { status: "unchecked", conflicts: [], missing: [], fixes: [], reason: `${run.outcome}: ${run.reason}` };
     for (const x of check.conflicts) if (!conflicts.includes(x.num)) conflicts.push(x.num);
   }
   return { check, outcome: "drafted", req, head: d.head, new_num: d.new_num, before_text: d.before_text, after_text: d.after_text, conflicts, settings, drafted_by: after === null ? "code" : "model" };
