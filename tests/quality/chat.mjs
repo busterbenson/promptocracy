@@ -20,6 +20,16 @@ function droppedQuotes(text, book) {
   try { return (JSON.parse(text).quotes || []).map((q) => ({ num: q?.num, text: clip(q?.text, 240), why: checkQuote(book, q).dropped })).filter((q) => q.why); } catch { return []; }
 }
 
+/** What the player sees on the slip a turn ends with (the harness's turns[i].slip): the draft that stands and its rule check. */
+function slipRecord(p, asked, fresh) {
+  const c = p.check;
+  return {
+    kind: p.req.kind, target: p.req.target, words: asked.words ?? "", after_text: p.after_text, head: p.head, fresh,
+    check: c?.status ?? null, missing: (c?.missing || []).map((m) => ({ what: m.what, why: m.why })), fixes: (c?.fixes || []).map((f) => f.say),
+    engine_note: c?.engine_note ?? null,
+  };
+}
+
 /** The scripted lines of one case, as a generator of "what to send next" given what has happened so far. */
 function nextLine(c, sent, state) {
   if (sent < c.turns.length) return c.turns[sent];
@@ -45,7 +55,7 @@ export async function runChatCase(c, x) {
 /** `o`: {sent (turns already used), moved (this message came from a ticket)}. @rule 801.6 */
 async function generalCase(c, x, res, o) {
   const history = [];
-  let slip = null, drafted = null, sent = o.sent || 0, moved = !!o.moved;
+  let slip = null, drafted = null, sent = o.sent || 0, moved = !!o.moved, standing = null;
   const state = { draft: false, lastSay: "" };
   const env = { MODEL_API_KEY: x.keys.model };
   const entries = entriesOf(c, x.catalog);   // the catalog's entries and what the case's open commissions make (rules 701.4, 703.4)
@@ -120,7 +130,11 @@ async function generalCase(c, x, res, o) {
         res.refusal = { reason: p.reason, message: p.message, turn: sent + 1 };
       }
       res.draft_count = (res.draft_count || 0) + (p.outcome === "drafted" ? 1 : 0);
+      if (p.outcome === "drafted") turn.slip = slipRecord(p, asked, true);
     }
+    // the standing slip after this turn (the draft that stands, or the one from an earlier turn): what the player sees at the end of his answer
+    if (!turn.slip && standing) turn.slip = { ...standing, fresh: false };
+    if (turn.slip) standing = turn.slip;
     history.push({ role: "player", body: message }, { role: "agent", body: a.say });
     state.lastSay = a.say;
     moved = false;   // one move is for the one message that came here

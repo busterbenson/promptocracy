@@ -14,6 +14,41 @@ export function digestOf(res, night) {
   return h.digest("hex").slice(0, 16);
 }
 
+
+/**
+ * One first-answer criterion against a turn's standing slip (Buster, 2026-11-26: "craft rules that are valid and in the spirit of the players request without any back and forth").
+ * x: {check: "ok" | "blocked", engine_note: true | false, kind: [...], words_re, not_words_re, says_not_re, says_re, guess: true, missing_names_re, options_not_re, no_escalation}.
+ * `turn` is the scripted turn. Returns [{name, pass, detail}], every key a separate check, so a failing case says which part failed.
+ */
+export function slipCriteria(label, turn, x) {
+  const sl = turn?.slip ?? null, out = [];
+  const say = turn?.say || "", hay = `${sl?.words ?? ""}\n${sl?.after_text ?? ""}`;
+  const add = (name, pass, detail = "") => out.push(chk(`${label}: ${name}`, pass, detail));
+  add("a slip stands", !!sl, sl ? "" : `no slip; he said: ${say.slice(0, 120)}`);
+  if (!sl) return out;
+  if (x.check) add(`the rule check says ${x.check}`, sl.check === x.check, `got ${sl.check ?? "no check"}${sl.missing?.length ? ` (${sl.missing.map((m) => m.what).join("; ")})` : ""}`);
+  if (x.engine_note === true) add("an engine note rides on the slip", !!sl.engine_note, sl.engine_note || "none");
+  if (x.engine_note === false) add("no engine note", !sl.engine_note, sl.engine_note || "");
+  if (x.kind) add("draft kind", list(x.kind).includes(sl.kind), `got ${sl.kind}, wanted ${list(x.kind).join(" or ")}`);
+  if (x.words_re) for (const re of list(x.words_re)) add(`the draft says /${re}/`, new RegExp(re, "i").test(hay), hay.slice(0, 200));
+  if (x.not_words_re) add(`the draft does not say /${x.not_words_re}/`, !new RegExp(x.not_words_re, "i").test(hay), (new RegExp(x.not_words_re, "i").exec(hay) || [""])[0]);
+  if (x.says_re) add(`his line says /${x.says_re}/`, new RegExp(x.says_re, "i").test(say), say.slice(0, 160));
+  if (x.says_not_re) add(`his line does not say /${x.says_not_re}/`, !new RegExp(x.says_not_re, "i").test(say), (new RegExp(x.says_not_re, "i").exec(say) || [""])[0]);
+  if (x.guess) add("a guesses line", !!turn?.guesses, turn?.guesses || "none");
+  if (x.missing_names_re) add(`the missing item names /${x.missing_names_re}/`, (sl.missing || []).some((m) => new RegExp(x.missing_names_re, "i").test(`${m.what} ${m.why}`)), JSON.stringify(sl.missing || []));
+  if (x.options_not_re) add(`no option says /${x.options_not_re}/`, ![...(turn?.options || []), ...(sl.fixes || [])].some((o) => new RegExp(x.options_not_re, "i").test(o)), JSON.stringify([...(turn?.options || []), ...(sl.fixes || [])]).slice(0, 200));
+  if (x.no_escalation) add("no escalation", !turn?.escalate, turn?.escalate?.reason || "");
+  return out;
+}
+
+/** first_answer / turn_slip: an object, or {any: [object, ...]} where one alternative must pass whole. */
+function slipExpect(label, turn, x) {
+  if (!x.any) return slipCriteria(label, turn, x);
+  const tries = x.any.map((alt, i) => slipCriteria(`${label} (alternative ${i + 1})`, turn, alt));
+  const whole = tries.find((t) => t.every((k) => k.pass));
+  return whole ? [chk(`${label}: one alternative holds`, true, "")] : [chk(`${label}: one alternative must hold`, false, tries.map((t, i) => `[${i + 1}] ${t.filter((k) => !k.pass).map((k) => k.name + (k.detail ? " -> " + k.detail : "")).join("; ")}`).join(" | "))];
+}
+
 /** Every code check for one case. Returns [{name, pass, detail, soft}]. A `soft` check is reported but never fails the case. */
 export function codeChecks(c, res, night) {
   const e = c.expect || {}, out = [], turns = res.turns || [];
@@ -37,6 +72,8 @@ export function codeChecks(c, res, night) {
     const dead = turns.filter((t) => !t.moved && !(t.outcome === "drafted" || (t.options || []).length || (t.patch && "price" in t.patch) || /\bA:[^]*\bB:/.test(t.say || "")));
     out.push(chk("no dead end: every turn ends in a draft, a price or options", !dead.length, dead.map((t) => (t.say || "").slice(0, 90)).join(" | ")));
   }
+  if (e.first_answer) out.push(...slipExpect("first answer", turns[0], e.first_answer));
+  for (const t of e.turn_slip || []) out.push(...slipExpect(`turn ${t.turn}`, turns[t.turn - 1], t));
   {   // the general conversation's expectations (every key is guarded: a case without them is not asked)
     if (e.drafts_max !== undefined) out.push(chk(`at most ${e.drafts_max} draft(s)`, n <= e.drafts_max, `${n} drafted`));
     if (e.draft) {

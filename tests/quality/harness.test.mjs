@@ -11,7 +11,7 @@ import { runChatCase } from "./chat.mjs";
 import { answerKey, caseStatus, codeChecks } from "./grade.mjs";
 import { BlockedHost, CapReached, Meter, ROOT, assertNoKeys, assertScratch, guardFetch, loadKeys, makeRunTmp, scrubEnv } from "./lib.mjs";
 import { nightCapped, parseClaude, runNight } from "./night.mjs";
-import { esc, renderPage } from "./page.mjs";
+import { esc, renderPage, repsTable } from "./page.mjs";
 import { catalogOf, cloneCase, scratchFromDir } from "./scratch.mjs";
 import { pipeline } from "./pipeline.mjs";
 
@@ -211,6 +211,30 @@ check("page: an action's and a commission's night reads n/a, not a green", /nigh
 check("page: a known fail is labelled EXPECTED FAIL and the summary and agreement are on top", page.includes("EXPECTED FAIL") && page.includes("agreed with you on 7 of 9") && page.includes("tagline:"));
 check("page: no blank line inside the HTML (the markdown renderer would end the block)", !/\n\n/.test(page.split("---\n").slice(2).join("---\n").trim()));
 check("esc handles quotes and ampersands", esc(`<a href="x">&'`) === "&lt;a href=&quot;x&quot;&gt;&amp;&#39;");
+
+// ---- 9. first-answer keys and --repeat (the first answer is the standing slip of turn 1) ------------------------------------------------
+{
+  const slip = (o = {}) => ({ kind: "add", target: "200", words: "Each day has a moon.", after_text: "205.1 Each day has a moon, worked out from the 29.53-day cycle.", check: "ok", missing: [], fixes: [], engine_note: null, ...o });
+  const res = (turn, extra = {}) => ({ turns: [{ say: "Drafted it.", guesses: "I guessed block 200.", options: [], ...turn }], draft_count: 1, draft: {}, ...extra });
+  const run = (expect, r) => codeChecks({ id: "x", expect }, r, null).filter((k) => !k.pass).map((k) => k.name);
+  check("first_answer: an ok slip with the right words passes", run({ first_answer: { check: "ok", engine_note: false, words_re: ["moon", "29\\.53"], guess: true } }, res({ slip: slip() })).length === 0);
+  check("first_answer: a blocked slip fails an ok case, and says what it got", run({ first_answer: { check: "ok" } }, res({ slip: slip({ check: "blocked", missing: [{ what: "the real moon", why: "x" }] }) })).some((n) => /rule check says ok/.test(n)));
+  check("first_answer: no slip fails", run({ first_answer: { check: "ok" } }, res({})).some((n) => /a slip stands/.test(n)));
+  check("first_answer: words_re and not_words_re read the draft", run({ first_answer: { not_words_re: "random" } }, res({ slip: slip({ after_text: "a random moon" }) })).length === 1 && run({ first_answer: { words_re: ["bite"] } }, res({ slip: slip() })).length === 1);
+  check("first_answer: engine_note true needs the note, false needs none", run({ first_answer: { engine_note: true } }, res({ slip: slip() })).length === 1 && run({ first_answer: { engine_note: true } }, res({ slip: slip({ engine_note: "needs the engine to learn moving a player" }) })).length === 0 && run({ first_answer: { engine_note: false } }, res({ slip: slip({ engine_note: "x" }) })).length === 1);
+  check("first_answer: blocked must name the missing item; options may not carry a banned word", run({ first_answer: { check: "blocked", missing_names_re: "stood" } }, res({ slip: slip({ check: "blocked", missing: [{ what: "how long a piece stood", why: "" }] }) })).length === 0 && run({ first_answer: { options_not_re: "creature" } }, res({ slip: slip(), options: ["a creature rule"] })).length === 1);
+  check("first_answer: says_not_re reads his line", run({ first_answer: { says_not_re: "no rule takes" } }, res({ slip: slip(), say: "No rule takes points away." })).length === 1);
+  check("first_answer any: one whole alternative passes the case; none fails it", run({ first_answer: { any: [{ check: "ok", engine_note: true }, { check: "blocked" }] } }, res({ slip: slip({ check: "blocked" }) })).length === 0 && run({ first_answer: { any: [{ check: "ok", engine_note: true }, { check: "blocked" }] } }, res({ slip: slip() })).length === 1);
+  check("turn_slip: reads the standing slip of that turn", run({ turn_slip: [{ turn: 2, check: "ok" }] }, { turns: [{ say: "a", slip: slip({ check: "blocked" }) }, { say: "b", slip: slip() }], draft_count: 1, draft: {} }).length === 0 && run({ turn_slip: [{ turn: 2, check: "ok" }] }, { turns: [{ say: "a", slip: slip() }, { say: "b", slip: slip({ check: "blocked" }) }], draft_count: 1, draft: {} }).length === 1);
+  const cs = [{ id: "a", rep: 1, reps: 3, status: "pass", turns: [{ slip: slip() }] }, { id: "a", rep: 2, reps: 3, status: "fail", turns: [{ slip: slip({ check: "blocked" }) }] }, { id: "a", rep: 3, reps: 3, status: "pass", turns: [{ slip: slip({ engine_note: "n" }) }] }];
+  const t = repsTable(cs);
+  check("repsTable: k/N per case and each rep's first slip", t.includes("2/3 FAIL") && t.includes("ok / blocked / ok+note") && repsTable([{ id: "a", rep: 1, reps: 1, status: "pass", turns: [] }]) === "");
+  const rp = renderPage({ run_id: "r", stage: "chat", date: "d", platform_sha: "s", rules_ref: "x", rules_sha: "y", cost: {}, cases: cs.map((c) => ({ ...c, agent: "gremlin", title: "t", intent: "i", checks: [] })) });
+  check("page with reps: one card a rep, buttons on rep 1 only, no blank line inside", rp.includes('id="case-a-r2"') && (rp.match(/class="qr-mark"/g) || []).length === 1 && !/\n\n/.test(rp.split("---\n").slice(2).join("---\n").trim()));
+  const doc = JSON.parse(readFileSync(join(HERE, "cases.json"), "utf8"));
+  const ids = doc.cases.map((c) => c.id);
+  check("cases: ids are unique and each new case carries a first_answer or turn_slip", new Set(ids).size === ids.length && doc.cases.filter((c) => c.id.startsWith("r-")).every((c) => c.expect.first_answer || c.expect.turn_slip));
+}
 
 // the run directory was made by makeRunTmp() in the real temp dir: only a directory of that shape is removed
 if (T.includes("promptocracy-quality-") && T.startsWith(`${realpathSync(tmpdir())}/`)) rmSync(T, { recursive: true, force: true });
