@@ -98,6 +98,7 @@ with sync_playwright() as p:
         check(f"{tag}: the card's lock-in left the history as it was (no stray entry)", page.evaluate("history.length") == h0 + 1 or page.evaluate("history.length") == h0)
         shot(page, f"after-card-lock-{tag}")
         # ---- the card's Unlock: the slip in the chat follows (it never says LOCKED over a draft)
+        page.evaluate("document.activeElement && document.activeElement.blur()")   # the lock-in put the caret in the box; on a phone that folds the strip, and a blur brings it back and moves the log under a pointer that is already down
         page.click(SLIP + " .wpill"); page.wait_for_selector('#mroot [data-w="unlock"]')
         page.click('#mroot [data-w="unlock"]'); page.wait_for_selector("#wfTitle")
         check(f"{tag}: Unlock on the card, and the chat's slip behind it says DRAFT again", stamp(page) == "DRAFT", stamp(page))
