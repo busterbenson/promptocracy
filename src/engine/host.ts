@@ -346,7 +346,7 @@ export async function nightBoardStatements(env: Env, game: any, n: number, nowMs
     creatures: rows.map((c) => ({ id: c.id, entry: c.entry_id, x: c.x, y: c.y, z: c.z, hearts: c.hearts, restsNight: c.rests_night, resting: false })),
   });
   const now = nowIso(nowMs);
-  const names = new Map(((await env.DB.prepare("SELECT id, display_name, color FROM players WHERE game_id = ?").bind(game.id).all()).results as any[]).map((p) => [p.id, { name: p.display_name as string, color: p.color as string }]));
+  const names = new Map(((await env.DB.prepare("SELECT id, display_name, color, mirrored FROM players WHERE game_id = ?").bind(game.id).all()).results as any[]).map((p) => [p.id, { name: p.display_name as string, color: p.color as string, mirrored: p.mirrored as number }]));
   /** @rule 603.1 */
   const pn = (ref: string) => { const p = names.get(ref); return p ? who(p.name, p.color) : "A player"; };
   /** @rule 602.3 */
@@ -369,6 +369,15 @@ export async function nightBoardStatements(env: Env, game: any, n: number, nowMs
       ev("appeared", `${entryName(op.entry)} appeared at ${tileOf(op.x, op.y, op.z)}.`, "appeared", { creature: op.id, entry: op.entry }, null);
     } else if (op.op === "step") {
       stmts.push(env.DB.prepare(`UPDATE creatures SET x = ?, y = ?, z = ? WHERE game_id = ? AND id = ? AND ${open}`).bind(op.x, op.y, op.z, game.id, op.id, ...ob));
+    } else if (op.op === "move") {
+      // A rule moved this piece (rule 504.2's guards were checked by applyBoard). It faces the way it moved, as on a player's own move; it does not chart.
+      const toRight = (op.x - op.from.x) - (op.y - op.from.y);
+      stmts.push(env.DB.prepare(
+        `UPDATE players SET x = ?, y = ?, z = ?, mirrored = ? WHERE game_id = ? AND id = ? AND x = ? AND y = ? AND z = ? AND ${open}`,
+      ).bind(op.x, op.y, op.z, toRight > 0 ? 1 : toRight < 0 ? 0 : (names.get(op.player)?.mirrored ?? 0), game.id, op.player, op.from.x, op.from.y, op.from.z, ...ob));
+      ev("piece_moved", `${pn(op.player)} was moved to ${tileOf(op.x, op.y, op.z)}${op.reason ? ` (${op.reason})` : ""}.`, "moved", { to: { x: op.x, y: op.y, z: op.z }, reason: op.reason }, op.player);
+    } else if (op.op === "move_refused") {
+      ev("move_refused", `${pn(op.player)} could not be moved to ${tileOf(op.x, op.y, op.z)}: ${op.why}.`, "move_refused", { to: { x: op.x, y: op.y, z: op.z }, why: op.why }, names.has(op.player) ? op.player : null);
     } else if (op.op === "rest") {
       stmts.push(env.DB.prepare(`UPDATE creatures SET rests_night = ? WHERE game_id = ? AND id = ? AND ${open}`).bind(op.night, game.id, op.id, ...ob));
     } else if (op.op === "bite" && op.player) {

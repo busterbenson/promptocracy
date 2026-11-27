@@ -8,6 +8,23 @@ import { attr } from "./api.js";
 const here = (x, y, z) => (o) => o.x === x && o.y === y && o.z === z;
 
 /**
+ * A rule moves a player's piece (not the player's own move). The guards of a player's own move (504.2): the tile is charted and nothing stands on it; the player is living.
+ * Unlike the other board effects, a refused move is skipped and logged, not thrown: the tile a random rule picked may have been taken earlier in the same night, and
+ * that must not hold the whole night open. The skip is an op, so History records it and a rule's tests can see it. Does not chart (504.1 is "when you move").
+ * @rule 504.2
+ */
+function moveOp(P, e, tiles, occupied) {
+  const p = P.get(e.player);
+  const { x, y, z } = e.to;
+  const why = !p ? `no player ${e.player}` : p.state !== "living" ? `${e.player} is not living` : !tiles.has(x, y, z) ? `${x},${y},${z} is not charted`
+    : occupied(x, y, z) ? `${x},${y},${z} is occupied` : null;
+  if (why) return { op: "move_refused", player: e.player, x, y, z, why };
+  const op = { op: "move", player: p.ref, from: { x: p.x, y: p.y, z: p.z }, x, y, z, reason: e.reason ?? null };
+  p.x = x; p.y = y; p.z = z;
+  return op;
+}
+
+/**
  * Applies `effects` for night `n`. `players`: [{ref, x, y, z, hearts, state, deadDay}], `creatures`: the live ones [{id, entry, x, y, z, hearts, resting, restsNight}],
  * `catalog`: [{id, kind, attrs}], `tiles`: has(x, y, z), `nextId`: the id the first appearing creature gets.
  * Returns {players, creatures, ops, died, rose} where ops are the records the host writes (in order).
@@ -44,6 +61,10 @@ export function applyBoard({ n, effects, players, creatures, catalog, tiles, nex
         if (occupied(x, y, z)) throw new Error(`step: ${x},${y},${z} is occupied`);
         c.x = x; c.y = y; c.z = z;
         ops.push({ op: "step", id: c.id, x, y, z });
+        break;
+      }
+      case "move": {
+        ops.push(moveOp(P, e, tiles, occupied));
         break;
       }
       case "rest": {

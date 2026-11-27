@@ -4,7 +4,7 @@
 // Run: node tests/death.mjs. Nothing here touches Cloudflare.
 import { rmSync } from "node:fs";
 import { client, createGame, d1, freePort, join, migrate, newState, startRulesStub, startServer } from "./lib.mjs";
-import { assembleRules, effects, makeContext, makeTiles, validateEffect } from "../src/engine/hooks.js";
+import { APPLIED_EFFECTS, assembleRules, effects, makeContext, makeTiles, validateEffect } from "../src/engine/hooks.js";
 import { applyBoard } from "../src/engine/board-night.js";
 import { validateSettings, DEFAULT_SETTINGS } from "../src/lib/settings.js";
 import { endingText } from "../src/lib/ending.js";
@@ -23,7 +23,13 @@ console.log("the engine: effects and hooks");
   check("a game with no night or ending rule runs: both hooks answer nothing", J(rules.night(makeContext({ settings: {} }), { applied: [] })) === "[]" && rules.ending(makeContext({ settings: {} }), { died: ["a"] }) === null && rules.implementers("night").length === 0);
   const bad = assembleRules([mod(107, { applyOrder: (_c, p) => p }), mod(505, { spawnTile: () => null }), mod(602, { night: () => [effects.points("a", 1, "x")] })]);
   let msg = ""; try { bad.night(makeContext({ settings: {} }), { applied: [] }); } catch (e) { msg = e.message; }
-  check("night takes only appear, step, bite, rest and rise: another effect is refused, not dropped", /can't be returned by night/.test(msg), msg);
+  check("night takes only appear, step, move, bite, rest and rise: another effect is refused, not dropped", /can't be returned by night/.test(msg), msg);
+  const mv0 = effects.move("a", tile);
+  const modMove = (hook) => assembleRules([mod(107, { applyOrder: (_c, p) => p }), mod(505, { spawnTile: () => null }), mod(504, { [hook]: () => [mv0] })]);
+  const moveErr = (hook, call) => { try { call(modMove(hook)); return ""; } catch (e) { return e.message; } };
+  check("a night rule may return move; dayEnd and onEnacted refuse it, and afterAction applies only chart (host.ts refuses the rest) (it is not dropped)",
+    modMove("night").night(makeContext({ settings: {} }), { applied: [] })[0]?.type === "move" && /can't be returned by dayEnd/.test(moveErr("dayEnd", (r) => r.dayEnd(makeContext({ settings: {} }), {})))
+    && /can't be returned by onEnacted/.test(moveErr("onEnacted", (r) => r.onEnacted(makeContext({ settings: {} }), {}))) && !APPLIED_EFFECTS.includes("move"));
   let two = ""; try { assembleRules([mod(107, { applyOrder: (_c, p) => p }), mod(505, { spawnTile: () => null }), mod(404, { ending: () => null }), mod(405, { ending: () => null })]); } catch (e) { two = e.message; }
   check("at most one rule decides the ending", /ending needs at most one/.test(two), two);
   let wrong = ""; try { assembleRules([mod(107, { applyOrder: (_c, p) => p }), mod(505, { spawnTile: () => null }), mod(404, { ending: () => effects.rise("a") })]).ending(makeContext({ settings: {} }), { died: ["a"] }); } catch (e) { wrong = e.message; }
@@ -51,6 +57,21 @@ console.log("the board: effects applied in order to a copy");
   const thrown = (e, ps = [P("a", 0, 0)], cs = []) => { try { run(e, ps, cs); return ""; } catch (x) { return x.message; } };
   check("an uncharted or occupied tile, an unknown creature and a rise for someone not dead are refused, not dropped",
     /not charted/.test(thrown([effects.appear("C1", t(9, 9))])) && /occupied/.test(thrown([effects.appear("C1", t(0, 0))])) && /no creature/.test(thrown([effects.step(7, t(1, 1))])) && /not a dead player/.test(thrown([effects.rise("a")])) && /occupied/.test(thrown([effects.appear("C1", t(2, 2)), effects.appear("C1", t(2, 2))])));
+  // the move effect: a night rule moves a player's piece (rule 504.2's guards: charted, unoccupied by a piece or a creature, and a living player)
+  const mv = (e, ps, cs = []) => run(e, ps, cs);
+  const m1 = mv([effects.move("a", t(1, 0), "x")], [P("a", 0, 0), P("b", 3, 3)]);
+  check("move: a living player's piece goes to a charted, empty tile; the board and the op carry it", validateEffect(effects.move("a", t(1, 0))) === null && validateEffect({ type: "move", player: "a" }) !== null
+    && m1.players.find((p) => p.ref === "a").x === 1 && m1.ops.length === 1 && m1.ops[0].op === "move" && m1.ops[0].player === "a" && m1.ops[0].from.x === 0 && m1.ops[0].x === 1 && m1.ops[0].reason === "x", J(m1.ops));
+  const why = (e, ps = [P("a", 0, 0), P("b", 2, 2)], cs = []) => { const r = mv(e, ps, cs); return { op: r.ops[0], at: r.players.find((p) => p.ref === "a") }; };
+  const refusedOp = (r, re) => r.op?.op === "move_refused" && re.test(r.op.why) && r.at.x === 0 && r.at.y === 0;
+  check("move: an occupied tile (a piece or a creature), an uncharted tile, a dead player and an unknown player are skipped and logged, never thrown",
+    refusedOp(why([effects.move("a", t(2, 2))]), /occupied/) && refusedOp(why([effects.move("a", t(1, 1))], [P("a", 0, 0)], [{ id: 1, entry: "C1", x: 1, y: 1, z: 0, hearts: 3, restsNight: null }]), /occupied/)
+    && refusedOp(why([effects.move("a", t(9, 9))]), /not charted/) && refusedOp(why([effects.move("a", t(1, 0))], [P("a", 0, 0, 0, "dead")]), /not living/)
+    && refusedOp(why([effects.move("a", t(1, 0))], [P("a", 0, 0, 0, "ghost")]), /not living/) && mv([effects.move("zz", t(1, 0))], [P("a", 0, 0)]).ops[0].op === "move_refused");
+  const m2 = mv([effects.move("a", t(1, 0)), effects.move("b", t(1, 0))], [P("a", 0, 0), P("b", 3, 3)]);
+  check("move: two pieces sent to one tile in a night: the first lands, the second is refused as occupied", m2.ops[0].op === "move" && m2.ops[1].op === "move_refused" && /occupied/.test(m2.ops[1].why) && m2.players.find((p) => p.ref === "b").x === 3);
+  const m3 = mv([effects.move("a", t(1, 0)), effects.move("b", t(0, 0))], [P("a", 0, 0), P("b", 3, 3)]);
+  check("move: a tile a piece just left is free for the next effect", m3.ops.every((o) => o.op === "move"));
   check("rise: only a dead player becomes a Ghost", run([effects.rise("d")], [P("d", 1, 1, 0, "dead")]).players[0].state === "ghost");
 }
 
