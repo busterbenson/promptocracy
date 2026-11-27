@@ -77,7 +77,7 @@ under rule 101 or 102; a follow-up change claims them and moves `src/` into the 
 
 ## src/lib/draft-turn.js (1)
 
-- line 9: `same`
+- line 10: `same`
 
 ## src/lib/drafter.ts (1)
 
@@ -120,8 +120,8 @@ under rule 101 or 102; a follow-up change claims them and moves `src/` into the 
 
 - line 140: `who`
 - line 378: `def`
-- line 450: `readGremlinAnswer`
-- line 587: `clip`
+- line 453: `readGremlinAnswer`
+- line 590: `clip`
 
 ## src/lib/history.js (1)
 

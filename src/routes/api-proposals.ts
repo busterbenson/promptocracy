@@ -274,13 +274,11 @@ export async function confirm(ctx: Ctx, player: any, id: string, nowMs: number):
   if (row.base_sha !== sha) return out({ error: "The rules have changed since this was drafted. Draft it again." }, 409);
   // The rule check (rule 103.9): a draft that relies on something the game doesn't have, or that couldn't be checked, is not locked in.
   // A check made on other criteria or another model than today's (or one that never completed) is made again first: a fix that deployed after the draft unblocks it without a redraft.
-  const before = row.rule_check;
   await refreshCheck(env, game, timeZoneOf(game), player.id, md, book, catalogFor(game).entries, (await openEntriesFor(env, game, player.id)).pending ?? [], row, nowMs);
-  if (row.rule_check !== before) {   // a model call was made: the write below uses the clock NOW, and meets the lock if the call ran past midnight (rule 107.1)
-    nowMs = await clockNow(env);
-    const late = turnBlock(game, day, turn, player, "propose", nowMs);
-    if (late) return out(refusalBody(late), late.status);
-  }
+  // The re-check may have made a model call (up to 30 s, and one that failed or returned the same answer leaves the row as it was): the write below uses the clock NOW, and meets the lock if the call ran past midnight (rule 107.1).
+  nowMs = await clockNow(env);
+  const late = turnBlock(game, day, turn, player, "propose", nowMs);
+  if (late) return out(refusalBody(late), late.status);
   const why = lockRefusal(book, row);
   if (why) return out({ error: why, check: row.rule_check ? JSON.parse(row.rule_check) : null }, 409);
   const mark = markFor(book, row);
