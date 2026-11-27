@@ -7,6 +7,7 @@
 import json, re, sys
 from urllib.parse import urlparse
 from playwright.sync_api import sync_playwright
+from browser_launch import launch
 
 base, out, cookie, keep_ticket, blob_ticket = sys.argv[1:6]
 host = urlparse(base).hostname
@@ -52,7 +53,7 @@ TEXT_JS = "(el) => { const w = document.createTreeWalker(el, NodeFilter.SHOW_TEX
 def text(page, sel): return " ".join(page.locator(sel).first.evaluate(TEXT_JS).split())
 
 with sync_playwright() as p:
-    b = p.chromium.launch()
+    b = launch(p)
     for w, h, scheme in [(1280, 900, "light"), (1280, 900, "dark"), (390, 844, "light"), (390, 844, "dark")]:
         tag = f"{w}-{scheme}"
         c, page, errors = new_page(b, w, h, scheme)

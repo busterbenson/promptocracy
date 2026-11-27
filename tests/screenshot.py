@@ -4,6 +4,7 @@
 import re, sys
 from urllib.parse import urlparse
 from playwright.sync_api import sync_playwright
+from browser_launch import launch
 
 base, out, cookie, code = sys.argv[1:5]
 host = urlparse(base).hostname
@@ -26,7 +27,7 @@ def sideways(page, w, name):
     check(f"{name}: no sideways scroll (scrollWidth {sw} <= {w})", sw <= w)
 
 with sync_playwright() as p:
-    b = p.chromium.launch()
+    b = launch(p)
     # ---- landing + join pages
     for w, h, name in SIZES:
         c = ctx_for(b, w, h, False); page = c.new_page()

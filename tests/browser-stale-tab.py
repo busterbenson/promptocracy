@@ -3,6 +3,7 @@
 # Counts the navigations. Checks print "ok"/"FAIL"; any FAIL makes the exit code 1. Usage: browser-stale-tab.py <base> <slug> <build id>
 import sys
 from playwright.sync_api import sync_playwright
+from browser_launch import launch
 
 base, slug, build = sys.argv[1:4]
 failed = []
@@ -31,7 +32,7 @@ def fire_visible(page):
     page.evaluate("""() => { Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'visible' }); document.dispatchEvent(new Event('visibilitychange')); }""")
 
 with sync_playwright() as p:
-    b = p.chromium.launch()
+    b = launch(p)
     try:
         # 1. the import map is in effect: every module the page loads came from /v/<id>/js/, none from /js/, and none twice under two names
         answer = {"id": None}

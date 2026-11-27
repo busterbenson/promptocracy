@@ -6,6 +6,7 @@
 import re, sys
 from urllib.parse import urlparse
 from playwright.sync_api import sync_playwright
+from browser_launch import launch
 from busy_check import busy_check
 
 base, out, cookie, mode = sys.argv[1:5]
@@ -55,7 +56,7 @@ def look(page, sel):
     return page.evaluate("""(sel) => { const e = document.querySelector(sel), r = e.getBoundingClientRect(), s = getComputedStyle(e); return { h: r.height, ghost: e.classList.contains("ghost"), link: e.classList.contains("linkbtn"), bg: s.backgroundColor }; }""", sel)
 
 with sync_playwright() as p:
-    b = p.chromium.launch()
+    b = launch(p)
     if mode == "main":
         for w, h, scheme in [(1280, 900, "light"), (1280, 900, "dark"), (390, 844, "light"), (390, 844, "dark")]:
             tag = f"{w}-{scheme}"

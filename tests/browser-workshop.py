@@ -6,6 +6,7 @@
 import re, sys
 from urllib.parse import urlparse
 from playwright.sync_api import sync_playwright
+from browser_launch import launch
 from busy_check import busy_check
 
 base, out, cookie, _, hook = sys.argv[1:6]
@@ -51,7 +52,7 @@ def sideways(page, w, name):
 def text(page, sel): return " ".join(page.inner_text(sel).split())
 
 with sync_playwright() as p:
-    b = p.chromium.launch()
+    b = launch(p)
     for w, h, scheme in [(1280, 900, "light"), (1280, 900, "dark"), (390, 844, "light"), (390, 844, "dark")]:
         tag = f"{w}-{scheme}"
         c, page, errors = new_page(b, w, h, scheme)

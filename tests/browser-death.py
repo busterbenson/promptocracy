@@ -5,6 +5,7 @@
 import sys
 from urllib.parse import urlparse
 from playwright.sync_api import sync_playwright
+from browser_launch import launch
 
 base, out, cookie, phase = sys.argv[1:5]
 host = urlparse(base).hostname
@@ -33,7 +34,7 @@ def new_page(b, w, h, scheme="light"):
 def text(page, sel): return " ".join(page.inner_text(sel).split())
 
 with sync_playwright() as p:
-    b = p.chromium.launch()
+    b = launch(p)
     for w, h in [(1280, 900), (390, 844)]:
         c, page, errors = new_page(b, w, h)
         sw = page.evaluate("document.documentElement.scrollWidth")

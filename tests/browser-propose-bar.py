@@ -5,6 +5,7 @@
 import datetime, re, sys
 from urllib.parse import urlparse
 from playwright.sync_api import sync_playwright
+from browser_launch import launch
 
 base, out, mode, ada_c, bo_c, cy_c, dee_c, eve_c, gus_c = sys.argv[1:10]
 host = urlparse(base).hostname
@@ -68,7 +69,7 @@ def sideways(page, w, tag): check(f"{tag}: no sideways scroll", page.evaluate("d
 BANNED = re.compile(r"Put it on tomorrow|Withdraw", re.I)
 
 with sync_playwright() as p:
-    b = p.chromium.launch()
+    b = launch(p)
 
     # ============================================================ main: the model's stand-in is up
     if mode == "main":

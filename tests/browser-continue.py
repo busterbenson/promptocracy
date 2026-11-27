@@ -4,11 +4,12 @@
 import sys
 from urllib.parse import urlparse
 from playwright.sync_api import sync_playwright
+from browser_launch import launch
 
 link, base = sys.argv[1:3]
 slug = urlparse(link).path.split("/")[1]
 with sync_playwright() as p:
-    b = p.chromium.launch()
+    b = launch(p)
     page = b.new_context().new_page()
     seen = []
     page.on("response", lambda r: seen.append((r.request.method, r.status, r.request.headers.get("origin"))) if "/auth/verify" in r.url else None)
