@@ -72,8 +72,10 @@ export function createWorkshop({ api, me, pill, rpill, when, canCommission, refr
     setTimeout(tick, 2500);
   }
 
+  let NAV = 0;   // bumped by every card the player opens: a lock-in that lands after a later pick must not take the player back (Codex, P2)
   /** @rule 801.2 */
   async function open(n, push) {
+    NAV++;
     S.err = ""; S.note = ""; S.askCancel = "";   // a card opens without Cancel's question showing
     S.detail[n] = S.detail[n] || null;   // a card with its name and nothing else until the page arrives
     cards.open({ kind: "ticket", key: n }, { push: !!push });
@@ -225,6 +227,7 @@ ${stripHTML(artOf(v), false, "", 1)}${attrsHTML(v)}${flavorHTML(v, open)}${more 
   }
   /** @rule 701.1 */
   async function openEntry(id, push) {
+    NAV++;
     cards.open({ kind: "entry", key: id }, { push: !!push });
   }
 
@@ -462,6 +465,7 @@ ${editing ? formHTML(t) : factsHTML(t)}${unlockHTML(t)}${reopenHTML(t)}${holdHTM
       } finally { S.artBusy = false; }
       paintArt(n);
       watchArt(n);
+      tellChat(n);
       return;
     }
     if (a === "flavor") { S.flavorOpen[el.dataset.entry] = !S.flavorOpen[el.dataset.entry]; cards.redraw(); return; }
@@ -476,14 +480,20 @@ ${editing ? formHTML(t) : factsHTML(t)}${unlockHTML(t)}${reopenHTML(t)}${holdHTM
     if ((a === "askcancel" || a === "keep") && n && !S.busy) { S.askCancel = a === "askcancel" ? n : ""; S.err = ""; cards.redraw(); return; }
     if (!n || S.busy) return;
     S.busy = true; S.err = ""; S.note = ""; cards.redraw();
+    const nav0 = NAV, c0 = chat && chat(), st0 = c0 && c0.state ? c0.state() : null, pick0 = st0 ? st0.pickSeq : 0, tk0 = st0 ? st0.ticket : null;
     try {
       if (a === "save") { if (await save(n)) { S.form = null; S.note = "Saved."; } }
       else if (a === "confirm") {
         if (await save(n)) {
           const r = await api(`/api/tickets/${encodeURIComponent(n)}/confirm`, {});
-          if (r.ok) { S.detail[n] = r.data.ticket; S.form = null; S.note = r.data.message || ""; }
+          if (r.ok) { S.detail[n] = r.data.ticket; S.form = null; S.note = ""; }
           else { S.err = (r.data && r.data.error) || "Something went wrong."; await loadOne(n); S.form = null; }
           await refresh();
+          // Locked in: the card goes away and the player lands in the chat on that ticket, whose slip says LOCKED (Buster, 2026-11-26)
+          // A later pick (another card, or another ticket picked in the chat) wins: this ticket is only refreshed, never put back in front
+          const st = c0 && c0.state ? c0.state() : null, moved = nav0 !== NAV || (st && (st.pickSeq !== pick0 || st.ticket !== tk0));
+          if (r.ok && moved) tellChat(n);
+          else if (r.ok) { cards.close(); const c = chat && chat(); if (c) await c.attach(n, { open: true }); }
         }
       } else if (a === "discard") {
         const r = await api(`/api/tickets/${encodeURIComponent(n)}/discard`, {});
@@ -492,7 +502,7 @@ ${editing ? formHTML(t) : factsHTML(t)}${unlockHTML(t)}${reopenHTML(t)}${holdHTM
         const t = S.detail[n];
         const r = await api(`/api/proposals/${encodeURIComponent(t && t.unlock_id || "")}/withdraw`, {});
         if (!r.ok) S.err = (r.data && r.data.error) || "Something went wrong.";
-        S.form = null; await loadOne(n); await refresh();
+        S.form = null; await loadOne(n); await refresh(); tellChat(n);
       } else if (a === "hold" || a === "resume" || a === "cancel") {
         const r = await api(`/api/tickets/${encodeURIComponent(n)}/${a}`, {});
         if (r.ok) { S.askCancel = ""; S.detail[n] = r.data.ticket; await load(); if (S.view === "all") await loadAll(true); await refresh(); } else { S.err = (r.data && r.data.error) || "Something went wrong."; await loadOne(n); }
@@ -508,6 +518,8 @@ ${editing ? formHTML(t) : factsHTML(t)}${unlockHTML(t)}${reopenHTML(t)}${holdHTM
       }
     } finally { S.busy = false; cards.redraw(); }
   }
+  /** The chat's slip follows a ticket the card changed (unlocked, redrawn): it never says DRAFT over a locked one. @rule 801.2 */
+  function tellChat(n) { const c = chat && chat(); if (c && c.showTicket && S.detail[n]) c.showTicket(S.detail[n]); }
   const FIELD = { wfTitle: "title", wfBrief: "brief" };
   /** @rule 801.2, 804.1 */
   function input(el) {
