@@ -46,6 +46,8 @@ export type Effect =
   | { type: "champion"; player: string; reason: string }
   | { type: "appear"; entry: string; tile: Tile }
   | { type: "step"; creature: number; to: Tile }
+  /** night only: moves a living player's piece to a charted tile with no piece or creature on it. Skipped, and logged in History, when the tile is uncharted or occupied or the player is not living. Does not chart. */
+  | { type: "move"; player: string; to: Tile; reason?: string }
   | { type: "bite"; target: { player: string } | { creature: number }; hearts: number }
   | { type: "rest"; creature: number }
   | { type: "rise"; player: string }
@@ -85,7 +87,7 @@ export type Hooks = {
    *  details are no longer allowed (a rule changed tonight): the proposal is not applied, with that reason. */
   applyAction?(ctx: Ctx, action: ActionProposal): Effect[] | Refusal;
   /** Every night, after the night's proposals and actions are applied (rule 602, 603). `applied` = the P-numbers applied tonight (empty on a quiet night).
-   *  appear, step, bite, rest and rise effects, applied in order. */
+   *  appear, step, move (a player's piece), bite, rest and rise effects, applied in order. */
   night?(ctx: Ctx, info: { applied: number[] }): Effect[];
   /** Once after the night's board, only when someone died; ctx is the board after the bites (rule 404). A game_over effect or null. At most one module. */
   ending?(ctx: Ctx, info: { died: string[] }): Effect | null;
@@ -102,6 +104,8 @@ export const effects: {
   champion(player: string, reason: string): Effect;
   appear(entry: string, tile: { x: number; y: number; z?: number }): Effect;
   step(creature: number, to: { x: number; y: number; z?: number }): Effect;
+  /** night only: move this living player's piece to a charted, unoccupied tile (rule 504.2's guards). A refused move is skipped and logged; it does not chart. */
+  move(player: string, to: { x: number; y: number; z?: number }, reason?: string): Effect;
   bite(target: { player: string } | { creature: number }, hearts: number): Effect;
   rest(creature: number): Effect;
   rise(player: string): Effect;

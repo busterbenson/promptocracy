@@ -57,7 +57,7 @@ const byDraftThenNewest = (a, b) => (b.state === "Draft") - (a.state === "Draft"
 const LEFT_SHOWN = 10;   // "N left" appears in the last ten messages of the day
 
 export function createChat({ api, root, me, slug, agent = AGENTS.gremlin, rpill, wpill, onTicket, onProposals, onSlip, onNew, canNew, started = () => true }) {
-  const S = { slipSeq: 0, pickSeq: 0, msgs: [], next: null, state: null, tickets: [], proposals: [], pin: null, ticket: null, scope: undefined, seq: 0, rule: null, redraft: null, intent: null, live: null, slips: {}, lockErr: {}, slip: null, busy: false, draft: "", err: "", sheet: false, open: true, loaded: false, loading: false, tab: "", note: "" };
+  const S = { slipSeq: 0, pickSeq: 0, msgs: [], next: null, state: null, tickets: [], proposals: [], pin: null, ticket: null, scope: undefined, seq: 0, rule: null, redraft: null, intent: null, live: null, slips: {}, lockErr: {}, artErr: {}, slip: null, busy: false, draft: "", err: "", sheet: false, open: true, loaded: false, loading: false, tab: "", note: "" };
   const col = root.querySelector("#chatcol"), fab = root.querySelector("#chatfab");
   const mine = () => true;
   /** The strip's two lists as the server last sent them: your tickets and proposals not yet voted on. @rule 103.1, 801.6 */
@@ -113,6 +113,13 @@ export function createChat({ api, root, me, slug, agent = AGENTS.gremlin, rpill,
     if (a.state === "drawing") return `<span class="mkart drawing" aria-label="Drawing">Drawing…</span>`;
     return "";
   }
+  /** Redraw under an entry's picture: the requester's own draft, an entry with a prompt, no drawing already on its way. It costs one of his messages (rule 106.7). @rule 801.2, 106.7 */
+  function redrawHTML(t, m) {
+    const a = (viewOf(t, m) || {}).art || {}, key = String(m.name || "").toLowerCase();
+    const btn = t.can && t.can.edit && t.can.edit.allowed && a.prompt && a.state !== "drawing" ? `<button type="button" class="btn ghost small" data-c="redraw" data-n="${esc(t.n)}" data-name="${esc(m.name || "")}">Redraw</button>` : "";
+    const err = S.artErr[key] ? `<p class="err" role="alert">${esc(S.artErr[key])}</p>` : "";
+    return btn + err;
+  }
   let artTimer = null, artTries = 0;
   function watchArt() {
     clearTimeout(artTimer);
@@ -131,14 +138,21 @@ export function createChat({ api, root, me, slug, agent = AGENTS.gremlin, rpill,
       ? `<span class="mk dim uses" data-uses="${esc(m.num)}">${esc(m.name)} · from ${/^W\d+$/.test(m.num) ? wpill(m.num) : esc(m.num)}</span>`
       : m.kind === "rule"
       ? `<span class="mk${!m.num && String(m.draft || "").length > 40 ? " long" : ""}">${m.num ? rpill(m.num) : esc(m.draft || "New rule")}</span>`
-      : `<span class="mkent">${artHTML(t, m)}<span class="mk">${esc(m.name)}${m.catalogKind ? `<small>${esc(m.catalogKind)}${m.attrs && m.attrs.size ? ` ${esc(sizeText(m.attrs.size))}` : ""}</small>` : ""}</span></span>`)).join("");
-    const stamp = refused ? `<span class="cstamp err">REFUSED</span>` : t.state === "Draft" ? `<span class="cstamp">DRAFT</span>` : `<span class="cstamp">${esc(String(t.state).toUpperCase())}</span>`;
+      : `<span class="mkent">${artHTML(t, m)}${redrawHTML(t, m)}<span class="mk">${esc(m.name)}${m.catalogKind ? `<small>${esc(m.catalogKind)}${m.attrs && m.attrs.size ? ` ${esc(sizeText(m.attrs.size))}` : ""}</small>` : ""}</span></span>`)).join("");
+    const stamp = refused ? `<span class="cstamp err">REFUSED</span>` : t.state === "Draft" ? `<span class="cstamp">DRAFT</span>` : t.state === "Proposed" ? `<span class="cstamp">LOCKED</span>` : `<span class="cstamp">${esc(String(t.state).toUpperCase())}</span>`;
+    // Lock it in / Unlock on the slip itself (Buster, 2026-11-26): the same buttons as a proposal's slip, so a commission is locked in from the chat
+    const c = t.can || {}, nothing = !(t.makes || []).length;
+    const why = (b) => (b && !b.allowed && b.reason ? `<span class="why">${whyHTML(b.reason)}</span>` : "");
+    const lockOk = !!(c.confirm && c.confirm.allowed) && !nothing;
+    const lockAct = t.state === "Draft" ? `<button type="button" class="btn" data-c="lockt" data-n="${esc(t.n)}"${lockOk ? "" : " disabled"}>Lock it in</button>${c.confirm && !c.confirm.allowed ? why(c.confirm) : nothing ? `<span class="why">It makes nothing yet.</span>` : ""}`
+      : t.state === "Proposed" ? `<span class="pill dash">On tomorrow's ballot</span><button type="button" class="linkbtn" data-c="unlockt" data-n="${esc(t.n)}"${c.unlock && c.unlock.allowed ? "" : " disabled"}>Unlock</button>${why(c.unlock)}` : "";
+    const lockErr = S.lockErr[t.n] ? `<p class="err" role="alert">${esc(S.lockErr[t.n])}</p>` : "";
     return `<section class="slip${refused ? " refused" : ""}" aria-label="${esc(t.n)}">${stamp}
 <div class="hd">${wpill(t.n)}<b>${esc(t.title || "Untitled")}</b></div>
 ${refused ? `<div class="tx">${esc(last.refusal)}</div>` : ""}
 <dl><dt>Makes</dt><dd>${makes ? `<span class="makes">${makes}</span>` : "Nothing"}</dd><dt>Nights</dt><dd>${esc(nightsOf(t))}</dd>
 <dt>Price</dt><dd>${esc(pointsOf(t))}${t.price_reason ? `<span class="cwhy"> · ${esc(t.price_reason)}</span>` : ""}</dd></dl>
-<div class="act"><button type="button" class="linkbtn" data-ticket="${esc(t.n)}" aria-haspopup="dialog">Open ${esc(t.n)}${(t.entry_views || []).some((v) => v.art && v.art.drawings && v.art.drawings.length) ? ": all drawings" : ""} ›</button></div></section>`;
+<div class="act">${lockAct}<button type="button" class="linkbtn" data-ticket="${esc(t.n)}" aria-haspopup="dialog">Open ${esc(t.n)} ›</button></div>${lockErr}</section>`;
   }
 
   // ---- the general conversation's slips: a draft proposal, as the drafter made it ------------------------------------------------------------------
@@ -295,6 +309,8 @@ ${sl.uses_note ? `<p class="cnote unote">${textHTML(sl.uses_note)}</p>` : ""}<di
 <button type="button" class="send" data-c="send" aria-label="Send"${S.busy || !S.draft.trim() ? " disabled" : ""}><svg width="18" height="18" aria-hidden="true"><use href="#chat-send"/></svg></button></div>${S.err ? `<p class="err" role="alert">${esc(S.err)}</p>` : ""}${left}</div>`;
   }
 
+  /** Remembers where the window just put the log, for a moment: the scroll event that follows is its own. */
+  function own(log) { S.own = { top: log.scrollTop, until: performance.now() + 100 }; }
   /** The whole window. The log keeps its place; the draft keeps its text and its caret. @rule 106.3 */
   function draw(toEnd) {
     if (!col) return;
@@ -305,18 +321,28 @@ ${sl.uses_note ? `<p class="cnote unote">${textHTML(sl.uses_note)}</p>` : ""}<di
     // whether to stay at the end is remembered (S.stick, set by the player's own scrolling), not read back from the old log: on iOS a
     // scrollTop set during the redraw before can still be pending, so the old log reads as "at the top" and the next redraw kept that
     const atEnd = toEnd === true || !log0 || S.stick !== false;
+    const keep = log0 ? log0.scrollTop : 0;   // read before anything is replaced: a node taken out of the page reads 0 (a player who had scrolled up was thrown to the top by every answer)
     const ta0 = col.querySelector("#chatText");
     const focus = ta0 && document.activeElement === ta0 ? [ta0.selectionStart, ta0.selectionEnd] : null;
     const ready = S.state ? S.state.ready : true;
-    col.innerHTML = `<section class="chat" data-agent="${esc(agent.key)}" aria-label="${esc(agent.name)}">
+    const t = document.createElement("template");
+    t.innerHTML = `<section class="chat" data-agent="${esc(agent.key)}" aria-label="${esc(agent.name)}">
 <header class="ch-h">${portrait(false)}<div class="cnm"><b>${esc(agent.name)}</b>${!ready ? "<small>can't be reached</small>" : S.busy ? '<small class="live">typing</small>' : ""}</div>
 <button type="button" class="ch-x" data-c="min" aria-label="Minimize" title="Minimize">–</button><button type="button" class="ch-x ch-close" data-c="close" aria-label="Close" title="Close">×</button></header>${rowFor()}
 <div class="ch-log" id="chatLog" tabindex="0" aria-live="polite">${S.loaded ? logHTML() : ""}</div>${inputHTML()}</section>`;
+    // the log is the one part that is never replaced (only its lines are): a fresh scroller has to be told where to scroll and iOS applies that late, so
+    // its scroll position and its scroll listener stay with the node. Everything around it is redrawn as before.
+    const sec = col.firstElementChild, fresh = t.content.firstElementChild, log1 = fresh.querySelector(".ch-log");
+    if (log0 && sec && log0.parentNode === sec && sec.dataset.agent === agent.key) {
+      const kids = [...fresh.childNodes], at = kids.indexOf(log1);
+      while (log0.previousSibling) log0.previousSibling.remove();
+      while (log0.nextSibling) log0.nextSibling.remove();
+      log0.before(...kids.slice(0, at)); log0.after(...kids.slice(at + 1)); log0.innerHTML = log1.innerHTML;
+    } else col.replaceChildren(fresh);
     const log = col.querySelector(".ch-log");
     if (log) {
-      const keep = log0 ? log0.scrollTop : 0;
-      if (atEnd || !log0) { log.scrollTop = log.scrollHeight; requestAnimationFrame(() => { log.scrollTop = log.scrollHeight; }); } else log.scrollTop = keep;
-      log.addEventListener("scroll", onScroll, { passive: true });
+      if (atEnd) { S.stick = true; log.scrollTop = log.scrollHeight; own(log); requestAnimationFrame(() => { log.scrollTop = log.scrollHeight; own(log); }); } else { log.scrollTop = keep; own(log); }
+      if (!log.dataset.on) { log.dataset.on = "1"; log.addEventListener("scroll", onScroll, { passive: true }); }
     }
     const ta = col.querySelector("#chatText");
     if (ta) { autosize(ta); if (focus) { ta.focus(); try { ta.setSelectionRange(focus[0], focus[1]); } catch {} } }
@@ -448,6 +474,7 @@ ${sl.uses_note ? `<p class="cnote unote">${textHTML(sl.uses_note)}</p>` : ""}<di
   /** Scrolling to the top brings in the day before. @rule 106.7 */
   async function onScroll(e) {
     const log = e.target;
+    if (S.own && performance.now() < S.own.until && Math.abs(log.scrollTop - S.own.top) < 2) return;   // the redraw's own scrolling is not the player's: it never moves S.stick or loads the day before
     S.stick = log.scrollHeight - log.scrollTop - log.clientHeight < 80;
     if (log.scrollTop > 40 || !S.next || S.loading) return;
     S.loading = true;
@@ -525,6 +552,8 @@ ${sl.uses_note ? `<p class="cnote unote">${textHTML(sl.uses_note)}</p>` : ""}<di
     else if (a === "detach-redraft") { S.redraft = null; S.redraftView = null; draw(); }
     else if (a === "redraft") { const sl = Object.values(S.slips).find((x) => x && x.n === el.dataset.n) || (S.redraft === el.dataset.n ? S.redraftView : null); const f = sl && sl.result && sl.result.fixes[Number(el.dataset.i)]; if (f) await redraft(el.dataset.n, f, sl); }
     else if (a === "lock" || a === "unlock") await hold(el, () => lockOrUnlock(el.dataset.id, a === "lock" ? "confirm" : "withdraw"));
+    else if (a === "lockt" || a === "unlockt") await hold(el, () => lockTicket(el.dataset.n, a === "lockt" ? "confirm" : "withdraw"));
+    else if (a === "redraw") await hold(el, () => redrawEntry(el.dataset.n, el.dataset.name));
   });
   root.addEventListener("input", (e) => {
     if (e.target.id !== "chatText" || !mine()) return;
@@ -564,6 +593,49 @@ ${sl.uses_note ? `<p class="cnote unote">${textHTML(sl.uses_note)}</p>` : ""}<di
     await readState();
     if (onProposals) await onProposals();
   }
+  /**
+   * Lock it in / Unlock on a ticket's slip: confirm (801.1) or withdraw its proposal (103.3), the player's own click, costing no message. The slip is read again
+   * from the server, so it shows what is true; the Workshop and the strip follow. @rule 801.1, 103.3, 801.7
+   */
+  async function lockTicket(n, what) {
+    if (!n || S.locking) return;
+    S.lockErr[n] = ""; S.locking = true;
+    let r, page = null;
+    try {
+      const unlockId = what === "withdraw" ? S.slip && S.slip.n === n && S.slip.unlock_id : null;
+      if (what === "withdraw" && !unlockId) return;
+      r = await api(what === "confirm" ? `/api/tickets/${encodeURIComponent(n)}/confirm` : `/api/proposals/${encodeURIComponent(unlockId)}/withdraw`, {});
+      if (!r.ok) S.lockErr[n] = (r.data && r.data.error) || "Something went wrong.";
+      // the ticket's page is read again, but it only replaces the slip if the window is still on that ticket: a player who picked another one while the request was out keeps that one (rule 801.6)
+      const pr = await api(`/api/tickets/${encodeURIComponent(n)}`);
+      page = pr.ok && pr.data && pr.data.ticket && pr.data.ticket.mine ? pr.data.ticket : null;
+      if (page) { noteTicket(page); if (S.slip && S.slip.n === n) S.slip = page; }
+    } finally { S.locking = false; }
+    if (page && onTicket) await onTicket(page);
+    await readState();
+    if (onProposals) await onProposals();
+  }
+  /** Redraw from the slip: the entry is drawn again (one of his messages, rule 106.7), and the slip watches until the picture lands. @rule 801.2, 106.7 */
+  async function redrawEntry(n, name) {
+    const key = String(name || "").toLowerCase();
+    if (!n || !name || S.artBusy) return;
+    S.artBusy = true; S.artErr[key] = "";
+    try {
+      const r = await api(`/api/tickets/${encodeURIComponent(n)}/art`, { entry: name, action: "redraw" });
+      if (r.ok && r.data && r.data.ticket) { if (S.slip && S.slip.n === n) S.slip = r.data.ticket; } else S.artErr[key] = (r.data && r.data.error) || "Something went wrong.";
+    } finally { S.artBusy = false; }
+    draw();
+    watchArt();
+    if (S.slip && onTicket) await onTicket(S.slip);
+    await readState();   // the counter moved
+  }
+  /**
+   * A ticket page changed somewhere else (the card locked, unlocked or redrew it): when the slip is that ticket's it follows, so it never says DRAFT over a locked one. @rule 801.2
+   */
+  function showTicket(t) {
+    if (!t || !S.slip || S.slip.n !== t.n || !t.mine) return;
+    S.slip = t; noteTicket(t); draw(); watchArt();
+  }
   /** A rule card's "Propose a change": the window opens in the general conversation with that rule riding on the next message. @rule 103.1 */
   async function attachRule(num, o = {}) {
     S.rule = num || null;
@@ -599,5 +671,5 @@ ${sl.uses_note ? `<p class="cnote unote">${textHTML(sl.uses_note)}</p>` : ""}<di
   }
   /** Can he be reached? True until the server says there is no key. @rule 106.3 */
   const ready = () => !S.state || S.state.ready !== false;
-  return { sync, attach, attachRule, redraft, open, load, minimize, ready, prefill, state: () => S, draw, drawBar, barHTML, reduced };
+  return { sync, attach, attachRule, redraft, showTicket, open, load, minimize, ready, prefill, state: () => S, draw, drawBar, barHTML, reduced };
 }
