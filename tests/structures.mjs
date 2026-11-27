@@ -3,6 +3,8 @@
 // (Pancake C2 and her sleeping drawing C3, the House S1, all built on day 1; the real rules 602, 606, 607 and 608). Nothing here touches Cloudflare.
 // Run: node tests/structures.mjs
 import { rmSync } from "node:fs";
+import { readFileSync } from "node:fs";
+import { parseBook } from "../src/lib/proposals.js";
 import { parseLabel } from "../src/lib/geometry.js";
 import { client, createGame, d1, freePort, join, migrate, newState, startRulesStub, startServer } from "./lib.mjs";
 
@@ -10,6 +12,10 @@ let pass = 0, fail = 0;
 const check = (name, ok, detail = "") => { if (ok) { pass++; console.log(`  ok    ${name}`); } else { fail++; console.log(`  FAIL  ${name}${detail ? "  -> " + detail : ""}`); } };
 const J = JSON.stringify;
 const AWAKE = "082f6da2ebcfc648649a920fb91e76e510a2cec41cc3bbde3b94b7074ef19434", ASLEEP = "651413745860e99c4907f95123e332331d5dca2ec75ca9b9d337defd640cc0a3", HOUSE = "e7e41ddf2d0c3cee8733e5e1286ff928b448eca399a5727d7e566dfd3e5e6a94";
+
+// placement is gated on the deployed rulebook having clause 701.5 (host.ts placementOn parses it the same way): the fixture that adopted it has it, one that did not does not
+const has701_5 = (dir) => !!parseBook(readFileSync(new URL(`./fixtures/games/${dir}/RULES.md`, import.meta.url), "utf8")).byNum["701"]?.clauses.some((c) => c.num === "701.5");
+check("the placement gate: housed has clause 701.5, hunted does not (so a game that has not adopted 701.5 places nothing)", has701_5("housed") && !has701_5("hunted"));
 
 const state = newState();
 let srv = null, stub = null;

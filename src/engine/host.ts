@@ -8,6 +8,7 @@ import { GAMES, STARTER } from "../generated/games";
 import { chartTile, loadTiles } from "../lib/board";
 import { getSettings } from "../lib/settings.js";
 import { GONE_REASON } from "../lib/votes.js";
+import { parseBook } from "../lib/proposals.js";
 import { Env, nowIso, who } from "../lib/util";
 import { applyBoard } from "./board-night.js";
 import { choosePlacements } from "./capabilities/placement.js";
@@ -400,12 +401,24 @@ export function heartsStart(game: { slug: string; settings: string }): number {
   return gameSettings(game)["hearts.start"];
 }
 
+// Whether the night places what was built: the game's deployed rulebook has clause 701.5 (the same gate as 701.4 and 803.2). A game that has not adopted it,
+// or repealed it, places nothing: no behaviour a rule does not state.
+const placementBooks = new WeakMap<object, boolean>();
+/** @rule 701.5 */
+export function placementOn(game: { slug: string }): boolean {
+  const { bundle } = bundleFor(game);
+  let on = placementBooks.get(bundle);
+  if (on === undefined) { on = !!parseBook(bundle.rulesMd).byNum["701"]?.clauses.some((c: any) => c.num === "701.5"); placementBooks.set(bundle, on); }
+  return on;
+}
+
 /**
  * The creatures and structures built tonight that no row on the board has yet, and where each goes (rule 701.5): the game's `placement` hook decides (a tile, or null for
  * "not placed"); with no answer the placement capability picks at random (src/engine/capabilities/placement.js). Returns its appear / place effects, the creatures and structures
  * they make (for the night's own context) and `noRoom`. @rule 701.5
  */
 async function placeBuilt(env: Env, game: any, n: number, ctx: any, nextId: number) {
+  if (!placementOn(game)) return { effects: [], creatures: [], structures: [], noRoom: [] as string[] };
   const day = new Map<string, number>(((bundleFor(game).bundle as any).catalog ?? []).map((b: any) => [b.id, b.day]));
   const fresh = ctx.catalog.filter((e: any) => (e.kind === "creature" || e.kind === "structure") && day.get(e.id) === n);
   if (!fresh.length) return { effects: [], creatures: [], structures: [], noRoom: [] as string[] };

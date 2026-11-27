@@ -95,7 +95,7 @@ export function sceneSVG(board, { sel = null, me = null, id = "b", showFog = tru
     .sort((a, b) => ((b.p || b.c).at.x + (b.p || b.c).at.y) - ((a.p || a.c).at.x + (a.p || a.c).at.y));
   for (const { p, c } of standing) {
     const at = P((p || c).at.x + .5, (p || c).at.y + .5);
-    const art = p ? pieceSVG({ shape: p.shape, color: p.color, mirrored: !!p.mirrored, state: p.state, part: "shadow" }) : creatureSVG(c, { part: "shadow" }) || creatureArtSVG(c, { part: "shadow" });
+    const art = p ? pieceSVG({ shape: p.shape, color: p.color, mirrored: !!p.mirrored, state: p.state, part: "shadow" }) : creatureArtSVG(c, { part: "shadow" }) || creatureSVG(c, { part: "shadow" });
     if (art) s += `<g class="${p ? "piece-shadow" : "creature-shadow"}" transform="translate(${f1(at[0])},${f1(at[1])})">${art}</g>`;
   }
   for (const { p, c } of standing) {
@@ -104,7 +104,7 @@ export function sceneSVG(board, { sel = null, me = null, id = "b", showFog = tru
       s += `<g class="piece" data-piece="${esc(p.color.key)}" transform="translate(${f1(at[0])},${f1(at[1])})">${pieceSVG({ shape: p.shape, color: p.color, mirrored: !!p.mirrored, state: p.state, part: "art" })}</g>`;
     } else {
       const at = P(c.at.x + .5, c.at.y + .5);
-      const art = creatureSVG(c, { part: "art" }) || creatureArtSVG(c, { part: "art" }) || `<circle cy="-13" r="11" class="cring"/><text y="-8.5" text-anchor="middle" class="cletter">${esc(String(c.entry || c.kind || "C").charAt(0))}</text>`;
+      const art = creatureArtSVG(c, { part: "art" }) || creatureSVG(c, { part: "art" }) || `<circle cy="-13" r="11" class="cring"/><text y="-8.5" text-anchor="middle" class="cletter">${esc(String(c.entry || c.kind || "C").charAt(0))}</text>`;
       s += `<g class="creature" data-creature="${c.id}" transform="translate(${f1(at[0])},${f1(at[1])})">${art}${c.resting ? '<text x="12" y="-26" class="czz">z</text>' : ""}</g>`;
     }
   }
