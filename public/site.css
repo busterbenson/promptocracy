@@ -669,6 +669,14 @@ button.pill[aria-pressed="true"]{background:color-mix(in srgb,var(--accent) 16%,
   .bwrap[data-sheet="open"] .chatcol{width:100%;max-width:100vw;overflow:hidden}
   .chat{min-width:0;max-width:100%}
   .chat .ch-log{overflow-x:hidden}
+  /* a thin frame on a phone (Buster 2026-11-26): a small portrait, title and close; a 40px strip; and while the composer has focus (the keyboard is up) the strip folds away so the log gets the room */
+  .chat .ch-h{padding:4px 10px;gap:8px}
+  .chat .ch-h .por{width:28px;height:28px}.chat .ch-h .por svg{width:26px;height:26px}
+  .chat .cnm b{font-size:1.15rem}
+  .chat .ch-x{width:28px;height:28px;font-size:1rem;position:relative}
+  .chat .ch-x::after{content:"";position:absolute;inset:-8px}
+  .chat .ch-rows .ch-row{min-height:40px;padding:4px 8px}
+  .chatcol.kb .chat .ch-rows{display:none}
 }
 /* iOS Safari zooms the page into any field under 16px when it takes focus, and a fixed sheet then runs off the visual viewport's right edge (the close and send buttons cut off). 16px stops the zoom, on every touch screen and in a phone held sideways. */
 @media (max-width:899.98px),(pointer:coarse){.chat .ch-in textarea{font-size:16px}}
@@ -680,7 +688,11 @@ button.pill[aria-pressed="true"]{background:color-mix(in srgb,var(--accent) 16%,
 .chat .ch-row{display:flex;align-items:center;gap:8px;min-height:44px;padding:6px 12px;border-bottom:1px solid var(--line);background:var(--chat);flex:none;min-width:0;font-family:var(--font-mono);font-size:.6rem}
 .chat .ch-row .k{flex:none;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-muted)}
 .chat .ch-row .its{display:flex;align-items:center;gap:6px;flex:1;min-width:0;overflow-x:auto;overscroll-behavior-x:contain;scrollbar-width:none;position:relative}
-.chat .ch-why{flex:none;padding:4px 12px 6px;border-bottom:1px solid var(--line);background:var(--chat);font-family:var(--font-mono);font-size:.62rem;color:var(--ink-muted)}
+.chat .ch-rows{display:flex;flex:none;min-width:0;border-bottom:1px solid var(--line)}
+.chat .ch-rows .ch-row{border-bottom:0;flex:1 1 0;min-width:0}
+.chat .ch-rows .ch-row[aria-label="Yours"]{flex-grow:3}
+.chat .ch-rows .ch-row[aria-label="Today"]{flex-grow:2;border-left:1px solid var(--line);padding-left:8px}
+.chat .ch-row .why{flex:none;color:var(--ink-muted)}
 .chat .ch-row .n{flex:none;color:var(--ink-muted)}
 .chat .ch-row .it{flex:none;display:inline-flex;align-items:center;gap:6px;min-height:32px;max-width:15rem;padding:2px 8px 2px 3px;border:1.5px solid var(--line);border-radius:999px;background:var(--chat);color:var(--ink);font-family:var(--font-body);font-size:.78rem}
 .chat .ch-row button.it{cursor:pointer}

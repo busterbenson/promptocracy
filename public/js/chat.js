@@ -231,11 +231,14 @@ ${sl.uses_note ? `<p class="cnote unote">${textHTML(sl.uses_note)}</p>` : ""}${s
     const props = (S.proposals || []).map((x) => `<button type="button" class="it" data-c="pickp" data-id="${esc(x.id)}" aria-pressed="${liveP === x.id}"${S.busy || S.switching ? " disabled" : ""}>${ppill(x.n || "Draft")}<span class="tt">${esc(x.head || "")}</span>${x.n ? `<span class="pill tstate" data-state="${esc(x.state)}">${esc(x.state)}</span>` : ""}</button>`);
     const items = props.concat((S.tickets || []).map((t) => `<button type="button" class="it" data-c="pick" data-n="${esc(t.n)}" aria-pressed="${S.ticket === t.n}"${S.busy ? " disabled" : ""}><span class="wpill">${esc(t.n)}</span><span class="tt">${esc(t.title || "Untitled")}</span><span class="pill tstate" data-state="${esc(t.state)}">${esc(t.state)}</span></button>`));
     const nw = `<button type="button" class="it new${S.ticket ? "" : " first"}" data-c="new"${S.busy || !can.allowed ? " disabled" : ""}>+ New</button>`;
-    // a disabled New says why, beside it (AGENTS.md: a reason next to a disabled control; a title tooltip is invisible on touch)
-    const why = !S.busy && !can.allowed && can.reason ? `<div class="ch-why" role="note">${esc(can.reason)}</div>` : "";
-    return rowHTML("Yours", items, nw) + why;
+    // a disabled New says why, beside it, in a few words (AGENTS.md: a reason next to a disabled control; a title tooltip is invisible on touch)
+    const why = !S.busy && !can.allowed && can.reason ? `<span class="why" role="note">${esc(shortWhy(can.reason))}</span>` : "";
+    return rowHTML("Yours", items, why + nw);
   }
-  const rowFor = () => ticketsRow() + (general() ? todayRow() : "");
+  /** A refusal's reason in a few words, for beside a button: the turn's end by name, any other reason by its first sentence. */
+  const shortWhy = (r) => (/turn has ended/i.test(r) ? "Turn ended" : String(r).split(/(?<=[.!?])\s/)[0].replace(/[.!?]$/, ""));
+  /** The strip: Yours and (in the general conversation) Today side by side in one band, each scrolling sideways inside its share. */
+  const rowFor = () => `<div class="ch-rows">${ticketsRow()}${general() ? todayRow() : ""}</div>`;
 
   /** Words in the box, unsent: the player's own text there is never overwritten. An option he offers is put there this way. @rule 106.3 */
   function prefill(text) {
@@ -369,10 +372,10 @@ ${sl.uses_note ? `<p class="cnote unote">${textHTML(sl.uses_note)}</p>` : ""}${s
     const bar = e.target.closest && e.target.closest(".gbar");
     if (!bar || !live()) return;
     const p = e.target.closest(".gb-p");
-    if (!p) { open(); return; }
-    if (p.dataset.w) { if (!S.busy) await attach(p.dataset.w, { open: true }); else open(); return; }   // a commission: its slip is its ticket's, not the general conversation's
+    if (!p) { open(false); return; }
+    if (p.dataset.w) { if (!S.busy) await attach(p.dataset.w, { open: true }); else open(false); return; }   // a commission: its slip is its ticket's, not the general conversation's
     const sl = Object.values(S.slips).find((x) => x && x.n === p.dataset.n) || (S.proposals || []).find((x) => x.n === p.dataset.n);
-    open();
+    open(false);
     const id = (sl && sl.id) || ((S.proposals || []).find((x) => x.n === p.dataset.n) || {}).id;
     if (id && !S.busy) await pickProposal(id);
   });
@@ -419,10 +422,12 @@ ${sl.uses_note ? `<p class="cnote unote">${textHTML(sl.uses_note)}</p>` : ""}${s
     }
     draw(true);
   }
-  function open() {
+  /** `typing` false: opened by a tap on the corner pill or the Summary bar, not to write (a phone's sheet then opens without the keyboard). */
+  function open(typing = true) {
     if (desktop()) { S.open = true; remember(true); } else S.sheet = true;
     place(); draw(true);   // it was drawn while hidden, so it has no place to keep: start at the end
-    const ta = col && col.querySelector("#chatText"); if (ta) ta.focus();
+    // the composer's focus folds the strip away on a phone, so a sheet opened just to look (the pill, the bar) leaves the box alone and the strip is there until the player taps it
+    const ta = col && col.querySelector("#chatText"); if (ta && (desktop() || typing)) ta.focus();
   }
   function minimize() { S.open = false; S.sheet = false; remember(false); place(); }
 
@@ -539,7 +544,7 @@ ${sl.uses_note ? `<p class="cnote unote">${textHTML(sl.uses_note)}</p>` : ""}${s
   root.addEventListener("click", async (e) => {
     const el = e.target.closest("[data-c], #chatfab");
     if (!el || !root.contains(el) || !mine()) return;
-    if (el === fab) { open(); return; }
+    if (el === fab) { open(false); return; }
     const a = el.dataset.c;
     if (a === "min") minimize();
     else if (a === "close") { S.sheet = false; place(); }
@@ -561,6 +566,24 @@ ${sl.uses_note ? `<p class="cnote unote">${textHTML(sl.uses_note)}</p>` : ""}${s
     S.draft = e.target.value; autosize(e.target);
     const b = col.querySelector('[data-c="send"]'); if (b) b.disabled = S.busy || !S.draft.trim();
   });
+  // The strip is folded (class "kb" on the column, CSS in site.css) while the composer has focus on a phone. It comes back only when nothing is pressing: a
+  // blur caused by the press on a control in the log (Lock it in, an option, a pill) must not move the log between press and click, so while a pointer is down
+  // in the window the strip stays folded, and it unfolds a moment after the pointer is up, once that click has run. A blur with no pointer down (the keyboard
+  // dismissed, the box taken away) unfolds at the next frame. A log that was at its end stays at its end; one scrolled up keeps its place.
+  let down = false, unfoldTimer = 0;
+  const typing = () => !!col && col.querySelector("#chatText") === document.activeElement;
+  function unfold() {
+    clearTimeout(unfoldTimer);
+    if (!col || down || typing() || !col.classList.contains("kb")) return;
+    col.classList.remove("kb");
+    const log = col.querySelector(".ch-log");
+    if (log && S.stick !== false) { log.scrollTop = log.scrollHeight; own(log); }
+  }
+  root.addEventListener("focusin", (e) => { if (e.target.id === "chatText") { clearTimeout(unfoldTimer); col.classList.add("kb"); } });
+  root.addEventListener("focusout", (e) => { if (e.target.id === "chatText") requestAnimationFrame(unfold); });   // next frame: a redraw that puts the box back has refocused it by then
+  root.addEventListener("pointerdown", () => { down = true; clearTimeout(unfoldTimer); });
+  const released = () => { if (!down) return; down = false; unfoldTimer = setTimeout(unfold, 400); };   // the click follows the pointer-up at once; the fold ends after it
+  document.addEventListener("pointerup", released); document.addEventListener("pointercancel", released);
   root.addEventListener("keydown", (e) => {
     if (!mine()) return;
     if (e.target.id === "chatText" && e.key === "Enter" && !e.shiftKey && desktop()) { e.preventDefault(); send(); }
