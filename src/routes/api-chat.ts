@@ -314,7 +314,7 @@ async function ticketTurn(T: Turn, ticket: any, moved: boolean): Promise<Out> {
 
   // What the player asked for is not part of this commission: the message goes to the general conversation, and he answers it there (rule 801.6).
   // One move a turn: a message that already came from there is answered here whatever he says.
-  if (moveOf(a, { makes: JSON.parse(ticket.makes || "[]") }) === "general" && !moved) {   // he said so, or the ticket is a rule and nothing else (801.1)
+  if (moveOf(a) === "general" && !moved) {   // he said so, or the ticket is a rule and nothing else (801.1)
     await logOnly(T, r, "ok", "moved to general");
     await moveMessage(T, null);
     return generalTurn(T, true);
@@ -380,11 +380,11 @@ async function generalTurn(T: Turn, moved: boolean): Promise<Out> {
   try { lastMeta = lastRow ? JSON.parse(lastRow.meta || "{}") : {}; } catch { lastMeta = {}; }
   // The standing draft's check is fresh before he answers (rule 103.9): made again when it was made on other criteria or another model than today's, or when the player sent the
   // draft again (he is reading a block that was decided on old facts, or asking for it to be looked at again). The tail then carries the fresh check.
-  if (slipRow && slipRow.status === "draft") await refreshCheck(env, game, tz, player.id, rulesMd, book, catalogFor(game).entries, (await openEntriesFor(env, game, player.id)).pending ?? [], slipRow, nowMs, sameDraft(text, slipRow));
   const t0 = await todayOf(ctx, game, player);
   const blocked = turnBlock(game, day, playerTurn, player, "propose", nowMs);
   const noDraft = blocked ? blocked.error : null;
   const entries = await openEntriesFor(env, game, player.id);   // the catalog's entries and what open commissions make (rules 701.4, 703.4); no Drafts: a rule can't lean on one
+  if (slipRow && slipRow.status === "draft" && !noDraft) await refreshCheck(env, game, tz, player.id, rulesMd, book, catalogFor(game).entries, entries.pending ?? [], slipRow, nowMs, sameDraft(text, slipRow));
   const drafted = lastMeta.refused ? { refused: String(lastMeta.refused.error ?? "") } : lastRow?.proposal_id && slipRow && slipRow.id === lastRow.proposal_id ? { head: slipRow?.draft_head, after_text: slipRow?.after_text, conflicts: slipRow ? JSON.parse(slipRow.conflicts || "[]") : [], check: slipRow?.rule_check ? JSON.parse(slipRow.rule_check) : null } : null;
   const ask = async (retry?: string, found?: any, mode?: "redraft" | "explain") => {
     const { system, messages } = generalRequest({
@@ -446,9 +446,10 @@ async function generalTurn(T: Turn, moved: boolean): Promise<Out> {
     });
     r = t.r; a = t.a; notes.push(...t.notes);
     const res = t.res;
-    if (res.id) proposalId = res.id;
+    // this turn's own unlocked drafts that do not stand (a blocked first draft a redraft replaced, redrafts that stayed blocked): never locked in, never shown to anyone
     const stray = madeIds.filter((id) => id !== res.id);
-    if (stray.length) await env.DB.batch(stray.map((id) => env.DB.prepare("DELETE FROM proposals WHERE id = ? AND player_id = ? AND status = 'draft'").bind(id, player.id)));   // this turn's own unlocked drafts, never locked in, never shown to anyone
+    if (stray.length) { try { await env.DB.batch(stray.map((id) => env.DB.prepare("DELETE FROM proposals WHERE id = ? AND player_id = ? AND status = 'draft'").bind(id, player.id))); } catch (e: any) { console.error("could not drop stray drafts:", e?.message || "error"); } }
+    if (res.id) proposalId = res.id;   // this turn's own unlocked drafts, never locked in, never shown to anyone
     else { meta.refused = res.refused; notes.push(`draft refused: ${res.why}`); }
   }
   if (a.quotes.length) meta.quotes = a.quotes;

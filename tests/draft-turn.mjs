@@ -78,6 +78,11 @@ console.log("the rule check blocks the draft: he redrafts himself (rule 103.9, B
   const k = rig({ answers: [ans("w1", { guesses: "I guessed: block 200." }), ans(null, { options: ["a"] })], drafts: [{ id: "p1", check: blocked }] });
   const ok = await k.run();
   check("he finds no faithful version (a redraft with no draft): his words are the explanation, no extra call, the first draft stays, its guesses ride along", k.log.asked.length === 1 && ok.res.id === "p1" && ok.a.say === "say none" && ok.a.guesses === "I guessed: block 200." && ok.a.options.join() === "fix one,fix two,fix three", String(k.log.asked.length));
+  const un = rig({ answers: [ans("w1"), ans("w2"), ans("w3")], drafts: [{ id: "p1", check: blocked }, { id: "p2", check: { status: "unchecked", fixes: [] } }, { id: "p3", check: { status: "ok" } }] });
+  const oun = await un.run();
+  check("a redraft the check could not run on is not shown in place of a blocked one it read; the next redraft may pass", un.log.tried.length === 3 && oun.res.id === "p3" && un.log.logged.some((l) => /could not run on it; not shown/.test(l)));
+  const un2 = rig({ answers: [ans("w1"), ans("w2"), ans("w3"), ans(null)], drafts: [{ id: "p1", check: blocked }, { id: "p2", check: { status: "unchecked", fixes: [] } }, { id: "p3", check: { status: "unchecked", fixes: [] } }] });
+  check("two unchecked redrafts: the first draft stays, with an explanation", (await un2.run()).res.id === "p1");
   const r = rig({ answers: [ans("w1"), ans("w2"), ans(null)], drafts: [{ id: "p1", check: blocked }, { refused: { error: "no" }, why: "refused" }] });
   const or = await r.run();
   check("a redraft the drafter refuses ends the redrafts; the first draft stays (a refusal does not erase it) and he explains", or.res.id === "p1" && !or.res.refused && r.log.asked.length === 2 && r.log.asked[1].mode === "explain");

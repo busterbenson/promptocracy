@@ -387,8 +387,9 @@ try {
     stubState.check = MISSING; stubState.retry = { say: "No house tiles. Pick one." };
     await say(Ana, "SYNTH-ADD a rule about house tiles, once more");
     stubState.check = null; stubState.retry = null;
-    const k1 = checks(), g5 = generalCallsNow();
+    const k1 = checks(), g5 = generalCallsNow(), refusedNotes0 = acalls("reason LIKE '%draft refused%'").length;
     const ft = await say(Ana, "SYNTH-ADD instead make it about points on a tile I can already name");
+    check("a clean draft is not logged as a refusal (the stray-draft cleanup once took the else of `if (res.id)`)", !!slipOf(ft) && acalls("reason LIKE '%draft refused%'").length === refusedNotes0 && ft.data.messages[1].refused === undefined);
     const tail = calls.filter((c) => c.kind === "general").at(-1).lastText;
     check("a free-text change typed after a failed check: the failed check's findings (what is missing) are in the tail, one general call, and the new draft is checked and can be locked in",
       generalCallsNow() === g5 + 1 && /rule check found the game can't carry it out/.test(tail) && /house tile/.test(tail) && checks() === k1 + 1 && !!slipOf(ft) && slipOf(ft).can.lock.allowed === true, tail.slice(0, 300));

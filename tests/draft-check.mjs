@@ -100,6 +100,18 @@ try {
   const lockFresh = await ana.post(`${P}/${st.data.proposal.id}/confirm`, {});
   check("the same draft with a check of another version is checked again first; the new answer (ok) lets it lock in, with no redraft", lockFresh.status === 200 && stubs.calls.length === nStale + 1 && lockFresh.data.proposal.status === "confirmed", lockFresh.text);
   sql(`UPDATE proposals SET status = 'withdrawn' WHERE id = '${st.data.proposal.id}'`);   // frees the day's slot for the tests below
+  stubs.check = { status: 200, text: J(OK) };
+  const st2 = await draftAdd("A player on a house tile loses no points for 2 nights, another stale one.");
+  sql(`UPDATE proposals SET rule_check = json_set(rule_check, '$.v', '00000000') WHERE id = '${st2.data.proposal.id}'`);
+  stubs.check = { status: 200, text: J(BLOCKED) };
+  const lockNow = await ana.post(`${P}/${st2.data.proposal.id}/confirm`, {});
+  check("a stale ok check that is checked again and now says blocked: Lock it in is refused with the fresh check, and the new check is stored with the current version", lockNow.status === 409 && /The game doesn't have/.test(lockNow.data.error) && lockNow.data.check.status === "blocked" && /^[0-9a-f]{8}$/.test(sql(`SELECT json_extract(rule_check, '$.v') AS v FROM proposals WHERE id = '${st2.data.proposal.id}'`)[0].v) && sql(`SELECT json_extract(rule_check, '$.v') AS v FROM proposals WHERE id = '${st2.data.proposal.id}'`)[0].v !== "00000000", lockNow.text);
+  sql(`UPDATE proposals SET rule_check = json_set(rule_check, '$.v', '00000000') WHERE id = '${st2.data.proposal.id}'`);
+  stubs.check = { status: 500 };
+  const lockFail = await ana.post(`${P}/${st2.data.proposal.id}/confirm`, {});
+  check("a stale check whose refresh fails keeps the old check (still blocked here), never an 'unchecked' that hides it", lockFail.status === 409 && lockFail.data.check.status === "blocked", lockFail.text);
+  sql(`DELETE FROM proposals WHERE id = '${st2.data.proposal.id}'`);
+  sql(`UPDATE proposals SET status = 'withdrawn' WHERE id = '${st.data.proposal.id}'`);   // frees the day's slot for the tests below
   stubs.check = { status: 200, text: J({ ...OK, engine: [{ what: "moving a player's piece", why: "No effect moves a player." }] }) };
   const engOk = await draftAdd("At the end of each day a player next to another is moved 1 step.");
   check("a change that needs an engine power the game lacks is ok with a note, and Lock it in stays on (Buster, engine gaps)", engOk.data.proposal.check.status === "ok" && engOk.data.proposal.engine_note === "Needs the engine to learn: moving a player's piece." && engOk.data.proposal.lock_refusal === null, engOk.text);

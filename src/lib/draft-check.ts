@@ -2,7 +2,7 @@
 // (conflicts, and whether the game can carry the change out) and the answer is stored on the draft. A change that relies on something the game
 // doesn't have, and one that could not be checked, can't be locked in (api-proposals.ts confirm); a conflict is a warning that names which rule
 // prevails (decided in code, rule 108.1).
-//   CHECK_MODEL   the model for the check (default MODEL_NAME, then claude-sonnet-5-5); set it to another to switch.
+//   CHECK_MODEL   the model for the check (default claude-sonnet-5-5, never MODEL_NAME, which is the drafter's); set it to another to switch.
 // No MODEL_API_KEY: the check is not run, like every other model call (a mechanical draft still works). With a key, any failure is `unchecked`.
 import { callModel, logCall, monthSpend } from "./agent";
 import { checkPrompt, checkSchema, checkVersion, engineNote, isStale, prevailVerdicts, readCheck } from "./rule-check.js";
@@ -23,7 +23,7 @@ export const CHECKED_KINDS = ["amend", "addclause", "add"];
 export const CHECK_TIMEOUT_MS = 30_000;
 export const DEFAULT_CHECK_MODEL = "claude-sonnet-5-5";   // Haiku at low effort called the real moon "not recorded" on one run and passed it the next, on the same input; every check is Sonnet (Buster, 2026-11-26)
 /** @rule 103.9 */
-export const checkModelOf = (env: Env) => env.CHECK_MODEL || env.MODEL_NAME || DEFAULT_CHECK_MODEL;
+export const checkModelOf = (env: Env) => env.CHECK_MODEL || DEFAULT_CHECK_MODEL;   // not MODEL_NAME: that is the drafter's model (Haiku) and the check must not follow it
 
 /** The day each rule got its number, from the proposals that added it or moved it there (the moderator's ruleAge: the first commit with that heading): what a rule's age is (rule 108.1); a starter or operator-added rule is 0. @rule 108.1 */
 async function agesOf(env: Env, gameId: string): Promise<Record<number, number>> {

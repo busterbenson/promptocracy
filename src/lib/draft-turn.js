@@ -63,6 +63,7 @@ export async function draftTurn({ r, a, noDraft = null, ask, read, tryDraft, aft
       const r3 = await tryDraft(a2);
       if (!r3.id) { await log(r2, "ok", `redraft ${n}: the drafter refused it`); break; }
       if (r3.check && r3.check.status === "blocked") { await log(r2, "ok", `redraft ${n}: still blocked`); found = r3.check; continue; }
+      if (r3.check && r3.check.status === "unchecked") { await log(r2, "ok", `redraft ${n}: the check could not run on it; not shown`); continue; }   // never a draft the check could not read in place of one it read
       await log(first.r, "ok", `rule check blocked; redraft ${n} passed`);
       r = r2; a = a2; res = r3; passed = true;
       notes.push(`redraft ${n} after rule check passed`);

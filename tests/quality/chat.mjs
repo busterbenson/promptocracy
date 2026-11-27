@@ -165,7 +165,7 @@ async function gremlinCase(c, x, res, o) {
     const a = readGremlinAnswer(r.text, { ceiling: CEILING, systemText: gremlinSystem({ ceiling: CEILING }), catalog: STARTER_CATALOG, entries, makes: ticket.makes, price: ticket.price });
     if (!a.ok) { turn.error = `unreadable answer: ${a.code} ${clip(a.reason, 120)}`; res.error = turn.error; return; }
     // a rule change or an action asked on a ticket: the message goes to the general conversation, and the case continues there with the rest of the script
-    if (moveOf(a, { makes: ticket.makes }) === "general" && !moved) {
+    if (moveOf(a) === "general" && !moved) {
       turn.say = a.say; turn.moved = true; turn.outcome = "moved to general"; res.moved_to_general = true;
       return generalCase({ ...c, turns: c.turns }, x, res, { sent, moved: true });
     }

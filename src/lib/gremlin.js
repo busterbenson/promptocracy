@@ -440,11 +440,14 @@ export function ruleOnlyTicket(makes) {
   return items.some((m) => m && m.kind === "rule") && !items.some((m) => m && (m.kind === "entry" || m.kind === "uses"));
 }
 
-/** Where a ticket answer's message belongs: "general" when he said so, or when what he wrote on the ticket is a rule and nothing else (ruleOnlyTicket); else null. @rule 801.1, 801.6 */
-export function moveOf(a, ctx = {}) {
+/**
+ * Where a ticket answer's message belongs: "general" when he said so, or when what he writes on the ticket THIS turn (`patch.makes`) is a rule and nothing else
+ * (ruleOnlyTicket); else null. A ticket that already holds only a rule is not moved by a message that writes no `makes` (a question about its cost stays on it). @rule 801.1, 801.6
+ */
+export function moveOf(a) {
   if (!a || a.refusal) return null;
   if (a.move === "general") return "general";
-  return ruleOnlyTicket(a.patch && a.patch.makes ? a.patch.makes : ctx.makes) ? "general" : null;
+  return a.patch && a.patch.makes && ruleOnlyTicket(a.patch.makes) ? "general" : null;
 }
 
 export function readGremlinAnswer(text, ctx) {
