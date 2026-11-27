@@ -1,6 +1,6 @@
 // Runs part of `npm test` so CI can split the full suite across machines, or just the fast tier for drafts.
 //   node scripts/ci-shard.mjs <i> <n>   the i-th of n shards (0-based), balanced by each suite's measured minutes
-//   node scripts/ci-shard.mjs --fast    the fast tier: the rule-claims check, design and engine (no server, no browser)
+//   node scripts/ci-shard.mjs --fast    the fast tier: the rule-claims and ticket-state checks, design and engine (no server, no browser)
 //   add --list to print what would run, and run nothing
 // The list of suites is read from package.json's "test" script, so adding a suite there is enough: it lands in a shard
 // with the default weight until someone gives it a measured one below.
@@ -9,7 +9,7 @@ import { spawnSync } from "node:child_process";
 
 const ROOT = new URL("..", import.meta.url).pathname;
 const chain = JSON.parse(readFileSync(ROOT + "package.json", "utf8")).scripts.test.split("&&").map((s) => s.trim()).filter(Boolean);
-const FAST = ["scripts/check-rule-claims.mjs", "tests/design.mjs", "tests/engine.mjs"];
+const FAST = ["scripts/check-rule-claims.mjs", "scripts/check-ticket-states.mjs", "tests/design.mjs", "tests/engine.mjs"];
 // Minutes each suite took on GitHub's ubuntu-24.04 runner (the stack/step2 run 44879160799, 2026-11-21: one shard 21 min, two at 14,
 // because every suite then new weighed DEFAULT). The suites added by threads, the general conversation and art have no CI timing yet: their weights are
 // estimates from the nearest measured suite (chat.mjs for the chat-driven ones, chat-browser.mjs for the browser ones), to be replaced by
@@ -18,7 +18,7 @@ const MINUTES = { "tests/quality/harness.test.mjs": 0.3, "tests/board.mjs": 9.1,
   "tests/votes.mjs": 2.7, "tests/chat.mjs": 2.2, "tests/e2e.mjs": 2.1, "tests/start.mjs": 2.0, "tests/day.mjs": 1.8, "tests/proposals-per-day.mjs": 1.8,
   "tests/proposals.mjs": 1.4, "tests/chrome.mjs": 1.3, "tests/workshop-browser.mjs": 1.2, "moderator/test.mjs": 1.2, "tests/workshop-migration.mjs": 0.9,
   "tests/engine.mjs": 0.8, "tests/actions-migration.mjs": 0.8, "tests/eras-migration.mjs": 0.8, "tests/eras.mjs": 0.6, "tests/eras-browser.mjs": 0.5,
-  "tests/design.mjs": 0.3, "tests/catalog.mjs": 0.2, "tests/gremlin.mjs": 0.2, "scripts/check-rule-claims.mjs": 0.1, "moderator/schedule.test.mjs": 0.1, "moderator/escalations.test.mjs": 0.2,
+  "tests/design.mjs": 0.3, "tests/catalog.mjs": 0.2, "tests/gremlin.mjs": 0.2, "scripts/check-rule-claims.mjs": 0.1, "scripts/check-ticket-states.mjs": 0.1, "moderator/schedule.test.mjs": 0.1, "moderator/escalations.test.mjs": 0.2,
   // estimates (see above)
   "tests/threads.mjs": 2.2, "tests/gremlin-general.mjs": 2.5, "tests/gremlin-rules.mjs": 0.3, "tests/one-gremlin-migration.mjs": 0.5, "tests/threads-browser.mjs": 2.0, "tests/propose-bar-browser.mjs": 3.0,
   "tests/ticket-hold.mjs": 1.5, "tests/ticket-hold-browser.mjs": 1.5, "tests/art.mjs": 2.2, "tests/art-sweep.mjs": 0.1, "tests/local-d1.mjs": 0.3, "tests/art-browser.mjs": 2.0 };
