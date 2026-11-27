@@ -38,6 +38,7 @@ export function applyBoard({ n, effects, players, creatures, catalog, tiles, nex
   const C = creatures.map((c) => ({ ...c }));
   const S = structures.map((x) => ({ ...x }));
   const ops = [], died = [], rose = [];
+  const blocked = new Set(); // creatures with a refused step tonight
   let id = nextId;
   /** @rule 602.2 */
   const occupied = (x, y, z) => [...P.values()].some(here(x, y, z)) || C.some((c) => !c.gone && here(x, y, z)(c));
@@ -70,7 +71,9 @@ export function applyBoard({ n, effects, players, creatures, catalog, tiles, nex
         if (!tiles.has(x, y, z)) throw new Error(`step: ${x},${y},${z} is not charted`);
         // Each rule's night sees the same board, so two rules (602's Blob, 606's Pancake) can pick one tile in a night. The later step is skipped and
         // logged, as a refused move is: the creature stays where it is (602.4), and one collision does not hold the whole night open.
-        if (occupied(x, y, z)) { ops.push({ op: "step_refused", id: c.id, entry: c.entry, x, y, z, why: `${x},${y},${z} is occupied` }); break; }
+        // Its later steps tonight were planned from the tile it didn't reach, so they are skipped too: it stays where it is, never jumps a tile.
+        if (blocked.has(c.id)) { ops.push({ op: "step_refused", id: c.id, entry: c.entry, x, y, z, why: "an earlier step was refused" }); break; }
+        if (occupied(x, y, z)) { blocked.add(c.id); ops.push({ op: "step_refused", id: c.id, entry: c.entry, x, y, z, why: `${x},${y},${z} is occupied` }); break; }
         c.x = x; c.y = y; c.z = z;
         ops.push({ op: "step", id: c.id, x, y, z });
         break;

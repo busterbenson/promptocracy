@@ -62,6 +62,9 @@ console.log("the board: effects applied in order to a copy");
   check("step: two creatures sent to one tile in a night (two rules, one board): the first lands, the second stays put and is logged, and the night goes on",
     s1.ops[0].op === "step" && s1.ops[1].op === "step_refused" && s1.ops[1].id === 2 && /occupied/.test(s1.ops[1].why)
     && s1.creatures.find((c) => c.id === 2).x === 2 && s1.ops[2].op === "bite", J(s1.ops));
+  const s2 = run([effects.step(1, t(1, 2)), effects.step(2, t(1, 2)), effects.step(2, t(1, 1))], [P("a", 0, 0, 3)], two);
+  check("step: after a refused step, that creature's later steps tonight are skipped too (planned from a tile it never reached; it never jumps)",
+    s2.ops[2].op === "step_refused" && /earlier step/.test(s2.ops[2].why) && s2.creatures.find((c) => c.id === 2).x === 2 && s2.creatures.find((c) => c.id === 2).y === 2, J(s2.ops));
   check("step: onto a player's tile is skipped and logged too", run([effects.step(1, t(0, 0))], [P("a", 0, 0)], two).ops[0].op === "step_refused");
   // the move effect: a night rule moves a player's piece (rule 504.2's guards: charted, unoccupied by a piece or a creature, and a living player)
   const mv = (e, ps, cs = []) => run(e, ps, cs);
