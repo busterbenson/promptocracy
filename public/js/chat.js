@@ -566,11 +566,24 @@ ${sl.uses_note ? `<p class="cnote unote">${textHTML(sl.uses_note)}</p>` : ""}${s
     S.draft = e.target.value; autosize(e.target);
     const b = col.querySelector('[data-c="send"]'); if (b) b.disabled = S.busy || !S.draft.trim();
   });
-  // the strip comes back when the box loses focus and the log shrinks by its height: a log that was at its end stays at its end; one the player had scrolled up keeps its place (scrollTop is not touched)
-  root.addEventListener("focusout", (e) => {
-    if (e.target.id !== "chatText" || S.stick === false) return;
-    requestAnimationFrame(() => { const log = col && col.querySelector(".ch-log"); if (log && S.stick !== false) { log.scrollTop = log.scrollHeight; own(log); } });
-  });
+  // The strip is folded (class "kb" on the column, CSS in site.css) while the composer has focus on a phone. It comes back only when nothing is pressing: a
+  // blur caused by the press on a control in the log (Lock it in, an option, a pill) must not move the log between press and click, so while a pointer is down
+  // in the window the strip stays folded, and it unfolds a moment after the pointer is up, once that click has run. A blur with no pointer down (the keyboard
+  // dismissed, the box taken away) unfolds at the next frame. A log that was at its end stays at its end; one scrolled up keeps its place.
+  let down = false, unfoldTimer = 0;
+  const typing = () => !!col && col.querySelector("#chatText") === document.activeElement;
+  function unfold() {
+    clearTimeout(unfoldTimer);
+    if (!col || down || typing() || !col.classList.contains("kb")) return;
+    col.classList.remove("kb");
+    const log = col.querySelector(".ch-log");
+    if (log && S.stick !== false) { log.scrollTop = log.scrollHeight; own(log); }
+  }
+  root.addEventListener("focusin", (e) => { if (e.target.id === "chatText") { clearTimeout(unfoldTimer); col.classList.add("kb"); } });
+  root.addEventListener("focusout", (e) => { if (e.target.id === "chatText") requestAnimationFrame(unfold); });   // next frame: a redraw that puts the box back has refocused it by then
+  root.addEventListener("pointerdown", () => { down = true; clearTimeout(unfoldTimer); });
+  const released = () => { if (!down) return; down = false; unfoldTimer = setTimeout(unfold, 400); };   // the click follows the pointer-up at once; the fold ends after it
+  document.addEventListener("pointerup", released); document.addEventListener("pointercancel", released);
   root.addEventListener("keydown", (e) => {
     if (!mine()) return;
     if (e.target.id === "chatText" && e.key === "Enter" && !e.shiftKey && desktop()) { e.preventDefault(); send(); }

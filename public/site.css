@@ -676,7 +676,7 @@ button.pill[aria-pressed="true"]{background:color-mix(in srgb,var(--accent) 16%,
   .chat .ch-x{width:28px;height:28px;font-size:1rem;position:relative}
   .chat .ch-x::after{content:"";position:absolute;inset:-8px}
   .chat .ch-rows .ch-row{min-height:40px;padding:4px 8px}
-  .chat:has(#chatText:focus) .ch-rows{display:none}
+  .chatcol.kb .chat .ch-rows{display:none}
 }
 /* iOS Safari zooms the page into any field under 16px when it takes focus, and a fixed sheet then runs off the visual viewport's right edge (the close and send buttons cut off). 16px stops the zoom, on every touch screen and in a phone held sideways. */
 @media (max-width:899.98px),(pointer:coarse){.chat .ch-in textarea{font-size:16px}}

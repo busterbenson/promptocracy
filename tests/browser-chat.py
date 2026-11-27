@@ -618,5 +618,36 @@ with sync_playwright() as p:
     check(f"390-light slim ended: New is disabled with its reason ('{text(page, YOURS + ' .why')}', 15 characters or fewer) beside it, on the same line", page.locator(f"{YOURS} .it.new").is_disabled() and 0 < len(text(page, YOURS + " .why")) <= 15 and abs((wb["y"] + wb["height"] / 2) - (nb["y"] + nb["height"] / 2)) <= 3, str((wb, nb)))
     shot(page, "slim-ended-390-light"); c.close()
 
+    # ---------------- a tap in the log lands while the keyboard is up (Codex, #151): at 390x500 with the composer focused AND the log scrolled up (not at its end), a tap on an
+    # option button and on Lock it in must hit that control. The strip is folded while the box has focus; if it came back on the press (the blur) the log would move
+    # 40px under a pointer that is already down and the tap would hit something else.
+    for scheme in ("light",):
+        tag = f"390-{scheme} tap with the keyboard up"
+        c, page, errors = new_page(b, 390, 844, scheme, ivy_cookie)
+        page.click("#chatfab"); page.wait_for_selector("#chatLog .opts .btn"); page.wait_for_timeout(300)
+        page.set_viewport_size({"width": 390, "height": 500}); page.wait_for_timeout(200)
+        def lift(sel):
+            # a filler line below, then the control scrolled to the log's upper part: the log is not at its end
+            page.evaluate("(sel) => { const l = document.getElementById('chatLog'); const f = document.createElement('div'); f.id = 'slimFill'; f.style.cssText = 'flex:none;height:900px'; l.appendChild(f); const e = l.querySelector(sel); l.scrollTop = e.offsetTop - 60; }", sel)
+            page.wait_for_timeout(250)
+        page.focus("#chatText"); page.wait_for_timeout(200)
+        lift("#chatLog .opts .btn")
+        far = page.evaluate("(() => { const l = document.getElementById('chatLog'); return l.scrollHeight - l.scrollTop - l.clientHeight })()")
+        check(f"{tag}: the composer has focus (strip folded) and the log is scrolled up, {far:.0f}px from its end", not page.locator("#chatcol .ch-row").first.is_visible() and far > 200)
+        first = page.locator("#chatLog .opts .btn").first; want = " ".join(first.inner_text().split())
+        first.click(); page.wait_for_timeout(300)
+        check(f"{tag}: tapping an option button puts its words in the box (the tap landed on it)", " ".join(page.input_value("#chatText").split()) == want, page.input_value("#chatText"))
+        page.evaluate("document.getElementById('slimFill') && document.getElementById('slimFill').remove()")
+        page.focus("#chatText"); page.wait_for_timeout(200)
+        lift('.slip:not(.past) [data-c="lock"]')
+        far = page.evaluate("(() => { const l = document.getElementById('chatLog'); return l.scrollHeight - l.scrollTop - l.clientHeight })()")
+        check(f"{tag}: the composer has focus and the log is scrolled up again, {far:.0f}px from its end", not page.locator("#chatcol .ch-row").first.is_visible() and far > 200)
+        page.locator('.slip:not(.past) [data-c="lock"]').click()
+        try:
+            page.wait_for_function("document.querySelector('#chatLog .slip .cstamp') && document.querySelector('#chatLog .slip .cstamp').textContent.trim() === 'LOCKED'", timeout=5000); locked = True
+        except Exception: locked = False
+        check(f"{tag}: tapping Lock it in on the slip locks it (the tap landed on it)", locked, text(page, "#chatLog .slip"))
+        check(f"{tag}: no console errors", not errors, str(errors)); c.close()
+
     b.close()
 sys.exit(1 if failed else 0)
