@@ -13,7 +13,7 @@ export const get = async ({ env, data }: Ctx) => {
     await env.DB.prepare("SELECT display_name, color, shape, mirrored, score, turn_order, x, y, z, hearts, dead_day, ghost_day FROM players WHERE game_id = ? ORDER BY turn_order").bind(g.id).all()
   ).results as any[];
   const tiles = await loadTiles(env, g.id);
-  const creatures = (await env.DB.prepare("SELECT id, entry_id, x, y, z, hearts, rests_night FROM creatures WHERE game_id = ? AND gone_day IS NULL ORDER BY id").bind(g.id).all()).results as any[];
+  const creatures = (await env.DB.prepare("SELECT id, entry_id, x, y, z, hearts, rests_night, appeared_day FROM creatures WHERE game_id = ? AND gone_day IS NULL ORDER BY id").bind(g.id).all()).results as any[];
   const entries = new Map(((bundleFor(g).bundle as any).catalog ?? []).map((e: any) => [e.id, e]));
   const S = gameSettings(g);
   return json({
@@ -33,6 +33,8 @@ export const get = async ({ env, data }: Ctx) => {
     // The creatures on the board (rule 602), in the order they appeared; resting = it bit last night (602.5).
     creatures: creatures.map((c) => ({
       id: c.id, entry: c.entry_id, name: entries.get(c.entry_id)?.name ?? c.entry_id, kind: entries.get(c.entry_id)?.kind ?? "creature", hearts: c.hearts,
+      temper: entries.get(c.entry_id)?.attrs?.temper ?? null, appeared_day: c.appeared_day ?? null,   // the catalog's temper (602.1) and the day it appeared (602.3), for its card
+      max_hearts: entries.get(c.entry_id)?.attrs?.hearts ?? null,   // its catalog hearts (601): the full scale its card draws
       resting: g.day > 0 && c.rests_night === g.day, at: { x: c.x, y: c.y, z: c.z, label: tileLabel(c.x, c.y, c.z) },
     })),
   });

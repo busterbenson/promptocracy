@@ -10,7 +10,7 @@
 //     refresh()          reload the page's state after a confirm
 //     cards              the card host (cards.js)
 //     chat()             the chat window (chat.js) or null: "Commission something" opens it on the new draft (rule 801.2)
-//   W.load()  W.count()  W.tabHTML()  W.summaryHTML()  W.card(spec)  W.open(n, push)  W.openEntry(id, push)  W.click(el)  W.input(el)  W.apply(page)
+//   W.load()  W.count()  W.tabHTML()  W.summaryHTML()  W.card(spec)  W.open(n, push)  W.openEntry(id, push)  W.entryArt(id)  W.click(el)  W.input(el)  W.apply(page)
 // A card is a ticket ({kind: "ticket", key: "W3"}) or a catalog entry ({kind: "entry", key: "I1"}); the entries come from /api/catalog (rules 701-705).
 // Nothing here decides what is allowed: the server's answers (the lock, one a day, a refusal) are shown as they come.
 import { nightsOf, pointsOf, wPill } from "/js/commission.js";
@@ -224,6 +224,11 @@ export function createWorkshop({ api, me, pill, rpill, when, canCommission, refr
     return { cls: "crit tk", label: `${v.id} ${v.name}`, backLabel: v.id,
       html: `<div class="mtop"><div class="cart">${artTile(v, true)}</div><span class="wpill big">${esc(v.id)}</span><h2>${esc(v.name)}</h2>${kindChip(v)}</div>
 ${stripHTML(artOf(v), false, "", 1)}${attrsHTML(v)}${flavorHTML(v, open)}${more ? `<div class="row">${more}</div>` : ""}${made || from ? `<dl class="tdl">${made}${from}</dl>` : ""}` };
+  }
+  /** The art slot of a catalog entry for another card (a creature on the board), or null when the catalog has no such entry. @rule 701.1 */
+  function entryArt(id) {
+    const v = S.cat.entries.find((e) => e.id === id);
+    return v ? artTile(v, true) : null;
   }
   /** @rule 701.1 */
   async function openEntry(id, push) {
@@ -562,5 +567,5 @@ ${editing ? formHTML(t) : factsHTML(t)}${unlockHTML(t)}${reopenHTML(t)}${holdHTM
     watchArt(t.n);
   }
 
-  return { load, count, tabHTML, summaryHTML, card, open, openEntry, commission, click, input, apply, list: () => S.list };
+  return { load, count, tabHTML, summaryHTML, card, open, openEntry, entryArt, commission, click, input, apply, list: () => S.list };
 }
