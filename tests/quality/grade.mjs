@@ -65,6 +65,7 @@ export function codeChecks(c, res, night) {
     const got = res.opened_ticket && res.ticket && (res.ticket.title || (res.ticket.makes || []).length) ? "ticket" : res.draft ? "proposal" : res.refusal ? "refusal" : "nothing";
     out.push(chk(`ends in ${e.ends_in}`, got === e.ends_in, `got ${got}`));
   }
+  if (e.say_names) out.push(chk(`his line names ${e.say_names}`, turns.some((t) => String(t.say || "").includes(e.say_names)), turns.map((t) => t.say).filter(Boolean).join(" / ").slice(0, 200)));
   if (e.no_escalation) out.push(chk("no escalation", !turns.some((t) => t.escalate), turns.find((t) => t.escalate)?.escalate?.reason || ""));
   if (e.guesses) out.push(chk("a draft on turn 1 carries a guesses line", !!turns[0]?.asked_for && !!turns[0]?.guesses, turns[0]?.guesses || "no guesses"));
   if (e.options_on_turn !== undefined) out.push(chk(`options on turn ${e.options_on_turn}`, (turns[e.options_on_turn - 1]?.options || []).length >= 2, JSON.stringify(turns[e.options_on_turn - 1]?.options || [])));
