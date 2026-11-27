@@ -26,6 +26,7 @@
 //                                                once); the enactment follows it (107.2). builds (a game whose rules have 803.2): one
 //                                                outcome per Building ticket, src/lib/builds.js readBuilds; none for a ticket that isn't.
 //   GET pending's job also lists `builds` there: every Building ticket in queue order (src/lib/builds.js pendingBuilds).
+import { KEEP_STATES, keepNewest, unkeptTickets } from "../lib/art";
 import { publicEntriesFor } from "../lib/pending-entries";
 import { endGameStatements } from "../lib/end";
 import { logCall, monthSpend } from "../lib/agent";
@@ -277,6 +278,21 @@ export const delivered = async (ctx: Ctx) => {
   if (id === null) return json({ error: "Bad escalation." }, 400);
   const res = await ctx.env.DB.prepare("UPDATE escalations SET delivered_at = ? WHERE id = ? AND game_id = ? AND delivered_at IS NULL AND answered_at IS NULL").bind(nowIso(await clockNow(ctx.env)), id, ctx.data.game!.id).run();
   return json({ ok: true, marked: (res?.meta?.changes ?? 0) > 0 });
+};
+
+/** What the operator script would keep: the open tickets past Draft whose entries have drawings and keep none. Reads only. @rule 801.2 */
+export const unkeptDrawings = async (ctx: Ctx) => {
+  if (!(await authorized(ctx))) return unauthorized();
+  return json({ tickets: await unkeptTickets(ctx.env, ctx.data.game!) });
+};
+
+/** Keeps the newest drawing of each such entry (keepNewest), once; the answer lists what each entry kept. @rule 801.2 */
+export const keepDrawings = async (ctx: Ctx) => {
+  if (!(await authorized(ctx))) return unauthorized();
+  const game = ctx.data.game!, nowMs = await clockNow(ctx.env), results: any[] = [];
+  const rows = ((await ctx.env.DB.prepare(`SELECT * FROM tickets WHERE game_id = ? AND state IN (${KEEP_STATES.map(() => "?").join(", ")}) ORDER BY number`).bind(game.id, ...KEEP_STATES).all()).results ?? []) as any[];
+  for (const t of rows) for (const r of await keepNewest(ctx.env, game, t, nowMs)) results.push({ ticket: `W${t.number}`, ...r });
+  return json({ kept: results });
 };
 
 /** The usage the job reports for its model call, checked: known fields, whole non-negative numbers. @rule 106.7 */

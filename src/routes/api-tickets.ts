@@ -33,7 +33,7 @@ import { bookFor, confirm as confirmProposal } from "./api-proposals";
 import { catalogFor, viewContext } from "./api-catalog";
 import { entriesFor } from "../lib/pending-entries";
 import { entryView } from "../lib/catalog.js";
-import { overlay, redrawFailed } from "../lib/art";
+import { keepNewest, overlay, redrawFailed } from "../lib/art";
 
 type Out = { status: number; body: any };
 const out = (body: any, status = 200): Out => ({ status, body });
@@ -228,6 +228,7 @@ export async function mine(ctx: Ctx, player: any, raw: unknown, nowMs: number): 
         env.DB.prepare("UPDATE tickets SET state = 'Proposed', proposed_at = COALESCE(proposed_at, ?), updated_at = ? WHERE id = ? AND state = 'Draft' AND proposal_id = ?").bind(now, now, t.id, t.proposal_id),
         env.DB.prepare("INSERT INTO ticket_log (ticket_id, day, kind, text, at) SELECT id, ?, 'proposed', ?, ? FROM tickets WHERE id = ? AND state = 'Proposed' AND proposal_id = ?").bind(game.day, `Put on tomorrow's ballot as P${q.number}.`, now, t.id, t.proposal_id),
       ]);
+      await keepNewest(env, game, { ...t, state: "Proposed" }, nowMs);
       return out({ error: `W${t.number} is on the ballot as P${q.number}, so it can't be changed.` }, 409);
     }
     if (q && q.status === "draft" && nowMs - Date.parse(q.created_at) < 60_000) {
@@ -353,6 +354,7 @@ export async function confirm(ctx: Ctx, player: any, raw: unknown, nowMs: number
     env.DB.prepare("INSERT INTO ticket_log (ticket_id, day, kind, text, at) SELECT id, ?, 'proposed', ?, ? FROM tickets WHERE id = ? AND state = 'Proposed' AND proposal_id = ? AND NOT EXISTS (SELECT 1 FROM ticket_log l WHERE l.ticket_id = tickets.id AND l.kind = 'proposed' AND l.text = ?)").bind(game.day, `Put on tomorrow's ballot as P${number}.`, now, t.id, pid, `Put on tomorrow's ballot as P${number}.`),
   ]);
   const fresh = await findTicket(env, game.id, t.number);
+  await keepNewest(env, game, fresh, nowMs);   // an entry with no kept drawing keeps its newest (801.2)
   return out({ ok: true, ticket: await page(ctx, fresh, player, nowMs), message: `W${t.number} is P${number} on tomorrow's ballot.` });
 }
 
