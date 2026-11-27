@@ -2,8 +2,9 @@
 // THE MODERATOR'S NIGHT (rules 106, 107.2-107.8, 108). Runs on the Mac mini (launchd, twice a night per game: a main
 // run that stays all night and a backstop; moderator/schedule.mjs), one game per run. Everything here is deterministic code: poll the Worker, clone the game repo, apply each passed proposal through
 // ONE model call (moderator/APPLY.md), check what the model wrote (paths, lint, claims, rulebook, tests: the bundler's own
-// checks), commit, push, claim the night, tag day-N, trigger the deploy, reconcile what D1 lists as not applied. The
-// model never runs a command, never sees a secret and never touches git. The plan: moderator/PLAN.md.
+// checks), commit, push, claim the night, tag day-N, trigger the deploy, reconcile what D1 lists as not applied. Then (a game whose rules
+// have 803.2) it builds the queue's commissions, each as one commit (moderator/BUILD.md for its rule items; its entries by code), and the
+// claim carries their outcomes too. The model never runs a command, never sees a secret and never touches git. The plan: moderator/PLAN.md.
 //
 //   node moderator/process-day.mjs --slug rickshaw-1 [--dry-run]
 //
@@ -23,6 +24,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { checkTree } from "../scripts/bundle-games.mjs";
 import { knownNumbers } from "../src/engine/claims.js";
 import { CHECK_CRITERIA, ENGINE_FACTS, markOf, prevailing } from "../src/lib/rule-check.js";
+import { ART_KEY, KIND_IDS, LIMITS as CATALOG_LIMITS, kindOf } from "../src/lib/catalog.js";
 export { markOf, prevailing };   // the precedence logic lives in src/lib/rule-check.js (the site's draft check reads it too); kept exported here
 import { isMainRun } from "./schedule.mjs";
 
@@ -418,7 +420,7 @@ export function checkGame(dir, label) {
   try {
     for (const name of readdirSync(dir)) if (name !== ".git" && name !== "node_modules") cpSync(join(dir, name), join(copy, name), { recursive: true });
     const r = checkTree(copy, label, { started: true });   // a night is processed from day 1 on: a repealed clause leaves its number empty (rule 109.1)
-    return { ok: true, out: `tests: ${r.tests}` };
+    return { ok: true, out: `tests: ${r.tests}`, registry: r.registry };
   } catch (e) {
     return { ok: false, out: String(e.message || e).slice(-4000) };
   } finally { rmSync(copy, { recursive: true, force: true }); }
@@ -926,6 +928,303 @@ export async function postRulings({ api, made, stateDir, slug, log, day, notifyD
   return allPosted;
 }
 
+// ---- the night's builds (rules 803.2-803.4) -----------------------------------------------------------------------
+// After the proposals (107.2), every ticket the site lists as Building (GET pending's `builds`, in queue order) is built, as far as the night's
+// time allows. Its entries go into catalog.json by plain code (catalogWith: no model); its rule items through ONE model call (moderator/BUILD.md),
+// in the same sandbox as a proposal. Code checks what the model wrote (ticketScopeProblems, then the bundler's checks and the game's tests), and a
+// ticket is one commit with the trailer `Ticket: W<n>`, so it goes live all at once and is reverted all at once (`Reverts-Ticket: W<n>`).
+// Outcomes (the claim's `builds`, src/lib/builds.js readBuilds): built (commit, made), failed (reason), no_time, needs_engine (one-line note).
+export const BUILD_NOTE_MAX = 200; // the Worker refuses a longer needs_engine note (src/lib/builds.js LIMITS.note)
+const isObj = (v) => !!v && typeof v === "object" && !Array.isArray(v);
+const nameKey = (s) => norm(s).toLowerCase();
+
+// The commits on the current branch that carry a "Ticket: W<n>" or "Reverts-Ticket: W<n>" trailer, newest first: per ticket, its newest record
+// (newest: {sha, body, revert}), its newest build commit (applied) and its newest revert (reverts). A ticket is live on main when its newest
+// record is a build.
+/** @rule 803.3, 803.4 */
+export function ticketCommits(dir) {
+  const log = git(["log", "--format=%H%x1f%B%x1e"], dir, { allowFail: true }) ?? "";
+  const newest = new Map(), applied = new Map(), reverts = new Map();
+  for (const rec of log.split("\x1e").map((s) => s.trim()).filter(Boolean)) {
+    const [sha, body] = rec.split("\x1f");
+    const rv = /^Reverts-Ticket: W(\d+)$/m.exec(body ?? ""), ap = rv ? null : /^Ticket: W(\d+)$/m.exec(body ?? "");
+    if (!rv && !ap) continue;
+    const n = Number((rv ?? ap)[1]);
+    if (!newest.has(n)) newest.set(n, { sha, body, revert: !!rv });
+    if (rv && !reverts.has(n)) reverts.set(n, sha);
+    if (ap && !applied.has(n)) applied.set(n, { sha, body });
+  }
+  return { newest, applied, reverts, live: new Map([...newest].filter(([, r]) => !r.revert)) };
+}
+/** The night a ticket's commit was made on, from its subject "W2: <title> (day N, commission)". @rule 803.3 */
+export const ticketDay = (body) => { const m = /\(day (\d+), commission\)$/.exec(String(body ?? "").split("\n")[0]); return m ? Number(m[1]) : null; };
+/** What a ticket's commit put in the game, from its "Made: T1, 805" trailer. @rule 803.3 */
+export const madeOfBody = (body) => (/^Made: (.*)$/m.exec(String(body ?? ""))?.[1] ?? "").split(",").map((s) => s.trim()).filter((s) => /^(?:[ICTSF][1-9]\d{0,3}|\d{3}(?:\.\d{1,3})?)$/.test(s));
+
+// The drawings an entry keeps (catalog.json's art shape, docs/catalog.md section 1), from what the site sends: the ones its requester kept and
+// the one they picked, which is kept first when there are more than the catalog holds.
+/** @rule 803.3, 705.1 */
+function artOf(a) {
+  const saved = [];
+  const list = Array.isArray(a?.saved) ? a.saved : [];
+  const dflt = typeof a?.default === "string" ? a.default : null;
+  for (const d of [...list.filter((x) => x?.key === dflt), ...list.filter((x) => x?.key !== dflt)]) {
+    if (!isObj(d) || typeof d.key !== "string" || !ART_KEY.test(d.key) || d.key.includes("..") || saved.some((x) => x.key === d.key) || saved.length >= CATALOG_LIMITS.saved) continue;
+    saved.push({ key: d.key, ...(typeof d.prompt === "string" && norm(d.prompt) ? { prompt: norm(d.prompt).slice(0, CATALOG_LIMITS.prompt) } : {}) });
+  }
+  const order = new Map(list.map((x, i) => [x?.key, i]));
+  saved.sort((x, y) => order.get(x.key) - order.get(y.key));
+  return { saved, default: dflt && saved.some((x) => x.key === dflt) ? dflt : null };
+}
+
+/**
+ * The catalog with a ticket's entries added (rule 803.3), by plain code. `catalog` is catalog.json as it stands (earlier tickets tonight
+ * included), `b` the ticket as GET pending lists it. Each entry item of what it made, as voted: the next free number for its kind letter (T1, I1,
+ * C2...), its name, kind, attrs (its required values and its needsBuild keys) and flavor, the drawings its requester kept with the one they
+ * picked, madeBy W<n> and the night's day. A uses item writes nothing (803.3). An entry of the same kind and name already in the catalog is that
+ * entry: nothing is added (rule 701.4; Buster, 2026-11-26). Returns {catalog, made: [{id, name, kind, madeBy, existing, needsBuild}], problems}.
+ * @rule 701.4, 803.3
+ */
+export function catalogWith(catalog, b, day) {
+  const out = [...catalog], made = [], problems = [];
+  for (const m of Array.isArray(b?.voted?.makes) ? b.voted.makes : []) {
+    if (!isObj(m) || m.kind !== "entry") continue;
+    const name = norm(m.name), kind = KIND_IDS.includes(m.catalogKind) ? m.catalogKind : null;
+    if (!name) { problems.push("an entry it makes has no name"); continue; }
+    if (!kind) { problems.push(`${name} has no kind of entry (702.1)`); continue; }
+    const there = out.find((e) => isObj(e) && e.kind === kind && nameKey(e.name) === nameKey(name));
+    if (there) { if (!made.some((x) => x.id === there.id)) made.push({ id: there.id, name: there.name, kind, madeBy: there.madeBy ?? null, existing: true, needsBuild: [] }); continue; }
+    const letter = kindOf(kind).letter;
+    const taken = out.map((e) => /^([ICTSF])([1-9]\d{0,3})$/.exec(String(e?.id ?? ""))).filter((x) => x && x[1] === letter).map((x) => Number(x[2]));
+    const id = `${letter}${Math.max(0, ...taken) + 1}`;
+    const art = artOf((b.entries ?? []).find((x) => isObj(x) && nameKey(x.name) === nameKey(name) && (x.catalogKind ?? kind) === kind)?.art);
+    out.push({ id, name, kind, attrs: isObj(m.attrs) ? { ...m.attrs } : {}, flavor: isObj(m.flavor) ? { ...m.flavor } : {}, art, madeBy: `W${b.number}`, day });
+    made.push({ id, name, kind, madeBy: `W${b.number}`, existing: false, needsBuild: Array.isArray(m.needsBuild) ? m.needsBuild.filter((k) => typeof k === "string") : [] });
+  }
+  return { catalog: out, made, problems };
+}
+
+// A rule's section cut into its heading line and its clauses (label -> plain text). Text with no clause label before the first one is "".
+/** @rule 803.3 */
+function ruleParts(section) {
+  const lines = String(section ?? "").split("\n");
+  const head = norm(lines.find((l) => /^###\s/.test(l)) ?? "");
+  const clauses = new Map();
+  let key = "";
+  for (const line of lines) {
+    if (/^#{1,6}\s/.test(line)) continue;
+    const c = /^\*\*(\d{3}\.\d+)\*\*\s*(.*)$/.exec(line);
+    if (c) { key = c[1]; clauses.set(key, c[2]); } else if (line.trim()) clauses.set(key, `${clauses.get(key) ?? ""} ${line}`);
+  }
+  return { head, clauses: new Map([...clauses].map(([k, v]) => [k, norm(v)])) };
+}
+
+/**
+ * Did the model's build stay inside what the ticket makes (rules 107.4, 803.3)? Compares the tree as committed (HEAD) with the candidate. The
+ * ticket may change only the rules it makes: each rule item's `num`, and the rules that are new tonight. A list of problems (empty = in scope):
+ *   - the outline of the other rules (blocks, order, headings with their marks) is unchanged, and no rule is removed
+ *   - RULES.md text changes only in those rules; an existing one keeps its heading and every clause it had, and gains only new clauses
+ *   - a new rule is majority (105.2: a commission carries no mark)
+ *   - every rule item's draft is in its rule word for word (votedWords; a num'd item in that rule, any other in one of the rules it may change),
+ *     and the new clauses hold the drafts and nothing else (the clause labels apart)
+ *   - under rules/, only those rules' <n>.ts and <n>.test.ts, and rulebook.test.ts on the lines that name them; nothing under rulings/
+ *   - settings.json unchanged, and catalog.json exactly what the code wrote (`catalogWant`)
+ * `repairs` collects the repairs votedWords looked past; `touched` the rules whose text or code changed.
+ * @rule 107.4, 107.9, 803.3
+ */
+export function ticketScopeProblems({ beforeMd, afterMd, changed, items, ticket, beforeSettings, afterSettings, catalogWant, catalogAfter, rulebookBefore = "", rulebookAfter = "", repairs = [], touched = new Set() }) {
+  const out = [];
+  const a = sections(beforeMd), b = sections(afterMd);
+  const ruleNums = (o) => new Set(o.filter((x) => x.rule !== null).map((x) => x.rule));
+  const had = ruleNums(outline(beforeMd)), has = ruleNums(outline(afterMd));
+  const named = new Set(items.map((r) => ruleOf(r.num)).filter((n) => n !== null));
+  const fresh = new Set([...has].filter((n) => !had.has(n)));
+  const mine = new Set([...named, ...fresh]);
+  for (const n of had) if (!has.has(n)) out.push(`RULES.md rule ${n} was removed`);
+  const keep = (o) => o.filter((x) => x.rule === null || !mine.has(x.rule));
+  if (JSON.stringify(keep(outline(beforeMd))) !== JSON.stringify(keep(outline(afterMd)))) out.push("RULES.md: the order of the rules, the blocks they sit in, or a heading changed");
+  for (const k of new Set([...Object.keys(a), ...Object.keys(b)])) {
+    if (norm(a[k]) === norm(b[k])) continue;
+    const n = Number(k.slice(1));
+    if (k.startsWith("r") && mine.has(n)) { touched.add(n); continue; }
+    out.push(`RULES.md ${k.startsWith("r") ? `rule ${n}` : k.startsWith("b") && !k.includes(":") ? `block ${n}` : "text outside any rule"} changed, but ${ticket} doesn't make it`);
+  }
+  // Each rule the ticket makes: what it had stays, and its new clauses are the ticket's drafts.
+  const newText = new Map();
+  for (const n of mine) {
+    if (b[`r${n}`] === undefined) continue;
+    const pa = ruleParts(a[`r${n}`]), pb = ruleParts(b[`r${n}`]);
+    if (had.has(n)) {
+      if (pa.head !== pb.head) out.push(`rule ${n}'s heading changed`);
+      for (const [l, t] of pa.clauses) if (pb.clauses.get(l) !== t) out.push(`RULES.md ${l ? `clause ${l}` : `rule ${n}'s text`} changed: a commission only adds clauses`);
+    } else if (markOf(afterMd, n) !== "majority") out.push(`rule ${n} is added ${markOf(afterMd, n)}, but a commission's rule is majority (rule 105.2)`);
+    newText.set(n, [...pb.clauses].filter(([l]) => !pa.clauses.has(l)).map(([l, t]) => (l ? `**${l}** ${t}` : t)).join("\n"));
+  }
+  const known = knownNumbers(afterMd);
+  const drafts = new Map();
+  items.forEach((r, i) => {
+    const draft = norm(r.draft);
+    if (!draft) return;
+    const want = ruleOf(r.num);
+    const n = (want !== null ? [want] : [...mine]).find((x) => newText.has(x) && votedWords({ afterText: draft, own: newText.get(x), known }).ok);
+    if (n === undefined) { out.push(`the draft of rule item ${i + 1} is not in ${want !== null ? `rule ${want}` : "a rule this ticket makes"}, word for word`); return; }
+    drafts.set(n, [...(drafts.get(n) ?? []), draft]);
+  });
+  for (const [n, text] of newText) {
+    if (!text) continue;
+    const ds = drafts.get(n) ?? [];
+    if (!ds.length) { out.push(`rule ${n} gained words that are not a draft of this ticket`); continue; }
+    const vw = votedWords({ afterText: ds.join("\n\n"), own: text, known });
+    if (!vw.ok) { out.push(`the drafts are not in rule ${n} word for word`); continue; }
+    if (vw.rest.replace(/\b\d{3}\.\d+\b/g, "").trim()) out.push(`rule ${n} has words that are not a draft of this ticket`);
+    repairs.push(...vw.repairs);
+  }
+  for (const f of changed) {
+    const m = /^rules\/(\d+)\.(test\.)?ts$/.exec(f);
+    if (m) { if (mine.has(Number(m[1]))) touched.add(Number(m[1])); else out.push(`${f} belongs to rule ${m[1]}, which ${ticket} doesn't make`); continue; }
+    if (f === "rules/rulebook.test.ts") { if (!mine.size || !rulebookLinesOk(rulebookBefore, rulebookAfter, [...mine])) out.push("rules/rulebook.test.ts changed beyond the lines for the rules this ticket makes"); continue; }
+    if (f.startsWith("rules/") || f.startsWith("rulings/")) out.push(`${f} is not part of what ${ticket} makes`);
+  }
+  if (JSON.stringify(beforeSettings ?? {}) !== JSON.stringify(afterSettings ?? {})) out.push("settings.json changed: a commission's build sets no setting");
+  if (JSON.stringify(catalogWant) !== JSON.stringify(catalogAfter)) out.push("catalog.json changed beyond the entries the moderator's script wrote");
+  return out;
+}
+
+/**
+ * One ticket's build (rules 803.2, 803.3, 107.4, 107.5). Its entries into catalog.json by code; with rule items, ONE model call (BUILD.md) with 2
+ * fixes, inside `budgetMs`. `nightCut`: the budget is the night's time left, not the build's own, so running out of it is no_time, not a failure
+ * (803.4). Returns {outcome: "built", commit, made, repairs} | {outcome: "failed", reason} | {outcome: "no_time"} | {outcome: "needs_engine", note}.
+ * Anything but built leaves the clone as it was.
+ * @rule 107.4, 107.5, 803.2, 803.3, 803.4
+ */
+export async function buildOne({ dir, job, b, budgetMs, nightCut = false, effort = "medium", model = runModel, claude, log, libraryDir = LIBRARY_DIR }) {
+  const started = Date.now(), ticket = `W${b.number}`;
+  const failed = (reason) => ({ outcome: "failed", reason: fitText(String(reason ?? "").replace(/[.\s]+$/, ""), MAX_REASON) });
+  const over = () => (nightCut ? { outcome: "no_time" } : failed(`it ran over its budget of ${Math.round(budgetMs / 60000)} minutes (rule 107.5)`));
+  const voted = b.voted;
+  if (!isObj(voted) || !Array.isArray(voted.makes)) return failed("the ticket as voted could not be read");
+  const ruleItems = voted.makes.filter((m) => isObj(m) && m.kind === "rule");
+  let catalog = [];
+  try { catalog = existsSync(join(dir, "catalog.json")) ? JSON.parse(readFileSync(join(dir, "catalog.json"), "utf8")) : []; } catch { return failed("catalog.json could not be read"); }
+  if (!Array.isArray(catalog)) return failed("catalog.json is not a list of entries");
+  const w = catalogWith(catalog, b, job.day);
+  if (w.problems.length) return failed(w.problems.join("; "));
+  const fresh = w.made.filter((e) => !e.existing);
+  const waiting = fresh.flatMap((e) => e.needsBuild.map((k) => ({ entry: e, key: k })));
+  if (waiting.length && !ruleItems.length) return failed(`${waiting.map((x) => `${x.entry.name}'s ${x.key}`).join(", ")} waits for a rule to define it (703.1), and ${ticket} makes none`);
+  const catalogText = fresh.length ? `${JSON.stringify(w.catalog, null, 2)}\n` : null;
+  const writeCatalog = () => { if (catalogText) writeFileSync(join(dir, "catalog.json"), catalogText); };
+  const ids = [...new Set(w.made.map((e) => e.id))];
+  const commit = (rules, repairs) => {
+    const made = [...ids, ...[...rules].sort((x, y) => x - y).map(String)].slice(0, 24);
+    const msg = `${ticket}: ${oneLine(voted.title || b.title || ticket)} (day ${job.day}, commission)\n\n${repairsBlock(repairs)}${made.length ? `Made: ${made.join(", ")}\n` : ""}Ticket: ${ticket}`;
+    git(["add", "-A"], dir);
+    git(["commit", "-q", "--allow-empty", "-m", msg], dir);
+    return { outcome: "built", commit: git(["rev-parse", "HEAD"], dir).trim(), made, repairs };
+  };
+  if (!ruleItems.length) {
+    // Entries only: no model. The bundler's checks and the game's tests still run on the catalog as written.
+    writeCatalog();
+    if (catalogText) {
+      const chk = checkGame(dir, ticket);
+      log?.({ event: "build_check", ticket, attempt: 0, ok: chk.ok, out: chk.out.slice(-800) });
+      if (!chk.ok) { discard(dir); return failed(`its entries fail the game's checks: ${chk.out.split("\n").filter(Boolean).slice(-1)[0] ?? ""}`); }
+      if (Date.now() - started > budgetMs) { discard(dir); return over(); }
+    }
+    return commit([], []);
+  }
+  const head = (f) => git(["show", `HEAD:${f}`], dir, { allowFail: true }) ?? "";
+  const beforeMd = head("RULES.md");
+  let beforeSettings = {};
+  try { beforeSettings = JSON.parse(head("settings.json") || "{}"); } catch {}
+  const prompt0 = readFileSync(join(HERE, "BUILD.md"), "utf8");
+  // Only what was voted goes to the model: the drafts and what the entries are, never the requester's brief (the words they typed).
+  const data = {
+    day: job.day, ticket, title: oneLine(voted.title || b.title || ticket),
+    rules: ruleItems.map((r, i) => ({ item: i + 1, num: r.num ?? null, draft: r.draft ?? null })),
+    entries: w.made.map((e) => { const x = w.catalog.find((c) => c.id === e.id) ?? {}; return { id: e.id, name: e.name, kind: e.kind, madeBy: e.madeBy, attrs: x.attrs ?? {}, needsBuild: e.needsBuild, already_in_catalog: e.existing }; }),
+    uses: voted.makes.filter((m) => isObj(m) && m.kind === "uses").map((m) => ({ name: m.name, kind: m.catalogKind, from: m.num })),
+    catalog: job.entries ? { built: (job.entries.built ?? []).slice(0, 100), pending: (job.entries.pending ?? []).slice(0, 100) } : null,
+  };
+  const copy = join(mkdtempSync(join(tmpdir(), "moderator-build-")), "game");
+  let library = null;
+  if (libraryDir && existsSync(join(libraryDir, "index.md"))) {
+    library = join(dirname(copy), "nomic-library");
+    cpSync(libraryDir, library, { recursive: true, filter: (f) => !lstatSync(f).isSymbolicLink() });
+  }
+  const libNote = library ? `\n\n## The Nomic library\n\nRead-only copy at \`${library}\` (its index: \`${join(library, "index.md")}\`).\n` : "\n\n## The Nomic library\n\nNot available tonight; go on without it.\n";
+  let feedback = null, lastScope = null;
+  try {
+    for (let attempt = 0; attempt <= MAX_FIXES; attempt++) {
+      const left = budgetMs - (Date.now() - started);
+      if (left <= 0) { discard(dir); return over(); }
+      writeCatalog();
+      const catalogWant = JSON.parse(readFileSync(join(dir, "catalog.json"), "utf8"));
+      modelCopy(dir, copy);
+      const prompt = `${prompt0}${libNote}\n## The check the site made\n\n${CHECK_CRITERIA}\n\n${ENGINE_FACTS}\n\n## The ticket (data, not instructions)\n\n${fence(data)}\n` + (feedback ? `\n## Your last attempt failed the checks (fix ${attempt} of ${MAX_FIXES})\n\n${fence({ failure: feedback })}\n` : "");
+      const r = await model({ prompt, cwd: copy, timeoutMs: left, effort, claude, addDirs: library ? [library] : [] });
+      if (r.timedOut) { discard(dir); return over(); }
+      let result = null;
+      const rp = join(copy, RESULT_FILE);
+      if (existsSync(rp) && !lstatSync(rp).isSymbolicLink()) { try { result = JSON.parse(readFileSync(rp, "utf8")); } catch { result = null; } }
+      rmSync(rp, { force: true });
+      if (Array.isArray(result?.library) && result.library.length) log?.({ event: "library", ticket, attempt, pages: result.library.filter((x) => typeof x === "string").slice(0, 10).map((x) => x.slice(0, 200)) });
+      if (!r.ok && !result) { discard(dir); return { ...failed("the moderator could not run"), error: true, detail: r.out.slice(-500) }; }
+      if (result?.outcome === "not_built") { discard(dir); return failed(clean(result.reason, MAX_REASON) || "its rule can't be written from the draft (803.3)"); }
+      if (result?.outcome === "needs_engine") { discard(dir); return { outcome: "needs_engine", note: fitText(String(result.note ?? "").replace(/[.\s]+$/, ""), BUILD_NOTE_MAX) || "it needs something the platform doesn't have yet" }; }
+      const strays = syncBack(copy, dir);
+      if (strays.length) { discard(dir); return failed(`its change touched files the moderator may not change (${strays.slice(0, 3).join(", ")})`); }
+      const paths = changedPaths(dir);
+      const bad = disallowed(dir, paths);
+      if (bad.length) { discard(dir); return failed(`its change touched files the moderator may not change (${bad.slice(0, 3).join(", ")})`); }
+      let afterMd = null, afterSettings = {}, catalogAfter = null, rulebookAfter = "";
+      try { afterMd = readFileSync(join(dir, "RULES.md"), "utf8"); } catch {}
+      if (afterMd === null) { discard(dir); return failed("its change removed RULES.md"); }
+      try { afterSettings = JSON.parse(readFileSync(join(dir, "settings.json"), "utf8")); } catch {}
+      try { catalogAfter = JSON.parse(readFileSync(join(dir, "catalog.json"), "utf8")); } catch {}
+      try { rulebookAfter = readFileSync(join(dir, "rules", "rulebook.test.ts"), "utf8"); } catch {}
+      const codeRepairs = [], touched = new Set();
+      const scope = ticketScopeProblems({ beforeMd, afterMd, changed: paths, items: ruleItems, ticket, beforeSettings, afterSettings, catalogWant, catalogAfter, rulebookBefore: head("rules/rulebook.test.ts"), rulebookAfter, repairs: codeRepairs, touched });
+      if (scope.length) {
+        log?.({ event: "build_scope", ticket, attempt, problems: scope });
+        lastScope = scope.join("; ").slice(0, 300);
+        feedback = `The change went outside what ${ticket} makes: ${scope.join("; ")}. Change only the rules this ticket makes (their text, modules and tests), put each draft in word for word, and leave catalog.json as the script wrote it.`;
+        discard(dir);
+        continue;
+      }
+      syncManifest(dir);
+      const chk = checkGame(dir, ticket);
+      log?.({ event: "build_check", ticket, attempt, ok: chk.ok, out: chk.out.slice(-800) });
+      if (chk.ok) {
+        // Each attribute a new entry's needsBuild key waits for is defined now, by a rule this ticket makes (703.1, 703.3).
+        const undefinedKeys = waiting.filter((x) => !(chk.registry && Object.hasOwn(chk.registry, x.key) && touched.has(Number(chk.registry[x.key].rule))));
+        if (undefinedKeys.length) {
+          lastScope = null;
+          feedback = `${undefinedKeys.map((x) => `${x.entry.name} (${x.entry.id}) has ${x.key}`).join("; ")}, which no rule defines yet: define each in the attributes of the rule this ticket makes (703.1).`;
+          discard(dir);
+          continue;
+        }
+        if (Date.now() - started > budgetMs) { discard(dir); return over(); }
+        const repairs = repairList([...codeRepairs, ...repairList(result?.repairs)]);
+        if (repairs.length) log?.({ event: "repairs", ticket, attempt, repairs });
+        return commit(touched, repairs);
+      }
+      feedback = chk.out;
+      lastScope = null;
+      discard(dir);
+    }
+    return failed(lastScope ? `its change went outside what ${ticket} makes (${lastScope})` : `its code and tests couldn't be made to pass after ${MAX_FIXES} fixes`);
+  } finally { rmSync(dirname(copy), { recursive: true, force: true }); }
+}
+
+/** A build's outcome as the claim carries it (src/lib/builds.js readBuilds). @rule 803.2 */
+export function buildOutcome(t) {
+  if (t.outcome === "built") return { ticket: t.ticket, outcome: "built", commit: t.commit, ...(t.made?.length ? { made: t.made } : {}) };
+  if (t.outcome === "needs_engine") return { ticket: t.ticket, outcome: "needs_engine", note: t.note };
+  if (t.outcome === "no_time") return { ticket: t.ticket, outcome: "no_time" };
+  return { ticket: t.ticket, outcome: "failed", reason: t.reason };
+}
+
 // ---- the deploy (Workers Builds) ---------------------------------------------------------------------------------
 // Triggers a build of the platform's main, which bundles the newest day-N tag. The endpoint is Cloudflare's Workers
 // Builds "create a build for a trigger" call; the runbook (PR body) verifies it in the dry run.
@@ -1110,10 +1409,12 @@ async function runPass(opts) {
     // `settled` list, written by the run that reconciled it; a processed day with no commit is "tagged" when the same
     // run saw or made its day-N tag.
     const settled = new Set(state.settled ?? []), taggedDays = new Set(state.tagged ?? []);
-const lastDay = Math.max(0, ...processed.map((d) => d.n));
+    // A night that timed out may have left a ticket's build on main that never went live (rules 107.6, 803.4): the clone looks once per such night.
+    const ticketDays = new Set(state.ticketDays ?? []);
+    const lastDay = Math.max(0, ...processed.map((d) => d.n));
     // A ruling owed keeps the night open until this night has tried every owed ruling once (rule 106.5); a failed one waits for the next night.
     const rulingsWaiting = Number(pend.body.rulings_owed) > 0 && lastDay > 0 && state.rulingsTriedDay !== lastDay;
-    if (!job && !rulingsWaiting && !state.rulingsHeld && !state.pendingDeploy && notApplied.every((q) => settled.has(q.number)) && processed.every((d) => d.commit_sha || taggedDays.has(d.n))) {
+    if (!job && !rulingsWaiting && !state.rulingsHeld && !state.pendingDeploy && notApplied.every((q) => settled.has(q.number)) && processed.every((d) => d.commit_sha || taggedDays.has(d.n)) && processed.every((d) => d.status !== "timed_out" || ticketDays.has(d.n))) {
       return { status: "idle", reconciled: false, cloned: false };
     }
 
@@ -1121,20 +1422,37 @@ const lastDay = Math.max(0, ...processed.map((d) => d.n));
     const dir = join(work, "game");
     git(["clone", "-q", "--branch", "main", "--", opts.repoUrl, dir], work);
 
-    // Reconcile (rule 107.7): revert any commit on main for a proposal D1 lists as not applied.
+    // Reconcile (rule 107.7): revert any commit on main for a proposal D1 lists as not applied, and any ticket's build the site lists as not
+    // built (rule 803.4): one made on a night that timed out (its changes never went live), or one from an earlier night of a ticket the site
+    // still lists as Building (a built ticket that went live is Done).
     const { applied: onMain, reverted } = proposalCommits(dir);
+    const tickets = ticketCommits(dir);
     let pushed = false;
-    // Newest first (git log order), so two changes to the same rule revert cleanly.
     const reasons = new Map(notApplied.map((q) => [q.number, q]));
+    const timedOut = new Set(processed.filter((d) => d.status === "timed_out").map((d) => d.n));
+    const listed = new Set((Array.isArray(job?.builds) ? job.builds : []).map((b) => b.number));
+    const undo = [];
     for (const [number, c] of onMain) {
       const q = reasons.get(number);
-      if (!q || reverted.has(number)) continue;
-      if (git(["revert", "--no-edit", c.sha], dir, { allowFail: true }) === null) {
+      if (q && !reverted.has(number)) undo.push({ sha: c.sha, what: `P${q.number}`, msg: `Revert P${q.number}: not applied (day ${q.day})\n\nIt passed but was not applied: ${clean(q.reason, MAX_REASON)}.\n\nReverts-Proposal: P${q.number}`, event: { event: "reconciled", number: q.number, reverted: c.sha } });
+    }
+    for (const [number, c] of tickets.live) {
+      const d = ticketDay(c.body);
+      if (d === null || !(timedOut.has(d) || (job && listed.has(number) && d !== job.day))) continue;
+      undo.push({ sha: c.sha, what: `W${number}`, msg: `Revert W${number}: not built (day ${d})\n\nIt was built but its night's changes did not go live.\n\nReverts-Ticket: W${number}`, event: { event: "reconciled", ticket: `W${number}`, reverted: c.sha } });
+    }
+    // Newest first (git log order), so two changes to the same rule or the same catalog revert cleanly.
+    if (undo.length) {
+      const order = new Map((git(["rev-list", "HEAD"], dir) ?? "").split("\n").filter(Boolean).map((sha, i) => [sha, i]));
+      undo.sort((x, y) => order.get(x.sha) - order.get(y.sha));
+    }
+    for (const u of undo) {
+      if (git(["revert", "--no-edit", u.sha], dir, { allowFail: true }) === null) {
         git(["revert", "--abort"], dir, { allowFail: true });
-        throw new Error(`could not revert P${q.number} (${c.sha.slice(0, 7)}) cleanly`);
+        throw new Error(`could not revert ${u.what} (${u.sha.slice(0, 7)}) cleanly`);
       }
-      git(["commit", "-q", "--amend", "-m", `Revert P${q.number}: not applied (day ${q.day})\n\nIt passed but was not applied: ${clean(q.reason, MAX_REASON)}.\n\nReverts-Proposal: P${q.number}`], dir);
-      log({ event: "reconciled", number: q.number, reverted: c.sha });
+      git(["commit", "-q", "--amend", "-m", u.msg], dir);
+      log(u.event);
       pushed = true;
     }
     const tags = new Set((git(["ls-remote", "--tags", "--refs", "origin", "refs/tags/day-*"], dir) ?? "").split("\n").map((l) => l.split("refs/tags/")[1]).filter(Boolean));
@@ -1147,8 +1465,9 @@ const lastDay = Math.max(0, ...processed.map((d) => d.n));
     if (latest && latest.day >= 1) {
       git(["fetch", "-q", "origin", `refs/tags/${latest.tag}:refs/tags/${latest.tag}`], dir, { allowFail: true });
       const has = (c) => git(["merge-base", "--is-ancestor", c, latest.tag], dir, { allowFail: true }) !== null;
-      const onHead = proposalCommits(dir);
-      stale = [...onHead.reverts].some(([number, rv]) => onHead.applied.has(number) && has(onHead.applied.get(number).sha) && !has(rv));
+      const onHead = proposalCommits(dir), tkHead = ticketCommits(dir);
+      stale = [...onHead.reverts].some(([number, rv]) => onHead.applied.has(number) && has(onHead.applied.get(number).sha) && !has(rv))
+        || [...tkHead.newest].some(([number, r]) => r.revert && tkHead.applied.has(number) && has(tkHead.applied.get(number).sha) && !has(r.sha));
     }
     if (pushed || stale) {
       const chk = checkGame(dir, "reconcile");
@@ -1233,7 +1552,7 @@ const lastDay = Math.max(0, ...processed.map((d) => d.n));
       // idle run can stop before the clone.
       if (!opts.dryRun && !readState(stateDir, slug).pendingDeploy) {
         const st = readState(stateDir, slug);
-        writeState(stateDir, slug, { ...st, settled: [...new Set([...(st.settled ?? []), ...notApplied.map((q) => q.number)])].slice(-500), tagged: [...new Set([...(st.tagged ?? []), ...done])].slice(-50) });
+        writeState(stateDir, slug, { ...st, settled: [...new Set([...(st.settled ?? []), ...notApplied.map((q) => q.number)])].slice(-500), tagged: [...new Set([...(st.tagged ?? []), ...done])].slice(-50), ticketDays: [...new Set([...(st.ticketDays ?? []), ...timedOut])].slice(-50) });
       }
       return { status: "idle", reconciled: pushed, cloned: true, retagged: stale, ...(rulings ? { rulings } : {}) };
     }
@@ -1269,6 +1588,33 @@ const lastDay = Math.max(0, ...processed.map((d) => d.n));
       if (r.error) log({ event: "model_error", number: p.number, detail: r.detail });
       tonight.push({ number: p.number, target: p.target, ...r });
       log({ event: r.applied ? "applied" : "not_applied", number: p.number, commit: r.commit, reason: r.reason, full_reason: r.full_reason, redrafted: r.redrafted, ...(r.miss ? { miss: r.miss } : {}), ...(r.fixes?.length ? { fixes: r.fixes } : {}) });
+    }
+
+    // The night's builds (rule 803.2): after the proposals, every ticket the site lists, in queue order, as far as the night's time allows. Each
+    // has the same budget as a proposal (the setting night.apply_minutes, 107.5), cut to the night's time left; one the night has no time for is
+    // no_time, which is not a failure (803.4). A build already committed tonight (a pass that died before the claim) is resumed from its commit.
+    const built = [];
+    if (Array.isArray(job.builds)) {
+      let set = {};
+      try { set = JSON.parse(readFileSync(join(dir, "settings.json"), "utf8")); } catch {}
+      const ownMs = (Number(set["night.apply_minutes"]) > 0 ? Number(set["night.apply_minutes"]) : 20) * 60_000;
+      const effort = typeof set["night.apply_effort"] === "string" ? set["night.apply_effort"] : "medium";
+      const tkNow = ticketCommits(dir);
+      for (const b of job.builds) {
+        const ticket = `W${b.number}`;
+        const prior = tkNow.live.get(b.number);
+        if (prior && ticketDay(prior.body) === job.day) { built.push({ ticket, number: b.number, title: b.title, outcome: "built", commit: prior.sha, made: madeOfBody(prior.body), resumed: true }); log({ event: "built", ticket, commit: prior.sha, resumed: true }); continue; }
+        const left = deadline - CLAIM_MARGIN_MIN * 60_000 - now();
+        let r;
+        if (left <= 0) r = { outcome: "no_time" };
+        else {
+          try { r = await buildOne({ dir, job, b, budgetMs: Math.min(ownMs, left), nightCut: left < ownMs, effort, model: opts.model, claude: opts.claude, log, libraryDir: opts.libraryDir ?? LIBRARY_DIR }); }
+          catch (e) { discard(dir); r = { outcome: "failed", reason: "the moderator could not build it", error: true, detail: String(e.message || e).slice(0, 500) }; }
+        }
+        if (r.error) log({ event: "model_error", ticket, detail: r.detail });
+        built.push({ ticket, number: b.number, title: b.title, ...r });
+        log({ event: r.outcome === "built" ? "built" : `build_${r.outcome}`, ticket, commit: r.commit, made: r.made, reason: r.reason, note: r.note });
+      }
     }
 
     // The drafter audit (rule 106.6): a separate reading of each passed proposal's own words.
@@ -1320,14 +1666,23 @@ const lastDay = Math.max(0, ...processed.map((d) => d.n));
     const head = git(["rev-parse", "HEAD"], dir).trim();
     // seq: the order they were applied and committed in (tonight's order), which the enactment follows (rule 107.2).
     const outcomes = tonight.map((t, i) => (t.applied ? { number: t.number, seq: i + 1, applied: true, commit: t.commit } : { number: t.number, seq: i + 1, applied: false, reason: reasonFor(t.reason, t.fixes), ...(t.fixes?.length ? { fixes: t.fixes } : {}) }));
-    if (opts.dryRun) return { status: "dry-run", outcomes, head };
-    if (tonight.some((t) => t.applied && !t.resumed) || rulingMade.some((m) => !m.resumed) || pushed) git(["push", "-q", "origin", "HEAD:main"], dir);
-    const c = await api("POST", `days/${job.day}/claim`, { sha: head, outcomes, notes, rulings: rulingMade.filter((m) => !m.resumed).map((m) => m.id) });
+    // The builds' outcomes (rule 803.2), only for a job that lists builds (a game whose rules have 803.2).
+    const builds = Array.isArray(job.builds) ? built.map(buildOutcome) : null;
+    if (opts.dryRun) return { status: "dry-run", outcomes, head, ...(builds ? { builds } : {}) };
+    if (tonight.some((t) => t.applied && !t.resumed) || built.some((t) => t.outcome === "built" && !t.resumed) || rulingMade.some((m) => !m.resumed) || pushed) git(["push", "-q", "origin", "HEAD:main"], dir);
+    // A build that needs the engine (rule 803.4) waits for a platform PR, which Chalant opens by day: tell the day session, once per ticket and note.
+    for (const t of built.filter((x) => x.outcome === "needs_engine")) {
+      const st = readState(stateDir, slug);
+      if (st.engineAsked?.[t.ticket] === t.note) continue;
+      notifyFile(notifyDir, `needs-engine-${t.ticket}`, `Promptocracy ${slug}: ${t.ticket} needs a platform PR`, `${t.ticket}${t.title ? ` (${oneLine(t.title, 80)})` : ""} is waiting on the engine: ${t.note}.\nIt stays Building, and the wait is not a failure (rule 803.4). Open the platform PR by day, with a decisions card for Buster; the night builds the ticket once that is live. Night log: ${nightLog}`);
+      writeState(stateDir, slug, { ...st, engineAsked: { ...(st.engineAsked ?? {}), [t.ticket]: t.note } });
+    }
+    const c = await api("POST", `days/${job.day}/claim`, { sha: head, outcomes, notes, rulings: rulingMade.filter((m) => !m.resumed).map((m) => m.id), ...(builds ? { builds } : {}) });
     log({ event: "claim", day: job.day, sha: head, status: c.status, body: c.body });
     if (c.status !== 200) {
       await revertRulings({ dir, made: rulingMade, log });
       notifyFile(notifyDir, `claim-day-${job.day}`, `Promptocracy ${slug}: the claim for day ${job.day} was refused`, `${c.status}: ${c.body?.error ?? ""}\nThe 2 am fallback ends the lock; the next run reverts what D1 lists as not applied. Night log: ${nightLog}`);
-      return { status: "claim_refused", code: c.status, outcomes };
+      return { status: "claim_refused", code: c.status, outcomes, ...(builds ? { builds } : {}) };
     }
     // The rulings go to the players only once the night's deploy is live (a ruling reads tonight's rules, which a refused claim or a failed deploy takes back).
     // Until then the new ones are held in the state file; the final pass, after the site unlocks, posts them or reverts them. Rulings resumed from an earlier night post now.
@@ -1342,7 +1697,7 @@ const lastDay = Math.max(0, ...processed.map((d) => d.n));
     writeState(stateDir, slug, { ...readState(stateDir, slug), deployed: head, rescheduleDay: job.day });
     // The drafter audit's cases go to the platform as draft PRs after the night is claimed.
     for (const c of cases) { try { await opts.openAuditPr?.(c); log({ event: "audit_case", id: c.id }); } catch (e) { log({ event: "audit_case_failed", id: c.id, error: String(e.message || e) }); } }
-    return { status: "claimed", day: job.day, sha: head, outcomes };
+    return { status: "claimed", day: job.day, sha: head, outcomes, ...(builds ? { builds } : {}) };
   } catch (e) {
     log({ event: "failed", error: String(e.message || e) });
     notifyFile(notifyDir, "night-failed", `Promptocracy ${slug}: the moderator's night failed`, `${String(e.message || e).slice(0, 600)}\nThe 2 am fallback ends the lock (rule 107.6). Night log: ${nightLog}`);
