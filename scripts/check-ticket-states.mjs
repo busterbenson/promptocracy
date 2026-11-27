@@ -31,8 +31,14 @@ export function writersOf(s, files) {
   return files.filter(([, src]) => set.test(src) || ins.test(src)).map(([f]) => f);
 }
 
-const files = codeFiles(join(ROOT, "src")).map((p) => [relative(ROOT, p), readFileSync(p, "utf8")]);
+/** The source without its comments, so a comment that names a write is not a writer. @rule 801.2 */
+export const uncommented = (src) => String(src).replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[\s;{}])\/\/.*$/gm, "$1");
+
+const files = codeFiles(join(ROOT, "src")).map((p) => [relative(ROOT, p), uncommented(readFileSync(p, "utf8"))]);
 const problems = [];
+// The matcher itself, on known text: a real write counts; the same words in a comment, or a state the WHERE only tests, do not.
+const probe = (src) => writersOf("Done", [["probe", uncommented(src)]]).length;
+if (probe("db.prepare(`UPDATE tickets SET state = 'Done', updated_at = ? WHERE id = ?`)") !== 1 || probe("// UPDATE tickets SET state = 'Done'\n/* UPDATE tickets SET state = 'Done' */") !== 0 || probe("db.prepare(`UPDATE tickets SET state = 'Failed' WHERE state = 'Done'`)") !== 0) problems.push("the matcher is broken: it misreads a known write, comment or WHERE");
 for (const s of STATES) {
   const w = writersOf(s, files);
   const problem = !w.length && !NOT_BUILT[s] ? `${s}: nothing under src/ writes this ticket state (an UPDATE tickets SET state = '${s}' or an INSERT INTO tickets). Build its writer, or put it on NOT_BUILT with the PR that will.`

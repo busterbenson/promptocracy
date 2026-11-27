@@ -1166,6 +1166,27 @@ const build805 = (also = []) => ({ action: "ops", ops: [{ replace: ["RULES.md", 
   const f = t.notes.find((x) => /needs-engine-W4/.test(x));
   const text = f ? readFileSync(join(t.notifyDir, f), "utf8") : "";
   check("needs_engine: a notification file asks for the platform PR, naming W4 and the note", !!f && text.includes("W4") && text.includes(note) && /platform PR/.test(text), J(t.notes));
+  check("needs_engine: the notification carries no player text (not the ticket's title)", !!f && !text.includes("Flower"), text);
+}
+{
+  // Preflight P1: a ticket that only uses an entry is an empty commit. When its night times out, the reconcile reverts it without throwing
+  // (`git revert` refuses an empty commit), so later nights are not stuck behind it.
+  const t = await night({ scenario: { apply: {} }, state: { job: job([], { builds: [W(3, [{ kind: "uses", name: "Grass", catalogKind: "tile", num: "T1" }])] }) } });
+  const t2 = await night({ scenario: { apply: {} }, state: { job: null, not_applied: [], processed: [{ n: 1, status: "timed_out", commit_sha: t.claims[0]?.sha }] }, opts: { repo: t.repo, stateDir: t.stateDir } });
+  check("not built (empty commit): a uses-only ticket's commit is reverted with its trailer, and the run doesn't fail", t2.r.status === "idle" && /^Revert W3: not built \(day 1\)/.test(log(t.repo.bare)[0]) && /^Reverts-Ticket: W3$/m.test(g(["log", "-1", "--format=%B", "main"], t.repo.bare)), J([t2.r, log(t.repo.bare).slice(0, 3)]));
+}
+{
+  // Preflight P2: a rule that is new tonight must hold one of the ticket's drafts; a heading (with a module) that no rule item asked for is refused.
+  const extra = [{ replace: ["RULES.md", "\n## 900. Actions", "\n### 806 Extra [m]\n\n## 900. Actions"] }, { write: ["rules/806.ts", '// Rule 806.\nimport { defineRule } from "promptocracy/engine";\n\nexport default defineRule({ rule: 806 });\n'] }];
+  const t = await night({ scenario: { build: { W2: build805(extra) } }, state: { job: job([], { builds: [W(2, [FLOWER, { kind: "rule", draft: FLOWER_DRAFT }])] }) } });
+  const b = t.claims[0]?.builds?.[0];
+  check("scope: a new rule 806 that holds no draft of the ticket is refused (failed, naming it), nothing committed", b?.outcome === "failed" && /rule 806 is new but holds no draft of W2/.test(b.reason) && log(t.repo.bare)[0] === "day 0", J(b));
+}
+{
+  // Preflight P2: the model can't run at all (the CLI fails, no result file): the moderator's trouble, not the ticket's. no_time, no strike (803.4).
+  const t = await night({ scenario: { build: {} }, state: { job: job([], { builds: [W(2, [FLOWER, { kind: "rule", draft: FLOWER_DRAFT }])] }) } });
+  const b = t.claims[0]?.builds?.[0];
+  check("model can't run: the build is no_time, not failed, and the night log has the error", b?.outcome === "no_time" && nightLines(t, "model_error").some((e) => e.ticket === "W2"), J([b, nightLines(t, "model_error")]));
 }
 {
   // A game whose job has no `builds` (its rules lack 803.2): the claim sends no builds key, as before.
