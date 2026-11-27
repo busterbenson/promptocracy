@@ -7,7 +7,7 @@ Every function that carries out the game should say which rule it implements, wi
 `src/` is only reported for now: these functions have no claim yet. Site plumbing such as sign-in and email goes
 under rule 101 or 102; a follow-up change claims them and moves `src/` into the strict set.
 
-194 of 601 functions outside `src/engine/` are unclaimed.
+198 of 611 functions outside `src/engine/` are unclaimed.
 
 ## src/index.ts (6)
 
@@ -73,7 +73,11 @@ under rule 101 or 102; a follow-up change claims them and moves `src/` into the 
 
 ## src/lib/draft-check.ts (1)
 
-- line 58: `unchecked`
+- line 61: `unchecked`
+
+## src/lib/draft-turn.js (1)
+
+- line 10: `same`
 
 ## src/lib/drafter.ts (1)
 
@@ -107,17 +111,17 @@ under rule 101 or 102; a follow-up change claims them and moves `src/` into the 
 
 ## src/lib/gremlin-rules.js (4)
 
-- line 83: `detail`
-- line 107: `ck`
-- line 110: `vd`
-- line 229: `put`
+- line 85: `detail`
+- line 110: `ck`
+- line 113: `vd`
+- line 232: `put`
 
 ## src/lib/gremlin.js (4)
 
 - line 140: `who`
 - line 378: `def`
-- line 432: `readGremlinAnswer`
-- line 569: `clip`
+- line 453: `readGremlinAnswer`
+- line 590: `clip`
 
 ## src/lib/history.js (1)
 
@@ -170,18 +174,20 @@ under rule 101 or 102; a follow-up change claims them and moves `src/` into the 
 - line 441: `own`
 - line 523: `typeOf`
 
-## src/lib/rule-check.js (10)
+## src/lib/rule-check.js (12)
 
-- line 47: `core`
-- line 55: `norm`
-- line 57: `ruleText`
-- line 68: `claimsOf`
-- line 69: `yieldsOf`
-- line 70: `ruleNumOf`
-- line 112: `fence`
-- line 113: `catalogLine`
-- line 155: `own`
-- line 157: `clip`
+- line 50: `core`
+- line 58: `norm`
+- line 60: `ruleText`
+- line 71: `claimsOf`
+- line 72: `yieldsOf`
+- line 73: `ruleNumOf`
+- line 116: `fence`
+- line 117: `catalogLine`
+- line 165: `n`
+- line 187: `own`
+- line 189: `clip`
+- line 192: `listed`
 
 ## src/lib/settings.js (12)
 
@@ -244,14 +250,15 @@ under rule 101 or 102; a follow-up change claims them and moves `src/` into the 
 
 - line 33: `pill`
 
-## src/routes/api-chat.ts (6)
+## src/routes/api-chat.ts (7)
 
-- line 302: `stateNow`
-- line 384: `ask`
-- line 392: `read`
-- line 396: `stateNow`
-- line 438: `after`
-- line 439: `log`
+- line 304: `stateNow`
+- line 390: `ask`
+- line 398: `read`
+- line 402: `stateNow`
+- line 433: `tryDraft`
+- line 445: `after`
+- line 446: `log`
 
 ## src/routes/api-day.ts (1)
 

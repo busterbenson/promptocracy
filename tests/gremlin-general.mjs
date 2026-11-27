@@ -355,7 +355,7 @@ try {
     const t1 = tix().length;
     const nm = await Ana.post(CH, { ticket: `W${ticket.number}`, body: "SYNTH-MOVE SYNTH-G-COMMISSION and again" });
     check("never two moves in a turn: a message moved here whose answer asks for a commission stays here, and no second ticket is opened", nm.status === 200 && tix().length === t1 && nm.data.scope === null);
-    // a draft the drafter refuses gets ONE more try in the same turn, with the reason; never two
+    // a draft the drafter refuses gets one more try in the same turn, with the reason, and a second if that is refused; never a third
     const g1 = generalCallsNow(), d1c = drafterCalls();
     stubState.retry = { say: "Nearest one that drafts.", draft: { kind: "add", target: "300", words: "A player can't propose twice about the same rule in one day." } };
     const rt = await say(Ana, "SYNTH-G-REFUSED-THEN fix points");
@@ -364,22 +364,22 @@ try {
     stubState.retry = { say: "Still no.", draft: { kind: "amend", target: "998", words: "x" } };
     const rt2 = await say(Ana, "SYNTH-G-REFUSED-THEN fix points again");
     stubState.retry = null;
-    check("when the second draft is refused too there is no third call: his words and the refusal are shown", generalCallsNow() === g2 + 2 && !slipOf(rt2) && !!rt2.data.messages[1].refused);
+    check("when the second draft is refused too he gets one more try with the second reason (two retries at most), and then his words and the refusal are shown", generalCallsNow() === g2 + 3 && !slipOf(rt2) && !!rt2.data.messages[1].refused);
     // the rule check (rule 103.9): a draft the check finds the game can't carry out is made, with Lock it in off and the reason beside it, and he gets ONE more try
-    // with the findings; his options are the check's fixes (up to three); the retry's own draft is checked but never retried
+    // with the findings (a redraft, up to twice; one more call to explain when none passes); his options are the check's fixes (up to three); the first draft stays when none passes
     const MISSING = { conflicts: [], missing: [{ what: "house tile", why: "No rule makes a house tile." }], fixes: [{ say: "Add a house tile to the catalog first." }, { say: "Protect points on a tile you can already name." }, { say: "Say it for the whole board." }, { say: "A fourth, dropped." }] };
     const checks = () => calls.filter((c) => c.kind === "check").length;
     const g3 = generalCallsNow(), k0 = checks();
     stubState.check = MISSING; stubState.retry = { say: "No house tiles here. Pick one." };
     const ck = await say(Ana, "SYNTH-ADD a rule about house tiles");
     const cs = slipOf(ck);
-    check("a draft the check blocks: made with its slip, Lock it in off with the reason beside it, one retry carrying the findings, his options are the fixes (three at most)",
+    check("a draft the check blocks: made with its slip, Lock it in off with the reason beside it, one redraft call carrying the findings (he made no draft: his words explain), his options are the fixes (three at most)",
       generalCallsNow() === g3 + 2 && checks() === k0 + 1 && !!cs && cs.can.lock.allowed === false && /house tile \(103\.9\)/.test(cs.can.lock.reason) && J(ck.data.messages[1].options) === J(["Add a house tile to the catalog first.", "Protect points on a tile you can already name.", "Say it for the whole board."]) &&
       calls.filter((c) => c.kind === "general").at(-1).lastText.includes("house tile") && acalls("reason LIKE '%retry after rule check%'").length === 1, J([generalCallsNow() - g3, checks() - k0, cs && cs.can]));
-    const g4 = generalCallsNow();
+    const g4 = generalCallsNow(), k4 = checks(), p4 = props("Ana").length;
     stubState.retry = { say: "Try this one.", draft: { kind: "add", target: "300", words: "A player can't propose twice about the same rule in one day." } };
     const ck2 = await say(Ana, "SYNTH-ADD another about house tiles");
-    check("when the retry's draft is blocked too there is no third call: its slip is the live one, checked, with the fixes as options", generalCallsNow() === g4 + 2 && !!slipOf(ck2) && slipOf(ck2).can.lock.allowed === false && ck2.data.messages[1].options.length === 3);
+    check("when his redrafts are blocked too (two, then one call to explain): the player's FIRST draft is the live slip, checked and blocked, with the fixes as options, and the redrafts left no stray draft", generalCallsNow() === g4 + 4 && checks() === k4 + 3 && !!slipOf(ck2) && slipOf(ck2).can.lock.allowed === false && ck2.data.messages[1].options.length === 3 && props("Ana").length === p4 + 1, J([generalCallsNow() - g4, checks() - k4, props("Ana").length - p4]));
     stubState.check = "500"; stubState.retry = { say: "Couldn't check that. Say it again." };
     const ck3 = await say(Ana, "SYNTH-ADD a third about house tiles");
     check("a check that could not run: the draft is unchecked, Lock it in off with 'couldn't check', one retry, no fixes to offer", !!slipOf(ck3) && /couldn't check/.test(slipOf(ck3).can.lock.reason) && (ck3.data.messages[1].options || []).length === 0);
@@ -387,8 +387,9 @@ try {
     stubState.check = MISSING; stubState.retry = { say: "No house tiles. Pick one." };
     await say(Ana, "SYNTH-ADD a rule about house tiles, once more");
     stubState.check = null; stubState.retry = null;
-    const k1 = checks(), g5 = generalCallsNow();
+    const k1 = checks(), g5 = generalCallsNow(), refusedNotes0 = acalls("reason LIKE '%draft refused%'").length;
     const ft = await say(Ana, "SYNTH-ADD instead make it about points on a tile I can already name");
+    check("a clean draft is not logged as a refusal (the stray-draft cleanup once took the else of `if (res.id)`)", !!slipOf(ft) && acalls("reason LIKE '%draft refused%'").length === refusedNotes0 && ft.data.messages[1].refused === undefined);
     const tail = calls.filter((c) => c.kind === "general").at(-1).lastText;
     check("a free-text change typed after a failed check: the failed check's findings (what is missing) are in the tail, one general call, and the new draft is checked and can be locked in",
       generalCallsNow() === g5 + 1 && /rule check found the game can't carry it out/.test(tail) && /house tile/.test(tail) && checks() === k1 + 1 && !!slipOf(ft) && slipOf(ft).can.lock.allowed === true, tail.slice(0, 300));

@@ -54,7 +54,7 @@ try {
     /Rule 402 prevails \(108\.1\)/.test(v.conflict_note) && v.lock_refusal === "The game doesn't have: house tile, how long a player has stood there (103.9)", b.text);
   check("the check's call carries the rulebook, the criteria and the engine facts, the draft, and the player's words as data",
     /You check one proposed change/.test(stubs.calls[n0].system) && /ENGINE FACTS/.test(stubs.calls[n0].system) && stubs.calls[n0].messages[0].content[0].text.startsWith("The rulebook:") && stubs.calls[n0].messages[0].content[0].cache_control?.type === "ephemeral" &&
-    /house tile/.test(stubs.calls[n0].messages[0].content[1].text) && stubs.calls[n0].model === "claude-haiku-5-5");
+    /house tile/.test(stubs.calls[n0].messages[0].content[1].text) && stubs.calls[n0].model === "claude-sonnet-5-5");
   const c1 = await ana.post(`${P}/${v.id}/confirm`, {});
   check("Lock it in is refused with 409 and the reason, and nothing is confirmed (rule 103.9)", c1.status === 409 && c1.data.error === v.lock_refusal && sql(`SELECT status FROM proposals WHERE id = '${v.id}'`)[0].status === "draft", c1.text);
   check("the call is in the month's budget (a draft_check row with its tokens and cost)", sql(`SELECT purpose, outcome, input_tokens, cost_micro FROM agent_calls WHERE game_id = '${gid}' AND purpose = 'draft_check'`).some((r) => r.outcome === "ok" && r.input_tokens === 8500 && r.cost_micro > 0));
@@ -86,6 +86,50 @@ try {
   const again = await draftAdd();
   const ca = await ana.post(`${P}/${again.data.proposal.id}/confirm`, {});
   check("with the budget back, drafting again checks again and a clean draft locks in", again.data.proposal.check.status === "ok" && ca.status === 200, ca.text);
+
+  console.log("a stale check is made again at lock-in (a fix that deployed after the draft), a current one is not (rule 103.9)");
+  stubs.check = { status: 200, text: J(BLOCKED) };
+  const st = await draftAdd("A player on a house tile loses no points for 2 nights, a stale one.");
+  check("a fresh check carries the version it ran on (a hash of the criteria, the engine facts, the prompt and the model)", st.data.proposal.check.status === "blocked" && /^[0-9a-f]{8}$/.test(st.data.proposal.check.v || ""), st.text);
+  const nFresh = stubs.calls.length;
+  const lockBlocked = await ana.post(`${P}/${st.data.proposal.id}/confirm`, {});
+  check("a blocked check of the current version stands at lock-in: refused, and no model call is made", lockBlocked.status === 409 && stubs.calls.length === nFresh, lockBlocked.text);
+  sql(`UPDATE proposals SET rule_check = json_set(rule_check, '$.v', '00000000') WHERE id = '${st.data.proposal.id}'`);
+  stubs.check = { status: 200, text: J(OK) };
+  const nStale = stubs.calls.length;
+  const lockFresh = await ana.post(`${P}/${st.data.proposal.id}/confirm`, {});
+  check("the same draft with a check of another version is checked again first; the new answer (ok) lets it lock in, with no redraft", lockFresh.status === 200 && stubs.calls.length === nStale + 1 && lockFresh.data.proposal.status === "confirmed", lockFresh.text);
+  sql(`UPDATE proposals SET status = 'withdrawn' WHERE id = '${st.data.proposal.id}'`);   // frees the day's slot for the tests below
+  stubs.check = { status: 200, text: J(OK) };
+  const st2 = await draftAdd("A player on a house tile loses no points for 2 nights, another stale one.");
+  sql(`UPDATE proposals SET rule_check = json_set(rule_check, '$.v', '00000000') WHERE id = '${st2.data.proposal.id}'`);
+  stubs.check = { status: 200, text: J(BLOCKED) };
+  const lockNow = await ana.post(`${P}/${st2.data.proposal.id}/confirm`, {});
+  check("a stale ok check that is checked again and now says blocked: Lock it in is refused with the fresh check, and the new check is stored with the current version", lockNow.status === 409 && /The game doesn't have/.test(lockNow.data.error) && lockNow.data.check.status === "blocked" && /^[0-9a-f]{8}$/.test(sql(`SELECT json_extract(rule_check, '$.v') AS v FROM proposals WHERE id = '${st2.data.proposal.id}'`)[0].v) && sql(`SELECT json_extract(rule_check, '$.v') AS v FROM proposals WHERE id = '${st2.data.proposal.id}'`)[0].v !== "00000000", lockNow.text);
+  sql(`UPDATE proposals SET rule_check = json_set(rule_check, '$.v', '00000000') WHERE id = '${st2.data.proposal.id}'`);
+  stubs.check = { status: 500 };
+  const lockFail = await ana.post(`${P}/${st2.data.proposal.id}/confirm`, {});
+  check("a stale check whose refresh fails keeps the old check (still blocked here), never an 'unchecked' that hides it", lockFail.status === 409 && lockFail.data.check.status === "blocked", lockFail.text);
+  const st3 = await draftAdd("A player on a house tile loses no points for 2 nights, a third stale one.");
+  stubs.check = { status: 200, text: J(OK) };
+  sql(`UPDATE proposals SET rule_check = json_set(rule_check, '$.v', '00000000'), conflicts = '[]' WHERE id = '${st3.data.proposal.id}'`);
+  stubs.check = { status: 200, text: J({ conflicts: ["402.3"], missing: [], fixes: [] }) };
+  await ana.post(`${P}/${st3.data.proposal.id}/confirm`, {});
+  check("a check made again at lock-in that names a conflict puts it on the draft's conflicts too (the warning voters see), keeping the drafter's own", JSON.parse(sql(`SELECT conflicts FROM proposals WHERE id = '${st3.data.proposal.id}'`)[0].conflicts).includes("402.3"));
+  sql(`UPDATE proposals SET status = 'withdrawn' WHERE id = '${st3.data.proposal.id}'`);   // it locked in (a conflict only warns): frees the day's slot
+  // a stale check made again that names a not-wired part (107.1) is refused (103.6) on the first lock-in AND on every one after it: the refreshed check is stored, so the second try meets a current check
+  const st4 = await draftAdd("A player on a house tile loses no points for 2 nights, a fourth stale one.");
+  sql(`UPDATE proposals SET rule_check = json_set(rule_check, '$.v', '00000000'), conflicts = '[]' WHERE id = '${st4.data.proposal.id}'`);
+  stubs.check = { status: 200, text: J({ conflicts: ["107.1"], missing: [], fixes: [] }) };
+  const nw1 = await ana.post(`${P}/${st4.data.proposal.id}/confirm`, {});
+  const nw2 = await ana.post(`${P}/${st4.data.proposal.id}/confirm`, {});
+  check("a stale check made again that names a not-wired conflict (107.1) is refused 422, and refused again on the next lock-in, with no P-number", nw1.status === 422 && nw2.status === 422 && /not wired/.test(nw2.data.error || "") && sql(`SELECT status, number FROM proposals WHERE id = '${st4.data.proposal.id}'`)[0].status === "draft" && sql(`SELECT number FROM proposals WHERE id = '${st4.data.proposal.id}'`)[0].number === null, `${nw1.status} ${nw2.status} ${nw2.text}`);
+  sql(`DELETE FROM proposals WHERE id = '${st4.data.proposal.id}'`);
+  sql(`DELETE FROM proposals WHERE id = '${st2.data.proposal.id}'`);
+  sql(`UPDATE proposals SET status = 'withdrawn' WHERE id = '${st.data.proposal.id}'`);   // frees the day's slot for the tests below
+  stubs.check = { status: 200, text: J({ ...OK, engine: [{ what: "moving a player's piece", why: "No effect moves a player." }] }) };
+  const engOk = await draftAdd("At the end of each day a player next to another is moved 1 step.");
+  check("a change that needs an engine power the game lacks is ok with a note, and Lock it in stays on (Buster, engine gaps)", engOk.data.proposal.check.status === "ok" && engOk.data.proposal.engine_note === "Needs the engine to learn: moving a player's piece." && engOk.data.proposal.lock_refusal === null, engOk.text);
 
   console.log("a rule renumbered by an enacted move is as old as the move (108.1, the moderator's ruleAge)");
   // 402 was added on day 3 as another number and moved to 402 then: it is newer than the starter rule 403, so 403 prevails (before the fix, 402 was age 0 and the lower number won)
