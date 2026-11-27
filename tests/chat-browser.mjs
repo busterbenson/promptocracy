@@ -44,7 +44,9 @@ try {
   // Drafted in the general conversation (SYNTH-ADD), so his window opens there with the draft's slip.
   const lockedP = ok(await gus.post(CH, { body: "SYNTH-ADD a rule about proposing twice" }), "gus first draft").data.live;
   ok(await gus.post(`/shop/api/proposals/${lockedP}/confirm`, {}), "gus lock");
-  ok(await gus.post(CH, { body: "SYNTH-ADD another rule about proposing twice" }), "gus second draft");
+  const usesP = ok(await gus.post(CH, { body: "SYNTH-ADD another rule about proposing twice" }), "gus second draft").data.live;
+  // The slip names what the draft uses (rule 703.4): two entries from one ticket, the case Codex found (#140). Written as the draft route stores it.
+  d1(state, `UPDATE proposals SET uses = '[{"name":"Flower","kind":"item","ref":"W4"},{"name":"Vase","kind":"item","ref":"W4"}]' WHERE id = '${usesP}'`);
   // Bo: at the day's cap, so his window shows the limit's excuse and a closed composer
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Los_Angeles" }).format(new Date());   // the game's date (its zone), not UTC's
   const said = ["a stone wall by the pond", "make it 2 by 1", "no, it should not block anything", "a lantern for the north hill", "does it glow green or yellow", "green, and it hums", "a bog frog that croaks", "can it sit on the wall", "yes, just for show", "a bell for the death of a player", "2 by 2, not for Ghosts", "make the bell louder"];

@@ -185,6 +185,15 @@ check("meter: a call's cost is counted from its usage (1000 in + 100 out at sonn
   const r4 = await runChatCase(mk("one-retry-in-all", ["do it"]), a4.x);
   check("chat: a refusal retry that lands a blocked draft is NOT retried again (one retry in all)", a4.seen.requests.length === 2 && r4.draft?.check?.status === "blocked", String(a4.seen.requests.length));
 
+  // a case's `pending` (the commissions it says are open, rules 701.4 and 703.4) reaches the prompt, the rule check and the answer reader, as the route's entriesFor does
+  const a5 = rig([JSON.stringify({ say: "W4 makes the Flower.", draft: { kind: "amend", target: "401.1", words: "a creature that eats a flower loses a heart", uses: ["W4", "W99"] } })]);
+  let checkPending = null;
+  const inner = a5.x.draftcheck.runCheck;
+  a5.x.draftcheck = { runCheck: async (...args) => { checkPending = args[6]; return inner(...args); } };
+  const r5 = await runChatCase({ ...mk("pending-entries", ["a creature that eats a flower loses a heart"]), pending: [{ ticket: 4, owner: "Sarah", state: "Ready", name: "Flower", catalogKind: "item" }] }, a5.x);
+  check("chat: a case's pending entries are in the request's tail (W4 makes Flower, item, Sarah, Ready) and go to the rule check", /W4 makes Flower \(item\), Sarah, Ready/.test(a5.seen.requests[0]) && JSON.stringify(checkPending) === JSON.stringify([{ name: "Flower", catalogKind: "item", ticket: "W4", owner: "Sarah", state: "Ready" }]), JSON.stringify(checkPending));
+  check("chat: the draft's uses keep W4 and drop W99, and the grader reads them", JSON.stringify(r5.draft?.uses) === '["W4"]' && codeChecks({ id: "x", agent: "gremlin", expect: { uses: ["W4"] } }, r5, null).every((k) => k.pass) && codeChecks({ id: "x", agent: "gremlin", expect: { uses: ["W5"] } }, r5, null).some((k) => !k.pass), JSON.stringify(r5.draft?.uses));
+
   // the wiring: both sides call the one function, and the run loads the catalog
   const chatSrc = readFileSync(join(HERE, "chat.mjs"), "utf8"), routeSrc = readFileSync(join(ROOT, "src", "routes", "api-chat.ts"), "utf8"), runSrc = readFileSync(join(HERE, "run.mjs"), "utf8");
   check("wiring: the route and the harness both call draftTurn from src/lib/draft-turn.js", /import \{ draftTurn \} from "\.\.\/\.\.\/src\/lib\/draft-turn\.js"/.test(chatSrc) && /import \{ draftTurn \} from "\.\.\/lib\/draft-turn\.js"/.test(routeSrc) && /await draftTurn\(/.test(chatSrc) && /await draftTurn\(/.test(routeSrc));

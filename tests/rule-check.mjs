@@ -84,5 +84,7 @@ console.log("the lock-in refusal is gated on the rulebook having rule 103.9");
   check("a blocked or unchecked check refuses lock-in; ok or no check does not", !!lockRefusalOf(B9, blocked) && !!lockRefusalOf(B9, { status: "unchecked" }) && lockRefusalOf(B, null) === null);
   check("a rulebook without 103.9 (the day-2 one) is never refused by a check: the rule it enforces is not in the book yet", lockRefusalOf(B, blocked) === null && lockRefusalOf(B, { status: "unchecked" }) === null);
 }
+check("a rule's code can work things out from the date (the moon's phase, a season) with no record and no outside source: the engine facts say so, so the check doesn't call it missing (Buster's moon rule, 11-26)", String(ENGINE_FACTS).includes("moon's phase") && /no network calls/.test(String(ENGINE_FACTS)));
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

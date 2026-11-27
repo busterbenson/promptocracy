@@ -487,6 +487,8 @@ export async function applyOne({ dir, job, p, tonight, budgetMs, model = runMode
     day: job.day, number: p.number, kind: p.kind, scope: p.scope, target: p.target, new_num: p.new_num, to_block: p.to_block,
     before_text: p.before_text, after_text: p.after_text, settings: p.settings, conflicts: p.conflicts,
     redraft_onto: earlier.length ? earlier.map((t) => `P${t.number}`) : null,
+    // the catalog's entries and what open commissions make (rule 703.4): a proposal may name an entry that is not built yet, and is applied all the same
+    entries: job.entries ? { built: (job.entries.built ?? []).slice(0, 100), pending: (job.entries.pending ?? []).slice(0, 100) } : null,
   };
   const head = (f) => git(["show", `HEAD:${f}`], dir, { allowFail: true }) ?? "";
   const beforeMd = head("RULES.md");

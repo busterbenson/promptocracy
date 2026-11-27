@@ -138,7 +138,7 @@ export function cryptoRng() {
 //   players    [{ref, color, score, x, y, z, living, hearts, state: "living" | "dead" | "ghost", deadDay}]  (rule 603.1)
 //   creatures  [{id, entry, x, y, z, hearts | null, resting}]: the creatures on the board, in the order they appeared (rule 602)
 //   nextCreatureId  the id the next creature to appear gets (an appear effect, then step or rest it by this id in the same night)
-//   catalog    [{id, kind, attrs}]: the game's catalog entries (rule 701); read an attribute with attr()  (ref is the engine's stable reference to a player)
+//   catalog    [{id, kind, name, madeBy, attrs}]: the game's catalog entries (rule 701); read an attribute with attr()  (ref is the engine's stable reference to a player)
 //   tiles      has(x,y,z) / get(x,y,z) / list()
 //   rulebook   { marks }  the mark of each rule by number; empty until proposals arrive
 //   rng        () => float in [0,1)
@@ -157,7 +157,7 @@ export function makeContext(o) {
     }),
     creatures: (o.creatures ?? []).map((c) => ({ id: c.id, entry: c.entry, x: c.x, y: c.y, z: c.z ?? 0, hearts: c.hearts ?? null, resting: !!c.resting })),
     nextCreatureId: o.nextCreatureId ?? 1 + Math.max(0, ...(o.creatures ?? []).map((c) => c.id)),
-    catalog: (o.catalog ?? []).map((e) => ({ id: e.id, kind: e.kind, attrs: { ...(e.attrs ?? {}) } })),
+    catalog: (o.catalog ?? []).map((e) => ({ id: e.id, kind: e.kind, name: e.name ?? null, madeBy: e.madeBy ?? null, attrs: { ...(e.attrs ?? {}) } })),
     rulebook: { marks: o.rulebook?.marks ?? {} },
     turn: { round: o.turn?.round ?? 0, turn: o.turn?.turn ?? 0, moved: !!o.turn?.moved, gave: !!o.turn?.gave },
   };

@@ -9,7 +9,7 @@ import { draftOf, needsModel, notWiredConflictRefusal, notWiredRefusal, readRequ
  * @param actions for an action: {catalog, players, proposer} (the route builds it from the game and its players)
  * @param isCap   (e) => bool: a cap error thrown by the caller's fetch wrapper, which must stop the run, not become a draft failure
  */
-export async function pipeline(drafter, book, md, c, env, { actions, isCap = () => false, draftcheck = null, catalog = null } = {}) {
+export async function pipeline(drafter, book, md, c, env, { actions, isCap = () => false, draftcheck = null, catalog = null, pending = [] } = {}) {
   if (draftcheck && !Array.isArray(catalog)) throw new Error("pipeline: the rule check needs the game's catalog (an array, maybe empty); a run never checks blind");
   const body = c.kind === "action"
     ? { kind: "action", type: c.type, params: c.params }
@@ -43,7 +43,7 @@ export async function pipeline(drafter, book, md, c, env, { actions, isCap = () 
   // The rule check (rule 103.9), as src/lib/draft-check.ts makes it: run for every kind with new text, whatever the rulebook (the harness measures the check, not the gate).
   let check = null;
   if (draftcheck && ["amend", "addclause", "add"].includes(req.kind)) {
-    const run = await draftcheck.runCheck(env, md, book, catalog, { kind: req.kind, target: req.target, new_num: d.new_num, mark: req.mark, head: d.head, before_text: d.before_text, after_text: d.after_text, words: req.words }, {});
+    const run = await draftcheck.runCheck(env, md, book, catalog, { kind: req.kind, target: req.target, new_num: d.new_num, mark: req.mark, head: d.head, before_text: d.before_text, after_text: d.after_text, words: req.words }, {}, pending);
     check = run.check ?? { status: "unchecked", conflicts: [], missing: [], fixes: [] };
     for (const x of check.conflicts) if (!conflicts.includes(x.num)) conflicts.push(x.num);
   }

@@ -145,3 +145,15 @@ export async function bundleAgents(dir) {
   }
   return out;
 }
+
+/**
+ * The entries a case's conversation sees (rules 701.4, 703.4): the scratch game's built entries and the commissions the case says are open
+ * (`case.pending`: [{ticket: 4, owner: "Sarah", state: "Ready", name: "Flower", catalogKind: "item"}], the harness's stand-in for the tickets table). The route reads the same
+ * two lists from the database (src/lib/pending-entries.ts); a case with no `pending` has none open.
+ */
+export function entriesOf(c, catalog) {
+  return {
+    built: (catalog || []).map((e) => ({ id: e.id, name: e.name, kind: e.kind, madeBy: e.madeBy ?? null })),
+    pending: (c.pending || []).map((p) => ({ name: p.name, catalogKind: p.catalogKind, ticket: `W${p.ticket}`, owner: p.owner, state: p.state })),
+  };
+}

@@ -34,9 +34,9 @@ async function agesOf(env: Env, gameId: string): Promise<Record<number, number>>
  * The model call and the reading of its answer, with no database (the quality harness runs this too): {check: the check without its time, or null when it
  * could not be made, outcome, usage, ms, reason}. `ages` is each added rule's day (agesOf). Never throws. @rule 103.9, 108.1, 108.3
  */
-export async function runCheck(env: Env, md: string, book: any, catalog: any[], d: any, ages: Record<number, number>) {
+export async function runCheck(env: Env, md: string, book: any, catalog: any[], d: any, ages: Record<number, number>, pending: any[] = []) {
   const model = checkModelOf(env);
-  const p = checkPrompt(md, catalog, d);
+  const p = checkPrompt(md, catalog, d, pending);
   const r = await callModel(env, {
     model, system: p.system, maxTokens: 1500, timeoutMs: CHECK_TIMEOUT_MS, schema: checkSchema(), effort: "low",
     messages: [{ role: "user", content: [{ type: "text", text: p.rulebook, cache_control: { type: "ephemeral" } }, { type: "text", text: p.rest }] }],
@@ -52,7 +52,7 @@ export async function runCheck(env: Env, md: string, book: any, catalog: any[], 
  * Checks a draft ({kind, target, new_num, mark, head, before_text, after_text, words}). Returns null when there is nothing to check (a kind that
  * brings no new text, a rulebook without rule 103.9, no model key); else the stored check. Never throws. @rule 103.9, 108.1, 108.3
  */
-export async function checkDraft(env: Env, game: any, tz: string, playerId: string, md: string, book: any, catalog: any[], d: any, nowMs: number): Promise<RuleCheck | null> {
+export async function checkDraft(env: Env, game: any, tz: string, playerId: string, md: string, book: any, catalog: any[], d: any, nowMs: number, pending: any[] = []): Promise<RuleCheck | null> {
   if (!CHECKED_KINDS.includes(d.kind) || !book.byNum["103.9"] || !env.MODEL_API_KEY) return null;
   const model = checkModelOf(env), at = nowIso(nowMs);
   const unchecked = (): RuleCheck => ({ status: "unchecked", conflicts: [], missing: [], fixes: [], model, at });
@@ -62,7 +62,7 @@ export async function checkDraft(env: Env, game: any, tz: string, playerId: stri
       await logCall(env, game, tz, nowMs, { player_id: playerId, agent: "gremlin", purpose: "draft_check", model, outcome: "over_budget", reason: "month budget" });
       return unchecked();
     }
-    const run = await runCheck(env, md, book, catalog, d, await agesOf(env, game.id));
+    const run = await runCheck(env, md, book, catalog, d, await agesOf(env, game.id), pending);
     await logCall(env, game, tz, Date.now(), { player_id: playerId, agent: "gremlin", purpose: "draft_check", model, outcome: run.outcome, ms: run.ms, usage: run.usage, reason: run.reason });
     return run.check ? { ...run.check, at } : unchecked();
   } catch (e: any) {

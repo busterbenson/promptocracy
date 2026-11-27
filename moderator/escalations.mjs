@@ -67,15 +67,19 @@ THE RULEBOOK
 ${clip(rulesMd, RULES_CLIP)}`;
 }
 
+/** The entries in the catalog and the ones open commissions make (rules 701.4, 703.4), at most 100 of each, for the fence; null when the item carries none. @rule 703.4 */
+const entriesOf = (e) => (e ? { built: (e.built ?? []).slice(0, 100), pending: (e.pending ?? []).slice(0, 100) } : null);
+
 /** The user message: what was escalated, as fenced data. @rule 106.4 */
 export function userPrompt(item) {
   const data = item.where === "ticket"
     ? {
         escalated_by: item.agent, category: item.category, reason: item.reason, player: item.player,
         ticket: item.ticket ?? null,
+        entries: entriesOf(item.entries),
         thread: (item.posts ?? []).slice(-THREAD_SHOWN).map((p) => ({ by: p.by, kind: p.author, body: clip(p.body, POST_CLIP) })),
       }
-    : { escalated_by: item.agent, category: item.category, reason: item.reason, player: item.player, ticket_number: item.ticket_number ?? null, chat_turn: item.turn ?? null };
+    : { escalated_by: item.agent, category: item.category, reason: item.reason, player: item.player, ticket_number: item.ticket_number ?? null, entries: entriesOf(item.entries), chat_turn: item.turn ?? null };
   return `${item.agent === "starling" ? "Starling" : "Gremlin"} passed this up to you. Answer the player.\n\n${fence(data)}\n`;
 }
 

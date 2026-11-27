@@ -70,6 +70,13 @@ script runs them after you and tells you what failed.
    locked in, and what the game records. If the proposal relies on something the game doesn't have, and its code can't work it out from
    what is recorded, it can't be applied: write the result file with outcome `not_applied`, say what is missing, and give `fixes`.
 
+10. **An entry that is not built yet (rule 703.4).** A proposal may name an entry an open commission makes, by that commission ("the
+   Flower (W4)"); the proposal's data lists them under `entries.pending`, and the catalog's under `entries.built`. Apply it like any
+   other proposal: that entry not existing yet is never a reason for `not_applied`. Its code finds the entry by the commission that
+   makes it, with `entryMadeBy(ctx.catalog, "W4", "item")` from the engine API (the entry whose `madeBy` is that ticket and whose
+   kind matches), and does nothing while there is none: its hooks allow, and it returns no effects. Its tests cover both: the entry
+   absent (the rule does nothing) and present (a fixture entry in the catalog with `madeBy` set; the rule acts).
+
 ## The result file
 
 Before you finish, write `MODERATOR-RESULT.json` at the top of the repo (the script reads and deletes it):

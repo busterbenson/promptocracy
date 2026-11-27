@@ -3,6 +3,7 @@
 // the SQL the count runs when a commission passes or fails (rules 801.4, 803.1). src/routes/api-tickets.ts is the routes.
 import { readEntryDraft } from "./catalog.js";
 import { dayOpenSql, lockOpenSql } from "./day-gate.js";
+import { duplicatesOf, usedEntry, usesReason } from "./entries.js";
 
 export const STATES = ["Draft", "Proposed", "Ready", "Approved", "Building", "Done", "Refused", "Failed", "Shelved"];
 // "On hold" (rule 801.9) is not a stored state: tickets.state keeps its CHECK. It is a Ready ticket whose held_at is set (migration 0022),
@@ -37,8 +38,10 @@ const RULE_NUM = /^\d{3}(?:\.\d{1,3})?$/;
  * {kind: "entry", name} and may carry {catalogKind, attrs, flavor, needsBuild, art, copiedFrom}, checked by the catalog's guards
  * (src/lib/catalog.js, against `ctx`: the game's registry and required lists). A rule is {kind: "rule", num}, or {kind: "rule", draft}
  * while Chalant has not numbered it. Two entries are the same only when name and kind both match. Anything else is refused with the
- * reason. Returns {makes} or {error}.
- * @rule 701.2, 801.2
+ * reason. A third kind, {kind: "uses", name, catalogKind, num}, says the ticket uses an entry that is already in the catalog (num: its id) or that an open
+ * commission makes (num: that ticket, "W4"); `ctx.entries` ({built, pending}, src/lib/entries.js) is what it is held against, and it costs and makes nothing (rule 703.4).
+ * Returns {makes} or {error}.
+ * @rule 701.2, 703.4, 801.2
  */
 export function readMakes(v, ctx = {}) {
   if (!Array.isArray(v)) return { error: "What it makes must be a list." };
@@ -59,9 +62,46 @@ export function readMakes(v, ctx = {}) {
       const item = num ? { kind: "rule", num } : { kind: "rule", draft };
       if (num && draft) item.draft = draft;
       if (!makes.some((x) => x.kind === "rule" && (num ? x.num === num : !x.num && x.draft === draft))) makes.push(item);
-    } else return { error: "Each thing it makes is a catalog entry (with a name) or a rule (with a number)." };
+    } else if (m && m.kind === "uses") {
+      const r = readUses(m, ctx.entries, ctx.stored);
+      if (!r.item) return { error: r.reason };
+      if (!makes.some((x) => x.kind === "uses" && x.num === r.item.num && x.catalogKind === r.item.catalogKind && String(x.name).toLowerCase() === String(r.item.name).toLowerCase())) makes.push(r.item);
+    } else return { error: "Each thing it makes is a catalog entry (with a name), a rule (with a number) or an entry it uses (with the ticket that makes it)." };
   }
   return { makes };
+}
+
+/**
+ * One "uses" item cleaned and held against the entries (src/lib/entries.js): {item} with the name and kind as the entry has them, or {reason} (what he sees next
+ * turn). With no `entries` nothing can be used. @rule 703.4
+ */
+export function readUses(m, entries, stored = []) {
+  const want = { name: clean(m?.name).slice(0, LIMITS.makeName), catalogKind: clean(m?.catalogKind).toLowerCase(), num: clean(m?.num).toUpperCase() };
+  const found = entries ? usedEntry(want, entries) : null;
+  if (found) return { item: { kind: "uses", name: found.name, catalogKind: found.catalogKind, num: found.ref } };
+  // An item the ticket already holds stays as it is when it is sent back unchanged, even if the ticket that makes the entry has since closed (rule 703.4: nothing
+  // automatic when it ends Refused, Failed or Shelved): a hand edit of the title, or his echo of the whole list, must not fail on it.
+  const had = (stored || []).find((x) => x && x.kind === "uses" && String(x.num).toUpperCase() === want.num && String(x.name).toLowerCase() === want.name.toLowerCase() && String(x.catalogKind).toLowerCase() === want.catalogKind);
+  return had ? { item: { kind: "uses", name: had.name, catalogKind: had.catalogKind, num: had.num } } : { reason: usesReason(want) };
+}
+
+/** The states whose entries count as "on the way" (rule 701.4): not Draft (private), not closed. On hold shows as itself. @rule 701.4, 703.4 */
+export const OPEN_ENTRY_STATES = ["Proposed", "Ready", "Approved", "Building"];
+/**
+ * The entries open commissions make, from ticket rows {id, number, state, held_at, makes, player_id, display_name}: a ticket in Proposed, Ready (also On hold),
+ * Approved or Building, and the viewer's own drafts (other players' drafts are private). `skipId` is the ticket being drafted, so the requester does not see their own
+ * entry as a duplicate. [{name, catalogKind, ticket: "W4", owner, state}]. @rule 701.4, 703.4
+ */
+export function pendingFrom(rows, viewerId, skipId = null) {
+  const out = [];
+  for (const r of rows || []) {
+    if (!r || r.id === skipId) continue;
+    if (!(OPEN_ENTRY_STATES.includes(r.state) || (r.state === "Draft" && viewerId && r.player_id === viewerId))) continue;
+    let makes = [];
+    try { makes = typeof r.makes === "string" ? JSON.parse(r.makes || "[]") : r.makes || []; } catch { makes = []; }
+    for (const m of makes) if (m && m.kind === "entry" && m.name && m.catalogKind) out.push({ name: String(m.name), catalogKind: String(m.catalogKind), ticket: `W${r.number}`, owner: String(r.display_name ?? ""), state: shownState(r) });
+  }
+  return out;
 }
 
 /**
@@ -134,16 +174,22 @@ export function handEditRefusal(body, stored, ctx = {}) {
 export const NOT_DRAFTED = "Gremlin hasn't drafted it yet.";
 /**
  * Whether a draft can be confirmed, and why not: a title and a brief are needed, Gremlin must have drafted it (rule 801.7), and
- * (rule 801.3) it must name something to make. Returns null, or {error, refuse}: `refuse` is true when the rule refuses the
+ * (rule 801.3) it must name something to make: an entry that "uses" one already there makes nothing, so a ticket of only those names nothing. `entries` ({built,
+ * pending}) is what the catalog and the open commissions already make, and `o.unique` says the game's rulebook has rule 701.4: a ticket that makes an entry with
+ * the kind and name of one of them is refused (use it or rename yours). Returns null, or {error, refuse}: `refuse` is true when the rule refuses the
  * commission (rule 801.3), not just an unfinished form.
- * @rule 801.3, 801.7
+ * @rule 701.4, 801.3, 801.7
  */
-export function confirmProblem(t) {
+export function confirmProblem(t, entries, o = {}) {
   if (!clean(t.title)) return { error: "Give it a title." };
   if (!clean(t.brief)) return { error: "Say what it is in the brief." };
   if (!t.drafted) return { error: NOT_DRAFTED };
   const makes = typeof t.makes === "string" ? JSON.parse(t.makes || "[]") : t.makes || [];
-  if (!makes.length) return { error: "Refused: it names nothing to make.", refuse: true };
+  if (!makes.some((m) => m && m.kind !== "uses")) return { error: "Refused: it names nothing to make.", refuse: true };
+  if (o.unique) {
+    const d = duplicatesOf(makes, entries)[0];
+    if (d) return { error: `${d.built ? "The catalog already has" : `${d.by} already makes`} ${/^[aeiou]/i.test(d.catalogKind) ? "an" : "a"} ${d.catalogKind} called ${d.name} (701.4). Use it or rename yours.` };
+  }
   return null;
 }
 
