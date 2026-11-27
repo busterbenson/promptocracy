@@ -179,7 +179,7 @@ WHAT YOU DO. The player describes something to add to the game: an item, a creat
 
 WHAT YOU CAN WRITE. Only this ticket's draft fields, through the JSON answer below. You cannot change a rule, rule on what a rule means, run anything, build anything, confirm the ticket (only the player's click does), or touch any other ticket. ESCALATING. If you cannot settle something (two rules that conflict, an estimate you cannot size, a request to change what an existing attribute means, anything that reads as a loophole, anything that needs a ruling), say so in "say" in your own words ("Kicking this upstairs to Chalant.") and fill in "escalate": a "category" (${ESCALATION_CATEGORIES.join(", ")}) and a "reason" (one or two sentences for Chalant, at most ${ESCALATE_REASON_MAX} characters). Leave the ticket fields you are unsure of empty. Escalate rarely: only for what you truly cannot settle. Chalant answers in the thread, later; do not promise when.
 
-MOVING. If the player asks here for a change to a rule, a new rule or an action that is not part of this commission, set \"move\" to \"general\": the site takes their message to the general conversation, where you draft it. A commission that needs a rule built is still this ticket's (a rule item in \"makes\"). Leave the ticket fields alone in that answer.
+MOVING. If the player asks here for a change to a rule, a new rule or an action that is not part of this commission, set \"move\" to \"general\": the site takes their message to the general conversation, where you draft it. A commission is how a new ENTRY comes in (a creature, an item, a tile, a structure), or a rule that makes an entry do something (a rule item beside that entry in \"makes\"). A rule that makes no new entry (a change to how the game works, or a rule about an entry that already exists or that another commission is making) is never a commission, however new its code: set \"move\" to \"general\" and leave the ticket fields alone in that answer.
 
 REFUSING. If a commission names nothing to make, or would do something no workshop thing may do (share players' private information, weaken the site's security, break the law, or reach outside this game), refuse it: put the reason in "refusal" (one sentence, in plain words) and write no ticket fields. A commission that breaks one of these is refused, not escalated: escalating is for what you cannot settle, and this you can. Do not refuse what is merely odd or ambitious: size it and price it.
 
@@ -429,6 +429,27 @@ export function readOptions(raw) {
   }
   return out;
 }
+/**
+ * Is this list of things to make a rule and nothing else: at least one rule item, no entry and no `uses`? A commission is how an ENTRY comes in, or a rule that
+ * makes an entry do something (rule 801.1): a change to what the game does that makes no new entry is a plain rule, drafted in the general conversation where
+ * the rule check runs (Buster, 2026-11-26; the moon rule was sent to a ticket and priced 3 points). The site moves such a ticket answer to the general
+ * conversation (the same one move a turn as `move: "general"`). @rule 801.1, 801.6
+ */
+export function ruleOnlyTicket(makes) {
+  const items = Array.isArray(makes) ? makes : [];
+  return items.some((m) => m && m.kind === "rule") && !items.some((m) => m && (m.kind === "entry" || m.kind === "uses"));
+}
+
+/**
+ * Where a ticket answer's message belongs: "general" when he said so, or when what he writes on the ticket THIS turn (`patch.makes`) is a rule and nothing else
+ * (ruleOnlyTicket); else null. A ticket that already holds only a rule is not moved by a message that writes no `makes` (a question about its cost stays on it). @rule 801.1, 801.6
+ */
+export function moveOf(a) {
+  if (!a || a.refusal) return null;
+  if (a.move === "general") return "general";
+  return a.patch && a.patch.makes && ruleOnlyTicket(a.patch.makes) ? "general" : null;
+}
+
 export function readGremlinAnswer(text, ctx) {
   let a;
   try {

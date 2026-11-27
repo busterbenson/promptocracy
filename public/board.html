@@ -391,12 +391,12 @@ import { hold } from "/js/busy.js";
       ${bl.length ? `<ul class="sl">${bl.map(p => `<li id="sb-${esc(p.n)}"><p class="sbs">${PROP.pPill(p)} ${pill(p.by, p.mine)} ${sentence(p)}</p>
         <div class="sdiff">${p.kind === "commission" && p.ticket ? commissionHTML(p.ticket) : p.kind === "action" && p.action ? PROP.actionBody(p) : `${p.title ? `<p class="sdh">${esc(p.title)}</p>` : ""}<p class="mono head">${esc(p.head || "")}</p><p>${diffOf(p)}</p>`}</div><div class="vrow slot" data-slot="ballot-vote" data-pn="${esc(p.n)}">${BAL ? BAL.box(p.n) : ""}</div></li>`).join("")}</ul>` : `<p class="mnote">Nothing is on today's ballot.</p>`}</section>`;
     const cat = WS ? WS.summaryHTML() : "";
-    return `<div class="sgrid">${eraHTML()}<div class="slot recapw" data-slot="recap"></div>
+    return `<div class="slot gbarw" data-slot="gremlin-bar">${CHAT ? CHAT.barHTML() : ""}</div><div class="sgrid">${eraHTML()}<div class="slot recapw" data-slot="recap"></div>
       <div class="scol">${ballot}${proposedHTML()}${cat}</div>
       <div class="scol"><div class="slot" data-slot="recent-days"></div><button type="button" class="linkbtn" data-tab="history">Full history →</button></div></div>`;
   }
   function drawBook() {
-    if (TAB === "summary") $("p-summary").innerHTML = summaryHTML();
+    if (TAB === "summary") { $("p-summary").innerHTML = summaryHTML(); if (CHAT) CHAT.drawBar(); }
     else if (TAB === "workshop") $("p-workshop").innerHTML = WS ? WS.tabHTML() : "";
     else if (TAB === "yours") $("p-yours").innerHTML = YOURS ? YOURS.html() : "";
     else if (TAB === "history") $("p-history").innerHTML = `<div class="hdays">${rulingsHTML(DATA && DATA.rulings, { esc, rpill: n => PROP.rpill(n) })}<div class="slot" data-slot="history-days">${HIST ? HIST.html() : ""}</div><ul class="log" id="log">${((DATA && DATA.events) || []).map(e => `<li><b>${esc(whenText(e.created_at) || String(e.created_at || "").slice(0, 10))}</b> · ${esc(e.text)}</li>`).join("")}</ul></div>`;

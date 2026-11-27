@@ -51,13 +51,25 @@ function graderHtml(g) {
 
 const STATUS_LABEL = { pass: "PASS", fail: "FAIL", "expected fail": "EXPECTED FAIL", "now passes": "NOW PASSES: retire known_fail?" };
 
+/** With --repeat: one row a case, k/N reps that passed their code checks, and each rep's first slip (the rule check and the engine note). A case counts only when every rep passes. */
+export function repsTable(cs) {
+  const ids = [...new Set(cs.map((c) => c.id))];
+  if (!cs.some((c) => (c.reps || 1) > 1)) return "";
+  const rows = ids.map((id) => {
+    const rs = cs.filter((c) => c.id === id), ok = rs.filter((c) => ["pass", "expected fail", "now passes"].includes(c.status)).length;
+    const first = rs.map((c) => { const sl = c.turns?.[0]?.slip; return sl ? `${sl.check ?? "unchecked"}${sl.engine_note ? "+note" : ""}` : "no slip"; }).join(" / ");
+    return `<tr><td>${esc(id)}</td><td>${ok}/${rs.length}${ok === rs.length ? "" : " FAIL"}</td><td>${esc(first)}</td></tr>`;
+  });
+  return `<table class="qr-reps"><tr><th>case</th><th>passed</th><th>first slip, per rep</th></tr>${rows.join("")}</table>`;
+}
+
 export function cardHtml(c) {
   const kf = c.known_fail ? `<div class="qr-kf">known fail since ${esc(c.known_fail.since)}: ${esc(c.known_fail.why)}</div>` : "";
-  return `<section class="qr-card" id="case-${esc(c.id)}"><h2>${esc(c.id)} <span class="qr-st qr-${esc(String(c.status).replace(/ /g, "-"))}">${esc(c.notRun ? `NOT RUN (${c.notRun})` : STATUS_LABEL[c.status] || c.status)}</span></h2>`
+  return `<section class="qr-card" id="case-${esc(c.id)}${c.rep ? `-r${c.rep}` : ""}"><h2>${esc(c.id)}${c.reps > 1 ? ` rep ${c.rep}/${c.reps}` : ""} <span class="qr-st qr-${esc(String(c.status).replace(/ /g, "-"))}">${esc(c.notRun ? `NOT RUN (${c.notRun})` : STATUS_LABEL[c.status] || c.status)}</span></h2>`
     + `<div class="qr-title">${esc(c.title)} (${esc(c.agent)}), ${usd(c.micro || 0)}, ${Math.round((c.ms || 0) / 1000)} s</div>${kf}`
     + `<div class="qr-intent"><b>Good looks like:</b> ${esc(c.intent)}</div>`
     + chatHtml(c) + slipHtml(c) + nightHtml(c.night) + checksHtml(c.checks) + graderHtml(c.grade)
-    + `<div class="qr-mark" data-case="${esc(c.id)}"><button type="button" data-v="good">Good</button> <button type="button" data-v="bad">Bad</button> <input type="text" maxlength="1000" placeholder="note" aria-label="note for ${esc(c.id)}"> <span class="qr-saved"></span></div></section>`;
+    + ((c.rep || 1) > 1 ? "" : `<div class="qr-mark" data-case="${esc(c.id)}"><button type="button" data-v="good">Good</button> <button type="button" data-v="bad">Bad</button> <input type="text" maxlength="1000" placeholder="note" aria-label="note for ${esc(c.id)}"> <span class="qr-saved"></span></div>`) + `</section>`;
 }
 
 const CSS = `<style>
@@ -69,7 +81,7 @@ const CSS = `<style>
 .qr-checks{list-style:none;padding:0;margin:8px 0;font-size:.85rem}.qr-checks .no{color:#c0392b}.qr-checks .ok{opacity:.75}.qr-d{opacity:.6}
 .qr-slip,.qr-night,.qr-grader,.qr-intent,.qr-kf,.qr-audit{margin:8px 0;font-size:.9rem}
 .qr-mark button{padding:8px 16px;margin-right:4px}.qr-mark button.on{font-weight:700;outline:2px solid currentColor}.qr-mark input{max-width:100%;width:14em}
-.qr-top{font-size:.9rem;line-height:1.5}
+.qr-top{font-size:.9rem;line-height:1.5}\n.qr-reps{font-size:.85rem;margin:8px 0}.qr-reps td,.qr-reps th{padding:2px 8px;text-align:left}
 </style>`;
 
 const SCRIPT = `<script>
@@ -120,5 +132,5 @@ export function renderPage(run, { agreement = null } = {}) {
     `</div>`,
   ].join("");
   const fm = ["---", `title: ${JSON.stringify(`Promptocracy quality ${run.date} ${run.stage}`)}`, `date: ${run.date}`, `tagline: ${JSON.stringify(tagline)}`, "---", ""].join("\n");
-  return `${fm}${CSS}\n${oneLine(top)}\n${cs.map((c) => oneLine(cardHtml(c))).join("\n")}\n${SCRIPT}\n`;
+  return `${fm}${CSS}\n${oneLine(top)}\n${repsTable(cs) ? `${oneLine(repsTable(cs))}\n` : ""}${cs.map((c) => oneLine(cardHtml(c))).join("\n")}\n${SCRIPT}\n`;
 }

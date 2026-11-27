@@ -315,5 +315,15 @@ console.log("the caller (src/lib/agent.ts), with fetch captured");
   check("thinking is off unless asked for (the chat doesn't: adaptive thinking took 34 s a turn in the live eval, docs in the PR)", "thinking" in g.seen[0].body && g.seen[0].body.thinking.type === "adaptive" && !("thinking" in a.seen[0].body));
 }
 
+
+console.log("a rule is not a commission (rules 801.1, 801.6; Buster 2026-11-26: the moon rule was sent to a ticket and priced 3 points)");
+{
+  const rule = { kind: "rule", num: "", draft: "Each day has a moon." }, entry = { kind: "entry", name: "Wyrm", catalogKind: "creature" }, uses = { kind: "uses", name: "Flower", catalogKind: "item", num: "W4" };
+  check("ruleOnlyTicket: a rule and nothing else is; a rule beside an entry or a uses item is not; an empty list is not", G.ruleOnlyTicket([rule]) && G.ruleOnlyTicket([rule, rule]) && !G.ruleOnlyTicket([rule, entry]) && !G.ruleOnlyTicket([rule, uses]) && !G.ruleOnlyTicket([entry]) && !G.ruleOnlyTicket([]) && !G.ruleOnlyTicket(undefined));
+  check("moveOf: he said general; or the makes he writes this turn are a rule only; a ticket that already holds only a rule is NOT moved by a message that writes no makes; never on a refusal; an entry stays", G.moveOf({ move: "general", patch: {} }) === "general" && G.moveOf({ move: null, patch: { makes: [rule] } }) === "general" && G.moveOf({ move: null, patch: {} }, { makes: [rule] }) === null && G.moveOf({ move: null, patch: { makes: [entry, rule] } }) === null && G.moveOf({ move: null, patch: { makes: [rule] }, refusal: "no" }) === null && G.moveOf({ move: null, patch: {} }, { makes: [] }) === null);
+  check("a rule that makes an entry do something is still a commission: the entry's key in needsBuild, the rule beside it", G.moveOf({ move: null, patch: { makes: [{ ...entry, needsBuild: ["flies"] }, { kind: "rule", num: "", draft: "A Wyrm flies." }] } }) === null);
+  check("the ticket's prompt says a rule that makes no new entry is never a commission, however new its code", /makes no new entry[^]*never a commission, however new its code/.test(G.systemStatic({ ceiling: 25 })));
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
