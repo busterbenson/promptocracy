@@ -9,12 +9,12 @@
 # right thing, and the window is on every page of the game (every tab, the account's Yours, light and dark, 1280 and 390).
 # Usage: browser-chat.py <...> <Gus's cookie>  (original usage follows)
 # Usage: browser-chat.py <base> <screenshot dir or -> <Ada's session cookie> <Bo's> <Cy's> <Dee's> <Fay's session cookie, for pre> <Eve's cookie> <two recorded messages Gremlin answers: the lines her two tickets are drafted with>
-import re, sys
+import json, re, sys
 from urllib.parse import urlparse
 from playwright.sync_api import sync_playwright
 from busy_check import busy_check
 
-base, out, ada_cookie, bo_cookie, cy_cookie, dee_cookie, fay_cookie, eve_cookie, MSG_A, MSG_B, gus_cookie, ivy_cookie = sys.argv[1:13]
+base, out, ada_cookie, bo_cookie, cy_cookie, dee_cookie, fay_cookie, eve_cookie, MSG_A, MSG_B, gus_cookie, ivy_cookie, hal_cookie = sys.argv[1:14]
 host = urlparse(base).hostname
 failed = []
 ROW_H = 44
@@ -518,6 +518,42 @@ with sync_playwright() as p:
         page.click("#tab-rules"); page.wait_for_timeout(200)
         check(f"{tag}: the bar is only on the Summary; the corner pill stays on every tab", page.locator(".gbar:visible").count() == 0 and (mode(page) == "open" if not phone else page.locator("#chatfab").is_visible()))
         sideways(page, w, tag)
+        check(f"{tag}: no console errors", not errors, str(errors)); c.close()
+
+    # ---------------- the bar does not depend on the conversation the window is in (Codex, #143): Gus opens a ticket, Hal's window loads on a ticket (his last words were in it)
+    for scheme, w, h in [("light", 1280, 900), ("light", 390, 844)]:
+        tag = f"{w}-{scheme} bar in a ticket"; phone = w < 900
+        c, page, errors = new_page(b, w, h, scheme, gus_cookie)
+        page.wait_for_selector("#p-summary .gbar .gb-p")
+        before = [x.strip() for x in page.locator("#p-summary .gbar .gb-p").all_inner_texts()]
+        if phone: page.click("#chatfab")
+        page.wait_for_selector(f'{YOURS} .it[data-c="pick"]'); page.locator(f'{YOURS} .it[data-c="pick"]').first.click()
+        page.wait_for_function("document.querySelector('#chatLog .slip:not(.past)') && /^W\\d+$/.test(document.querySelector('#chatLog .slip:not(.past)').getAttribute('aria-label'))"); page.wait_for_timeout(300)
+        after = [x.strip() for x in page.locator("#p-summary .gbar .gb-p").all_inner_texts()]
+        check(f"{tag}: opening a ticket's conversation leaves the Summary bar as it was (its pills {before}, 2 of 3 left)", len(before) == 1 and after == before and page.locator("#p-summary .gbar .gb-n").inner_text().strip() == "2 of 3 left", f"{before} {after}")
+        check(f"{tag}: no console errors", not errors, str(errors)); c.close()
+        if scheme == "light" and not phone:   # Hal's ticket, made here once: drafted over two turns and locked in as today's commission, his last words in it
+            ch, ph, eh = new_page(b, 1280, 900, "light", hal_cookie)
+            wh = ph.evaluate(f"({post})('/shop/api/tickets', {{}})")["ticket"]
+            for m in (MSG_A, MSG_B): ph.evaluate(f"({post})('/shop/api/chat/gremlin', {json.dumps({'ticket': wh, 'body': m})})")
+            check("bar in a ticket: Hal's commission is locked in", ph.evaluate(f"({post})('/shop/api/tickets/{wh}/confirm', {{}})").get("ok") is True)
+            wd = ph.evaluate(f"({post})('/shop/api/tickets', {{}})")["ticket"]   # a second ticket, a draft: the conversation his window opens in (a locked ticket's is not reopened by a reload)
+            ph.evaluate(f"({post})('/shop/api/chat/gremlin', {json.dumps({'ticket': wd, 'body': MSG_A})})"); ch.close()
+        c, page, errors = new_page(b, w, h, scheme, hal_cookie)
+        page.wait_for_function("document.querySelector('#p-summary .gbar')"); page.wait_for_timeout(300)
+        if phone: page.click("#chatfab")
+        page.wait_for_selector("#chatLog .slip:not(.past)")
+        check(f"{tag}: Hal's window loads on his ticket's conversation (a chip beside the box)", page.locator(".ch-in .chip").count() == 1, text(page, ".ch-in"))
+        if phone: page.click('#chatcol [data-c="close"]'); page.wait_for_function("document.getElementById('bwrap').dataset.sheet === 'closed'")
+        hp = [x.strip() for x in page.locator("#p-summary .gbar .gb-p").all_inner_texts()]
+        check(f"{tag}: after a reload on a ticket the Summary bar is still there: his commission's pill and 2 of 3 left", len(hp) == 1 and page.locator("#p-summary .gbar .gb-n").inner_text().strip() == "2 of 3 left", str(hp))
+        # a commission's P-pill opens its ticket's conversation, where its slip is (the general conversation does not list commissions)
+        if page.locator("#p-summary .gbar .gb-p").count() == 1:
+            wc = page.locator("#p-summary .gbar .gb-p").first.get_attribute("data-w")
+            page.locator("#p-summary .gbar .gb-p").first.click()
+            if wc: page.wait_for_selector(f'#chatLog .slip[aria-label="{wc}"]')
+            check(f"{tag}: tapping the commission's pill ({hp[0]}) opens its ticket's ({wc}) conversation: its slip, its chip beside the box, the window open", wc is not None and page.locator(f'#chatLog .slip[aria-label="{wc}"]').count() == 1 and wc in text(page, ".ch-in .chip") and (sheet(page) == "open" if phone else mode(page) == "open"), text(page, "#chatLog .slip:not(.past)"))
+        shot(page, f"summary-bar-ticket-{tag}")
         check(f"{tag}: no console errors", not errors, str(errors)); c.close()
 
     b.close()

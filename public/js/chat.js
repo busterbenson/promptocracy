@@ -49,7 +49,7 @@ export function optionsPlace(oi, at) {
 export function barPills(state) {
   const t = state && state.today;
   if (!t) return null;
-  return { list: (t.list || []).slice(), left: Math.max(0, t.limit - t.made), limit: t.limit };
+  return { list: (t.list || []).slice(), tickets: { ...(t.tickets || {}) }, left: Math.max(0, t.limit - t.made), limit: t.limit };
 }
 export const settingsLine = (settings) => Object.entries(settings || {}).map(([k, v]) => `${k} = ${v && typeof v === "object" ? Object.values(v).join("x") : typeof v === "boolean" ? (v ? "on" : "off") : String(v)}`).join(", ");
 /** The tickets row's order (Buster, 2026-11-24): drafts first, then the rest, newest first. The server sends the same order. */
@@ -360,7 +360,7 @@ ${sl.uses_note ? `<p class="cnote unote">${textHTML(sl.uses_note)}</p>` : ""}<di
   function barHTML() {
     const b = live() && barPills(S.state);
     if (!b) return "";
-    const pills = b.list.map((n) => `<button type="button" class="gb-p" data-g="p" data-n="${esc(n)}" aria-label="${esc(n)}">${ppill(n)}</button>`).join("");
+    const pills = b.list.map((n) => `<button type="button" class="gb-p" data-g="p" data-n="${esc(n)}"${b.tickets[n] ? ` data-w="${esc(b.tickets[n])}"` : ""} aria-label="${esc(n)}">${ppill(n)}</button>`).join("");
     return `<div class="gbar" role="group" aria-label="${esc(agent.name)}" data-g="open"><button type="button" class="gb-main" data-g="open">${portrait(true)}<span class="gb-line">${esc(lastLine())}</span></button><div class="gb-today">${pills}<span class="gb-n">${esc(b.left)} of ${esc(b.limit)} left</span></div></div>`;
   }
   /** Fills every bar slot on the page (the Summary has one). */
@@ -370,6 +370,7 @@ ${sl.uses_note ? `<p class="cnote unote">${textHTML(sl.uses_note)}</p>` : ""}<di
     if (!bar || !live()) return;
     const p = e.target.closest(".gb-p");
     if (!p) { open(); return; }
+    if (p.dataset.w) { if (!S.busy) await attach(p.dataset.w, { open: true }); else open(); return; }   // a commission: its slip is its ticket's, not the general conversation's
     const sl = Object.values(S.slips).find((x) => x && x.n === p.dataset.n) || (S.proposals || []).find((x) => x.n === p.dataset.n);
     open();
     const id = (sl && sl.id) || ((S.proposals || []).find((x) => x.n === p.dataset.n) || {}).id;

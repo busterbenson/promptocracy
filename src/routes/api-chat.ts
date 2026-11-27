@@ -138,7 +138,7 @@ export const get = async (ctx: Ctx) => {
   const h = await historyPage(env.DB, game.id, player.id, AGENT, before, { ticketId: ticket?.id ?? null, date: localDate(timeZoneOf(game), nowMs) });
   const strip = await stripOf(env, game, player);
   const base = { messages: h.rows, next: h.next, ticket: ticket ? `W${ticket.number}` : null, ...strip };
-  if (ticket) return json({ ...base, state: await stateOf(ctx, game, day, player, nowMs) });
+  if (ticket) return json({ ...base, state: await stateWith(ctx, game, day, player, nowMs) });   // today's proposals ride in a ticket's state too: the Summary bar does not depend on the conversation (rule 103.2)
   // Outside any ticket: the draft slips his lines point at, what may be done to each, the day's count (rules 103.1, 103.2). The newest draft the
   // player has, however far back its line is: the window's slip must not depend on the page of history it loaded.
   const { turn } = await loadToday(env, ctx.data.game!, nowMs, player.id);
@@ -215,7 +215,7 @@ export async function turn(ctx: Ctx, player: Player, body: any, nowMs: number): 
   const tz = timeZoneOf(game), date = localDate(tz, nowMs);
   const cap: number = capOf(game);
   /** @rule 106.7 */
-  const state = () => stateOf(ctx, game, day, player, nowMs);
+  const state = () => stateWith(ctx, game, day, player, nowMs);
 
   // During the lock the chat is closed (rule 107.1): read first, alone, so the cap's excuse is never spent on a locked chat.
   if (lockedNow(game, day, nowMs)) return out(refusalBody({ status: 423, error: lockMessage(day.n), processing_day: day.n }), 423);
@@ -299,7 +299,7 @@ async function ticketTurn(T: Turn, ticket: any, moved: boolean): Promise<Out> {
 
   const r = await callModel(env, { model: MODEL, system, messages, maxTokens: OUTPUT_CAP_TOKENS, timeoutMs: CHAT_TIMEOUT_MS, schema: answerSchema(), effort: "low" });
   const later = await clockNow(env);   // the model can take 30 s: everything from here on (the write, its gate, the rows, the page, the state) uses the clock NOW
-  const stateNow = async () => { const f = await loadToday(env, ctx.data.game!, later, player.id); return stateOf(ctx, f.game, f.day, player, later); };
+  const stateNow = async () => { const f = await loadToday(env, ctx.data.game!, later, player.id); return stateWith(ctx, f.game, f.day, player, later); };
   /** @rule 106.3 */
   const canned = async (code: "unavailable" | "failed" | "malformed" | "refused", outcome: string, reason: string | null) => {
     const line = CANNED_LINES[code === "unavailable" ? "unavailable" : code];
