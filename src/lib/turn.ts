@@ -11,20 +11,20 @@ import { DayRow, DayTurn, dayGate } from "./day";
 
 export type Refusal = { status: number; error: string; processing_day?: number };
 
-/** @rule 104.3, 107.1, 202.1, 202.4, 603.1 */
+/** @rule 104.3, 107.1, 202.1, 202.4, 603.1, 704.1 */
 export function turnBlock(
   game: { status: string; phase?: string; turn: number; round: number; day?: number; slug: string; settings: string },
   day: DayRow | null,
   turn: DayTurn,
   player: { id: string; dead_day?: number | null; ghost_day?: number | null },
-  kind: "propose" | "move" | "end_turn" | "vote" | "give_heart",
+  kind: "propose" | "move" | "end_turn" | "vote" | "give_heart" | "give_item",
   nowMs: number,
 ): Refusal | null {
   const gate = dayGate(game, day, turn, nowMs);
   if (gate) return gate;
   // Voting is the site's own (rule 104.3: the vote route checks the electorate); a move, a proposal and End turn are asked of the rules, which see the
   // acting player's state (rule 603.1: the dead have no turn, 202.5: a Ghost can't propose).
-  if (kind === "vote" || kind === "give_heart") return null; // give_heart: the route asks the rules itself, with its target (603.4)
+  if (kind === "vote" || kind === "give_heart" || kind === "give_item") return null; // give_heart, give_item: the route asks the rules itself, with its target (603.4, 704.1)
   return checkAction(game, lightContext(game, { moved: !!turn?.moved_at, gave: !!turn?.gave_at }, player as any), { ref: player.id }, { kind } as any);
 }
 

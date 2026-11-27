@@ -7,7 +7,7 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync,
 import { tmpdir } from "node:os";
 import { join as pjoin } from "node:path";
 import { ROOT } from "./lib.mjs";
-import { ACTION_KINDS, HOOKS, RuleError, RuleSetError, assembleRules, deepFreeze, defineRule, effects, makeContext, makeTiles, refuse, seededRng, validateActionType, validateEffect } from "../src/engine/hooks.js";
+import { ACTION_KINDS, APPLIED_EFFECTS, HOOKS, NO_RULE_GIVES, RuleError, RuleSetError, assembleRules, deepFreeze, defineRule, effects, makeContext, makeTiles, refuse, seededRng, validateActionType, validateEffect } from "../src/engine/hooks.js";
 import { lintModule } from "../src/engine/lint.js";
 import { checkRulebook, citedRules, parseRulesMd } from "../src/engine/rulesmd.js";
 import { DEFAULT_SETTINGS, validateSettings } from "../src/lib/settings.js";
@@ -169,7 +169,7 @@ check("seededRng: same seed, same numbers; different seed, different numbers", (
   const x = [a(), a(), a()], y = [b(), b(), b()], z = [c(), c(), c()];
   return J(x) === J(y) && J(x) !== J(z);
 })());
-check("the action kinds are move, propose, vote, end_turn; and deepFreeze is idempotent", J(ACTION_KINDS) === '["move","propose","vote","end_turn","give_heart"]' && deepFreeze(deepFreeze({ a: { b: 1 } })).a.b === 1);
+check("the action kinds are move, propose, vote, end_turn, give_heart, give_item; and deepFreeze is idempotent", J(ACTION_KINDS) === '["move","propose","vote","end_turn","give_heart","give_item"]' && deepFreeze(deepFreeze({ a: { b: 1 } })).a.b === 1);
 
 console.log("effects");
 check("a chart effect needs integer tiles inside the world, at most 500", validateEffect({ type: "chart", tiles: [{ x: 1, y: 2, z: 0 }] }) === null && validateEffect({ type: "chart", tiles: [{ x: 1.5, y: 0 }] }) !== null && validateEffect({ type: "chart", tiles: [{ x: 2e6, y: 0 }] }) !== null && validateEffect({ type: "chart", tiles: Array.from({ length: 501 }, () => ({ x: 0, y: 0 })) }) !== null && validateEffect({ type: "chart" }) !== null);
@@ -375,7 +375,7 @@ check("hookClaimProblems: every hook the LOADED module has must be a tagged func
 }
 
 console.log("how rules share a hook");
-check("every wired hook declares one combine mode: veto (can-I), sequence (effects), decide (one handler)", J(Object.fromEntries(Object.entries(HOOKS).filter(([, h]) => h.wired).map(([k, h]) => [k, h.mode]))) === '{"actionAllowed":"veto","afterAction":"sequence","spawnTile":"decide","applyOrder":"decide","onEnacted":"sequence","dayEnd":"sequence","championChange":"veto","giveHeart":"veto","actionType":"sequence","applyAction":"sequence","night":"sequence","ending":"decide"}' && Object.values(HOOKS).every((h) => ["veto", "sequence", "decide"].includes(h.mode)));
+check("every wired hook declares one combine mode: veto (can-I), sequence (effects), decide (one handler)", J(Object.fromEntries(Object.entries(HOOKS).filter(([, h]) => h.wired).map(([k, h]) => [k, h.mode]))) === '{"actionAllowed":"veto","afterAction":"sequence","spawnTile":"decide","applyOrder":"decide","onEnacted":"sequence","dayEnd":"sequence","championChange":"veto","giveHeart":"veto","giveItem":"veto","actionType":"sequence","applyAction":"sequence","night":"sequence","ending":"decide"}' && Object.values(HOOKS).every((h) => ["veto", "sequence", "decide"].includes(h.mode)));
 check("championChange (402.4): a game with no module for it has no Champion's change (a refusal); with one it is allowed; any module may refuse, with its rule named; a bad answer is a RuleError", (() => {
   const none = assembleRules([one, order]).championChange(ctx, A);
   const yes = assembleRules([one, order, m(402, { championChange: () => null })]).championChange(ctx, A);
@@ -392,6 +392,27 @@ check("giveHeart (603.4): opt-in like championChange: a game with no module for 
   const bad = throws(() => assembleRules([one, order, m(603, { giveHeart: () => ({ status: 409 }) })]).giveHeart(ctx, A, "t"));
   return none && none.status === 409 && /no giving of hearts/.test(none.error) && yes === null && no && no.rule === 603 && no.error === "not next to them" && bad instanceof RuleError && bad.rule === 603;
 })(), "");
+check("giveItem (704.1): opt-in: no module → refusal; null allows with its rule; undefined from every module → 'No rule lets you give that'; a refusal wins over an allow; a giver who holds none can't give; a bad answer is a RuleError", (() => {
+  const cat = [{ id: "I1", kind: "item", name: "Flower", madeBy: "W4", attrs: {} }];
+  const hold = (n) => makeContext({ now: "t", settings: DEFAULT_SETTINGS, catalog: cat, players: [{ ref: "a", x: 0, y: 0, items: n ? { I1: n } : {} }, { ref: "t", x: 1, y: 1 }], tiles: makeTiles([]), rng: seededRng("k") });
+  const give = (mods, c = hold(1)) => assembleRules([one, order, ...mods]).giveItem(c, A, "t", "I1");
+  const none = give([]);
+  const yes = give([m(706, { giveItem: () => null })]);
+  const silent = give([m(706, { giveItem: () => undefined })]);
+  const refusedWins = give([m(706, { giveItem: () => null }), m(707, { giveItem: () => refuse("not today", 409) })]);
+  const otherSilent = give([m(706, { giveItem: (c, g, t, e) => (e === "I1" ? null : undefined) }), m(707, { giveItem: () => undefined })]);
+  const empty = give([m(706, { giveItem: () => null })], hold(0));
+  const bad = throws(() => give([m(706, { giveItem: () => ({ status: 409 }) })]));
+  const bad2 = throws(() => give([m(706, { giveItem: () => true })]));
+  return none.status === 409 && /no giving of items/.test(none.error) && yes.ok === true && yes.rule === 706 && silent.error === NO_RULE_GIVES && silent.rule === 0 && refusedWins.error === "not today" && refusedWins.rule === 707
+    && otherSilent.ok === true && otherSilent.rule === 706 && empty.status === 409 && empty.error === "You have no Flower." && bad instanceof RuleError && bad.rule === 706 && bad2 instanceof RuleError;
+})(), "");
+check("makeContext (704.1): players carry items (default {}), turn carries given (default []); both frozen", (() => {
+  const c = makeContext({ now: "t", settings: DEFAULT_SETTINGS, players: [{ ref: "a", x: 0, y: 0, items: { I1: 2 } }, { ref: "b", x: 1, y: 1 }], turn: { given: [{ entry: "I1", to: "b" }] } });
+  const d = makeContext({ now: "t", settings: DEFAULT_SETTINGS, players: [{ ref: "a", x: 0, y: 0 }] });
+  return c.players[0].items.I1 === 2 && J(c.players[1].items) === "{}" && c.turn.given[0].to === "b" && J(d.turn.given) === "[]" && Object.isFrozen(c.players[0].items) && Object.isFrozen(c.turn.given);
+})(), "");
+check("grant (704.1): a validated effect afterAction applies; a bad count, a missing player or entry is refused; ACTION_KINDS has give_item", validateEffect(effects.grant("a", "I1")) === null && validateEffect(effects.grant("a", "I1", 3)) === null && validateEffect({ type: "grant", player: "a", entry: "I1", count: 0 }) !== null && validateEffect({ type: "grant", player: "a", count: 1 }) !== null && validateEffect({ type: "grant", entry: "I1", count: 1 }) !== null && APPLIED_EFFECTS.includes("grant") && ACTION_KINDS.includes("give_item"), "");
 check("veto: a refusal names the rule that made it", (() => {
   const r = assembleRules([m(202, { actionAllowed: () => null }), m(504, { actionAllowed: () => refuse("no", 409) }), one, order]).actionAllowed(ctx, A, { kind: "move" });
   return r.rule === 504 && r.status === 409;

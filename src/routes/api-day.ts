@@ -12,7 +12,7 @@
 //               {allowed, reason?}, the same answers the write routes give (turnBlock)
 import { getPlayer } from "../lib/auth";
 import { clockNow, electorsOf, isLocked, loadToday, lockMessage, settingsOf, timeZoneOf } from "../lib/day";
-import { boardContext, checkChampionChange, checkGiveHeart, hasGiveHeart, lightContext, stateOf } from "../engine/host";
+import { NO_RULE_GIVES, boardContext, checkChampionChange, checkGiveHeart, checkGiveItem, hasGiveHeart, hasGiveItem, itemEntriesOf, lightContext, loadGiven, stateOf } from "../engine/host";
 import { eraView } from "../lib/eras";
 import { proposalLimitMessage } from "../lib/proposals.js";
 import { turnBlock } from "../lib/turn";
@@ -65,6 +65,26 @@ export const get = async (ctx: Ctx) => {
       }
     }
   }
+  // Giving an item (rule 704.1): for each other player and each item some rule is about, whether you may, and why not. A living viewer only (a dead player or
+  // a Ghost sees no button); an item no rule is about is left out. A gate refusal (the lock, End turn) is the reason for every cell.
+  let giveItem: Record<string, Record<string, { name: string; allowed: boolean; reason?: string }>> | null = null;
+  if (player && player.dead_day == null && day && game.status === "playing" && hasGiveItem(game)) {
+    const ids = (await env.DB.prepare("SELECT id, color FROM players WHERE game_id = ? AND id != ?").bind(game.id, player.id).all()).results as any[];
+    const bctx = await boardContext(env, game, { moved: !!turn?.moved_at, gave: !!turn?.gave_at, given: await loadGiven(env, game.id, player.id, game.day) });
+    const gate = turnBlock(game, day, turn, player, "give_item", nowMs);
+    giveItem = {};
+    for (const t of ids) {
+      const cells: Record<string, { name: string; allowed: boolean; reason?: string }> = {};
+      for (const it of itemEntriesOf(game)) {
+        const asked: any = checkGiveItem(game, bctx, { ref: player.id }, t.id, it.id);
+        if (asked.error === NO_RULE_GIVES) continue;
+        const r: any = gate ?? asked;
+        const name = it.name ?? it.id;
+        cells[it.id] = r.error ? { name, allowed: false, reason: r.error } : { name, allowed: true };
+      }
+      if (Object.keys(cells).length) giveItem[colorOf(t.color).key] = cells;
+    }
+  }
   return json({
     day: game.day,
     status: game.status,
@@ -82,7 +102,7 @@ export const get = async (ctx: Ctx) => {
     era: era && { n: era.n, name: era.name, champion: era.champion },
     players: rows.map((r) => ({ name: r.name, color: colorOf(r.color), state: stateOf(r), moved: !!r.moved_at, proposed: r.proposed > 0, ended: !!r.ended_at, voted: r.voted ?? 0 })),
     you: player ? {
-      state: stateOf(player), hearts: player.hearts ?? 3, give_heart: give,
+      state: stateOf(player), hearts: player.hearts ?? 3, give_heart: give, give_item: giveItem,
       moved: !!turn?.moved_at, proposed: !!mine?.proposed, proposals: { made: mine?.proposed ?? 0, limit: perDay }, ended: !!turn?.ended_at, voted: mine?.voted ?? 0,
       can: { move: can("move"), propose: can("propose"), end_turn: can("end_turn"), vote: can("vote") },
       champion: era?.you.champion ? (() => {

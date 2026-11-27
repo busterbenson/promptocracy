@@ -20,6 +20,7 @@ test("the modules assemble: exactly one spawn rule and one order rule", () => {
   assert.deepEqual(rules.implementers("championChange"), [402]);
   assert.deepEqual(rules.implementers("actionAllowed"), [202, 504, 604]);
   assert.deepEqual(rules.implementers("giveHeart"), [603]);
+  assert.deepEqual(rules.implementers("giveItem"), [706]);
   assert.deepEqual(rules.implementers("night"), [602, 603]);
   assert.deepEqual(rules.implementers("ending"), [404]);
   assert.deepEqual(rules.implementers("actionType"), [901]);
@@ -27,7 +28,10 @@ test("the modules assemble: exactly one spawn rule and one order rule", () => {
 });
 test("the text still has the rules the modules belong to", () => {
   const nums = parseRulesMd(rulesMd).rules.map((r) => r.number);
-  for (const n of [107, 202, 401, 402, 504, 505, 704, 901]) assert.ok(nums.includes(n));
+  for (const n of [107, 202, 401, 402, 504, 505, 704, 706, 901]) assert.ok(nums.includes(n));
+});
+test("706.1 is word for word the voted draft", () => {
+  assert.ok(rulesMd.replace(/\s+/g, " ").includes("**706.1** Once a day, a living player can give a Flower to another player, and it shows on that player's card."));
 });
 test("402 is Eras: reaching the number of points wins an Era, ties by night order, points reset, the Champion names the next Era and has one change (the site enforces it)", () => {
   const flat = rulesMd.replace(/\s+/g, " ");
