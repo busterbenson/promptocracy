@@ -7,6 +7,7 @@ import { CHAT_TIMEOUT_MS, MODEL, MOODS, OUTPUT_CAP_TOKENS, answerSchema as greml
 import { checkQuote, generalSchema, plainForQuote, readGeneralAnswer, generalRequest, systemStatic as generalSystem } from "../../src/lib/gremlin-rules.js";
 import { draftTurn } from "../../src/lib/draft-turn.js";
 import { STARTER_CATALOG } from "../lib.mjs";
+import { mentionedEntries } from "../../src/lib/entries.js";
 import { CapReached, entriesOf } from "./lib.mjs";
 import { pipeline } from "./pipeline.mjs";
 
@@ -121,7 +122,7 @@ async function generalCase(c, x, res, o) {
         state.draft = true;
         turn.outcome = "drafted";
         turn.pipeline = { head: p.head, drafted_by: p.drafted_by };
-        res.draft = { kind: p.req.kind, scope: p.req.scope, target: p.req.target, new_num: p.new_num, to_block: p.req.to_block, mark: p.req.mark ?? null, words: asked.words ?? "", head: p.head, before_text: p.before_text, after_text: p.after_text, settings: p.settings, conflicts: p.conflicts, drafted_by: p.drafted_by, action: p.req.action ?? null, check: p.check ?? null, uses: asked.uses ?? [], turn: sent + 1 };
+        res.draft = { kind: p.req.kind, scope: p.req.scope, target: p.req.target, new_num: p.new_num, to_block: p.req.to_block, mark: p.req.mark ?? null, words: asked.words ?? "", head: p.head, before_text: p.before_text, after_text: p.after_text, settings: p.settings, conflicts: p.conflicts, drafted_by: p.drafted_by, action: p.req.action ?? null, check: p.check ?? null, uses: (asked.uses || []).length ? asked.uses : ((m) => (m.length === 1 ? [m[0].ref] : []))(mentionedEntries(asked.words, entries)), turn: sent + 1 };   // the route's usesOf: no refs sent, the one entry the words name
         res.refusal = null;
       } else {
         drafted = { refused: p.message };

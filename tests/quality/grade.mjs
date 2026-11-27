@@ -35,6 +35,7 @@ export function slipCriteria(label, turn, x) {
   if (x.says_re) add(`his line says /${x.says_re}/`, new RegExp(x.says_re, "i").test(say), say.slice(0, 160));
   if (x.says_not_re) add(`his line does not say /${x.says_not_re}/`, !new RegExp(x.says_not_re, "i").test(say), (new RegExp(x.says_not_re, "i").exec(say) || [""])[0]);
   if (x.guess) add("a guesses line", !!turn?.guesses, turn?.guesses || "none");
+  if (x.guess_re) add(`his guesses line names /${x.guess_re}/ (what he left out)`, new RegExp(x.guess_re, "i").test(`${turn?.guesses || ""} ${say}`), `${turn?.guesses || ""} | ${say}`.slice(0, 200));
   if (x.missing_names_re) add(`the missing item names /${x.missing_names_re}/`, (sl.missing || []).some((m) => new RegExp(x.missing_names_re, "i").test(`${m.what} ${m.why}`)), JSON.stringify(sl.missing || []));
   if (x.options_not_re) add(`no option says /${x.options_not_re}/`, ![...(turn?.options || []), ...(sl.fixes || [])].some((o) => new RegExp(x.options_not_re, "i").test(o)), JSON.stringify([...(turn?.options || []), ...(sl.fixes || [])]).slice(0, 200));
   if (x.no_escalation) add("no escalation", !turn?.escalate, turn?.escalate?.reason || "");
@@ -72,8 +73,10 @@ export function codeChecks(c, res, night) {
     const dead = turns.filter((t) => !t.moved && !(t.outcome === "drafted" || (t.options || []).length || (t.patch && "price" in t.patch) || /\bA:[^]*\bB:/.test(t.say || "")));
     out.push(chk("no dead end: every turn ends in a draft, a price or options", !dead.length, dead.map((t) => (t.say || "").slice(0, 90)).join(" | ")));
   }
-  if (e.first_answer) out.push(...slipExpect("first answer", turns[0], e.first_answer));
-  for (const t of e.turn_slip || []) out.push(...slipExpect(`turn ${t.turn}`, turns[t.turn - 1], t));
+  // a message that moved between his two conversations is answered where it landed: the first answer is the first turn that was not a move
+  const shown = turns.filter((t) => !t.moved);
+  if (e.first_answer) out.push(...slipExpect("first answer", shown[0], e.first_answer));
+  for (const t of e.turn_slip || []) out.push(...slipExpect(`turn ${t.turn}`, shown[t.turn - 1], t));
   {   // the general conversation's expectations (every key is guarded: a case without them is not asked)
     if (e.drafts_max !== undefined) out.push(chk(`at most ${e.drafts_max} draft(s)`, n <= e.drafts_max, `${n} drafted`));
     if (e.draft) {

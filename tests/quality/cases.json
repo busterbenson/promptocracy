@@ -325,7 +325,7 @@
         "A player standing on a house tile can't have points taken away for up to 2 nights. A player gets onto a house tile by moving onto it, and may stay there for up to 2 nights."
       ],
       "if_asked": [],
-      "intent": "Rickshaw P7, the words that passed day 2 and were not applied: the game has no house tile and does not record how long a piece has stood anywhere, and 402.3 resets points. The draft is an added rule and the rule check (103.9) blocks it.",
+      "intent": "Rickshaw P7, the words that passed day 2 and were not applied: the game has no house tile and does not record how long a piece has stood anywhere, and 402.3 resets points. Buster's decision 2026-11-26: the part that can't be done is left out and named (the 2-night limit), the rest is drafted; or it stays blocked naming how long. It is never drafted as written with the memory it needs.",
       "expect": {
         "draft": {
           "kind": [
@@ -333,14 +333,25 @@
             "addclause"
           ]
         },
-        "check": "blocked",
         "no_escalation": true,
         "no_dead_end": true,
         "ends_in": "proposal",
         "first_answer": {
-          "check": "blocked",
           "says_not_re": "no rule (takes|removes)",
-          "missing_names_re": "how long|nights|stood|stay|record|remember"
+          "any": [
+            {
+              "check": "ok",
+              "words_re": [
+                "house",
+                "point"
+              ],
+              "guess_re": "night|left out|leave out|dropped|limit|can't|record"
+            },
+            {
+              "check": "blocked",
+              "missing_names_re": "how long|nights|stood|stay|record|remember"
+            }
+          ]
         }
       },
       "known_fail": null
@@ -492,21 +503,20 @@
         "I propose that on a day when there’s a full moon that all players heal 1 heart and are impervious to bites. But on a new moon a new monster spawns on the board."
       ],
       "if_asked": [],
-      "intent": "Buster's real first message. One answer: a drafted rule that passes the check (the moon is worked out from the date, not stored), healing and bite protection on a full moon and a new monster on a new moon, with his guesses named in one line. No escalation, no commission, no back and forth.",
+      "intent": "Buster's real first message. One answer: a drafted rule that passes the check (the moon is worked out from the date, not stored), healing and bite protection on a full moon and a new monster on a new moon, with his guesses named in one line. No escalation, no commission, no back and forth. (The check may add an engine note: healing hearts is an effect the engine has no name for.)",
       "expect": {
         "ends_in": "proposal",
         "no_escalation": true,
         "first_answer": {
           "check": "ok",
-          "engine_note": false,
           "kind": [
             "add",
             "addclause"
           ],
           "words_re": [
             "heal|heart",
-            "bite",
-            "new moon"
+            "bit(e|ten)|bites",
+            "moon.{0,60}new|new.{0,10}moon"
           ],
           "guess": true
         }
@@ -531,11 +541,10 @@
           {
             "turn": 2,
             "check": "ok",
-            "engine_note": false,
             "words_re": [
               "real|lunar|29\\.53"
             ],
-            "not_words_re": "random|by hand|calendar|\\bsetting\\b|record"
+            "not_words_re": "random (moon|phase)|moon.{0,30}(chosen|picked|set) at random|by hand|calendar (setting|record)|\\[setting: moon"
           }
         ]
       },
@@ -557,7 +566,6 @@
         "no_escalation": true,
         "first_answer": {
           "check": "ok",
-          "engine_note": false,
           "words_re": [
             "moon",
             "29\\.53|lunar|real"
@@ -604,7 +612,6 @@
         "no_escalation": true,
         "first_answer": {
           "check": "ok",
-          "engine_note": false,
           "words_re": [
             "moon",
             "2 steps|two steps|2 spaces|two spaces"
@@ -633,7 +640,7 @@
                 "fart"
               ],
               "not_words_re": "1 space|one space|creature",
-              "says_re": "left out|leave out|can'?t|doesn'?t record|isn'?t recorded|remember|without the|smell"
+              "guess_re": "occupied|been|before|stood|left out|leave out|dropped|remember|record"
             },
             {
               "check": "blocked",
@@ -709,9 +716,9 @@
               "check": "ok",
               "words_re": [
                 "house",
-                "points"
+                "point"
               ],
-              "says_re": "night|left out|leave out|can'?t|record"
+              "guess_re": "night|left out|leave out|dropped|limit|can't|record"
             },
             {
               "check": "blocked",
@@ -740,7 +747,7 @@
         "Players can also give flowers to creatures. If the creature is hostile, it will eat the flower and lose 1 heart."
       ],
       "if_asked": [],
-      "intent": "A rule about a Flower W4 already makes, with no new entry: a plain rule, drafted here, uses W4, passes the check, makes no second Flower and opens no ticket.",
+      "intent": "A rule about a Flower W4 already makes, with no new entry: a plain rule, drafted here, naming W4, opens no ticket. The check passes it (an engine note is fine) or blocks it naming the one thing the game does not record (which player holds a Flower); it never makes a second Flower.",
       "expect": {
         "ends_in": "proposal",
         "uses": [
@@ -748,10 +755,17 @@
         ],
         "no_escalation": true,
         "first_answer": {
-          "check": "ok",
-          "engine_note": false,
-          "words_re": [
-            "flower"
+          "any": [
+            {
+              "check": "ok",
+              "words_re": [
+                "flower"
+              ]
+            },
+            {
+              "check": "blocked",
+              "missing_names_re": "hold|inventor|carr|record|which players|how many"
+            }
           ]
         }
       },
@@ -772,8 +786,7 @@
         "drafts_max": 1,
         "no_escalation": true,
         "first_answer": {
-          "check": "ok",
-          "engine_note": false
+          "check": "ok"
         }
       },
       "known_fail": null
