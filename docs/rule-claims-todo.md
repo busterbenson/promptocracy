@@ -246,12 +246,12 @@ under rule 101 or 102; a follow-up change claims them and moves `src/` into the 
 
 ## src/routes/api-chat.ts (6)
 
-- line 302: `stateNow`
-- line 384: `ask`
-- line 392: `read`
-- line 396: `stateNow`
-- line 438: `after`
-- line 439: `log`
+- line 306: `stateNow`
+- line 388: `ask`
+- line 396: `read`
+- line 400: `stateNow`
+- line 442: `after`
+- line 443: `log`
 
 ## src/routes/api-day.ts (1)
 

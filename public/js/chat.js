@@ -351,10 +351,10 @@ ${sl.uses_note ? `<p class="cnote unote">${textHTML(sl.uses_note)}</p>` : ""}<di
     drawFab(); drawBar();
   }
   // ---- the bar on the Summary: a collapsed Gremlin inside the page (Buster, 2026-11-26) ---------------------------------------------------------
-  /** His last line in the general conversation, kept while the window shows a ticket's. */
+  /** His last line in the general conversation: the log's while the window shows it, the state's (sent with every answer) while it shows a ticket's. */
   const lastLine = () => {
-    if (general()) { const m = [...S.msgs].reverse().find((x) => x.role === "agent"); S.barLine = m ? m.body : ""; }
-    return S.barLine || "";
+    const m = general() ? [...S.msgs].reverse().find((x) => x.role === "agent") : null;
+    return m ? m.body : (S.state && S.state.line) || "";
   };
   /** His portrait, his last line and today's proposals as P-pills with "n of 3 left"; nothing for a visitor. A tap opens the window, a P-pill that proposal's slip. @rule 103.2, 106.3 */
   function barHTML() {

@@ -83,9 +83,13 @@ export async function stateOf(ctx: Ctx, game: any, day: any, player: Player, now
   }
   return { agent, date, cap, used, left: Math.max(0, cap - used), closed, ready: agentsReady(env) };
 }
-/** The state of the general conversation's window: the same, with the day's locked-in proposals beside it (rule 103.2). @rule 106.7, 103.2 */
+/**
+ * The window's state with what the Summary bar shows beside it: the day's locked-in proposals (rule 103.2) and his last line in the general conversation,
+ * whichever conversation the window opened on.  @rule 106.7, 103.2
+ */
 async function stateWith(ctx: Ctx, game: any, day: any, player: Player, nowMs: number) {
-  return { ...(await stateOf(ctx, game, day, player, nowMs)), today: await todayOf(ctx, game, player) };
+  const last: any = await ctx.env.DB.prepare("SELECT body FROM chat_messages WHERE game_id = ? AND player_id = ? AND agent = ? AND ticket_id IS NULL AND role = 'agent' ORDER BY id DESC LIMIT 1").bind(game.id, player.id, AGENT).first();
+  return { ...(await stateOf(ctx, game, day, player, nowMs)), today: await todayOf(ctx, game, player), line: last?.body ?? "" };
 }
 
 // The ticket a request names: yours, or nothing (a ticket of another player's is no ticket of yours).

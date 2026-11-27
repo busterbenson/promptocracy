@@ -534,6 +534,7 @@ with sync_playwright() as p:
         check(f"{tag}: no console errors", not errors, str(errors)); c.close()
         if scheme == "light" and not phone:   # Hal's ticket, made here once: drafted over two turns and locked in as today's commission, his last words in it
             ch, ph, eh = new_page(b, 1280, 900, "light", hal_cookie)
+            ph.evaluate(f"({post})('/shop/api/chat/gremlin', {json.dumps({'body': 'what is a rule worth'})})")   # general history first: his last line in the Summary bar comes from it
             wh = ph.evaluate(f"({post})('/shop/api/tickets', {{}})")["ticket"]
             for m in (MSG_A, MSG_B): ph.evaluate(f"({post})('/shop/api/chat/gremlin', {json.dumps({'ticket': wh, 'body': m})})")
             check("bar in a ticket: Hal's commission is locked in", ph.evaluate(f"({post})('/shop/api/tickets/{wh}/confirm', {{}})").get("ok") is True)
@@ -546,6 +547,7 @@ with sync_playwright() as p:
         check(f"{tag}: Hal's window loads on his ticket's conversation (a chip beside the box)", page.locator(".ch-in .chip").count() == 1, text(page, ".ch-in"))
         if phone: page.click('#chatcol [data-c="close"]'); page.wait_for_function("document.getElementById('bwrap').dataset.sheet === 'closed'")
         hp = [x.strip() for x in page.locator("#p-summary .gbar .gb-p").all_inner_texts()]
+        page.locator("#p-summary .gbar").scroll_into_view_if_needed(); page.wait_for_timeout(200); shot(page, f"summary-bar-reload-{tag}")
         check(f"{tag}: after a reload on a ticket the Summary bar is still there: his commission's pill and 2 of 3 left", len(hp) == 1 and page.locator("#p-summary .gbar .gb-n").inner_text().strip() == "2 of 3 left", str(hp))
         # a commission's P-pill opens its ticket's conversation, where its slip is (the general conversation does not list commissions)
         if page.locator("#p-summary .gbar .gb-p").count() == 1:
@@ -553,6 +555,10 @@ with sync_playwright() as p:
             page.locator("#p-summary .gbar .gb-p").first.click()
             if wc: page.wait_for_selector(f'#chatLog .slip[aria-label="{wc}"]')
             check(f"{tag}: tapping the commission's pill ({hp[0]}) opens its ticket's ({wc}) conversation: its slip, its chip beside the box, the window open", wc is not None and page.locator(f'#chatLog .slip[aria-label="{wc}"]').count() == 1 and wc in text(page, ".ch-in .chip") and (sheet(page) == "open" if phone else mode(page) == "open"), text(page, "#chatLog .slip:not(.past)"))
+        gen = page.evaluate("fetch('/shop/api/chat/gremlin?ticket=none').then(r => r.json())")["messages"]
+        said = [m["body"] for m in gen if m["role"] == "agent"][-1:]
+        line = page.locator("#p-summary .gbar .gb-line").inner_text().strip()
+        check(f"{tag}: after a reload on a ticket the Summary bar still shows his last line from the general conversation", len(said) == 1 and line != "" and line == said[0].strip(), f"{line!r} vs {said}")
         shot(page, f"summary-bar-ticket-{tag}")
         check(f"{tag}: no console errors", not errors, str(errors)); c.close()
 
