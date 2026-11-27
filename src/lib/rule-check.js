@@ -23,7 +23,7 @@ export const ENGINE_FACTS = [
   "The board (Tiles): the set of tiles that exist; code can ask has, get, list and size. A tile is its position (x, y, z) and nothing else beyond what a catalog entry says about it.",
   "Also known to a rule's code: the day, the time, the settings, the catalog entries (Catalog: each has id, kind, name, madeBy (the commission that made it, like W4) and attrs; a rule finds one by its id or by madeBy and kind), each rule's mark (majority or unanimous) and a random number. From the time (ctx.now, a date) a rule's code can work out anything a calculation gives, with no outside source: a weekday, a season, the moon's phase by its 29.53-day cycle; such a thing is NOT missing and needs no record. What it can't do is fetch anything from outside the game (rule code makes no network calls).",
   "Hooks a rule's code can use: actionAllowed (may this action happen), afterAction (effects after an action), spawnTile (where a player joins), voteMark, electorate, tally, applyOrder, onEnacted, dayEnd (the end of a day), championChange, giveHeart, actionType and applyAction (action proposals), night (every night), ending (after a death).",
-  "Effects a rule's code can have: chart, points, log, champion, appear, step, bite, rest, rise, game_over.",
+  "Effects a rule's code can have: chart, points, log, champion, appear, step, move (at night: a living player's piece to a charted tile nothing stands on), bite, rest, rise, game_over.",
   "NOT recorded: where a piece has been before, how long it has stood anywhere, what a player did on earlier days, anything about a tile beyond its position and its catalog entry. A rule that needs one of these needs the game to record it first.",
 ].join("\n");
 
