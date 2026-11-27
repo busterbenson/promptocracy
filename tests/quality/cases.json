@@ -795,18 +795,18 @@
       "id": "r-engine-gap",
       "agent": "gremlin",
       "start": "general",
-      "title": "P20's words: a rule that needs an engine power (Buster, engine gaps)",
+      "title": "P20's words: a rule that moves another player (engine move, #145)",
       "turns": [
         "Add this rule: At the end of each day, for each living player who is next to another living player (602.2), there is a 15% chance that the other player is moved 1 step in a random direction, onto an unoccupied charted tile."
       ],
       "if_asked": [],
-      "intent": "No effect moves a player's piece today: a missing engine POWER, not missing data. The check passes it (status ok) and the slip carries one short line, 'needs the engine to learn ...'; Lock it in is allowed. Not blocked.",
+      "intent": "The engine can move a player's piece at night (the move effect, #145), so nothing is missing: the check passes it (status ok) with no engine note, and Lock it in is allowed. Not blocked.",
       "expect": {
         "ends_in": "proposal",
         "no_escalation": true,
         "first_answer": {
           "check": "ok",
-          "engine_note": true,
+          "engine_note": false,
           "kind": [
             "add",
             "addclause"

@@ -290,6 +290,8 @@ ${sl.uses_note ? `<p class="cnote unote">${textHTML(sl.uses_note)}</p>` : ""}${s
 <button type="button" class="send" data-c="send" aria-label="Send"${S.busy || !S.draft.trim() ? " disabled" : ""}><svg width="18" height="18" aria-hidden="true"><use href="#chat-send"/></svg></button></div>${S.err ? `<p class="err" role="alert">${esc(S.err)}</p>` : ""}${left}</div>`;
   }
 
+  /** Remembers where the window just put the log, for a moment: the scroll event that follows is its own. */
+  function own(log) { S.own = { top: log.scrollTop, until: performance.now() + 100 }; }
   /** The whole window. The log keeps its place; the draft keeps its text and its caret. @rule 106.3 */
   function draw(toEnd) {
     if (!col) return;
@@ -300,18 +302,28 @@ ${sl.uses_note ? `<p class="cnote unote">${textHTML(sl.uses_note)}</p>` : ""}${s
     // whether to stay at the end is remembered (S.stick, set by the player's own scrolling), not read back from the old log: on iOS a
     // scrollTop set during the redraw before can still be pending, so the old log reads as "at the top" and the next redraw kept that
     const atEnd = toEnd === true || !log0 || S.stick !== false;
+    const keep = log0 ? log0.scrollTop : 0;   // read before anything is replaced: a node taken out of the page reads 0 (a player who had scrolled up was thrown to the top by every answer)
     const ta0 = col.querySelector("#chatText");
     const focus = ta0 && document.activeElement === ta0 ? [ta0.selectionStart, ta0.selectionEnd] : null;
     const ready = S.state ? S.state.ready : true;
-    col.innerHTML = `<section class="chat" data-agent="${esc(agent.key)}" aria-label="${esc(agent.name)}">
+    const t = document.createElement("template");
+    t.innerHTML = `<section class="chat" data-agent="${esc(agent.key)}" aria-label="${esc(agent.name)}">
 <header class="ch-h">${portrait(false)}<div class="cnm"><b>${esc(agent.name)}</b>${!ready ? "<small>can't be reached</small>" : S.busy ? '<small class="live">typing</small>' : ""}</div>
 <button type="button" class="ch-x" data-c="min" aria-label="Minimize" title="Minimize">–</button><button type="button" class="ch-x ch-close" data-c="close" aria-label="Close" title="Close">×</button></header>${rowFor()}
 <div class="ch-log" id="chatLog" tabindex="0" aria-live="polite">${S.loaded ? logHTML() : ""}</div>${inputHTML()}</section>`;
+    // the log is the one part that is never replaced (only its lines are): a fresh scroller has to be told where to scroll and iOS applies that late, so
+    // its scroll position and its scroll listener stay with the node. Everything around it is redrawn as before.
+    const sec = col.firstElementChild, fresh = t.content.firstElementChild, log1 = fresh.querySelector(".ch-log");
+    if (log0 && sec && log0.parentNode === sec && sec.dataset.agent === agent.key) {
+      const kids = [...fresh.childNodes], at = kids.indexOf(log1);
+      while (log0.previousSibling) log0.previousSibling.remove();
+      while (log0.nextSibling) log0.nextSibling.remove();
+      log0.before(...kids.slice(0, at)); log0.after(...kids.slice(at + 1)); log0.innerHTML = log1.innerHTML;
+    } else col.replaceChildren(fresh);
     const log = col.querySelector(".ch-log");
     if (log) {
-      const keep = log0 ? log0.scrollTop : 0;
-      if (atEnd || !log0) { log.scrollTop = log.scrollHeight; requestAnimationFrame(() => { log.scrollTop = log.scrollHeight; }); } else log.scrollTop = keep;
-      log.addEventListener("scroll", onScroll, { passive: true });
+      if (atEnd) { S.stick = true; log.scrollTop = log.scrollHeight; own(log); requestAnimationFrame(() => { log.scrollTop = log.scrollHeight; own(log); }); } else { log.scrollTop = keep; own(log); }
+      if (!log.dataset.on) { log.dataset.on = "1"; log.addEventListener("scroll", onScroll, { passive: true }); }
     }
     const ta = col.querySelector("#chatText");
     if (ta) { autosize(ta); if (focus) { ta.focus(); try { ta.setSelectionRange(focus[0], focus[1]); } catch {} } }
@@ -418,6 +430,7 @@ ${sl.uses_note ? `<p class="cnote unote">${textHTML(sl.uses_note)}</p>` : ""}${s
   /** Scrolling to the top brings in the day before. @rule 106.7 */
   async function onScroll(e) {
     const log = e.target;
+    if (S.own && performance.now() < S.own.until && Math.abs(log.scrollTop - S.own.top) < 2) return;   // the redraw's own scrolling is not the player's: it never moves S.stick or loads the day before
     S.stick = log.scrollHeight - log.scrollTop - log.clientHeight < 80;
     if (log.scrollTop > 40 || !S.next || S.loading) return;
     S.loading = true;
