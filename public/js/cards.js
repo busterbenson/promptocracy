@@ -11,7 +11,7 @@
 // Closing: the X, a click on the backdrop, Esc. Focus moves to the close button on open and stays inside the card (Tab wraps).
 
 export function createCards({ root, describe, onClose }) {
-  const S = { cur: null, stack: [], opener: null, key: null, pushed: false, ignorePop: false };
+  const S = { cur: null, stack: [], opener: null, key: null, pushed: false, ignorePop: false, gen: 0, stopReturn: null };
   const X = '<button type="button" class="mx" data-mclose aria-label="Close"><svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M2 2l10 10M12 2L2 12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>';
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
@@ -47,17 +47,22 @@ export function createCards({ root, describe, onClose }) {
   // The phone's back gesture closes the card (Buster, 2026-11-26): an open card holds ONE history entry (the URL does not change), however many cards are
   // stacked in it. Closing any other way gives the entry back, so the stack stays balanced and the page is never left by accident.
   function holdEntry() {
-    if (!S.pushed && S.ignorePop && !S.traversing) { S.ignorePop = false; S.pushed = true; return; }   // a card closed a moment ago has not given its entry back yet: this one takes it over
+    if (!S.pushed && S.ignorePop && !S.traversing) { cancelReturn(); S.ignorePop = false; S.pushed = true; return; }   // a card closed a moment ago has not given its entry back yet: this one takes it over, and that close's pending return is cancelled (else a later close leaves two history.back() calls for one entry)
     if (!S.pushed && typeof history === "object" && history.pushState) { try { history.pushState({ card: 1 }, ""); S.pushed = true; } catch { /* no history here */ } }
   }
   // Giving the entry back is a history traversal, and a traversal cancels a smooth scroll that is under way (Move your piece closes the card and scrolls to the
   // board). So it waits until the page has stopped scrolling (at most 2 s). If the player's own back gets there first it has already done the job.
+  function cancelReturn() { S.gen++; clearTimeout(S.timer); if (S.stopReturn) S.stopReturn(); S.stopReturn = null; }
   function giveEntryBack() {
     if (!S.pushed) return;
+    cancelReturn();
     S.pushed = false; S.ignorePop = true; S.traversing = false;
+    const gen = S.gen;   // a later takeover or close bumps it: this return is then dead
     let last = performance.now(); const start = last, moved = () => { last = performance.now(); };
     window.addEventListener("scroll", moved, true);
+    S.stopReturn = () => window.removeEventListener("scroll", moved, true);
     const tick = () => {
+      if (gen !== S.gen) { window.removeEventListener("scroll", moved, true); return; }   // taken over by a card opened meanwhile
       if (!S.ignorePop) { window.removeEventListener("scroll", moved, true); return; }   // the player's own back came first
       if (performance.now() - last < 150 && performance.now() - start < 2000) { S.timer = setTimeout(tick, 60); return; }
       window.removeEventListener("scroll", moved, true);

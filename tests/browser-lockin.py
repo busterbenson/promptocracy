@@ -118,6 +118,17 @@ with sync_playwright() as p:
         n2 = page.evaluate("history.length")
         page.click(SLIP + " .wpill"); page.wait_for_selector("#wfTitle"); page.click("#mroot .mx"); page.wait_for_function("document.getElementById('mroot').hidden"); page.wait_for_timeout(400)
         check(f"{tag}: closing with the X gives the entry back: the stack is as deep as before the card opened ({page.evaluate('history.length')} vs {n2}), the URL the same", page.evaluate("history.length") == n2 and page.url == url0)
+        # close, reopen and close again before the first close has given its entry back, with the browser slow to traverse (Codex P2 r4714370311):
+        # ONE history.back() for the one entry, never two (a second one leaves the game)
+        # The return's 60 ms ticks are held (queued, not run) while the three clicks happen, as on a slow phone where the page is still scrolling; then released.
+        page.evaluate("""() => { window.__backs = 0; const b = history.back.bind(history); history.back = () => { window.__backs++; setTimeout(b, 300); };
+          const st = window.setTimeout.bind(window); window.__held = []; window.__st = st;
+          window.setTimeout = (f, ms, ...a) => { if (ms === 60) { window.__held.push(() => f(...a)); return -1; } return st(f, ms, ...a); }; }""")
+        page.click(SLIP + " .wpill"); page.wait_for_selector("#wfTitle"); page.click("#mroot .mx"); page.wait_for_function("document.getElementById('mroot').hidden")
+        page.click(SLIP + " .wpill"); page.wait_for_selector("#wfTitle"); page.click("#mroot .mx"); page.wait_for_function("document.getElementById('mroot').hidden")
+        page.evaluate("() => { window.setTimeout = window.__st; const q = window.__held.splice(0); for (const f of q) window.__st(f, 0); }")
+        page.wait_for_timeout(3000)
+        check(f"{tag}: close, reopen, close at once: one history.back() for the one entry ({page.evaluate('window.__backs')}), the page never left", page.evaluate("window.__backs") == 1 and page.url == url0, f"{page.evaluate('window.__backs')} {page.url}")
         if who == "hal":
             # a lock-in still out when another ticket is picked must not put the first ticket's slip under the second's box (Codex, P1; rule 801.6)
             held = []
