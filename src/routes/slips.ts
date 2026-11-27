@@ -6,10 +6,10 @@ import { settingsOf } from "../lib/day";
 import { CONFIRMED_TODAY_SQL, markFor, proposalLimitMessage } from "../lib/proposals.js";
 import { turnBlock } from "../lib/turn";
 import { Ctx } from "../lib/util";
-import { bookFor, view } from "./api-proposals";
+import { bookFor, lockRefusal, view } from "./api-proposals";
 
-/** The ways a draft slip can be acted on right now, with the reason beside a button that can't be (rules 103.2, 103.3, 107.1, 202.4). @rule 103.2, 103.3 */
-export function canOf(game: any, day: any, turn: any, player: Player, row: any, made: number, limit: number, sha: string, nowMs: number) {
+/** The ways a draft slip can be acted on right now, with the reason beside a button that can't be (rules 103.2, 103.3, 103.9, 107.1, 202.4). @rule 103.2, 103.3, 103.9 */
+export function canOf(game: any, day: any, turn: any, player: Player, row: any, made: number, limit: number, sha: string, nowMs: number, book: any = null) {
   const no = (reason: string) => ({ allowed: false, reason });
   const yes = { allowed: true, reason: null };
   let lock = no("Not a draft."), unlock = no("Not locked in.");
@@ -18,6 +18,7 @@ export function canOf(game: any, day: any, turn: any, player: Player, row: any, 
     lock = b ? no(b.error)
       : row.day_proposed !== game.day ? no(`That draft is from day ${row.day_proposed}. Draft it again today.`)
       : row.base_sha !== sha ? no("The rules have changed since this was drafted. Draft it again.")
+      : book && lockRefusal(book, row) ? no(lockRefusal(book, row) as string)   // the rule check (103.9)
       : made >= limit ? no(proposalLimitMessage(made)) : yes;
   }
   if (row.status === "confirmed" && row.day_proposed === game.day) {
@@ -30,10 +31,14 @@ export function canOf(game: any, day: any, turn: any, player: Player, row: any, 
 /** The player's day: how many proposals they have locked in, of how many, and which (rule 103.2). @rule 103.2 */
 export async function todayOf(ctx: Ctx, game: any, player: Player) {
   const limit: number = settingsOf(game)["proposals.per_day"];
-  if (!game.day) return { made: 0, limit, list: [] as string[] };
+  if (!game.day) return { made: 0, limit, list: [] as string[], tickets: {} as Record<string, string> };
   const made = ((await ctx.env.DB.prepare(CONFIRMED_TODAY_SQL).bind(game.id, player.id, game.day).first()) as any)?.n ?? 0;
-  const list = ((await ctx.env.DB.prepare("SELECT number FROM proposals WHERE game_id = ? AND player_id = ? AND day_proposed = ? AND status NOT IN ('draft', 'withdrawn') AND number IS NOT NULL ORDER BY number").bind(game.id, player.id, game.day).all()).results as any[]).map((r) => `P${r.number}`);
-  return { made, limit, list };
+  const rows = (await ctx.env.DB.prepare("SELECT q.number AS number, t.number AS ticket FROM proposals q LEFT JOIN tickets t ON t.id = q.ticket_id WHERE q.game_id = ? AND q.player_id = ? AND q.day_proposed = ? AND q.status NOT IN ('draft', 'withdrawn') AND q.number IS NOT NULL ORDER BY q.number").bind(game.id, player.id, game.day).all()).results as any[];
+  const list = rows.map((r) => `P${r.number}`);
+  // a commission has no slip in the general conversation (its slip is its ticket's): its pill opens its ticket's (rules 801.1, 103.2)
+  const tickets: Record<string, string> = {};
+  for (const r of rows) if (r.ticket != null) tickets[`P${r.number}`] = `W${r.ticket}`;
+  return { made, limit, list, tickets };
 }
 
 /** The slips the given proposals make, each as the player sees it with what can be done to it. Only this player's own. @rule 103.1 */
@@ -50,7 +55,7 @@ export async function slipsOf(ctx: Ctx, game: any, day: any, turn: any, player: 
     const part = ids.slice(i, i + 40);
     rows.push(...((await env.DB.prepare(`SELECT q.*, p.display_name AS name, p.color FROM proposals q JOIN players p ON p.game_id = q.game_id AND p.id = q.player_id WHERE q.game_id = ? AND q.player_id = ? AND q.id IN (${part.map(() => "?").join(",")})`).bind(game.id, player.id, ...part).all()).results as any[]));
   }
-  for (const r of rows) slips[r.id] = { ...view({ ...r, draft_mark: markFor(book, r) }, player.id, n), can: canOf(game, day, turn, player, r, t.made, t.limit, sha, nowMs) };
+  for (const r of rows) slips[r.id] = { ...view({ ...r, draft_mark: markFor(book, r) }, player.id, n), can: canOf(game, day, turn, player, r, t.made, t.limit, sha, nowMs, book) };
   return slips;
 }
 

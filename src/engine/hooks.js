@@ -50,7 +50,7 @@ export const HOOKS = Object.freeze({
   actionType: { mode: "sequence", wired: true },
   applyAction: { mode: "sequence", wired: true },
   // The night's board (rules 602-603): called EVERY night, after the night's proposals and actions are applied, with `applied` = the P-numbers
-  // applied tonight (empty on a quiet night). Returns appear, step, bite, rest and rise effects, applied in order (src/engine/host.ts).
+  // applied tonight (empty on a quiet night). Returns appear, step, move (a living player's piece), bite, rest and rise effects, applied in order (src/engine/host.ts).
   night: { mode: "sequence", wired: true },
   // How the game ends (rule 404): called once after the night's board, only when someone died, with the state as it stands after the bites.
   // Returns a game_over effect or null. At most one rule decides (a game with none never ends by death).
@@ -138,7 +138,7 @@ export function cryptoRng() {
 //   players    [{ref, color, score, x, y, z, living, hearts, state: "living" | "dead" | "ghost", deadDay}]  (rule 603.1)
 //   creatures  [{id, entry, x, y, z, hearts | null, resting}]: the creatures on the board, in the order they appeared (rule 602)
 //   nextCreatureId  the id the next creature to appear gets (an appear effect, then step or rest it by this id in the same night)
-//   catalog    [{id, kind, attrs}]: the game's catalog entries (rule 701); read an attribute with attr()  (ref is the engine's stable reference to a player)
+//   catalog    [{id, kind, name, madeBy, attrs}]: the game's catalog entries (rule 701); read an attribute with attr()  (ref is the engine's stable reference to a player)
 //   tiles      has(x,y,z) / get(x,y,z) / list()
 //   rulebook   { marks }  the mark of each rule by number; empty until proposals arrive
 //   rng        () => float in [0,1)
@@ -157,7 +157,7 @@ export function makeContext(o) {
     }),
     creatures: (o.creatures ?? []).map((c) => ({ id: c.id, entry: c.entry, x: c.x, y: c.y, z: c.z ?? 0, hearts: c.hearts ?? null, resting: !!c.resting })),
     nextCreatureId: o.nextCreatureId ?? 1 + Math.max(0, ...(o.creatures ?? []).map((c) => c.id)),
-    catalog: (o.catalog ?? []).map((e) => ({ id: e.id, kind: e.kind, attrs: { ...(e.attrs ?? {}) } })),
+    catalog: (o.catalog ?? []).map((e) => ({ id: e.id, kind: e.kind, name: e.name ?? null, madeBy: e.madeBy ?? null, attrs: { ...(e.attrs ?? {}) } })),
     rulebook: { marks: o.rulebook?.marks ?? {} },
     turn: { round: o.turn?.round ?? 0, turn: o.turn?.turn ?? 0, moved: !!o.turn?.moved, gave: !!o.turn?.gave },
   };
@@ -174,20 +174,21 @@ export function makeContext(o) {
 //   points {type:"points", player, delta, reason}      (applied once points arrive)
 //   log    {type:"log", template, args}                (applied once the day log arrives)
 //   champion {type:"champion", player, reason}         (dayEnd only: this player wins the Era, rule 402)
+//   move   {type:"move", player, to, reason?}          (night only: a living player's piece goes to a charted tile nothing stands on; a move the board refuses is skipped and logged)
 /** @rule 101 */
 const isInt = (n) => Number.isSafeInteger(n);
 /** @rule 101 */
 const isStr = (s, max = 400) => typeof s === "string" && s.length > 0 && s.length <= max;
-export const EFFECT_TYPES = Object.freeze(["chart", "points", "log", "champion", "appear", "step", "bite", "rest", "rise", "game_over"]);
+export const EFFECT_TYPES = Object.freeze(["chart", "points", "log", "champion", "appear", "step", "move", "bite", "rest", "rise", "game_over"]);
 export const ENDINGS = Object.freeze(["paradox", "last_standing", "everyone_dead"]);
 export const APPLIED_EFFECTS = Object.freeze(["chart"]);
 // What the night's hooks may return, and the engine applies at the unlock (src/lib/day.ts): points when a change takes
 // effect (rule 401) and the Era won at the end of the night (rule 402).
-export const NIGHT_EFFECTS = Object.freeze(["points", "champion", "appear", "step", "bite", "rest", "rise", "game_over"]);
+export const NIGHT_EFFECTS = Object.freeze(["points", "champion", "appear", "step", "move", "bite", "rest", "rise", "game_over"]);
 // What each night hook's enactment applies (src/engine/host.ts): points from onEnacted, the Era's winner from dayEnd. Any other
 // effect is refused, never dropped, so a rule can't pass its tests with an effect that would silently do nothing.
 export const NIGHT_HOOK_EFFECTS = Object.freeze({ onEnacted: Object.freeze(["points"]), dayEnd: Object.freeze(["champion"]), applyAction: Object.freeze(["points"]),
-  night: Object.freeze(["appear", "step", "bite", "rest", "rise"]), ending: Object.freeze(["game_over"]) });
+  night: Object.freeze(["appear", "step", "move", "bite", "rest", "rise"]), ending: Object.freeze(["game_over"]) });
 
 // ---- action types (rule 103.5) ----------------------------------------------------
 // What a module's actionType() answers: {type, name, touches: [rule numbers], params: [{key, label, kind: "player" | "int", ...}]}.
@@ -235,6 +236,8 @@ export function validateEffect(e) {
       return isStr(e.entry, 40) && e.tile && validCoord(e.tile.x, e.tile.y, e.tile.z ?? 0) ? null : "appear needs an entry and a tile";
     case "step":
       return isInt(e.creature) && e.to && validCoord(e.to.x, e.to.y, e.to.z ?? 0) ? null : "step needs a creature and a tile";
+    case "move":
+      return isStr(e.player, 100) && e.to && validCoord(e.to.x, e.to.y, e.to.z ?? 0) && (e.reason === undefined || isStr(e.reason)) ? null : "move needs a player, a tile and, if given, a reason";
     case "bite": {
       const t = e.target;
       const okTarget = t && typeof t === "object" && ((isStr(t.player, 100) && t.creature === undefined) || (isInt(t.creature) && t.player === undefined));
@@ -270,6 +273,8 @@ export const effects = Object.freeze({
   appear: (entry, tile) => ({ type: "appear", entry, tile: { x: tile.x, y: tile.y, z: tile.z ?? 0 } }),
   /** @rule 602.4 */
   step: (creature, to) => ({ type: "step", creature, to: { x: to.x, y: to.y, z: to.z ?? 0 } }),
+  /** @rule 504.2 */
+  move: (player, to, reason) => ({ type: "move", player, to: { x: to.x, y: to.y, z: to.z ?? 0 }, ...(reason === undefined ? {} : { reason }) }),
   /** @rule 602.5 */
   bite: (target, hearts) => ({ type: "bite", target, hearts }),
   /** @rule 602.5 */

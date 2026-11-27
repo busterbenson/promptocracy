@@ -282,7 +282,7 @@ import { hold } from "/js/busy.js";
     YOURS = createYours({ api, me: () => ME, cardKey: p => PROP.cardKey(p) });
     HIST = createHistory({ api, pill, rpill: n => PROP.rpill(n), pPill: p => PROP.pPill(p), wPill });
     drawTabs(); drawBook();
-    loadMe();
+    const meLoaded = loadMe();
     const [g] = await Promise.all([api("/api/game"), loadDay()]);
     if (!g.ok) $("movebar").innerHTML = '<span class="err">No game has been set up yet.</span>';
     else drawGame(g.data);
@@ -295,6 +295,7 @@ import { hold } from "/js/busy.js";
     RULES_OK = true;
     drawTabs(); drawBook();
     if (location.hash.startsWith("#r-")) { setTab("rules"); BOOK.fromHash(); }
+    if (location.hash === "#yours") meLoaded.then(openYours);   // the not-applied notification's link
   }
 
   // ---- the book: tabs, and what each shows --------------------------------------------------------------------------
@@ -390,12 +391,12 @@ import { hold } from "/js/busy.js";
       ${bl.length ? `<ul class="sl">${bl.map(p => `<li id="sb-${esc(p.n)}"><p class="sbs">${PROP.pPill(p)} ${pill(p.by, p.mine)} ${sentence(p)}</p>
         <div class="sdiff">${p.kind === "commission" && p.ticket ? commissionHTML(p.ticket) : p.kind === "action" && p.action ? PROP.actionBody(p) : `${p.title ? `<p class="sdh">${esc(p.title)}</p>` : ""}<p class="mono head">${esc(p.head || "")}</p><p>${diffOf(p)}</p>`}</div><div class="vrow slot" data-slot="ballot-vote" data-pn="${esc(p.n)}">${BAL ? BAL.box(p.n) : ""}</div></li>`).join("")}</ul>` : `<p class="mnote">Nothing is on today's ballot.</p>`}</section>`;
     const cat = WS ? WS.summaryHTML() : "";
-    return `<div class="sgrid">${eraHTML()}<div class="slot recapw" data-slot="recap"></div>
+    return `<div class="slot gbarw" data-slot="gremlin-bar">${CHAT ? CHAT.barHTML() : ""}</div><div class="sgrid">${eraHTML()}<div class="slot recapw" data-slot="recap"></div>
       <div class="scol">${ballot}${proposedHTML()}${cat}</div>
       <div class="scol"><div class="slot" data-slot="recent-days"></div><button type="button" class="linkbtn" data-tab="history">Full history →</button></div></div>`;
   }
   function drawBook() {
-    if (TAB === "summary") $("p-summary").innerHTML = summaryHTML();
+    if (TAB === "summary") { $("p-summary").innerHTML = summaryHTML(); if (CHAT) CHAT.drawBar(); }
     else if (TAB === "workshop") $("p-workshop").innerHTML = WS ? WS.tabHTML() : "";
     else if (TAB === "yours") $("p-yours").innerHTML = YOURS ? YOURS.html() : "";
     else if (TAB === "history") $("p-history").innerHTML = `<div class="hdays">${rulingsHTML(DATA && DATA.rulings, { esc, rpill: n => PROP.rpill(n) })}<div class="slot" data-slot="history-days">${HIST ? HIST.html() : ""}</div><ul class="log" id="log">${((DATA && DATA.events) || []).map(e => `<li><b>${esc(whenText(e.created_at) || String(e.created_at || "").slice(0, 10))}</b> · ${esc(e.text)}</li>`).join("")}</ul></div>`;
@@ -721,6 +722,8 @@ import { hold } from "/js/busy.js";
     if (tab && !tab.disabled) { setTab(tab.dataset.tab, !tab.closest(".btabs")); return; }
     const j = t.closest("[data-jump]");
     if (j) { jumpTo(j.dataset.jump); return; }
+    const rd = t.closest("[data-redraft]");   // a not-applied proposal's fix on the Yours page (rule 107.7): Gremlin opens with the redraft in the box
+    if (rd && CHAT) { await closePanels(); await CHAT.redraft(rd.dataset.redraft, rd.dataset.fix, YOURS && YOURS.find ? YOURS.find(rd.dataset.redraft) : null); return; }
     const inCard = CARDS.isOpen();   // with a card up, anything it opens (from its text, or from the preview of one of its pills) goes on its back stack
     const see = t.closest("[data-seecard]");
     if (see && BOOK) {

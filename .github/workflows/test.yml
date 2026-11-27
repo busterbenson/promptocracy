@@ -69,7 +69,7 @@ jobs:
           # the key hashes this file, which pins playwright (the pin names the Chromium build): bumping the pin refreshes the cache
           key: playwright-${{ runner.os }}-${{ hashFiles('.github/workflows/test.yml') }}
 
-      - name: Install Chromium (browsers and system libraries)
-        run: python -m playwright install --with-deps chromium
+      - name: Install Chromium and WebKit (browsers and system libraries)
+        run: python -m playwright install --with-deps chromium webkit
 
       - run: node scripts/ci-shard.mjs ${{ matrix.shard }} 3

@@ -9,15 +9,17 @@
 # right thing, and the window is on every page of the game (every tab, the account's Yours, light and dark, 1280 and 390).
 # Usage: browser-chat.py <...> <Gus's cookie>  (original usage follows)
 # Usage: browser-chat.py <base> <screenshot dir or -> <Ada's session cookie> <Bo's> <Cy's> <Dee's> <Fay's session cookie, for pre> <Eve's cookie> <two recorded messages Gremlin answers: the lines her two tickets are drafted with>
-import re, sys
+import json, re, sys
 from urllib.parse import urlparse
 from playwright.sync_api import sync_playwright
 from busy_check import busy_check
 
-base, out, ada_cookie, bo_cookie, cy_cookie, dee_cookie, fay_cookie, eve_cookie, MSG_A, MSG_B, gus_cookie = sys.argv[1:12]
+base, out, ada_cookie, bo_cookie, cy_cookie, dee_cookie, fay_cookie, eve_cookie, MSG_A, MSG_B, gus_cookie, ivy_cookie, hal_cookie = sys.argv[1:14]
 host = urlparse(base).hostname
 failed = []
 ROW_H = 44
+ROW_H_PHONE = 40
+HEAD_MAX = 40   # the header on a phone: portrait, title and close (it was 65)
 SLUG = "shop"
 
 def check(name, ok, detail=""):
@@ -48,17 +50,17 @@ def sideways(page, w, name):
 # The sheet fits the screen (rule 106.3): every part of it, the close and send buttons included, inside the viewport, and the composer's text
 # is 16px or more (iOS Safari zooms the page into a smaller field when it takes focus, which pushes a fixed sheet off the right edge).
 def row_ok(page, w, tag):
-    # The rows under the header (AGENTS.md rule 6, one window): the first is the strip ("Yours": proposals and tickets not yet voted on, New); in the
-    # general conversation a second one, "Today", is stacked under it. Each is one .ch-row, inside the window, ROW_H high, its pills scrolling sideways.
-    rows = page.locator("#chatcol .ch-row"); n = rows.count()
+    # The strip under the header (AGENTS.md rule 6, one window): "Yours" (proposals and tickets not yet voted on, New) and, in the general conversation,
+    # "Today", side by side in one band (.ch-rows). Each is one .ch-row, inside the window, ROW_H high (44 on a desktop, 40 on a phone), its pills scrolling sideways.
+    rows = page.locator("#chatcol .ch-row"); n = rows.count(); rh = ROW_H if w >= 900 else ROW_H_PHONE
     rb = rows.first.bounding_box(); hb = page.locator("#chatcol .ch-h").bounding_box(); cb = page.locator("#chatcol .chat").bounding_box()
     check(f"{tag}: the strip is the first .ch-row, directly under the header ({rb['y']:.0f} vs {hb['y'] + hb['height']:.0f}) and inside the window", n in (1, 2) and abs(rb["y"] - (hb["y"] + hb["height"])) <= 1.5 and rb["x"] >= cb["x"] - 0.5 and rb["x"] + rb["width"] <= cb["x"] + cb["width"] + 0.5)
     if n == 2:
         r2 = rows.nth(1).bounding_box()
-        check(f"{tag}: the second row (Today) is stacked directly under the strip and inside the window", abs(r2["y"] - (rb["y"] + rb["height"])) <= 1.5 and r2["x"] >= cb["x"] - 0.5 and r2["x"] + r2["width"] <= cb["x"] + cb["width"] + 0.5)
+        check(f"{tag}: the second row (Today) is on the strip's row, to the right of Yours, inside the window", abs(r2["y"] - rb["y"]) <= 1.5 and r2["x"] >= rb["x"] + rb["width"] - 1.5 and r2["x"] + r2["width"] <= cb["x"] + cb["width"] + 0.5)
     for i in range(n):
         h = rows.nth(i).bounding_box()["height"]
-        check(f"{tag}: row {i + 1} is {ROW_H}px high (is {h:.1f})", abs(h - ROW_H) <= 1.5)
+        check(f"{tag}: row {i + 1} is {rh}px high (is {h:.1f})", abs(h - rh) <= 1.5)
     ov = page.evaluate("getComputedStyle(document.querySelector('#chatcol .ch-row .its')).overflowX")
     check(f"{tag}: its pills scroll sideways inside the row (overflow-x {ov}), never the page", ov in ("auto", "scroll"))
 def fits(page, w, h, name):
@@ -340,6 +342,7 @@ with sync_playwright() as p:
     def chip(page, n): return page.locator(f'#chatcol .ch-row .it[data-n="{n}"]')
     def selected(page): return page.locator('#chatcol .ch-row .it[aria-pressed="true"]')
     def strip_ok(page, w, tag):
+        page.evaluate("document.activeElement && document.activeElement.blur()")   # New and the pills put the caret in the box, which folds the strip away on a phone; it comes back on blur
         page.wait_for_selector("#chatcol .ch-row", state="visible"); page.wait_for_timeout(500)   # the page redraws the window once more after a New (refresh)
         sb = page.locator("#chatcol .ch-row").first.bounding_box(); cb = page.locator("#chatcol .chat").bounding_box()
         check(f"{tag}: the strip sits inside the window, under the header (x {sb['x']:.0f}..{sb['x'] + sb['width']:.0f} of {cb['x']:.0f}..{cb['x'] + cb['width']:.0f})", sb["x"] >= cb["x"] - 0.5 and sb["x"] + sb["width"] <= cb["x"] + cb["width"] + 0.5 and sb["y"] >= page.locator("#chatcol .ch-h").bounding_box()["y"])
@@ -378,7 +381,7 @@ with sync_playwright() as p:
             page.fill("#chatText", "is this one still a draft"); page.click('#chatcol [data-c="send"]'); page.wait_for_timeout(400)
             check(f"{tag}: a send while {TA}'s read is still out sends nothing ({TB}'s conversation is still on screen), and the words stay in the box", len(heldq) == 1 and posts == [] and page.input_value("#chatText") == "is this one still a draft", f"held {len(heldq)} posts {posts}")
             heldq[0].continue_(); page.wait_for_function(f"document.querySelector('#chatLog .slip') && document.querySelector('#chatLog .slip').getAttribute('aria-label') === '{TA}'"); page.unroute(re.compile(rf"/shop/api/tickets/{TA}$"))
-            page.fill("#chatText", "")
+            page.fill("#chatText", ""); page.evaluate("document.activeElement.blur()")   # the strip is folded away while the composer has focus on a phone
             # New: what "Commission something" does: a draft (her blank one again if she has one) and the chat attached to it
             busy_check(page, check, f"{tag} busy + New (Gremlin's strip)", '#chatcol [data-c="new"]', "**/api/tickets", shot=lambda l: shot(page, f"busy-new-{tag}"), errors=errors)
             page.click('#chatcol [data-c="new"]')
@@ -404,8 +407,8 @@ with sync_playwright() as p:
             page.reload(wait_until="domcontentloaded"); page.wait_for_selector("#tab-workshop"); page.wait_for_function("document.getElementById('rules').textContent.indexOf('Loading') < 0")
             page.click("#tab-workshop"); page.wait_for_timeout(500)
             if not page.locator("#chatcol .ch-row").first.is_visible(): page.click("#chatfab"); page.wait_for_selector("#chatcol .ch-row")
-            why = text(page, "#chatcol .ch-why") if page.locator("#chatcol .ch-why").count() else ""
-            check("1280-light strip after End turn: New is disabled and the reason is shown beside it, not only as a tooltip", page.locator('#chatcol [data-c="new"]').is_disabled() and len(why) > 5 and page.locator('#chatcol [data-c="new"][title]').count() == 0, why)
+            why = text(page, "#chatcol .ch-row .why") if page.locator("#chatcol .ch-row .why").count() else ""
+            check("1280-light strip after End turn: New is disabled and the reason is shown beside it, not only as a tooltip", page.locator('#chatcol [data-c="new"]').is_disabled() and len(why) > 5 and page.locator('#chatcol .ch-why').count() == 0 and page.locator('#chatcol [data-c="new"][title]').count() == 0, why)
             shot(page, "strip-ended-1280-light")
         check(f"1280-{scheme} strip (no tickets): no console errors", not errors, str(errors)); c.close()
     c, page, errors = new_page(b, 1280, 900, "light")
@@ -428,6 +431,10 @@ with sync_playwright() as p:
         check(f"{tag}: the strip has a P-pill for the draft and one for the locked-in proposal, and a W-pill for the ticket, and New", ps.count() == 2 and ws.count() == 1 and page.locator(f"{YOURS} .it.new").count() == 1, f"{says} {ws.count()}")
         check(f"{tag}: drafts first: the draft ('Draft', its words) is before the locked one (P-number, 'Locked'); the tickets follow the proposals", says[0].startswith("Draft") and re.match(r"^P\d+ .*Locked$", says[1], re.I) is not None and page.evaluate("(() => { const a = [...document.querySelectorAll('#chatcol .ch-row[aria-label=Yours] .it')].map((e) => e.dataset.c); return a.join() })()") == "pickp,pickp,pick,new", str(says))
         check(f"{tag}: the window opens in the general conversation on the newest draft: its pill is the pressed one, its slip has Lock it in", ps.nth(0).get_attribute("aria-pressed") == "true" and ps.nth(1).get_attribute("aria-pressed") == "false" and ws.first.get_attribute("aria-pressed") == "false" and page.locator('#chatLog .slip:not(.past) [data-c="lock"]').count() == 1 and page.locator(".ch-in .chip").count() == 0)
+        # the general conversation's slip says what the draft uses (rule 703.4): both entries of one ticket, as a line inside the slip, beside no horizontal overflow
+        un = page.locator("#chatLog .slip:not(.past) .unote"); sl = page.locator("#chatLog .slip:not(.past)").bounding_box(); ub = un.bounding_box() if un.count() == 1 else None
+        check(f"{tag}: the draft's slip says 'Uses Flower from W4, Vase from W4' on one line of its own, inside the slip", un.count() == 1 and text(page, "#chatLog .slip:not(.past) .unote") == "Uses Flower from W4, Vase from W4" and ub is not None and ub["x"] >= sl["x"] - 1 and ub["x"] + ub["width"] <= sl["x"] + sl["width"] + 1 and un.is_visible(), text(page, "#chatLog .slip:not(.past)"))
+        shot(page, f"strip-proposals-uses-{tag}")
         strip_ok(page, w, tag)
         shot(page, f"strip-proposals-{tag}")
         pn = says[1].split()[0]
@@ -463,6 +470,183 @@ with sync_playwright() as p:
         if phone:
             page.click("#chatfab"); page.wait_for_selector("#chatcol .chat", state="visible")
             check(f"{tag}: on the last page (Yours) the pill opens the sheet, Gremlin's, with his strip", "Gremlin" in text(page, "#chatcol .ch-h") and page.locator(f"{YOURS}").count() == 1)
+        check(f"{tag}: no console errors", not errors, str(errors)); c.close()
+
+    # ---------------- his choices come below the slip (Buster, 2026-11-26) and look like buttons: Ivy's one answer has a draft and options
+    for scheme, w, h in [("light", 1280, 900), ("light", 390, 844), ("dark", 1280, 900), ("dark", 390, 844)]:
+        tag = f"{w}-{scheme} options"; phone = w < 900
+        c, page, errors = new_page(b, w, h, scheme, ivy_cookie)
+        if phone: page.wait_for_selector("#chatfab"); page.click("#chatfab")
+        page.wait_for_selector("#chatLog .opts .btn"); page.wait_for_timeout(300)
+        order = page.evaluate("(() => { const log = document.getElementById('chatLog'); const k = [...log.children].map(e => e.classList.contains('opts') ? 'opts' : e.classList.contains('slip') && !e.classList.contains('past') ? 'slip' : e.classList.contains('msg') ? 'msg' : 'x'); return k.join(','); })()")
+        check(f"{tag}: the choices come after the slip, as the last thing in the log ({order})", order.endswith("slip,opts"), order)
+        bt = page.locator("#chatLog .opts .btn"); n = bt.count()
+        info = bt.evaluate_all("els => els.map(e => { const cs = getComputedStyle(e), r = e.getBoundingClientRect(), p = e.parentElement.getBoundingClientRect(); return { rad: cs.borderTopLeftRadius, bw: cs.borderTopWidth, h: r.height, w: r.width, pw: p.width, over: e.scrollWidth > e.clientWidth + 1, lines: Math.round(r.height / parseFloat(cs.lineHeight)) } })")
+        check(f"{tag}: {n} buttons, 8px corners, a border, 44px or taller, full width of the log, text never wider than the button", n == 2 and all(i["rad"] == "8px" and float(i["bw"].replace("px","")) >= 1 and i["h"] >= 43.5 and i["w"] >= i["pw"] - 1 and not i["over"] for i in info), str(info))
+        check(f"{tag}: the long one wraps onto more than one line inside its button", info[0]["h"] > info[1]["h"] + 10, str(info))
+        bt.first.click(); page.wait_for_timeout(150)
+        check(f"{tag}: tapping one puts its words in the box, unsent", page.input_value("#chatText").startswith("A: make it three days"), page.input_value("#chatText"))
+        sideways(page, w, tag); shot(page, f"options-{tag}")
+        check(f"{tag}: no console errors", not errors, str(errors)); c.close()
+
+    # ---------------- the Gremlin bar on the Summary (Gus: one locked-in proposal today, one draft): portrait, his last line, today's P-pills, "n of 3 left"
+    for scheme, w, h in [("light", 1280, 900), ("light", 390, 844), ("dark", 1280, 900), ("dark", 390, 844)]:
+        tag = f"{w}-{scheme} summary bar"; phone = w < 900
+        c, page, errors = new_page(b, w, h, scheme, gus_cookie)
+        page.wait_for_selector("#p-summary .gbar .gb-p"); page.wait_for_timeout(300)
+        bar = page.locator("#p-summary .gbar"); bb = bar.bounding_box(); gb = page.locator("#p-summary .sgrid").bounding_box()
+        today = [x.strip() for x in page.locator('#chatcol .ch-row[aria-label="Today"] .ppill').all_inner_texts()]
+        pills = [x.strip() for x in page.locator("#p-summary .gbar .gb-p").all_inner_texts()]
+        check(f"{tag}: the bar is at the top of the Summary, above the grid, with his portrait and his last line", bb is not None and bb["y"] + bb["height"] <= gb["y"] + 1 and bar.locator(".por").count() == 1 and len(text(page, ".gbar .gb-line")) > 3, str(bb))
+        check(f"{tag}: its P-pills are today's proposals, the same as the window's Today row, and it says 2 of 3 left", pills == today and len(pills) == 1 and text(page, ".gbar .gb-n") == "2 of 3 left", f"{pills} {today} {text(page, '.gbar .gb-n')}")
+        sz = page.locator(".gbar .gb-p, .gbar .gb-main").evaluate_all("els => els.map(e => { const r = e.getBoundingClientRect(); return [r.width, r.height] })")
+        check(f"{tag}: every tap target in it is 44px or more", all(x[1] >= 43.5 and x[0] >= 43.5 for x in sz), str(sz))
+        check(f"{tag}: the bar has no helper text: only the portrait, his line, pills and the count", text(page, ".gbar").replace(text(page, ".gbar .gb-line"), "").replace(text(page, ".gbar .gb-n"), "").replace(" ".join(pills), "").strip() in ("", "Gremlin"), text(page, ".gbar"))
+        if phone:
+            check(f"{tag}: the sheet is closed until the bar is tapped", sheet(page) == "closed")
+            bar.locator(".gb-main").click(); page.wait_for_function("document.getElementById('bwrap').dataset.sheet === 'open'")
+            check(f"{tag}: tapping the bar opens the sheet", sheet(page) == "open" and "Gremlin" in text(page, "#chatcol .ch-h"))
+            page.click('#chatcol [data-c="close"]'); page.wait_for_function("document.getElementById('bwrap').dataset.sheet === 'closed'")
+        else:
+            page.click("#chatcol [data-c='min']"); page.wait_for_function("document.getElementById('bwrap').dataset.chat === 'min'")
+            bar.locator(".gb-main").click(); page.wait_for_function("document.getElementById('bwrap').dataset.chat === 'open'")
+            check(f"{tag}: tapping the bar opens the window", mode(page) == "open")
+        shot(page, f"summary-bar-{tag}")
+        pn = pills[0]
+        if phone and sheet(page) == "open": page.click('#chatcol [data-c="close"]')
+        page.locator("#p-summary .gbar .gb-p").first.click()
+        page.wait_for_function(f"document.querySelector('#chatLog .slip:not(.past)') && document.querySelector('#chatLog .slip:not(.past)').getAttribute('aria-label') === '{pn}'")
+        check(f"{tag}: tapping the P-pill ({pn}) opens the window on that proposal's slip (LOCKED) in the general conversation", ("LOCKED" in text(page, "#chatLog .slip:not(.past)")) and (sheet(page) == "open" if phone else mode(page) == "open"))
+        if phone: page.click('#chatcol [data-c="close"]'); page.wait_for_function("document.getElementById('bwrap').dataset.sheet === 'closed'")
+        page.click("#tab-rules"); page.wait_for_timeout(200)
+        check(f"{tag}: the bar is only on the Summary; the corner pill stays on every tab", page.locator(".gbar:visible").count() == 0 and (mode(page) == "open" if not phone else page.locator("#chatfab").is_visible()))
+        sideways(page, w, tag)
+        check(f"{tag}: no console errors", not errors, str(errors)); c.close()
+
+    # ---------------- the bar does not depend on the conversation the window is in (Codex, #143): Gus opens a ticket, Hal's window loads on a ticket (his last words were in it)
+    for scheme, w, h in [("light", 1280, 900), ("light", 390, 844)]:
+        tag = f"{w}-{scheme} bar in a ticket"; phone = w < 900
+        c, page, errors = new_page(b, w, h, scheme, gus_cookie)
+        page.wait_for_selector("#p-summary .gbar .gb-p")
+        before = [x.strip() for x in page.locator("#p-summary .gbar .gb-p").all_inner_texts()]
+        if phone: page.click("#chatfab")
+        page.wait_for_selector(f'{YOURS} .it[data-c="pick"]'); page.locator(f'{YOURS} .it[data-c="pick"]').first.click()
+        page.wait_for_function("document.querySelector('#chatLog .slip:not(.past)') && /^W\\d+$/.test(document.querySelector('#chatLog .slip:not(.past)').getAttribute('aria-label'))"); page.wait_for_timeout(300)
+        after = [x.strip() for x in page.locator("#p-summary .gbar .gb-p").all_inner_texts()]
+        check(f"{tag}: opening a ticket's conversation leaves the Summary bar as it was (its pills {before}, 2 of 3 left)", len(before) == 1 and after == before and page.locator("#p-summary .gbar .gb-n").inner_text().strip() == "2 of 3 left", f"{before} {after}")
+        check(f"{tag}: no console errors", not errors, str(errors)); c.close()
+        if scheme == "light" and not phone:   # Hal's ticket, made here once: drafted over two turns and locked in as today's commission, his last words in it
+            ch, ph, eh = new_page(b, 1280, 900, "light", hal_cookie)
+            ph.evaluate(f"({post})('/shop/api/chat/gremlin', {json.dumps({'body': 'what is a rule worth'})})")   # general history first: his last line in the Summary bar comes from it
+            wh = ph.evaluate(f"({post})('/shop/api/tickets', {{}})")["ticket"]
+            for m in (MSG_A, MSG_B): ph.evaluate(f"({post})('/shop/api/chat/gremlin', {json.dumps({'ticket': wh, 'body': m})})")
+            check("bar in a ticket: Hal's commission is locked in", ph.evaluate(f"({post})('/shop/api/tickets/{wh}/confirm', {{}})").get("ok") is True)
+            wd = ph.evaluate(f"({post})('/shop/api/tickets', {{}})")["ticket"]   # a second ticket, a draft: the conversation his window opens in (a locked ticket's is not reopened by a reload)
+            ph.evaluate(f"({post})('/shop/api/chat/gremlin', {json.dumps({'ticket': wd, 'body': MSG_A})})"); ch.close()
+        c, page, errors = new_page(b, w, h, scheme, hal_cookie)
+        page.wait_for_function("document.querySelector('#p-summary .gbar')"); page.wait_for_timeout(300)
+        if phone: page.click("#chatfab")
+        page.wait_for_selector("#chatLog .slip:not(.past)")
+        check(f"{tag}: Hal's window loads on his ticket's conversation (a chip beside the box)", page.locator(".ch-in .chip").count() == 1, text(page, ".ch-in"))
+        if phone: page.click('#chatcol [data-c="close"]'); page.wait_for_function("document.getElementById('bwrap').dataset.sheet === 'closed'")
+        hp = [x.strip() for x in page.locator("#p-summary .gbar .gb-p").all_inner_texts()]
+        page.locator("#p-summary .gbar").scroll_into_view_if_needed(); page.wait_for_timeout(200); shot(page, f"summary-bar-reload-{tag}")
+        check(f"{tag}: after a reload on a ticket the Summary bar is still there: his commission's pill and 2 of 3 left", len(hp) == 1 and page.locator("#p-summary .gbar .gb-n").inner_text().strip() == "2 of 3 left", str(hp))
+        # a commission's P-pill opens its ticket's conversation, where its slip is (the general conversation does not list commissions)
+        if page.locator("#p-summary .gbar .gb-p").count() == 1:
+            wc = page.locator("#p-summary .gbar .gb-p").first.get_attribute("data-w")
+            page.locator("#p-summary .gbar .gb-p").first.click()
+            if wc: page.wait_for_selector(f'#chatLog .slip[aria-label="{wc}"]')
+            check(f"{tag}: tapping the commission's pill ({hp[0]}) opens its ticket's ({wc}) conversation: its slip, its chip beside the box, the window open", wc is not None and page.locator(f'#chatLog .slip[aria-label="{wc}"]').count() == 1 and wc in text(page, ".ch-in .chip") and (sheet(page) == "open" if phone else mode(page) == "open"), text(page, "#chatLog .slip:not(.past)"))
+        gen = page.evaluate("fetch('/shop/api/chat/gremlin?ticket=none').then(r => r.json())")["messages"]
+        said = [m["body"] for m in gen if m["role"] == "agent"][-1:]
+        line = page.locator("#p-summary .gbar .gb-line").inner_text().strip()
+        check(f"{tag}: after a reload on a ticket the Summary bar still shows his last line from the general conversation", len(said) == 1 and line != "" and line == said[0].strip(), f"{line!r} vs {said}")
+        shot(page, f"summary-bar-ticket-{tag}")
+        check(f"{tag}: no console errors", not errors, str(errors)); c.close()
+
+    # ---------------- a slim frame on a phone (Buster, 2026-11-26): a thin header, Yours and Today on one row, no "Your turn has ended" line in the strip (its reason is
+    # beside New, in a few words), and the strip folds away while the composer has focus (the keyboard is up), in the general conversation and in a ticket's
+    STRIP = "#chatcol .ch-row"   # the strip: its rows (Yours, Today)
+    stext = lambda page: " ".join(" ".join(page.locator("#chatcol .ch-row, #chatcol .ch-why").all_inner_texts()).split())
+    def slim(page, w, tag, conv):
+        hh = page.locator("#chatcol .ch-h").bounding_box()["height"]
+        if w < 900: check(f"{tag}: the header is {HEAD_MAX}px or less (is {hh:.1f})", hh <= HEAD_MAX)
+        rows = page.locator("#chatcol .ch-row"); n = rows.count()
+        if conv == "general":
+            ys = [rows.nth(i).bounding_box()["y"] for i in range(n)]
+            check(f"{tag}: Yours and Today sit on one row (y {ys})", n == 2 and abs(ys[0] - ys[1]) <= 1.5)
+        else:
+            check(f"{tag}: the ticket's strip is Yours alone, one row", n == 1)
+        check(f"{tag}: the strip has no 'Your turn has ended' line", "turn has ended" not in stext(page).lower(), stext(page))
+
+    def fold(page, tag):
+        # the keyboard is up (a short viewport and the composer focused): the strip is folded away; on blur it is back, and a log at its end is still at its end
+        # a log long enough to scroll (a filler line), at its end: the case where a returning strip would push the end out of sight
+        page.evaluate("(() => { const l = document.getElementById('chatLog'); const f = document.createElement('div'); f.id = 'slimFill'; f.style.cssText = 'flex:none;height:900px'; l.appendChild(f); l.scrollTop = l.scrollHeight; })()"); page.wait_for_timeout(250)
+        end = lambda: page.evaluate("(() => { const l = document.getElementById('chatLog'); return l.scrollHeight - l.scrollTop - l.clientHeight < 3 })()")
+        page.focus("#chatText"); page.wait_for_timeout(250)
+        check(f"{tag}: with the composer focused the strip is folded away", not page.locator(STRIP).first.is_visible())
+        check(f"{tag}: and the log is still at its end (no jump)", end())
+        shot(page, f"slim-focus-{tag.replace(' ', '-')}")
+        page.evaluate("document.activeElement.blur()"); page.wait_for_timeout(250)
+        check(f"{tag}: on blur the strip is back", page.locator(STRIP).first.is_visible())
+        check(f"{tag}: and the log is still at its end (no jump)", end())
+        page.evaluate("document.getElementById('slimFill').remove()")
+    for w, scheme in [(390, "light"), (390, "dark"), (1280, "light")]:
+        tag = f"{w}-{scheme} slim"; phone = w < 900
+        c, page, errors = new_page(b, w, 844, scheme, gus_cookie)
+        page.click("#tab-workshop")
+        if phone: page.wait_for_selector("#chatfab"); page.click("#chatfab")
+        page.wait_for_selector(f'{YOURS} .it[data-c="pickp"]'); page.wait_for_selector("#chatLog .slip:not(.past)"); page.wait_for_timeout(300)
+        slim(page, w, tag + " general", "general")
+        if phone:
+            page.set_viewport_size({"width": w, "height": 500}); page.wait_for_timeout(200)
+            fold(page, tag + " general")
+            page.set_viewport_size({"width": w, "height": 844})
+        page.locator(f'{YOURS} .it[data-c="pick"]').first.click(); page.wait_for_function("document.querySelector('#chatLog .slip:not(.past)') && /^W\\d+$/.test(document.querySelector('#chatLog .slip:not(.past)').getAttribute('aria-label'))"); page.wait_for_timeout(300)
+        slim(page, w, tag + " ticket", "ticket")
+        if phone:
+            page.set_viewport_size({"width": w, "height": 500}); page.wait_for_timeout(200)
+            fold(page, tag + " ticket")
+        check(f"{tag}: no console errors", not errors, str(errors)); c.close()
+    # a player whose turn has ended: New is disabled and its reason is beside it, in a few words, on the strip's row; the long sentence is not in the strip
+    c, page, errors = new_page(b, 390, 844, "light", dee_cookie)
+    page.click("#tab-workshop"); page.wait_for_selector("#chatfab"); page.click("#chatfab"); page.wait_for_selector(f"{YOURS} .it.new"); page.wait_for_timeout(300)
+    slim(page, 390, "390-light slim ended", "general")
+    wb, nb = page.locator(f"{YOURS} .why").bounding_box(), page.locator(f"{YOURS} .it.new").bounding_box()
+    check(f"390-light slim ended: New is disabled with its reason ('{text(page, YOURS + ' .why')}', 15 characters or fewer) beside it, on the same line", page.locator(f"{YOURS} .it.new").is_disabled() and 0 < len(text(page, YOURS + " .why")) <= 15 and abs((wb["y"] + wb["height"] / 2) - (nb["y"] + nb["height"] / 2)) <= 3, str((wb, nb)))
+    shot(page, "slim-ended-390-light"); c.close()
+
+    # ---------------- a tap in the log lands while the keyboard is up (Codex, #151): at 390x500 with the composer focused AND the log scrolled up (not at its end), a tap on an
+    # option button and on Lock it in must hit that control. The strip is folded while the box has focus; if it came back on the press (the blur) the log would move
+    # 40px under a pointer that is already down and the tap would hit something else.
+    for scheme in ("light",):
+        tag = f"390-{scheme} tap with the keyboard up"
+        c, page, errors = new_page(b, 390, 844, scheme, ivy_cookie)
+        page.click("#chatfab"); page.wait_for_selector("#chatLog .opts .btn"); page.wait_for_timeout(300)
+        page.set_viewport_size({"width": 390, "height": 500}); page.wait_for_timeout(200)
+        def lift(sel):
+            # a filler line below, then the control scrolled to the log's upper part: the log is not at its end
+            page.evaluate("(sel) => { const l = document.getElementById('chatLog'); const f = document.createElement('div'); f.id = 'slimFill'; f.style.cssText = 'flex:none;height:900px'; l.appendChild(f); const e = l.querySelector(sel); l.scrollTop = e.offsetTop - 60; }", sel)
+            page.wait_for_timeout(250)
+        page.focus("#chatText"); page.wait_for_timeout(200)
+        lift("#chatLog .opts .btn")
+        far = page.evaluate("(() => { const l = document.getElementById('chatLog'); return l.scrollHeight - l.scrollTop - l.clientHeight })()")
+        check(f"{tag}: the composer has focus (strip folded) and the log is scrolled up, {far:.0f}px from its end", not page.locator("#chatcol .ch-row").first.is_visible() and far > 200)
+        first = page.locator("#chatLog .opts .btn").first; want = " ".join(first.inner_text().split())
+        first.click(); page.wait_for_timeout(300)
+        check(f"{tag}: tapping an option button puts its words in the box (the tap landed on it)", " ".join(page.input_value("#chatText").split()) == want, page.input_value("#chatText"))
+        page.evaluate("document.getElementById('slimFill') && document.getElementById('slimFill').remove()")
+        page.focus("#chatText"); page.wait_for_timeout(200)
+        lift('.slip:not(.past) [data-c="lock"]')
+        far = page.evaluate("(() => { const l = document.getElementById('chatLog'); return l.scrollHeight - l.scrollTop - l.clientHeight })()")
+        check(f"{tag}: the composer has focus and the log is scrolled up again, {far:.0f}px from its end", not page.locator("#chatcol .ch-row").first.is_visible() and far > 200)
+        page.locator('.slip:not(.past) [data-c="lock"]').click()
+        try:
+            page.wait_for_function("document.querySelector('#chatLog .slip .cstamp') && document.querySelector('#chatLog .slip .cstamp').textContent.trim() === 'LOCKED'", timeout=5000); locked = True
+        except Exception: locked = False
+        check(f"{tag}: tapping Lock it in on the slip locks it (the tap landed on it)", locked, text(page, "#chatLog .slip"))
         check(f"{tag}: no console errors", not errors, str(errors)); c.close()
 
     b.close()

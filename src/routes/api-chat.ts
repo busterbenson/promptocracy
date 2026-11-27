@@ -6,7 +6,7 @@
 //                                                 `ticket=none` is what was said outside any ticket; with no `ticket` it is the
 //                                                 conversation you were last in. `ticket` in the answer names the one shown. Signed-in
 //                                                 players only. `tickets` is your own drafts and tickets on the ballot (the window's row).
-//   POST /<slug>/api/chat/gremlin                 {ticket?: "W3", rule?: "401", body}: one turn. The message is stored (under the cap, in the same
+//   POST /<slug>/api/chat/gremlin                 {ticket?: "W3", rule?: "401", proposal?: "P9" (a not-applied proposal of yours being redrafted, rule 107.7), body}: one turn. The message is stored (under the cap, in the same
 //                                                 statement), the model answers as JSON, the platform validates it and writes ONLY that draft
 //                                                 ticket's fields, and the reply is stored. At the cap he gives his one improvised excuse of
 //                                                 the day (then canned ones); during the lock the chat is closed; no key, or over the monthly
@@ -23,13 +23,17 @@ import { clockNow, isLocked, loadToday, lockMessage, settingsOf, timeZoneOf } fr
 import { lockOpenBinds, localDate } from "../lib/day-gate.js";
 import {
   CANNED_LINES, CHAT_TIMEOUT_MS, EXCUSE_INPUT_CAP_TOKENS, EXCUSE_MODEL, EXCUSE_OUTPUT_CAP_TOKENS, EXCUSE_TIMEOUT_MS, MESSAGE_MAX, MODEL,
-  OUTPUT_CAP_TOKENS, answerSchema, cannedExcuse, estimateTokens, excuseRequest, gremlinRequest, moodOf, patchSummary, readExcuse, readGremlinAnswer, systemStatic,
+  OUTPUT_CAP_TOKENS, answerSchema, cannedExcuse, estimateTokens, excuseRequest, gremlinRequest, moodOf, moveOf, patchSummary, readExcuse, readGremlinAnswer, systemStatic,
 } from "../lib/gremlin.js";
 import { generalRequest, generalSchema, nodeText, plainForQuote, readGeneralAnswer, systemStatic as generalStatic } from "../lib/gremlin-rules.js";
 import { refusalBody, turnBlock } from "../lib/turn";
 import { Ctx, json, nowIso, readJson } from "../lib/util";
+import { draftTurn } from "../lib/draft-turn.js";
 import { catalogFor } from "./api-catalog";
+import { entriesFor, openEntriesFor } from "../lib/pending-entries";
 import { bookFor, catalogOf, draft } from "./api-proposals";
+import { refreshCheck } from "../lib/draft-check";
+import { sameDraft } from "../lib/rule-check.js";
 import { slipsOf, todayOf } from "./slips";
 import { gremlinWrite, open as openTicket, pageOf } from "./api-tickets";
 import { STRIP_STATES, shownState } from "../lib/tickets.js";
@@ -81,9 +85,13 @@ export async function stateOf(ctx: Ctx, game: any, day: any, player: Player, now
   }
   return { agent, date, cap, used, left: Math.max(0, cap - used), closed, ready: agentsReady(env) };
 }
-/** The state of the general conversation's window: the same, with the day's locked-in proposals beside it (rule 103.2). @rule 106.7, 103.2 */
+/**
+ * The window's state with what the Summary bar shows beside it: the day's locked-in proposals (rule 103.2) and his last line in the general conversation,
+ * whichever conversation the window opened on.  @rule 106.7, 103.2
+ */
 async function stateWith(ctx: Ctx, game: any, day: any, player: Player, nowMs: number) {
-  return { ...(await stateOf(ctx, game, day, player, nowMs)), today: await todayOf(ctx, game, player) };
+  const last: any = await ctx.env.DB.prepare("SELECT body FROM chat_messages WHERE game_id = ? AND player_id = ? AND agent = ? AND ticket_id IS NULL AND role = 'agent' ORDER BY id DESC LIMIT 1").bind(game.id, player.id, AGENT).first();
+  return { ...(await stateOf(ctx, game, day, player, nowMs)), today: await todayOf(ctx, game, player), line: last?.body ?? "" };
 }
 
 // The ticket a request names: yours, or nothing (a ticket of another player's is no ticket of yours).
@@ -136,7 +144,7 @@ export const get = async (ctx: Ctx) => {
   const h = await historyPage(env.DB, game.id, player.id, AGENT, before, { ticketId: ticket?.id ?? null, date: localDate(timeZoneOf(game), nowMs) });
   const strip = await stripOf(env, game, player);
   const base = { messages: h.rows, next: h.next, ticket: ticket ? `W${ticket.number}` : null, ...strip };
-  if (ticket) return json({ ...base, state: await stateOf(ctx, game, day, player, nowMs) });
+  if (ticket) return json({ ...base, state: await stateWith(ctx, game, day, player, nowMs) });   // today's proposals ride in a ticket's state too: the Summary bar does not depend on the conversation (rule 103.2)
   // Outside any ticket: the draft slips his lines point at, what may be done to each, the day's count (rules 103.1, 103.2). The newest draft the
   // player has, however far back its line is: the window's slip must not depend on the page of history it loaded.
   const { turn } = await loadToday(env, ctx.data.game!, nowMs, player.id);
@@ -180,6 +188,8 @@ export async function excuse(ctx: Ctx, game: any, day: any, player: Player, nowM
 type Turn = {
   ctx: Ctx; player: Player; game: any; day: any; playerTurn: any; tz: string; date: string; nowMs: number;
   text: string; myId: number; at: string; rulesMd: string; book: any; rule: { num: string; title: string; text: string } | null;
+  /** The not-applied proposal the player is redrafting (rule 107.7): what the moderator did with it. */
+  redraft?: { n: string; head: string | null; words: string | null; after_text: string | null; reason: string | null; fixes: string[] } | null;
 };
 /** One stored line of his, and the call's row first, so the budget counts it whatever happens to the line. @rule 106.3, 106.7 */
 async function storeLine(T: Turn, ticket: any, call: any, later: number, role: string, bodyText: string, meta: Record<string, unknown>, outcome: string, reason: string | null, proposalId: string | null = null) {
@@ -199,7 +209,7 @@ const messageView = (T: Turn, ticket: any) => viewOf(T.myId, "player", T.text, T
 /** Hand the player's message to the other conversation (rule 801.6): the row now belongs to `ticketId` (null: outside any ticket). @rule 801.6 */
 const moveMessage = (T: Turn, ticketId: string | null) => T.ctx.env.DB.prepare("UPDATE chat_messages SET ticket_id = ? WHERE id = ?").bind(ticketId, T.myId).run();
 
-/** @rule 106.3, 106.7, 801.2, 801.4, 801.6 */
+/** @rule 106.3, 106.7, 107.7, 801.2, 801.4, 801.6 */
 export async function turn(ctx: Ctx, player: Player, body: any, nowMs: number): Promise<Out> {
   const { env } = ctx;
   const shut = chatGate(ctx.data.game!, player);
@@ -211,7 +221,7 @@ export async function turn(ctx: Ctx, player: Player, body: any, nowMs: number): 
   const tz = timeZoneOf(game), date = localDate(tz, nowMs);
   const cap: number = capOf(game);
   /** @rule 106.7 */
-  const state = () => stateOf(ctx, game, day, player, nowMs);
+  const state = () => stateWith(ctx, game, day, player, nowMs);
 
   // During the lock the chat is closed (rule 107.1): read first, alone, so the cap's excuse is never spent on a locked chat.
   if (lockedNow(game, day, nowMs)) return out(refusalBody({ status: 423, error: lockMessage(day.n), processing_day: day.n }), 423);
@@ -242,6 +252,16 @@ export async function turn(ctx: Ctx, player: Player, body: any, nowMs: number): 
     rule = { num, title: node.title ?? node.rule?.title ?? "", text: (nodeText(book, num) as string).slice(0, 1500) };
   }
 
+  // the proposal this turn redrafts (rule 107.7): one of the player's own that the moderator did not apply; the card's fix buttons send it. Only outside a ticket.
+  let redraft: Turn["redraft"] = null;
+  if (!ticket && body?.proposal !== undefined && body?.proposal !== null && body?.proposal !== "") {
+    const m = /^P(\d{1,6})$/.exec(String(body.proposal).trim());
+    const pr: any = m ? await env.DB.prepare("SELECT number, draft_head, words, after_text, not_applied_reason, fixes FROM proposals WHERE game_id = ? AND player_id = ? AND number = ? AND status = 'not_applied'").bind(game.id, player.id, Number(m[1])).first() : null;
+    if (!pr) return out({ error: "There is no such proposal of yours that was not applied." }, 404);
+    let fx: any = []; try { fx = JSON.parse(pr.fixes || "[]"); } catch { fx = []; }
+    redraft = { n: `P${pr.number}`, head: pr.draft_head, words: pr.words, after_text: pr.after_text, reason: pr.not_applied_reason, fixes: Array.isArray(fx) ? fx.filter((x: any) => typeof x === "string").slice(0, 3) : [] };
+  }
+
   // the message goes in only under the cap and outside the lock, in one statement
   const at = nowIso(nowMs);
   const ins = await env.DB.prepare(PLAYER_MESSAGE_SQL).bind(game.id, player.id, AGENT, date, game.day || null, text, ticket?.id ?? null, at, game.id, player.id, AGENT, date, cap, game.id, ...lockOpenBinds(nowMs)).run();
@@ -254,7 +274,7 @@ export async function turn(ctx: Ctx, player: Player, body: any, nowMs: number): 
   }
   const myId = Number(ins.meta.last_row_id);
   if (rule) await env.DB.prepare("UPDATE chat_messages SET meta = json_set(meta, '$.rule', ?) WHERE id = ?").bind(rule.num, myId).run();
-  const T: Turn = { ctx, player, game, day, playerTurn, tz, date, nowMs, text, myId, at, rulesMd, book, rule };
+  const T: Turn = { ctx, player, game, day, playerTurn, tz, date, nowMs, text, myId, at, rulesMd, book, rule, redraft };
   return ticket ? ticketTurn(T, ticket, false) : generalTurn(T, false);
 }
 
@@ -276,15 +296,16 @@ async function ticketTurn(T: Turn, ticket: any, moved: boolean): Promise<Out> {
   let noWrite: string | null = null;
   if (ticket.state !== "Draft") noWrite = `W${ticket.number} is ${ticket.state === "Proposed" ? "on the ballot" : shownState(ticket).toLowerCase()}`;
   else { const b = turnBlock(game, day, playerTurn, player, "propose", nowMs); if (b) noWrite = b.error; }
+  const entries = await entriesFor(env, game, player.id, ticket.id);   // the catalog's entries and what open commissions make (rules 701.4, 703.4)
   const { system, messages } = gremlinRequest({
-    ceiling, rulesMd, mood: moodOf(game.id, date), localDate: date, catalog: catalogFor(game), history: hist,
+    ceiling, rulesMd, mood: moodOf(game.id, date), localDate: date, catalog: catalogFor(game), history: hist, entries,
     ticket: { number: ticket.number, title: ticket.title, brief: ticket.brief, makes: JSON.parse(ticket.makes || "[]"), estimate: ticket.estimate, running_cost: ticket.running_cost, tasks, price: ticket.price, price_reason: ticket.price_reason },
     posts, queueDepth: queue?.n ?? 0, rejected, notes, label: player.display_name, message: text, noWrite,
   });
 
   const r = await callModel(env, { model: MODEL, system, messages, maxTokens: OUTPUT_CAP_TOKENS, timeoutMs: CHAT_TIMEOUT_MS, schema: answerSchema(), effort: "low" });
   const later = await clockNow(env);   // the model can take 30 s: everything from here on (the write, its gate, the rows, the page, the state) uses the clock NOW
-  const stateNow = async () => { const f = await loadToday(env, ctx.data.game!, later, player.id); return stateOf(ctx, f.game, f.day, player, later); };
+  const stateNow = async () => { const f = await loadToday(env, ctx.data.game!, later, player.id); return stateWith(ctx, f.game, f.day, player, later); };
   /** @rule 106.3 */
   const canned = async (code: "unavailable" | "failed" | "malformed" | "refused", outcome: string, reason: string | null) => {
     const line = CANNED_LINES[code === "unavailable" ? "unavailable" : code];
@@ -292,12 +313,12 @@ async function ticketTurn(T: Turn, ticket: any, moved: boolean): Promise<Out> {
     return out({ ok: true, out: code, messages: [mine, l.view], scope: `W${ticket.number}`, ...(await stripOf(env, game, player)), state: await stateNow() });
   };
   if (!r.ok) return canned(r.code, r.code, r.reason);
-  const a = readGremlinAnswer(r.text, { ceiling, systemText: systemStatic({ ceiling }), catalog: catalogFor(game), makes: JSON.parse(ticket.makes || "[]"), price: ticket.price ?? 0 });
+  const a = readGremlinAnswer(r.text, { ceiling, systemText: systemStatic({ ceiling }), catalog: catalogFor(game), entries, makes: JSON.parse(ticket.makes || "[]"), price: ticket.price ?? 0 });
   if (!a.ok) return canned(a.code === "invalid" ? "malformed" : a.code, a.code, a.reason);
 
   // What the player asked for is not part of this commission: the message goes to the general conversation, and he answers it there (rule 801.6).
   // One move a turn: a message that already came from there is answered here whatever he says.
-  if (a.move === "general" && !moved && !a.refusal) {
+  if (moveOf(a) === "general" && !moved) {   // he said so, or the ticket is a rule and nothing else (801.1)
     await logOnly(T, r, "ok", "moved to general");
     await moveMessage(T, null);
     return generalTurn(T, true);
@@ -345,10 +366,10 @@ async function ticketTurn(T: Turn, ticket: any, moved: boolean): Promise<Out> {
 /**
  * The general conversation's turn: what Starling's was. A draft goes through the SAME drafter every proposal goes through (src/routes/api-proposals.ts
  * draft: every check it has stays), once more if the drafter refuses (rule 103.1); a commission opens a ticket and the turn goes on there (rule 801.6).
- * @rule 103.1, 103.5, 106.2, 106.4, 106.7, 801.6
+ * @rule 103.1, 103.5, 103.9, 106.2, 106.4, 106.7, 107.7, 801.6
  */
 async function generalTurn(T: Turn, moved: boolean): Promise<Out> {
-  const { ctx, player, game, day, playerTurn, tz, date, nowMs, text, myId, rulesMd, book, rule } = T;
+  const { ctx, player, game, day, playerTurn, tz, date, nowMs, text, myId, rulesMd, book, rule, redraft } = T;
   const { env } = ctx;
   const mine = messageView(T, null);
   const limit: number = settingsOf(game)["proposals.per_day"];
@@ -361,19 +382,24 @@ async function generalTurn(T: Turn, moved: boolean): Promise<Out> {
   if (slipRow && !(slipRow.day_proposed === game.day && (slipRow.status === "draft" || slipRow.status === "confirmed"))) slipRow = null;
   let lastMeta: any = {};
   try { lastMeta = lastRow ? JSON.parse(lastRow.meta || "{}") : {}; } catch { lastMeta = {}; }
+  // The standing draft's check is fresh before he answers (rule 103.9): made again when it was made on other criteria or another model than today's, or when the player sent the
+  // draft again (he is reading a block that was decided on old facts, or asking for it to be looked at again). The tail then carries the fresh check.
   const t0 = await todayOf(ctx, game, player);
   const blocked = turnBlock(game, day, playerTurn, player, "propose", nowMs);
   const noDraft = blocked ? blocked.error : null;
-  const drafted = lastMeta.refused ? { refused: String(lastMeta.refused.error ?? "") } : lastRow?.proposal_id && slipRow && slipRow.id === lastRow.proposal_id ? { head: slipRow?.draft_head, after_text: slipRow?.after_text, conflicts: slipRow ? JSON.parse(slipRow.conflicts || "[]") : [] } : null;
-  const ask = async (retry?: string) => {
+  const entries = await openEntriesFor(env, game, player.id);   // the catalog's entries and what open commissions make (rules 701.4, 703.4); no Drafts: a rule can't lean on one
+  // (Not while drafting is shut: a turn that cannot draft makes no model call for a check; the tail then carries the check it has.)
+  if (slipRow && slipRow.status === "draft" && !noDraft) await refreshCheck(env, game, tz, player.id, rulesMd, book, catalogFor(game).entries, entries.pending ?? [], slipRow, nowMs, sameDraft(text, slipRow));
+  const drafted = lastMeta.refused ? { refused: String(lastMeta.refused.error ?? "") } : lastRow?.proposal_id && slipRow && slipRow.id === lastRow.proposal_id ? { head: slipRow?.draft_head, after_text: slipRow?.after_text, conflicts: slipRow ? JSON.parse(slipRow.conflicts || "[]") : [], check: slipRow?.rule_check ? JSON.parse(slipRow.rule_check) : null } : null;
+  const ask = async (retry?: string, found?: any, mode?: "redraft" | "explain") => {
     const { system, messages } = generalRequest({
       rulesMd, localDate: date, perDay: limit, actions: catalogOf(game), history: hist, label: player.display_name, message: text, rule,
       slip: slipRow ? { n: slipRow.number ? `P${slipRow.number}` : null, status: slipRow.status === "confirmed" ? "locked in" : "a draft, not locked in", head: slipRow.draft_head, after_text: slipRow.after_text, words: slipRow.words, conflicts: JSON.parse(slipRow.conflicts || "[]") } : null,
-      drafted, made: t0.made, limit, noDraft, retry,
+      drafted, made: t0.made, limit, noDraft, retry, found, foundMode: mode, redraft, entries,
     });
     return callModel(env, { model: MODEL, system, messages, maxTokens: OUTPUT_CAP_TOKENS, timeoutMs: CHAT_TIMEOUT_MS, schema: generalSchema(), effort: "low" });
   };
-  const read = (r: any) => readGeneralAnswer(r.text, { book, systemText: generalStatic(), rulesPlain: plainForQuote(rulesMd), playerText: text });
+  const read = (r: any) => readGeneralAnswer(r.text, { book, systemText: generalStatic(), rulesPlain: plainForQuote(rulesMd), playerText: text, entries });
 
   let r = await ask();
   let later = await clockNow(env);   // the model can take 30 s: everything from here on uses the clock NOW
@@ -407,29 +433,28 @@ async function generalTurn(T: Turn, moved: boolean): Promise<Out> {
   let proposalId: string | null = null;
   const notes: string[] = [...a.dropped.map((d: string) => `dropped: ${d}`), ...a.flagged.map((d: string) => `flagged: ${d}`)];
   /** The drafter's answer to a's draft: the proposal id, or the refusal. @rule 103.1 */
-  const tryDraft = async (x: any) => {
+  const madeIds: string[] = [];   // every draft row this turn made: the ones that do not stand are dropped below, so a redraft leaves no stray draft in Yours
+  const tryDraft = async (x: any): Promise<any> => {
     if (noDraft) return { refused: { error: `Nothing was drafted: ${noDraft}` }, why: "day gate" };
     // an action goes through the SAME drafter as the form's (readAction: the type, each detail, the rule it comes from); he never writes one in himself
-    const asked = x.draft.kind === "action" ? { kind: "action", type: x.draft.type, params: x.draft.params } : { kind: x.draft.kind, target: x.draft.target, words: x.draft.words, to: x.draft.to, mark: x.draft.mark };
+    const asked = x.draft.kind === "action" ? { kind: "action", type: x.draft.type, params: x.draft.params } : { kind: x.draft.kind, target: x.draft.target, words: x.draft.words, to: x.draft.to, mark: x.draft.mark, uses: x.draft.uses };
     const d = await draft(ctx, player, asked, later, { atLimit: true });
-    if (d.body?.ok && d.body.proposal?.id) return { id: d.body.proposal.id as string };
+    if (d.body?.ok && d.body.proposal?.id) { madeIds.push(d.body.proposal.id as string); return { id: d.body.proposal.id as string, check: d.body.proposal.check ?? null }; }
     return { refused: { error: String(d.body?.error ?? "The draft was refused.").slice(0, 400), ...(d.body?.reason ? { reason: String(d.body.reason).slice(0, 40) } : {}) }, why: String(d.body?.drafting || d.status) };
   };
   if (a.draft) {
-    let res = await tryDraft(a);
-    // The drafter said no: one more try in the same turn, with its reason, for the nearest version that drafts (or options). Never a second retry, and
-    // never when the day's gate is what refused (nothing he writes can pass that).
-    if (res.refused && !noDraft) {
-      const r2 = await ask(String(res.refused.error));
-      later = await clockNow(env);
-      const a2: any = r2.ok ? read(r2) : null;
-      if (r2.ok && a2?.ok) {
-        await logOnly(T, r, "ok", `draft refused: ${res.why}; retry after refusal`);   // the first call is only logged when the second answer replaces it (a failed retry leaves it as the stored one, logged once)
-        r = r2; a = a2;
-        notes.push(`retry after refusal: ${res.why}`);
-        res = a.draft ? await tryDraft(a) : { refused: res.refused, why: "no second draft" };
-      } else { await logOnly(T, r2, r2.ok ? "invalid" : r2.code, "retry after refusal failed"); }
-    }
+    // The retries (after a refusal, after a check that blocked or could not run) are src/lib/draft-turn.js, which the quality harness runs too.
+    const t = await draftTurn({
+      r, a, noDraft, ask, read, tryDraft,
+      after: async () => { later = await clockNow(env); },
+      log: (call, outcome, reason) => logOnly(T, call, outcome, reason),
+    });
+    r = t.r; a = t.a; notes.push(...t.notes);
+    const res = t.res;
+    // this turn's own unlocked drafts that do not stand (a blocked first draft a redraft replaced, redrafts that stayed blocked): never locked in, never shown to anyone
+    const stray = madeIds.filter((id) => id !== res.id);
+    // A stray is always a draft the check blocked or could not read, so Lock it in refuses it even if it stays; a failed delete is noted on the line, never a failed turn.
+    if (stray.length) { try { await env.DB.batch(stray.map((id) => env.DB.prepare("DELETE FROM proposals WHERE id = ? AND player_id = ? AND status = 'draft'").bind(id, player.id))); } catch (e: any) { console.error("could not drop stray drafts:", e?.message || "error"); notes.push("stray drafts not dropped"); } }
     if (res.id) proposalId = res.id;
     else { meta.refused = res.refused; notes.push(`draft refused: ${res.why}`); }
   }

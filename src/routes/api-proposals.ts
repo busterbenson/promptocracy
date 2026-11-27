@@ -15,13 +15,18 @@
 // words by a small model (src/lib/drafter.ts).
 import { bundleFor, checkChampionChange, lightContext, rulesFor } from "../engine/host";
 import { getPlayer } from "../lib/auth";
-import { clockNow, dayOpenBinds, loadToday, settingsOf } from "../lib/day";
+import { clockNow, dayOpenBinds, loadToday, settingsOf, timeZoneOf } from "../lib/day";
 import { championId, changeUsed } from "../lib/eras";
 import { DrafterError, draftRewording, drafterReady } from "../lib/drafter";
 import { notify } from "../lib/notify";
 import { commissionsFor } from "../lib/ticket-view";
 import { COMMISSION_SNAPSHOT_SQL } from "../lib/tickets.js";
 import { ACTION_DRAFT_INSERT_SQL, CONFIRMED_TODAY_SQL, CONFIRM_SQL, DRAFT_INSERT_SQL, NOT_WIRED_REASON, WITHDRAW_SQL, conflictSentence, draftOf, markFor, needsModel, normKind, notWiredConflictRefusal, notWiredRefusal, parseBook, proposalLimitMessage, readRequest } from "../lib/proposals.js";
+import { checkDraft, CHECKED_KINDS, refreshCheck } from "../lib/draft-check";
+import { lockRefusalOf, checkConflictNums } from "../lib/rule-check.js";
+import { catalogFor } from "./api-catalog";
+import { openEntriesFor } from "../lib/pending-entries";
+import { mentionedEntries, resolveUses, usedEntry, usesNote } from "../lib/entries.js";
 import { refusalBody, turnBlock } from "../lib/turn";
 import { Ctx, colorOf, json, nowIso, readJson, sha256Hex, siteUrl, who } from "../lib/util";
 
@@ -57,6 +62,22 @@ export const COUNTED = ["passed", "failed", "enacted", "not_applied", "approved"
 
 // What an action shows: its type, the rule that defines it, the rules it touches and its details as the player read them. Never the
 // ids the details were resolved to.
+// The rule check stored on a draft (rule 103.9): null when it was never checked.
+/** @rule 103.9 */
+const checkOf = (r: any) => { try { return r.rule_check ? JSON.parse(r.rule_check) : null; } catch { return null; } };
+/** The moderator's fixes for a proposal that was not applied (rule 107.7). @rule 107.7 */
+const fixesOf = (r: any): string[] => { try { const f = r.fixes ? JSON.parse(r.fixes) : []; return Array.isArray(f) ? f.filter((x: any) => typeof x === "string").slice(0, 3) : []; } catch { return []; } };
+/** The slip's conflict sentence, with which rule prevails when the check decided it (rules 108.1, 108.3). @rule 108.1, 108.3 */
+const conflictNote = (nums: string[], check: any) => {
+  const base = conflictSentence(nums);
+  const says = (check?.conflicts ?? []).filter((c: any) => c.prevails !== null).map((c: any) => (String(c.prevails) === String(c.num).split(".")[0] ? `Rule ${c.prevails} prevails (108.1).` : `This proposal prevails over rule ${c.num} (108.1).`));
+  return base ? [base, ...says].join(" ") : base;
+};
+/** The entries a stored draft uses (rule 703.4). @rule 703.4 */
+const usesOf_ = (r: any) => { try { return r.uses ? JSON.parse(r.uses) : []; } catch { return []; } };
+/** The reason a draft can't be locked in yet, or null (rule 103.9): the check found something missing, or couldn't run; only where the rulebook has rule 103.9. @rule 103.9 */
+export const lockRefusal = (book: any, row: any): string | null => lockRefusalOf(book, checkOf(row));
+
 /** @rule 103.5 */
 const actionView = (a: any) => ({ type: a.type, name: a.name, rule: a.rule, touches: a.touches, shown: a.shown });
 
@@ -68,7 +89,7 @@ export const catalogOf = (game: { slug: string }) => rulesFor(game).actionTypes(
 // (rule 104.4); before that, nothing about its votes. An ordinary proposal shows its mark only: what it needs depends on
 // who votes (rule 104.1). The Champion's change shows the other players, from its ballot day's electorate once it is on a
 // ballot (stored when the day opened), else from `electorate` (today's players, for a draft's slip).
-/** @rule 103.1, 103.2, 104.4, 105.4, 402.4 */
+/** @rule 103.1, 103.2, 103.9, 104.4, 105.4, 107.7, 402.4 */
 export function view(r: any, viewerId?: string | null, electorate?: number) {
   const mark = r.mark ?? r.draft_mark;
   const stored = Number.isInteger(r.needed) && Number.isInteger(r.electorate);
@@ -81,7 +102,10 @@ export function view(r: any, viewerId?: string | null, electorate?: number) {
     head: r.draft_head, before_text: r.before_text, after_text: r.after_text,
     words: r.player_id === viewerId ? r.words : undefined,
     conflicts: JSON.parse(r.conflicts || "[]"),
-    conflict_note: conflictSentence(JSON.parse(r.conflicts || "[]")),
+    conflict_note: conflictNote(JSON.parse(r.conflicts || "[]"), checkOf(r)),
+    uses_note: usesNote(usesOf_(r)),
+    engine_note: (r.player_id === viewerId ? checkOf(r)?.engine_note : null) ?? null,   // the one line a slip carries when the change needs an engine power the game lacks (103.9)
+    check: r.player_id === viewerId ? checkOf(r) : undefined,
     settings: JSON.parse(r.settings || "{}"),
     drafted_by: r.drafted_by,
     action: r.action ? actionView(JSON.parse(r.action)) : null,
@@ -94,6 +118,7 @@ export function view(r: any, viewerId?: string | null, electorate?: number) {
       yes: r.yes, no: r.no, didnt_vote: r.absent, needed: r.needed, electorate: r.electorate,
       passed: r.status !== "failed", applied: r.status === "enacted" ? true : r.status === "not_applied" ? false : null,
       sentence: r.why, not_applied_reason: r.not_applied_reason ?? null,
+      fixes: r.status === "not_applied" ? fixesOf(r) : [],
     } : undefined,
     day_proposed: r.day_proposed, day_ballot: r.day_ballot ?? null,
     by: r.name ? { name: r.name, color: colorOf(r.color) } : undefined,
@@ -105,11 +130,12 @@ export function view(r: any, viewerId?: string | null, electorate?: number) {
  * The drafting half of a proposal, with nothing written: the model's rewording or conflict check (rule 108.3), the exact change (draftOf), the
  * not-wired refusals (103.6) and the conflicts. `draft()` is the gates, the day's attempt slot, this, and the insert; a commission's rule text
  * can call the same function later, so a standalone change and a commission's rule are checked one way. Returns {d, conflicts, settings, after,
- * nowMs} (nowMs: the clock after the model call), or {fail: the Out to send}. @rule 103.1, 103.6, 108.3
+ * nowMs} (nowMs: the clock after the model call), or {fail: the Out to send}. @rule 103.1, 103.6, 103.9, 108.3
  */
-export async function prepareDraft(env: any, game: any, day: any, turn: any, player: any, md: string, book: any, req: any, nowMs: number): Promise<any> {
+export async function prepareDraft(env: any, game: any, day: any, turn: any, player: any, md: string, book: any, req: any, nowMs: number, entries?: any): Promise<any> {
   let after: string | null = null, settings: Record<string, unknown> = {}, modelConflicts: string[] = [], asked = false;
-  if (req.kind === "amend" && req.prefilled && drafterReady(env)) {
+  // The rule check (103.9) names conflicts for every kind with new text; a rulebook that has no 103.9 yet keeps the conflicts-only call.
+  if (req.kind === "amend" && req.prefilled && drafterReady(env) && !book.byNum["103.9"]) {
     // Exact wording is kept as written; the model only names the other rules it would conflict with (rule 108.3). If
     // the model is down, the exact text still drafts, with no conflicts named.
     asked = true;
@@ -136,14 +162,36 @@ export async function prepareDraft(env: any, game: any, day: any, turn: any, pla
   if ("error" in d) return { fail: out({ error: d.error }, 400) };
   const refused = notWiredRefusal(book, { ...req, ...d, settings });
   if (refused) return { fail: out({ error: refused, drafting: "refused", reason: NOT_WIRED_REASON }, 422) };
-  const conflicts = [...new Set([...d.conflicts, ...modelConflicts])];
+  // The rule check (rule 103.9): conflicts with which rule prevails, and whether the game can carry the change out. It never refuses a draft: the
+  // draft is made, with the check on it, and Lock it in is refused until it is fixed (confirm).
+  let check: any = null;
+  if (CHECKED_KINDS.includes(req.kind) && drafterReady(env) && book.byNum["103.9"]) {
+    check = await checkDraft(env, game, timeZoneOf(game), player.id, md, book, catalogFor(game).entries,
+      { kind: req.kind, target: req.target, new_num: d.new_num, mark: req.mark, head: d.head, before_text: d.before_text, after_text: d.after_text, words: req.words }, nowMs, entries?.pending ?? []);
+    nowMs = await clockNow(env);
+    const late = turnBlock(game, day, turn, player, "propose", nowMs);
+    if (late) return { fail: out(refusalBody(late), late.status) };
+  }
+  const conflicts = [...new Set([...d.conflicts, ...modelConflicts, ...checkConflictNums(check)])];
   const unwired = notWiredConflictRefusal(book, conflicts);
   if (unwired) return { fail: out({ error: unwired, drafting: "refused", reason: NOT_WIRED_REASON }, 422) };
-  return { d, conflicts, settings, after, nowMs };
+  return { d, conflicts, settings, after, nowMs, check };
+}
+
+/**
+ * The entries a draft uses (rule 703.4), [{name, kind, ref}]: the refs he or the form sent (`body.uses`, "W4" or "C1") that the catalog or an open commission has; when none
+ * were sent, the single entry whose name the player's words name (several record nothing). A private Draft ticket is never an entry to use (801.1). It is a label on the slip, never a blocker. @rule 703.4
+ */
+function usesOf(body: any, req: any, entries: any): { name: string; kind: string; ref: string }[] {
+  // A ref names a ticket or a built entry; a ticket that makes several is the one entry the words name (D7), so "W4" is never just its first.
+  if (Array.isArray(body?.uses)) return resolveUses(body.uses, req.words, entries);
+  if (!CHECKED_KINDS.includes(req.kind)) return [];
+  const found = mentionedEntries(req.words, entries);
+  return found.length === 1 ? found : [];
 }
 
 // Draft (rule 103.1). Returns the draft, or the refusal.
-/** @rule 103.1, 103.6, 108.3, 402.4 */
+/** @rule 103.1, 103.6, 103.9, 108.3, 402.4 */
 export async function draft(ctx: Ctx, player: any, body: any, nowMs: number, o: { atLimit?: boolean } = {}): Promise<Out> {
   const { env } = ctx;
   const { game, day, turn } = await loadToday(env, ctx.data.game!, nowMs, player.id);
@@ -176,10 +224,13 @@ export async function draft(ctx: Ctx, player: any, body: any, nowMs: number, o: 
      ON CONFLICT (game_id, player_id, day) DO UPDATE SET n = n + 1 WHERE n < ?`,
   ).bind(game.id, player.id, game.day, draftCap).run();
   if (!(slot?.meta?.changes > 0)) return out({ error: `That's ${draftCap} drafts today, the most for one day. Try again tomorrow.` }, 429);
-  const prep = await prepareDraft(env, game, day, turn, player, md, book, req, nowMs);
+  // The entries in the catalog and the ones open commissions make (rules 701.4, 703.4): the rule check does not call them missing, and the draft records which it uses.
+  const entries = await openEntriesFor(env, game, player.id);
+  const prep = await prepareDraft(env, game, day, turn, player, md, book, req, nowMs, entries);
   if ("fail" in prep) return prep.fail;
-  const { d, conflicts, settings, after } = prep;
+  const { d, conflicts, settings, after, check } = prep;
   nowMs = prep.nowMs;
+  const uses = usesOf(body, req, entries);
 
   const id = crypto.randomUUID(), now = nowIso(nowMs);
   const insert = req.kind === "action"
@@ -197,16 +248,19 @@ export async function draft(ctx: Ctx, player: any, body: any, nowMs: number, o: 
     insert,
     // The draft is flagged in the same batch, so it is never a plain proposal the player meant as the Champion's change.
     env.DB.prepare("UPDATE proposals SET champion = 1 WHERE id = ? AND status = 'draft' AND ? = 1").bind(id, asChampion ? 1 : 0),
+    env.DB.prepare("UPDATE proposals SET rule_check = ? WHERE id = ? AND status = 'draft' AND ? IS NOT NULL").bind(check ? JSON.stringify(check) : null, id, check ? 1 : null),
+    // only when there is something to record: a draft with no `uses` works before migration 0024 is applied; one that records `uses` needs 0024 applied first (the PR says so)
+    ...(uses.length ? [env.DB.prepare("UPDATE proposals SET uses = ? WHERE id = ? AND status = 'draft'").bind(JSON.stringify(uses), id)] : []),
   ]);
   if (!(res?.meta?.changes > 0)) return out({ error: "The day changed under you. Reload and try again." }, 409);
   const row = await env.DB.prepare("SELECT * FROM proposals WHERE id = ?").bind(id).first();
-  return out({ ok: true, proposal: view({ ...row, draft_mark: markFor(book, row) }, player.id, await playerCount(env, game.id)) });
+  return out({ ok: true, proposal: { ...view({ ...row, draft_mark: markFor(book, row) }, player.id, await playerCount(env, game.id)), lock_refusal: lockRefusal(book, row) } });
 }
 
 // Confirm (rule 103.2): one of the day's proposals, up to proposals.per_day. The P-number is the game's next, taken in
 // the same statement that confirms; the same statement counts the player's confirmed proposals and refuses past the
 // limit, so two confirms arriving together cannot both pass it. The mark is fixed now (rule 105.4).
-/** @rule 103.2, 105.4, 402.4 */
+/** @rule 103.2, 103.9, 105.4, 402.4 */
 export async function confirm(ctx: Ctx, player: any, id: string, nowMs: number): Promise<Out> {
   const { env } = ctx;
   const { game, day, turn } = await loadToday(env, ctx.data.game!, nowMs, player.id);
@@ -216,8 +270,20 @@ export async function confirm(ctx: Ctx, player: any, id: string, nowMs: number):
   if (!row) return out({ error: "There is no such draft of yours." }, 404);
   if (row.status !== "draft") return out({ error: row.status === "withdrawn" ? "That proposal was withdrawn. Draft it again." : `That is already P${row.number}.` }, 409);
   if (row.day_proposed !== game.day) return out({ error: `That draft is from day ${row.day_proposed}. Draft it again today.` }, 409);
-  const { book, sha } = await bookFor(game);
+  const { md, book, sha } = await bookFor(game);
   if (row.base_sha !== sha) return out({ error: "The rules have changed since this was drafted. Draft it again." }, 409);
+  // The rule check (rule 103.9): a draft that relies on something the game doesn't have, or that couldn't be checked, is not locked in.
+  // A check made on other criteria or another model than today's (or one that never completed) is made again first: a fix that deployed after the draft unblocks it without a redraft.
+  await refreshCheck(env, game, timeZoneOf(game), player.id, md, book, catalogFor(game).entries, (await openEntriesFor(env, game, player.id)).pending ?? [], row, nowMs);
+  // The re-check may have made a model call (up to 30 s, and one that failed or returned the same answer leaves the row as it was): the write below uses the clock NOW, and meets the lock if the call ran past midnight (rule 107.1).
+  nowMs = await clockNow(env);
+  const late = turnBlock(game, day, turn, player, "propose", nowMs);
+  if (late) return out(refusalBody(late), late.status);
+  // The stored conflicts are held to the not-wired parts on every lock-in (103.6), as `prepareDraft` does: a check made again can add one, and it stays stored for the next try
+  const unwired = notWiredConflictRefusal(book, JSON.parse(row.conflicts || "[]"));
+  if (unwired) return out({ error: unwired, drafting: "refused", reason: NOT_WIRED_REASON }, 422);
+  const why = lockRefusal(book, row);
+  if (why) return out({ error: why, check: row.rule_check ? JSON.parse(row.rule_check) : null }, 409);
   const mark = markFor(book, row);
   const now = nowIso(nowMs), limit = limitOf(game);
   const res = await env.DB.batch([
@@ -327,7 +393,7 @@ export const get = async (ctx: Ctx) => {
     day: today,
     actions: catalogOf(game).map(({ type, name, rule, touches, params }: any) => ({ type, name, rule, touches, params })),
     proposals: rows.map((r) => ({ ...view(r, player?.id, n), ticket: tickets.get(r.id) })),
-    draft: mineDraft ? view({ ...mineDraft, draft_mark: markFor((await bookFor(game)).book, mineDraft) }, player?.id, n) : null,
+    draft: mineDraft ? { ...view({ ...mineDraft, draft_mark: markFor((await bookFor(game)).book, mineDraft) }, player?.id, n), lock_refusal: lockRefusal((await bookFor(game)).book, mineDraft) } : null,
     ballot: rows.filter((r) => r.status === "on_ballot" && r.day_ballot === today).map((r) => `P${r.number}`),
   });
 };

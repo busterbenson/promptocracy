@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // A scripted stand-in for `claude -p`, for moderator/test.mjs only. It reads the prompt on stdin, finds the proposal's
-// number in the fenced data, and does what the scenario file next to it (fake-claude.scenario.json, written by the test)
-// says for that number. Every call is appended to fake-claude.calls.jsonl beside it.
+// number in the fenced data (or a build's ticket, "W2"), and does what the scenario file next to it (fake-claude.scenario.json,
+// written by the test) says for it: `apply[number]` for a proposal, `build[ticket]` for a build (moderator/BUILD.md). Every call is
+// appended to fake-claude.calls.jsonl beside it.
 import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
@@ -13,14 +14,14 @@ const data = JSON.parse(/<proposal-data>\n([\s\S]*?)\n<\/proposal-data>/.exec(pr
 const audit = /drafter audit/.test(prompt);
 const fix = /Your last attempt failed the checks/.test(prompt);
 const args = process.argv.slice(2);
-appendFileSync(join(here, "fake-claude.calls.jsonl"), JSON.stringify({ number: data.number, escalation: data.escalation ?? null, rulingPrompt: data.escalation !== undefined ? prompt : null, auditPrompt: audit ? prompt : null, audit, fix, redraft_onto: data.redraft_onto ?? null, effort: args[args.indexOf("--effort") + 1], restricted: args.includes("--restricted"), addDir: args.includes("--add-dir") ? args[args.indexOf("--add-dir") + 1] : null, libraryIndex: args.includes("--add-dir") && existsSync(join(args[args.indexOf("--add-dir") + 1], "index.md")), tools: args[args.indexOf("--tools") + 1], env: Object.keys(process.env).sort() }) + "\n");
+appendFileSync(join(here, "fake-claude.calls.jsonl"), JSON.stringify({ ticket: data.ticket ?? null, build: /# Build one commission/.test(prompt), buildPrompt: data.ticket ? prompt : null, criteria: prompt.includes("CAN THE GAME CARRY IT OUT") && prompt.includes("ENGINE FACTS"), number: data.number, escalation: data.escalation ?? null, rulingPrompt: data.escalation !== undefined ? prompt : null, auditPrompt: audit ? prompt : null, audit, fix, redraft_onto: data.redraft_onto ?? null, effort: args[args.indexOf("--effort") + 1], restricted: args.includes("--restricted"), addDir: args.includes("--add-dir") ? args[args.indexOf("--add-dir") + 1] : null, libraryIndex: args.includes("--add-dir") && existsSync(join(args[args.indexOf("--add-dir") + 1], "index.md")), tools: args[args.indexOf("--tools") + 1], env: Object.keys(process.env).sort() }) + "\n");
 
 if (audit) {
   const a = scenario.audit?.[data.number] ?? { material: false, reading: "as drafted", gap: "" };
   process.stdout.write(JSON.stringify({ type: "result", result: JSON.stringify(a) }));
   process.exit(0);
 }
-const step = scenario.apply?.[data.number];
+const step = data.ticket ? scenario.build?.[data.ticket] : scenario.apply?.[data.number];
 const cwd = process.cwd();
 const edit = (f, from, to) => { const p = join(cwd, f); writeFileSync(p, readFileSync(p, "utf8").split(from).join(to)); };
 const result = (r) => writeFileSync(join(cwd, "MODERATOR-RESULT.json"), JSON.stringify(r));
@@ -36,6 +37,7 @@ if (data.escalation !== undefined) {
   process.exit(0);
 }
 
+if (!step) throw new Error(`no scenario for ${data.ticket ?? `P${data.number}`}`);
 switch (step.action) {
   case "points": { // 401: N points instead of the current number (read from the text)
     const cur = /gets (\d+) points when it is applied/.exec(readFileSync(join(cwd, "RULES.md"), "utf8"))[1];
@@ -98,7 +100,7 @@ test("402.2: reaching ${step.to} wins", () => {
     await new Promise((r) => setTimeout(r, step.ms));
     break;
   case "nonsense":
-    result({ outcome: "not_applied", reason: "it no longer makes sense on the new text of rule 401" });
+    result({ outcome: "not_applied", reason: "it no longer makes sense on the new text of rule 401", ...(step.fixes ? { fixes: step.fixes } : {}) });
     break;
   default:
     throw new Error(`no scenario for P${data.number}`);

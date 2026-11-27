@@ -72,8 +72,10 @@ export function createWorkshop({ api, me, pill, rpill, when, canCommission, refr
     setTimeout(tick, 2500);
   }
 
+  let NAV = 0;   // bumped by every card the player opens: a lock-in that lands after a later pick must not take the player back (Codex, P2)
   /** @rule 801.2 */
   async function open(n, push) {
+    NAV++;
     S.err = ""; S.note = ""; S.askCancel = "";   // a card opens without Cancel's question showing
     S.detail[n] = S.detail[n] || null;   // a card with its name and nothing else until the page arrives
     cards.open({ kind: "ticket", key: n }, { push: !!push });
@@ -185,12 +187,18 @@ export function createWorkshop({ api, me, pill, rpill, when, canCommission, refr
   function makesCard(v, dim) {
     return `<div class="mkc${dim ? " dim" : ""}">${artTile(v)}<div class="mkb"><h4 class="mkn">${esc(v.name)}</h4>${kindChip(v)}${attrsHTML(v)}${flavorHTML(v, false)}</div></div>`;
   }
+  /** An entry a ticket uses and does not make (rule 703.4): "Flower · from W4", a link to the ticket that makes it, or to the card when it is built. @rule 703.4 */
+  function usesPill(m) {
+    const from = /^W\d+$/.test(m.num) ? wPill(m.num) : `<button type="button" class="clink" data-entry="${esc(m.num)}" aria-haspopup="dialog">${esc(m.num)}</button>`;
+    return `<span class="mk dim uses" data-uses="${esc(m.num)}">${esc(m.name)} · from ${from}</span>`;
+  }
   /** The ticket's Makes: a card for each entry, a pill for each rule (the rule's number, or its draft sentence before it has one). @rule 801.2 */
   function makesHTML(t) {
     if (!t.makes.length) return '<span class="mnote">Nothing</span>';
     const dim = t.state !== "Done";
     const rules = t.makes.filter((m) => m.kind === "rule");
-    return `<div class="makes2">${(t.entry_views || []).map((v) => makesCard(v, dim)).join("")}${rules.length ? `<span class="makes">${rules.map((m) => (m.num ? `<span class="mk dim">${rpill(m.num)}</span>` : `<span class="mk dim">${esc(m.draft)}</span>`)).join("")}</span>` : ""}</div>`;
+    const uses = t.makes.filter((m) => m.kind === "uses");
+    return `<div class="makes2">${(t.entry_views || []).map((v) => makesCard(v, dim)).join("")}${uses.length ? `<span class="makes">${uses.map(usesPill).join("")}</span>` : ""}${rules.length ? `<span class="makes">${rules.map((m) => (m.num ? `<span class="mk dim">${rpill(m.num)}</span>` : `<span class="mk dim">${esc(m.draft)}</span>`)).join("")}</span>` : ""}</div>`;
   }
   /** A catalog card in the Workshop: the art slot, id and name, kind, attributes, 3 flavor rows, who made it. @rule 701.1 */
   function catalogCard(v) {
@@ -224,6 +232,7 @@ ${stripHTML(artOf(v), false, "", 1)}${attrsHTML(v)}${flavorHTML(v, open)}${more 
   }
   /** @rule 701.1 */
   async function openEntry(id, push) {
+    NAV++;
     cards.open({ kind: "entry", key: id }, { push: !!push });
   }
 
@@ -280,7 +289,7 @@ ${catalogHTML()}</div></div>`;
           vals: Object.fromEntries(Object.entries(m.attrs || {}).filter(([k]) => mine.has(k)).map(([k, v]) => [k, fieldValue(v)])),
           keep: { attrs: Object.fromEntries(Object.entries(m.attrs || {}).filter(([k]) => !mine.has(k))), flavor: m.flavor, needsBuild: m.needsBuild, art: m.art, copiedFrom: m.copiedFrom } };
       }),
-      ruleItems: t.makes.filter((m) => m.kind === "rule") };   // the rules, nights, running cost, tasks and price are Gremlin's (rules 801.2, 801.4): the form shows them and never sends them
+      ruleItems: t.makes.filter((m) => m.kind === "rule"), usesItems: t.makes.filter((m) => m.kind === "uses") };   // the rules, nights, running cost, tasks and price are Gremlin's (rules 801.2, 801.4): the form shows them and never sends them
     f.was = { makes: JSON.stringify(makesBody(f)), held: t.makes.length };   // what the lists made when the form opened
     S.touched = new Set();   // no field has been typed in yet
     return f;
@@ -308,7 +317,7 @@ ${catalogHTML()}</div></div>`;
   }
   /** What the form makes: its entries, then the rules Gremlin put on the ticket exactly as they are. @rule 801.2 */
   function makesBody(f) {
-    return [...f.entries.filter((e) => e.name.trim()).map(entryBody), ...f.ruleItems];
+    return [...f.entries.filter((e) => e.name.trim()).map(entryBody), ...f.ruleItems, ...(f.usesItems || [])];
   }
   /** @rule 801.3 */
   const makesNothing = (f) => { const m = makesBody(f); return f.was && JSON.stringify(m) === f.was.makes ? !f.was.held : !m.length; };
@@ -461,6 +470,7 @@ ${editing ? formHTML(t) : factsHTML(t)}${unlockHTML(t)}${reopenHTML(t)}${holdHTM
       } finally { S.artBusy = false; }
       paintArt(n);
       watchArt(n);
+      tellChat(n);
       return;
     }
     if (a === "flavor") { S.flavorOpen[el.dataset.entry] = !S.flavorOpen[el.dataset.entry]; cards.redraw(); return; }
@@ -475,14 +485,20 @@ ${editing ? formHTML(t) : factsHTML(t)}${unlockHTML(t)}${reopenHTML(t)}${holdHTM
     if ((a === "askcancel" || a === "keep") && n && !S.busy) { S.askCancel = a === "askcancel" ? n : ""; S.err = ""; cards.redraw(); return; }
     if (!n || S.busy) return;
     S.busy = true; S.err = ""; S.note = ""; cards.redraw();
+    const nav0 = NAV, c0 = chat && chat(), st0 = c0 && c0.state ? c0.state() : null, pick0 = st0 ? st0.pickSeq : 0, tk0 = st0 ? st0.ticket : null;
     try {
       if (a === "save") { if (await save(n)) { S.form = null; S.note = "Saved."; } }
       else if (a === "confirm") {
         if (await save(n)) {
           const r = await api(`/api/tickets/${encodeURIComponent(n)}/confirm`, {});
-          if (r.ok) { S.detail[n] = r.data.ticket; S.form = null; S.note = r.data.message || ""; }
+          if (r.ok) { S.detail[n] = r.data.ticket; S.form = null; S.note = ""; }
           else { S.err = (r.data && r.data.error) || "Something went wrong."; await loadOne(n); S.form = null; }
           await refresh();
+          // Locked in: the card goes away and the player lands in the chat on that ticket, whose slip says LOCKED (Buster, 2026-11-26)
+          // A later pick (another card, or another ticket picked in the chat) wins: this ticket is only refreshed, never put back in front
+          const st = c0 && c0.state ? c0.state() : null, moved = nav0 !== NAV || (st && (st.pickSeq !== pick0 || st.ticket !== tk0));
+          if (r.ok && moved) tellChat(n);
+          else if (r.ok) { cards.close(); const c = chat && chat(); if (c) await c.attach(n, { open: true }); }
         }
       } else if (a === "discard") {
         const r = await api(`/api/tickets/${encodeURIComponent(n)}/discard`, {});
@@ -491,7 +507,7 @@ ${editing ? formHTML(t) : factsHTML(t)}${unlockHTML(t)}${reopenHTML(t)}${holdHTM
         const t = S.detail[n];
         const r = await api(`/api/proposals/${encodeURIComponent(t && t.unlock_id || "")}/withdraw`, {});
         if (!r.ok) S.err = (r.data && r.data.error) || "Something went wrong.";
-        S.form = null; await loadOne(n); await refresh();
+        S.form = null; await loadOne(n); await refresh(); tellChat(n);
       } else if (a === "hold" || a === "resume" || a === "cancel") {
         const r = await api(`/api/tickets/${encodeURIComponent(n)}/${a}`, {});
         if (r.ok) { S.askCancel = ""; S.detail[n] = r.data.ticket; await load(); if (S.view === "all") await loadAll(true); await refresh(); } else { S.err = (r.data && r.data.error) || "Something went wrong."; await loadOne(n); }
@@ -507,6 +523,8 @@ ${editing ? formHTML(t) : factsHTML(t)}${unlockHTML(t)}${reopenHTML(t)}${holdHTM
       }
     } finally { S.busy = false; cards.redraw(); }
   }
+  /** The chat's slip follows a ticket the card changed (unlocked, redrawn): it never says DRAFT over a locked one. @rule 801.2 */
+  function tellChat(n) { const c = chat && chat(); if (c && c.showTicket && S.detail[n]) c.showTicket(S.detail[n]); }
   const FIELD = { wfTitle: "title", wfBrief: "brief" };
   /** @rule 801.2, 804.1 */
   function input(el) {

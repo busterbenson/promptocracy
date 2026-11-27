@@ -4,7 +4,8 @@ export type Tile = { x: number; y: number; z: number };
 export type Settings = Record<string, any>;
 export type Player = { ref: string; color: string; score: number; x: number; y: number; z: number; living: boolean; hearts: number; state: "living" | "dead" | "ghost"; deadDay: number | null };
 export type Creature = { id: number; entry: string; x: number; y: number; z: number; hearts: number | null; resting: boolean };
-export type CatalogEntry = { id: string; kind: string; attrs: Record<string, unknown> };
+/** An entry of the catalog. `madeBy` is the commission that made it ("W4"), `name` its name; null when the entry has none (rule 703.4). */
+export type CatalogEntry = { id: string; kind: string; name: string | null; madeBy: string | null; attrs: Record<string, unknown> };
 export type Tiles = { has(x: number, y: number, z?: number): boolean; get(x: number, y: number, z?: number): Tile | undefined; list(): Tile[]; size: number };
 export type Mark = "majority" | "unanimous";
 export type Ctx = {
@@ -45,6 +46,8 @@ export type Effect =
   | { type: "champion"; player: string; reason: string }
   | { type: "appear"; entry: string; tile: Tile }
   | { type: "step"; creature: number; to: Tile }
+  /** night only: moves a living player's piece to a charted tile with no piece or creature on it. Skipped, and logged in History, when the tile is uncharted or occupied or the player is not living. Does not chart. */
+  | { type: "move"; player: string; to: Tile; reason?: string }
   | { type: "bite"; target: { player: string } | { creature: number }; hearts: number }
   | { type: "rest"; creature: number }
   | { type: "rise"; player: string }
@@ -84,7 +87,7 @@ export type Hooks = {
    *  details are no longer allowed (a rule changed tonight): the proposal is not applied, with that reason. */
   applyAction?(ctx: Ctx, action: ActionProposal): Effect[] | Refusal;
   /** Every night, after the night's proposals and actions are applied (rule 602, 603). `applied` = the P-numbers applied tonight (empty on a quiet night).
-   *  appear, step, bite, rest and rise effects, applied in order. */
+   *  appear, step, move (a player's piece), bite, rest and rise effects, applied in order. */
   night?(ctx: Ctx, info: { applied: number[] }): Effect[];
   /** Once after the night's board, only when someone died; ctx is the board after the bites (rule 404). A game_over effect or null. At most one module. */
   ending?(ctx: Ctx, info: { died: string[] }): Effect | null;
@@ -101,6 +104,8 @@ export const effects: {
   champion(player: string, reason: string): Effect;
   appear(entry: string, tile: { x: number; y: number; z?: number }): Effect;
   step(creature: number, to: { x: number; y: number; z?: number }): Effect;
+  /** night only: move this living player's piece to a charted, unoccupied tile (rule 504.2's guards). A refused move is skipped and logged; it does not chart. */
+  move(player: string, to: { x: number; y: number; z?: number }, reason?: string): Effect;
   bite(target: { player: string } | { creature: number }, hearts: number): Effect;
   rest(creature: number): Effect;
   rise(player: string): Effect;
@@ -116,4 +121,9 @@ export function validCoord(x: number, y: number, z?: number): boolean;
 export const DIAGONAL_MOVES: boolean;
 export const SHARED_TILES: boolean;
 export const ENGINE_VERSION: number;
+/**
+ * The entry a rule means when it names one by the commission that made it, "the Flower (W4)" (rule 703.4): the entry of `kind` that `ticket` made, or undefined while it is
+ * not built (the rule then has nothing to act on). `name` is only used when that commission made more than one entry of the kind.
+ */
+export function entryMadeBy(catalog: readonly CatalogEntry[] | null | undefined, ticket: string, kind: string, name?: string): CatalogEntry | undefined;
 export function attr(entry: { attrs?: Record<string, unknown> } | null | undefined, key: string): unknown;

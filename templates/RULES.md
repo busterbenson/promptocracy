@@ -50,6 +50,8 @@ clause or a rule, or changing only a setting, is not refused.
 
 **103.8** A passed action is applied each night after the proposals that change rules, in proposal order (107.2). The history records its type and its details. An action whose type the rules no longer have, or whose details they no longer allow, is not applied (107.7).
 
+**103.9** Before you can lock a proposal in, Gremlin checks it against the rules. He names any other rule it would conflict with and which one prevails (108.3), and anything it relies on that no rule, catalog entry (701.1), entry an open commission makes (703.4) or record of the game provides. A proposal that relies on something the game doesn't have can't be locked in, and neither can one he couldn't check. He offers up to three changes that would fix it.
+
 ### 104 Voting [u]
 **104.1** A proposal passes if it gets the votes its mark asks for (rule 105), counted among the players who voted on it.
 Majority: more than half of them vote yes. Unanimous: every one of them votes yes. A proposal nobody votes on fails. Not voting
@@ -118,7 +120,7 @@ the deadline in rule 107.6. A proposal that runs over its budget is not applied 
 **107.6** The moderator has until 3:00 am to process the day; a passed proposal not applied by then is not applied
 (rule 107.7). The changes it made must be live by 4:00 am; a change not live by then is not applied either.
 
-**107.7** When a passed proposal is not applied, it goes back to its proposer with the moderator's reason and a suggestion, such as splitting it into smaller proposals or simplifying it. The proposer can propose it again on a later day.
+**107.7** When a passed proposal is not applied, it goes back to its proposer with the moderator's reason and up to three changes that would fix it, or, when there are none, a suggestion such as splitting it into smaller proposals or simplifying it. The proposer can propose it again on a later day, as it was or with one of those changes (103.1). It is a new proposal (103.2).
 
 **107.8** When a day is processed, the moderator tags the game's files with that day's number, so the rules in effect
 on any day can be read back.
@@ -134,7 +136,7 @@ Between rules added at the same time, like the starter rules, the lower number p
 majority rule can't prevail over a core rule.
 
 **108.3** A proposal doesn't conflict with the rules it changes. When drafting, Gremlin names any other rule the
-proposal would conflict with, so the proposer can change that rule too.
+proposal would conflict with, and which one would prevail (108.1), so the proposer can change that rule too.
 
 **108.4** If a passed proposal conflicts with a rule that prevails over it, it is not applied, and the reason names
 that rule (rule 107.7). If the proposal prevails, it is applied, and the rule it overrides gets a note saying where it
@@ -277,15 +279,19 @@ that a move onto it would chart (rule 504.1) is already charted.
 
 **701.3** An entry appears on the board only when a rule puts it there.
 
+**701.4** No two entries of one kind share a name. A commission can't make an entry with the name of one in the catalog, or of one an open commission makes (801). It can use that one instead.
+
 ### 702 Kinds [m]
 **702.1** Every entry is one kind: an item (I), a creature (C), a tile (T), a structure (S), or a feature (F). A feature is part of the site, not the board.
 
 ### 703 Attributes [m]
 **703.1** An attribute is a value an entry has, and it shows on the entry's card. An attribute does something only when a rule defines it: what it means and what values it can have.
 
-**703.2** Rules use attributes, not the names of entries.
+**703.2** Rules use attributes, or name an entry by its id or by the commission that makes it (703.4).
 
 **703.3** Only one rule can define an attribute.
+
+**703.4** A rule can name an entry an open commission makes (801) before it is built, by that commission: "the Flower (W4)". Until the entry is in the catalog, the rule has nothing to act on.
 
 ### 704 What each kind needs [m]
 **704.1** Some kinds need certain attributes. A creature needs hearts. An item needs the rule that gives it to you. A structure needs a size in tiles.
@@ -310,7 +316,7 @@ that a move onto it would chart (rule 504.1) is already charted.
 
 **801.5** You can reopen a refused or failed commission as a draft and confirm it again (103.1).
 
-**801.6** Each ticket has its own conversation with Gremlin, and what you say to him outside any ticket is one more. He knows only what was said in the conversation you're in, and you see only that one. Ask him for a commission outside a ticket and he opens one for it (801.2); ask him on a ticket for a rule change or an action that isn't part of it and he takes it outside. Your message goes with it. All your messages to him count together toward the day's limit (106.7).
+**801.6** Each ticket has its own conversation with Gremlin, and what you say to him outside any ticket is one more. He knows only what was said in the conversation you're in, and you see only that one. In every conversation he also knows the catalog and what each open commission makes. Ask him for a commission outside a ticket and he opens one for it (801.2); ask him on a ticket for a rule change or an action that isn't part of it and he takes it outside. Your message goes with it. All your messages to him count together toward the day's limit (106.7).
 
 **801.7** Gremlin sets a commission's nights, price, running cost, tasks and the rules it makes, and you change them by talking to him. You can lock it in once he has drafted it (103.1).
 
@@ -325,6 +331,12 @@ that a move onto it would chart (rule 504.1) is already charted.
 
 ### 803 The queue [m]
 **803.1** A commission joins the workshop's queue when it is paid for, in the order paid.
+
+**803.2** Each night, after the proposals that change rules (107.2), the moderator builds the commissions in the queue, in queue order, as far as the night's time allows. Its nights (801.7) are an estimate: a commission can be done sooner, and one the night has no time for waits for the next night.
+
+**803.3** Building a commission adds the entries it makes to the catalog, with the drawing its requester picked, and writes the rules it makes, with their code and tests (107.4). An entry it only uses adds nothing. They go live together, with the night's other changes (107.8), and the commission is Done.
+
+**803.4** A build that fails is tried again the next night. One the night has no time for, or that waits on the site, is tried the next night and isn't a failure. After 3 failed nights the commission is Failed and goes back to its requester with the reason (107.7).
 
 ### 804 Discussion [m]
 **804.1** Anyone in the game can post in a ticket's discussion. Gremlin answers up to 20 of your posts a day [setting: gremlin.thread_replies_per_day].

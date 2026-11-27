@@ -3,7 +3,7 @@
 // It is NOT part of `npm test` and not in CI: it needs model keys and costs money. Run it by hand or from the mini's launchd job:
 //
 //   node tests/quality/run.mjs --stage chat|night [--only id,id] [--grade] [--no-grade] [--publish] [--cap-usd 1.50]
-//        [--max-claude-calls 15] [--claude-cap-usd 8] [--rules-ref day-0.23] [--out-dir DIR] [--list] [--from results.json]
+//        [--repeat N] [--day-ceiling-usd 3] [--max-claude-calls 15] [--claude-cap-usd 8] [--rules-ref day-0.23] [--out-dir DIR] [--list] [--from results.json]
 //
 // Exit 0 when every case not marked known_fail passes its code checks; 1 otherwise; 2 for a setup error. What is real and what is
 // stubbed is in the page's table and in the plan (docs: the planner's PLAN.md, section 1). Safety: tests/quality/harness.test.mjs.
@@ -19,7 +19,7 @@ import { nightCapped } from "./night.mjs";
 import { CapReached, Meter, ROOT, assertNoKeys, bundleAgents, loadKeys, makeRunTmp, scrubEnv } from "./lib.mjs";
 import { runNight } from "./night.mjs";
 import { agreementLine, renderPage } from "./page.mjs";
-import { actionsOf, scratchGame } from "./scratch.mjs";
+import { actionsOf, catalogOf, scratchGame } from "./scratch.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const argv = process.argv.slice(2);
@@ -84,7 +84,7 @@ function writeOutputs(run, outDir) {
 async function gradeAll(run, rulesMd, keys, meter, fetchFn) {
   for (const c of run.cases) {
     const def = doc.cases.find((x) => x.id === c.id) || c;
-    if (c.notRun) { c.grade = null; continue; }
+    if (c.notRun || (c.rep || 1) > 1) { c.grade = null; continue; }   // with --repeat only the first rep is graded
     c.grade = await geminiGrade(def, c, c.night, rulesMd, { key: keys.gemini, fetchFn, verdictsFile: VERDICTS, runsDir: join(HOME, "runs") });
     if (meter.capHit) break;
   }
@@ -116,7 +116,7 @@ const removed = scrubEnv();   // nothing that reaches the live game, its databas
 for (const k of ["PROMPTOCRACY_MODEL_API_KEY", "GEMINI_API_KEY", "CLAUDE_API_KEY", "ANTHROPIC_API_KEY"]) delete process.env[k];
 if (stage === "night") process.env.CLAUDE_CODE_OAUTH_TOKEN = keys.claude;   // runModel hands claude only this one credential
 
-const meter = new Meter({ capUsd: Number(flag("cap-usd", 1.5)), maxClaudeCalls: Number(flag("max-claude-calls", 15)), claudeCapUsd: Number(flag("claude-cap-usd", 8)), ledgerFile: join(ROOT, ".quality-live-ledger.json") });
+const meter = new Meter({ capUsd: Number(flag("cap-usd", 1.5)), maxClaudeCalls: Number(flag("max-claude-calls", 15)), claudeCapUsd: Number(flag("claude-cap-usd", 8)), dayCeilingUsd: Number(flag("day-ceiling-usd", 3)), ledgerFile: join(ROOT, ".quality-live-ledger.json") });
 const realFetch = globalThis.fetch;
 globalThis.fetch = meter.fetch(realFetch);   // only the two model hosts are reachable from here on
 
@@ -129,22 +129,27 @@ try {
   const settings = JSON.parse(readFileSync(join(runTmp, "scratch", "seed", "settings.json"), "utf8"));
   const book = parseBook(rulesMd);
   const actions = await actionsOf(join(runTmp, "scratch", "seed"), runTmp);
+  const catalog = catalogOf(join(runTmp, "scratch", "seed"));   // the rule check reads the game's catalog entries, as api-proposals.ts hands them
   const bundleDir = join(runTmp, "bundle");
   mkdirSync(bundleDir, { recursive: true });
-  const { agent, drafter } = await bundleAgents(bundleDir);
-  const x = { meter, agent, drafter, keys, rulesMd, book, actions };
+  const { agent, drafter, draftcheck } = await bundleAgents(bundleDir);
+  const x = { meter, agent, drafter, draftcheck, keys, rulesMd, book, actions, catalog };
   const run_id = `${date}-${pad(now.getHours())}${pad(now.getMinutes())}-${stage}-${platformSha}`;
   const run = { run_id, stage, date, platform_sha: platformSha, rules_ref: scratch.ref, rules_sha: scratch.sha, scrubbed_env_names: removed.length, cases: [], cost: {}, cap_hit: null };
 
   let i = 0;
   const claudeLog = [];
-  for (const def of cases) {
+  const repeat = Math.max(1, Math.min(5, Number(flag("repeat", 1)) || 1));
+  const plan = cases.flatMap((def) => Array.from({ length: repeat }, (_, k) => ({ def, rep: k + 1 })));   // each case N times, in order: a rep is a fresh conversation
+  for (const { def, rep } of plan) {
+    if (meter.capHit) break;
     const res = await runChatCase(def, x);
+    res.rep = rep; res.reps = repeat;
     res.title = def.title; res.intent = def.intent; res.known_fail = def.known_fail;
     res.rule_text = ruleTextOf(rulesMd, res.draft?.target ?? def.expect?.draft?.target);
     let night = null;
     if (stage === "night") {
-      night = await runNight(def, res, i, { runTmp, bare, meter, claudeLog, libraryDir: null });
+      night = await runNight(def, res, i, { runTmp, bare, meter, claudeLog, libraryDir: null, catalog });
     }
     res.night = night;
     if (!res.notRun && nightCapped(night)) res.notRun = nightCapped(night);
@@ -152,12 +157,12 @@ try {
     res.status = res.notRun ? "fail" : caseStatus(def, res.checks);
     res.digest = digestOf(res, night);
     run.cases.push(res);
-    console.log(`${String(res.status).toUpperCase().padEnd(13)} ${def.id.padEnd(18)} $${(res.micro / 1e6).toFixed(3)} ${Math.round(res.ms / 1000)} s${res.night && res.night.status !== "n/a" ? `  night ${res.night.status}` : ""}`);
+    console.log(`${String(res.status).toUpperCase().padEnd(13)} ${def.id.padEnd(18)} rep ${rep}/${repeat} $${(res.micro / 1e6).toFixed(3)} ${Math.round(res.ms / 1000)} s${res.night && res.night.status !== "n/a" ? `  night ${res.night.status}` : ""}`);
     for (const k of res.checks.filter((c) => !c.pass && !c.soft)) console.log(`        - ${k.name}${k.detail ? `: ${k.detail}` : ""}`);
     i++;
   }
   // cases the cap left unrun are listed as such, never silently dropped
-  for (const def of doc.cases.filter((c) => (!flag("only") || flag("only").split(",").includes(c.id)) && !run.cases.some((r) => r.id === c.id))) run.cases.push({ id: def.id, agent: def.agent, title: def.title, intent: def.intent, turns: [], notRun: `cap: ${meter.capHit}`, status: "fail", checks: [], known_fail: def.known_fail });
+  for (const { def, rep } of plan.filter((q) => !run.cases.some((r) => r.id === q.def.id && r.rep === q.rep))) run.cases.push({ rep, reps: repeat, id: def.id, agent: def.agent, title: def.title, intent: def.intent, turns: [], notRun: `cap: ${meter.capHit}`, status: "fail", checks: [], known_fail: def.known_fail });
 
   if (wantGrade) { const before = meter.byKind.gemini; await gradeAll(run, rulesMd, keys, meter, globalThis.fetch); run.gemini_micro_run = meter.byKind.gemini - before; }
   run.cost = { api_micro: meter.spent, anthropic_micro: meter.byKind.anthropic, gemini_micro: meter.byKind.gemini, claude_calls: meter.claudeCalls, claude_usd: meter.claudeSpent / 1e6, claude_log: stage === "night" ? run.cases.flatMap((c) => (c.night?.claude || []).map((k) => ({ case: c.id, label: k.label, cost_usd: k.cost_usd, num_turns: k.num_turns, duration_ms: k.duration_ms, wall_ms: k.wall_ms, models: k.models }))) : [] };

@@ -4,7 +4,8 @@
 // Run: node tests/ticket-hold.mjs   (migration 0022 is the nullable column checked first; the table is not rebuilt)
 import { CANCEL_SQL, HOLD_SQL, RESUME_SQL, HELD, readyStatements, SHOWN_STATES, STATES, shownState, shownWhere } from "../src/lib/tickets.js";
 import { lockOpenBinds } from "../src/lib/day-gate.js";
-import { client, connect, createGame, d1, join, migrate, newState, freePort, startRulesStub, startServer, tool } from "./lib.mjs";
+import { createHash } from "node:crypto";
+import { client, connect, createGame, d1, join, migrate, newState, freePort, noTimeNight, startRulesStub, startServer, tool } from "./lib.mjs";
 
 let pass = 0, fail = 0;
 const check = (name, ok, detail = "") => { if (ok) { pass++; console.log(`  ok    ${name}`); } else { fail++; console.log(`  FAIL  ${name}${detail ? "  -> " + detail : ""}`); } };
@@ -43,7 +44,10 @@ try {
   const day = (n) => d1(state, `SELECT n, status, ends_at FROM days WHERE game_id = '${gid}' AND n = ${n}`)[0];
   const game = () => d1(state, `SELECT status, day, phase FROM games WHERE id = '${gid}'`)[0];
   const plus = (iso, min) => new Date(Date.parse(iso) + min * 60_000).toISOString();
-  const midnight = async () => { const d = day(game().day); dev("clock", plus(d.ends_at, 1)); await cron(); return day(d.n); };
+  // A paid ticket is Building (rule 803.2, in the starter rules): a night with one waits for the moderator, who has no time for it here (803.4).
+  const TOKEN = "hold-token-0123456789abcdefghij";
+  d1(state, `UPDATE games SET moderator_token_hash = '${createHash("sha256").update(TOKEN).digest("hex")}' WHERE id = '${gid}'`);
+  const midnight = async () => { const d = day(game().day); dev("clock", plus(d.ends_at, 1)); await cron(); await noTimeNight(A, "hd", TOKEN, dev, cron); return day(d.n); };
   const tk = (n) => d1(state, `SELECT * FROM tickets WHERE game_id = '${gid}' AND number = ${n}`)[0];
   const logs = (n) => d1(state, `SELECT kind, text FROM ticket_log WHERE ticket_id = '${tk(n).id}' ORDER BY id`).map((r) => `${r.kind}: ${r.text}`);
   const T = "/hd/api/tickets";
@@ -159,8 +163,8 @@ try {
     check("W1 is put on hold, W3 is not", (await Ana.post(`${T}/W1/hold`, {})).status === 200 && tk(1).held_at && tk(3).held_at === null);
     const q0 = d1(state, `SELECT COALESCE(MAX(queue_pos), 0) AS m FROM tickets WHERE game_id = '${gid}'`)[0].m;
     await midnight();
-    check("night 1: W3 (not held) is paid and queued; W1 (held) is not paid, not queued, still Ready and held, and Ana's points are hers",
-      tk(3).state === "Approved" && tk(3).paid === 4 && tk(3).queue_pos === q0 + 1 && score("Bo") === 16 && tk(1).state === "Ready" && !!tk(1).held_at && tk(1).paid === null && tk(1).paid_at === null && tk(1).queue_pos === null && score("Ana") === 20, J([tk(1), tk(3)]));
+    check("night 1: W3 (not held) is paid and queued (and being built, 803.2); W1 (held) is not paid, not queued, still Ready and held, and Ana's points are hers",
+      tk(3).state === "Building" && tk(3).paid === 4 && tk(3).queue_pos === q0 + 1 && score("Bo") === 16 && tk(1).state === "Ready" && !!tk(1).held_at && tk(1).paid === null && tk(1).paid_at === null && tk(1).queue_pos === null && score("Ana") === 20, J([tk(1), tk(3)]));
     check("the log of the held ticket has no 'approved' line and its requester has no approval notice", !logs(1).some((l) => l.startsWith("approved")) && d1(state, `SELECT COUNT(*) AS n FROM notifications WHERE game_id = '${gid}' AND kind = 'commission_approved' AND body LIKE 'A commission W1 %'`)[0].n === 0);
     await midnight(); await cron();
     check("night 2: still held, still not paid (a hold lasts until she lifts it)", tk(1).state === "Ready" && !!tk(1).held_at && score("Ana") === 20 && tk(1).queue_pos === null);
@@ -168,7 +172,7 @@ try {
     check("on the new day she resumes it: 200, Ready, not yet paid", r.status === 200 && tk(1).state === "Ready" && tk(1).held_at === null && score("Ana") === 20, r.text.slice(0, 200));
     await midnight();
     const q = d1(state, `SELECT COALESCE(MAX(queue_pos), 0) AS m FROM tickets WHERE game_id = '${gid}'`)[0].m;
-    check("the next night pays it: Approved, 5 points taken, the next place in the queue", tk(1).state === "Approved" && tk(1).paid === 5 && score("Ana") === 15 && tk(1).queue_pos === q && !!tk(1).paid_at, J(tk(1)));
+    check("the next night pays it: queued (and being built, 803.2), 5 points taken, the next place in the queue", tk(1).state === "Building" && tk(1).paid === 5 && score("Ana") === 15 && tk(1).queue_pos === q && !!tk(1).paid_at, J(tk(1)));
     check("the log has the approval once, and the bell tells every player once",
       d1(state, `SELECT COUNT(*) AS n FROM ticket_log WHERE ticket_id = 'hd-t1' AND kind = 'approved'`)[0].n === 1 && d1(state, `SELECT COUNT(*) AS n FROM notifications WHERE game_id = '${gid}' AND kind = 'commission_approved' AND body LIKE 'A commission W1 %'`)[0].n === 3);
     await midnight();
@@ -200,7 +204,7 @@ try {
     const other = await Bo.post(`${T}/W4/cancel`, {}), vis = await visitor.post(`${T}/W4/cancel`, {});
     check("another player and a visitor can't cancel it (404, 401); nothing changed", other.status === 404 && vis.status === 401 && tk(4).state === "Ready");
     const wrong = [await Cy.post(`${T}/W5/cancel`, {}), await Ana.post(`${T}/W2/cancel`, {}), await Ana.post(`${T}/W1/cancel`, {})];
-    check("a draft, an Approved ticket and a paid one can't be cancelled (409, the state named)", wrong.every((r) => r.status === 409 && /Only a Ready or on-hold ticket can be cancelled/.test(r.data.error)) && tk(5).state === "Draft" && tk(2).state === "Approved" && tk(1).state === "Approved", J(wrong.map((r) => r.text)));
+    check("a draft and two paid tickets being built can't be cancelled (409, the state named)", wrong.every((r) => r.status === 409 && /Only a Ready or on-hold ticket can be cancelled/.test(r.data.error)) && tk(5).state === "Draft" && tk(2).state === "Building" && tk(1).state === "Building", J(wrong.map((r) => r.text)));
     const c = await Cy.post(`${T}/W4/cancel`, {});
     check("Cy cancels W4: 200, closed as Shelved, nothing paid (his points are untouched), no place in the queue, never built", c.status === 200 && c.data.ticket.state === "Shelved" && tk(4).state === "Shelved" && tk(4).paid === null && tk(4).paid_at === null && tk(4).queue_pos === null && score("Cy") === cyScore, c.text.slice(0, 200));
     check("it logs once, and the three actions are off for it", J(logs(4)) === J(["shelved: Cancelled by its requester."]) && !c.data.ticket.can.hold.allowed && !c.data.ticket.can.resume.allowed && !c.data.ticket.can.cancel.allowed && !!tk(4).decided_at && tk(4).decided_at !== "2026-11-04T00:00:00.000Z");

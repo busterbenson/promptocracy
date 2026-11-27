@@ -98,6 +98,28 @@ lock (O_EXCL file holding the pid; stale when the pid is gone, or after 90 min) 
   -> any thrown error: night log + a notification file; the 2 am fallback still ends the lock
 pending job older than 30 min (processing since locked_at + 30 min) -> notification file (once per day)
 ```
+
+### The night's builds (step 3, rules 803.2-803.4)
+
+In a game whose rules have 803.2, the job lists `builds` (every Building ticket, in queue order; `src/lib/builds.js`
+`pendingBuilds`) and the claim carries one outcome per ticket (`builds: [{ticket: "W1", outcome: "built", commit, made} |
+{..., outcome: "failed", reason} | {..., outcome: "no_time"} | {..., outcome: "needs_engine", note}]`). The runner, after the
+proposals and before the audit:
+```
+for each listed ticket (queue order):
+  committed tonight already ("Ticket: W<n>", subject "(day N, commission)") -> built, resumed
+  no time left before the claim margin -> no_time (not a failure, 803.4)
+  budget: min(night.apply_minutes, the night's time left); running out of the NIGHT's time is no_time, of its own is failed
+  catalogWith (code): each entry item -> catalog.json (next free id per kind letter, madeBy W<n>, day, kept drawings + the
+    picked default); a uses item adds nothing; same kind and name already there = that entry, nothing added
+  no rule item -> bundler checks + game tests -> commit
+  rule items -> claude -p BUILD.md (2 fixes): not_built {reason} -> failed | needs_engine {note} -> needs_engine (and a
+    notification for Chalant's day) | built -> ticketScopeProblems (only the rules it makes; drafts word for word; catalog.json
+    as the code wrote it; settings untouched) -> bundler checks + game tests -> every new entry's needsBuild key is defined by
+    a rule it makes -> one commit "W2: <title> (day N, commission)" with "Made: I1, 805" and "Ticket: W2"
+reconcile: a "Ticket: W<n>" commit from a night that timed out, or from an earlier night of a ticket still listed, is
+  reverted ("Reverts-Ticket: W<n>"), and the day is re-tagged (day-N.K) when its tag held it
+```
 Idempotency: the lock file; the server's claim guard (a second claim with another sha is refused, the same sha is a
 200); commits carry the trailer so a rerun sees what is already on main (it starts from origin/main and skips a
 proposal whose `Proposal: P<k>` commit is already there for this day); tags are created only if missing.

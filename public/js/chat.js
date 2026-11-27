@@ -35,13 +35,29 @@ const SYMBOLS = `<svg width="0" height="0" style="position:absolute" aria-hidden
 </defs></svg>`;
 
 /** The settings a slip sets, as "key = value" (an object value as its numbers joined by x, a boolean as on / off): the drafter keeps a setting change out of the text. @rule 103.1 */
+/**
+ * Where his choices go in the log (Buster, 2026-11-26: the buttons come below any card, so it is obvious they need to be considered): `oi` is the line that
+ * offers them (-1 for none), `at` the line the slip follows (-1 when the slip sits at the end). "line" = right after the line, "slip" = after the slip
+ * that follows the same line, "end" = after the slip at the end of the log. @rule 106.3
+ */
+export function optionsPlace(oi, at) {
+  if (oi < 0) return "none";
+  if (at < 0) return "end";
+  return at === oi ? "slip" : "line";
+}
+/** The Summary bar's pills: today's proposals as the window's Today row has them, and how many are left. @rule 103.2 */
+export function barPills(state) {
+  const t = state && state.today;
+  if (!t) return null;
+  return { list: (t.list || []).slice(), tickets: { ...(t.tickets || {}) }, left: Math.max(0, t.limit - t.made), limit: t.limit };
+}
 export const settingsLine = (settings) => Object.entries(settings || {}).map(([k, v]) => `${k} = ${v && typeof v === "object" ? Object.values(v).join("x") : typeof v === "boolean" ? (v ? "on" : "off") : String(v)}`).join(", ");
 /** The tickets row's order (Buster, 2026-11-24): drafts first, then the rest, newest first. The server sends the same order. */
 const byDraftThenNewest = (a, b) => (b.state === "Draft") - (a.state === "Draft") || Number(b.n.slice(1)) - Number(a.n.slice(1));
 const LEFT_SHOWN = 10;   // "N left" appears in the last ten messages of the day
 
 export function createChat({ api, root, me, slug, agent = AGENTS.gremlin, rpill, wpill, onTicket, onProposals, onSlip, onNew, canNew, started = () => true }) {
-  const S = { slipSeq: 0, pickSeq: 0, msgs: [], next: null, state: null, tickets: [], proposals: [], pin: null, ticket: null, scope: undefined, seq: 0, rule: null, intent: null, live: null, slips: {}, lockErr: {}, slip: null, busy: false, draft: "", err: "", sheet: false, open: true, loaded: false, loading: false, tab: "", note: "" };
+  const S = { slipSeq: 0, pickSeq: 0, msgs: [], next: null, state: null, tickets: [], proposals: [], pin: null, ticket: null, scope: undefined, seq: 0, rule: null, redraft: null, intent: null, live: null, slips: {}, lockErr: {}, artErr: {}, slip: null, busy: false, draft: "", err: "", sheet: false, open: true, loaded: false, loading: false, tab: "", note: "" };
   const col = root.querySelector("#chatcol"), fab = root.querySelector("#chatfab");
   const mine = () => true;
   /** The strip's two lists as the server last sent them: your tickets and proposals not yet voted on. @rule 103.1, 801.6 */
@@ -97,6 +113,13 @@ export function createChat({ api, root, me, slug, agent = AGENTS.gremlin, rpill,
     if (a.state === "drawing") return `<span class="mkart drawing" aria-label="Drawing">Drawing…</span>`;
     return "";
   }
+  /** Redraw under an entry's picture: the requester's own draft, an entry with a prompt, no drawing already on its way. It costs one of his messages (rule 106.7). @rule 801.2, 106.7 */
+  function redrawHTML(t, m) {
+    const a = (viewOf(t, m) || {}).art || {}, key = String(m.name || "").toLowerCase();
+    const btn = t.can && t.can.edit && t.can.edit.allowed && a.prompt && a.state !== "drawing" ? `<button type="button" class="btn ghost small" data-c="redraw" data-n="${esc(t.n)}" data-name="${esc(m.name || "")}">Redraw</button>` : "";
+    const err = S.artErr[key] ? `<p class="err" role="alert">${esc(S.artErr[key])}</p>` : "";
+    return btn + err;
+  }
   let artTimer = null, artTries = 0;
   function watchArt() {
     clearTimeout(artTimer);
@@ -111,16 +134,25 @@ export function createChat({ api, root, me, slug, agent = AGENTS.gremlin, rpill,
     if (!t) return "";
     const last = [...S.msgs].reverse().find((m) => m.role === "agent");
     const refused = last && last.refusal && last.ticket === t.n;
-    const makes = (t.makes || []).map((m) => (m.kind === "rule"
+    const makes = (t.makes || []).map((m) => (m.kind === "uses"
+      ? `<span class="mk dim uses" data-uses="${esc(m.num)}">${esc(m.name)} · from ${/^W\d+$/.test(m.num) ? wpill(m.num) : esc(m.num)}</span>`
+      : m.kind === "rule"
       ? `<span class="mk${!m.num && String(m.draft || "").length > 40 ? " long" : ""}">${m.num ? rpill(m.num) : esc(m.draft || "New rule")}</span>`
-      : `<span class="mkent">${artHTML(t, m)}<span class="mk">${esc(m.name)}${m.catalogKind ? `<small>${esc(m.catalogKind)}${m.attrs && m.attrs.size ? ` ${esc(sizeText(m.attrs.size))}` : ""}</small>` : ""}</span></span>`)).join("");
-    const stamp = refused ? `<span class="cstamp err">REFUSED</span>` : t.state === "Draft" ? `<span class="cstamp">DRAFT</span>` : `<span class="cstamp">${esc(String(t.state).toUpperCase())}</span>`;
+      : `<span class="mkent">${artHTML(t, m)}${redrawHTML(t, m)}<span class="mk">${esc(m.name)}${m.catalogKind ? `<small>${esc(m.catalogKind)}${m.attrs && m.attrs.size ? ` ${esc(sizeText(m.attrs.size))}` : ""}</small>` : ""}</span></span>`)).join("");
+    const stamp = refused ? `<span class="cstamp err">REFUSED</span>` : t.state === "Draft" ? `<span class="cstamp">DRAFT</span>` : t.state === "Proposed" ? `<span class="cstamp">LOCKED</span>` : `<span class="cstamp">${esc(String(t.state).toUpperCase())}</span>`;
+    // Lock it in / Unlock on the slip itself (Buster, 2026-11-26): the same buttons as a proposal's slip, so a commission is locked in from the chat
+    const c = t.can || {}, nothing = !(t.makes || []).length;
+    const why = (b) => (b && !b.allowed && b.reason ? `<span class="why">${whyHTML(b.reason)}</span>` : "");
+    const lockOk = !!(c.confirm && c.confirm.allowed) && !nothing;
+    const lockAct = t.state === "Draft" ? `<button type="button" class="btn" data-c="lockt" data-n="${esc(t.n)}"${lockOk ? "" : " disabled"}>Lock it in</button>${c.confirm && !c.confirm.allowed ? why(c.confirm) : nothing ? `<span class="why">It makes nothing yet.</span>` : ""}`
+      : t.state === "Proposed" ? `<span class="pill dash">On tomorrow's ballot</span><button type="button" class="linkbtn" data-c="unlockt" data-n="${esc(t.n)}"${c.unlock && c.unlock.allowed ? "" : " disabled"}>Unlock</button>${why(c.unlock)}` : "";
+    const lockErr = S.lockErr[t.n] ? `<p class="err" role="alert">${esc(S.lockErr[t.n])}</p>` : "";
     return `<section class="slip${refused ? " refused" : ""}" aria-label="${esc(t.n)}">${stamp}
 <div class="hd">${wpill(t.n)}<b>${esc(t.title || "Untitled")}</b></div>
 ${refused ? `<div class="tx">${esc(last.refusal)}</div>` : ""}
 <dl><dt>Makes</dt><dd>${makes ? `<span class="makes">${makes}</span>` : "Nothing"}</dd><dt>Nights</dt><dd>${esc(nightsOf(t))}</dd>
 <dt>Price</dt><dd>${esc(pointsOf(t))}${t.price_reason ? `<span class="cwhy"> · ${esc(t.price_reason)}</span>` : ""}</dd></dl>
-<div class="act"><button type="button" class="linkbtn" data-ticket="${esc(t.n)}" aria-haspopup="dialog">Open ${esc(t.n)}${(t.entry_views || []).some((v) => v.art && v.art.drawings && v.art.drawings.length) ? ": all drawings" : ""} ›</button></div></section>`;
+<div class="act">${lockAct}<button type="button" class="linkbtn" data-ticket="${esc(t.n)}" aria-haspopup="dialog">Open ${esc(t.n)} ›</button></div>${lockErr}</section>`;
   }
 
   // ---- the general conversation's slips: a draft proposal, as the drafter made it ------------------------------------------------------------------
@@ -138,21 +170,25 @@ ${refused ? `<div class="tx">${esc(last.refusal)}</div>` : ""}
     return id && alive(S.slips[id]) ? id : null;
   }
   /** One past slip, collapsed to a line and its outcome. @rule 103.1 */
-  function pastSlipHTML(id) {
-    const sl = S.slips[id];
+  function pastSlipHTML(id, given) {
+    const sl = given || S.slips[id];
     if (!sl) return "";
     const stamp = id === liveId() ? "" : sl.status === "draft" ? "REPLACED" : STAMPS[sl.status] || String(sl.status).toUpperCase();
-    return `<section class="slip past" aria-label="${esc(sl.n || "Draft")}"><span class="cstamp">${esc(stamp)}</span><div class="hd">${sl.n ? ppill(sl.n) : ""}<span class="hdt">${textHTML(sl.head || "")}</span></div>${sl.words ? `<div class="yw">${esc(`“${sl.words}”`)}</div>` : ""}${sl.kind === "action" && sl.action ? `<div class="tx">${(sl.action.shown || []).map(([l, v]) => `${esc(l)} ${esc(v)}`).join(" · ")}</div>` : sl.after_text || sl.before_text ? `<div class="tx cdiff">${diffOf(sl)}</div>` : ""}</section>`;
+    return `<section class="slip past" aria-label="${esc(sl.n || "Draft")}"><span class="cstamp">${esc(stamp)}</span><div class="hd">${sl.n ? ppill(sl.n) : ""}<span class="hdt">${textHTML(sl.head || "")}</span></div>${sl.words ? `<div class="yw">${esc(`“${sl.words}”`)}</div>` : ""}${sl.kind === "action" && sl.action ? `<div class="tx">${(sl.action.shown || []).map(([l, v]) => `${esc(l)} ${esc(v)}`).join(" · ")}</div>` : sl.after_text || sl.before_text ? `<div class="tx cdiff">${diffOf(sl)}</div>` : ""}${fixesHTML(sl)}</section>`;
   }
+  /** The proposal being redrafted: its slip if the chat has it, else the Yours row it was started from. */
+  const redraftSlip = () => (S.redraft ? Object.values(S.slips).find((x) => x && x.n === S.redraft) || S.redraftView || null : null);
   /** An action's details as rows of the slip's list: each label and value, then the rules it touches. @rule 103.5 */
   const actionRows = (sl) => (sl.kind === "action" && sl.action ? `${(sl.action.shown || []).map(([l, v]) => `<dt>${esc(l)}</dt><dd>${esc(v)}</dd>`).join("")}<dt>Touches</dt><dd>${(sl.action.touches || []).map((n) => rpill(String(n))).join(" ")}</dd>` : "");
+  /** The reason beside a disabled button: the game's missing things in bold, and the rule that refuses as a pill (103.9). @rule 103.9 */
+  const whyHTML = (r) => { const m = /^(.*?): (.*) \(103\.9\)$/.exec(r || ""); return m ? `${esc(m[1])}: <b>${esc(m[2])}</b> ${rpill("103.9")}` : esc(r); };
   /** The live draft: the change, scope, votes needed, conflicts, and Lock it in or Unlock with the reason beside a disabled one. @rule 103.1, 103.2, 103.3 */
   function proposalSlipHTML() {
     const id = liveId();
     if (!id) return "";
     const sl = S.slips[id], locked = sl.status === "confirmed";
     const c = sl.can || {};
-    const why = (b) => (b && !b.allowed && b.reason ? `<span class="why">${esc(b.reason)}</span>` : "");
+    const why = (b) => (b && !b.allowed && b.reason ? `<span class="why">${whyHTML(b.reason)}</span>` : "");
     const needs = sl.needs ? esc(sl.needs.mark) : esc(sl.mark || "");
     const act = locked
       ? `<span class="pill dash">On tomorrow's ballot</span><button type="button" class="linkbtn" data-c="unlock" data-id="${esc(id)}"${c.unlock && c.unlock.allowed ? "" : " disabled"}>Unlock</button>${why(c.unlock)}`
@@ -162,9 +198,14 @@ ${refused ? `<div class="tx">${esc(last.refusal)}</div>` : ""}
 <div class="hd">${sl.n ? ppill(sl.n) : ""}<span class="hdt">${textHTML(sl.head || "")}</span></div>
 ${sl.words ? `<div class="yw">${esc(`Your words: “${sl.words}”`)}</div>` : ""}
 ${sl.kind !== "action" && (sl.after_text || sl.before_text) ? `<div class="tx cdiff">${diffOf(sl)}</div>` : ""}
-<dl>${actionRows(sl)}<dt>Change</dt><dd>${esc(KIND[sl.kind] || sl.kind)}${sl.target ? ` ${rpill(sl.target)}` : ""}</dd>${sl.settings && Object.keys(sl.settings).length ? `<dt>Sets</dt><dd>${esc(settingsLine(sl.settings))}</dd>` : ""}<dt>Needs</dt><dd>${needs}</dd><dt>Conflicts</dt><dd>${sl.conflicts && sl.conflicts.length ? sl.conflicts.map((n) => rpill(n)).join(" ") : "none"}</dd></dl>
-<div class="act">${act}</div>${err}</section>`;
+<dl>${actionRows(sl)}<dt>Change</dt><dd>${esc(KIND[sl.kind] || sl.kind)}${sl.target ? ` ${rpill(sl.target)}` : ""}</dd>${sl.settings && Object.keys(sl.settings).length ? `<dt>Sets</dt><dd>${esc(settingsLine(sl.settings))}</dd>` : ""}<dt>Needs</dt><dd>${needs}</dd><dt>Conflicts</dt><dd>${sl.conflicts && sl.conflicts.length ? sl.conflicts.map((n) => rpill(n)).join(" ") : "none"}${prevailHTML(sl)}</dd></dl>
+${sl.uses_note ? `<p class="cnote unote">${textHTML(sl.uses_note)}</p>` : ""}${sl.engine_note ? `<p class="cnote">${textHTML(sl.engine_note)}</p>` : ""}<div class="act">${act}</div>${err}</section>`;
   }
+  /** Which rule prevails in each conflict the rule check named (rule 108.1), beside the conflicts. @rule 108.1, 108.3 */
+  const prevailHTML = (sl) => ((sl.check && sl.check.conflicts) || []).filter((c) => c.prevails !== null).map((c) => ` <span class="cwhy">${String(c.prevails) === String(c.num).split(".")[0] ? `${rpill(String(c.prevails))} prevails` : "this prevails"}</span>`).join("");
+  /** A proposal the moderator did not apply, as its owner sees it: each fix is a ghost button that opens the conversation with the redraft in the box (rule 107.7). @rule 107.7 */
+  const fixesHTML = (sl) => (sl.mine && sl.status === "not_applied" && sl.result && (sl.result.fixes || []).length
+    ? `<div class="opts" role="group" aria-label="Fixes">${sl.result.fixes.map((f, k) => `<button type="button" class="btn ghost small" data-c="redraft" data-n="${esc(sl.n)}" data-i="${k}" aria-pressed="${S.draft === `Redraft ${sl.n}: ${f}`.slice(0, 2000)}">${esc(f)}</button>`).join("")}</div>` : "");
   /** The drafter said no: the reason, no button. @rule 103.1, 110.1 */
   const refusedHTML = (m) => `<section class="slip refused" aria-label="Refused"><span class="cstamp err">REFUSED</span><div class="tx">${esc(m.refused.error)}</div></section>`;
   /**
@@ -190,15 +231,19 @@ ${sl.kind !== "action" && (sl.after_text || sl.before_text) ? `<div class="tx cd
     const props = (S.proposals || []).map((x) => `<button type="button" class="it" data-c="pickp" data-id="${esc(x.id)}" aria-pressed="${liveP === x.id}"${S.busy || S.switching ? " disabled" : ""}>${ppill(x.n || "Draft")}<span class="tt">${esc(x.head || "")}</span>${x.n ? `<span class="pill tstate" data-state="${esc(x.state)}">${esc(x.state)}</span>` : ""}</button>`);
     const items = props.concat((S.tickets || []).map((t) => `<button type="button" class="it" data-c="pick" data-n="${esc(t.n)}" aria-pressed="${S.ticket === t.n}"${S.busy ? " disabled" : ""}><span class="wpill">${esc(t.n)}</span><span class="tt">${esc(t.title || "Untitled")}</span><span class="pill tstate" data-state="${esc(t.state)}">${esc(t.state)}</span></button>`));
     const nw = `<button type="button" class="it new${S.ticket ? "" : " first"}" data-c="new"${S.busy || !can.allowed ? " disabled" : ""}>+ New</button>`;
-    // a disabled New says why, beside it (AGENTS.md: a reason next to a disabled control; a title tooltip is invisible on touch)
-    const why = !S.busy && !can.allowed && can.reason ? `<div class="ch-why" role="note">${esc(can.reason)}</div>` : "";
-    return rowHTML("Yours", items, nw) + why;
+    // a disabled New says why, beside it, in a few words (AGENTS.md: a reason next to a disabled control; a title tooltip is invisible on touch)
+    const why = !S.busy && !can.allowed && can.reason ? `<span class="why" role="note">${esc(shortWhy(can.reason))}</span>` : "";
+    return rowHTML("Yours", items, why + nw);
   }
-  const rowFor = () => ticketsRow() + (general() ? todayRow() : "");
+  /** A refusal's reason in a few words, for beside a button: the turn's end by name, any other reason by its first sentence. */
+  const shortWhy = (r) => (/turn has ended/i.test(r) ? "Turn ended" : String(r).split(/(?<=[.!?])\s/)[0].replace(/[.!?]$/, ""));
+  /** The strip: Yours and (in the general conversation) Today side by side in one band, each scrolling sideways inside its share. */
+  const rowFor = () => `<div class="ch-rows">${ticketsRow()}${general() ? todayRow() : ""}</div>`;
 
   /** Words in the box, unsent: the player's own text there is never overwritten. An option he offers is put there this way. @rule 106.3 */
   function prefill(text) {
-    if (!S.draft.trim()) S.draft = String(text || "").slice(0, 2000);
+    // empty, or still the words the last tap put there (unedited): a second tap replaces it; text the player changed is never overwritten
+    if (!S.draft.trim() || S.draft === S.filled) S.draft = S.filled = String(text || "").slice(0, 2000);
     draw(true);
     const ta = col && col.querySelector("#chatText"); if (ta && mine()) ta.focus();
   }
@@ -218,13 +263,13 @@ ${sl.kind !== "action" && (sl.after_text || sl.before_text) ? `<div class="tx cd
   }
   /** Where the newest line is his and offers choices (an older one, or one the player has answered since, is not offered). @rule 106.3 */
   function optionsAt() {
-    if (S.busy) return -1;
+    if (S.busy || S.redraft) return -1;   // while a not-applied proposal is being redrafted the old choices belong to another subject
     const i = S.msgs.map((m) => m.role).lastIndexOf("agent");
     const after = S.msgs.slice(i + 1).some((m) => m.role !== "event");
     return i >= 0 && !after && (S.msgs[i].options || []).length ? i : -1;
   }
   /** His choices as small buttons: each puts its words in the box, unsent. @rule 106.3 */
-  const optionsHTML = (m) => `<div class="opts" role="group" aria-label="Choices">${m.options.map((o, k) => `<button type="button" class="btn ghost small" data-c="opt" data-i="${k}">${esc(o)}</button>`).join("")}</div>`;
+  const optionsHTML = (m) => `<div class="opts" role="group" aria-label="Choices">${m.options.map((o, k) => `<button type="button" class="btn ghost small" data-c="opt" data-i="${k}" aria-pressed="${S.draft === o}">${esc(o)}</button>`).join("")}</div>`;
   function logHTML() {
     const out = [];
     let prev = null, day = null;
@@ -232,19 +277,24 @@ ${sl.kind !== "action" && (sl.after_text || sl.before_text) ? `<div class="tx cd
     // landed above it). Only a draft no loaded line points at goes at the end.
     const live = general() ? liveId() : null;
     let at = -1;
+    const oi = optionsAt();
     if (live) S.msgs.forEach((m, i) => { if (m.proposal === live) at = i; });
     // Gremlin's ticket card likewise follows his last line about that ticket (Buster, day 1: "like the rules card")
     if (!general() && S.slip) S.msgs.forEach((m, i) => { if (m.role === "agent" && m.ticket === S.slip.n) at = i; });
+    const where = optionsPlace(oi, at);
     S.msgs.forEach((m, i) => {
       if (m.date && m.date !== day) { day = m.date; out.push(`<div class="cday">${esc(dayLabel(m.date))}</div>`); prev = null; }
       out.push(lineHTML(m, prev));
-      if (i === optionsAt()) out.push(optionsHTML(m));
-      if (i === at) { out.push(general() ? proposalSlipHTML() : slipHTML()); prev = null; }
+      if (i === oi && where === "line") out.push(optionsHTML(m));
+      if (i === at) { out.push(general() ? proposalSlipHTML() : slipHTML()); prev = null; if (i === oi && where === "slip") out.push(optionsHTML(m)); }
       else prev = m;
     });
     if (!S.msgs.length && general() && agent.greeting) out.push(`<div class="msg cher greet">${portrait(true)}<div class="bub">${esc(agent.greeting)}</div></div>`);
     if (S.busy) out.push(`<div class="msg cher">${portrait(true)}<div class="bub"><span class="typing" aria-label="${esc(agent.name)} is typing"><i></i><i></i><i></i></span></div></div>`);
     if (at < 0) out.push(general() ? proposalSlipHTML() : slipHTML());
+    if (where === "end") out.push(optionsHTML(S.msgs[oi]));
+    // the proposal being redrafted, above the box: what it said and why it was not applied (its fixes are in the box's reach)
+    if (general() && S.redraft && redraftSlip()) out.push(pastSlipHTML(redraftSlip().id || "", redraftSlip()));
     return out.join("");
   }
 
@@ -254,6 +304,7 @@ ${sl.kind !== "action" && (sl.after_text || sl.before_text) ? `<div class="tx cd
     const closed = st && st.closed;
     const left = st && st.left <= LEFT_SHOWN && !closed ? `<span class="left">${esc(st.left)} left</span>` : "";
     const chip = S.ticket ? `<span class="chip">${wpill(S.ticket)}<button type="button" class="x" data-c="detach" aria-label="Detach ${esc(S.ticket)}">×</button></span>`
+      : S.redraft ? `<span class="chip">${ppill(S.redraft)}<button type="button" class="x" data-c="detach-redraft" aria-label="Detach ${esc(S.redraft)}">×</button></span>`
       : S.rule ? `<span class="chip">${rpill(S.rule)}<button type="button" class="x" data-c="detach-rule" aria-label="Detach rule ${esc(S.rule)}">×</button></span>`
       : "";
     if (closed) return `<div class="ch-in"><p class="closed" role="status">${esc(closed.text)}</p></div>`;
@@ -261,35 +312,73 @@ ${sl.kind !== "action" && (sl.after_text || sl.before_text) ? `<div class="tx cd
 <button type="button" class="send" data-c="send" aria-label="Send"${S.busy || !S.draft.trim() ? " disabled" : ""}><svg width="18" height="18" aria-hidden="true"><use href="#chat-send"/></svg></button></div>${S.err ? `<p class="err" role="alert">${esc(S.err)}</p>` : ""}${left}</div>`;
   }
 
+  /** Remembers where the window just put the log, for a moment: the scroll event that follows is its own. */
+  function own(log) { S.own = { top: log.scrollTop, until: performance.now() + 100 }; }
   /** The whole window. The log keeps its place; the draft keeps its text and its caret. @rule 106.3 */
   function draw(toEnd) {
     if (!col) return;
     const p = player();
     col.hidden = !p;
-    if (!p) return;
+    if (!p) { drawBar(); return; }
     const log0 = col.querySelector(".ch-log");
     // whether to stay at the end is remembered (S.stick, set by the player's own scrolling), not read back from the old log: on iOS a
     // scrollTop set during the redraw before can still be pending, so the old log reads as "at the top" and the next redraw kept that
     const atEnd = toEnd === true || !log0 || S.stick !== false;
+    const keep = log0 ? log0.scrollTop : 0;   // read before anything is replaced: a node taken out of the page reads 0 (a player who had scrolled up was thrown to the top by every answer)
     const ta0 = col.querySelector("#chatText");
     const focus = ta0 && document.activeElement === ta0 ? [ta0.selectionStart, ta0.selectionEnd] : null;
     const ready = S.state ? S.state.ready : true;
-    col.innerHTML = `<section class="chat" data-agent="${esc(agent.key)}" aria-label="${esc(agent.name)}">
+    const t = document.createElement("template");
+    t.innerHTML = `<section class="chat" data-agent="${esc(agent.key)}" aria-label="${esc(agent.name)}">
 <header class="ch-h">${portrait(false)}<div class="cnm"><b>${esc(agent.name)}</b>${!ready ? "<small>can't be reached</small>" : S.busy ? '<small class="live">typing</small>' : ""}</div>
 <button type="button" class="ch-x" data-c="min" aria-label="Minimize" title="Minimize">–</button><button type="button" class="ch-x ch-close" data-c="close" aria-label="Close" title="Close">×</button></header>${rowFor()}
 <div class="ch-log" id="chatLog" tabindex="0" aria-live="polite">${S.loaded ? logHTML() : ""}</div>${inputHTML()}</section>`;
+    // the log is the one part that is never replaced (only its lines are): a fresh scroller has to be told where to scroll and iOS applies that late, so
+    // its scroll position and its scroll listener stay with the node. Everything around it is redrawn as before.
+    const sec = col.firstElementChild, fresh = t.content.firstElementChild, log1 = fresh.querySelector(".ch-log");
+    if (log0 && sec && log0.parentNode === sec && sec.dataset.agent === agent.key) {
+      const kids = [...fresh.childNodes], at = kids.indexOf(log1);
+      while (log0.previousSibling) log0.previousSibling.remove();
+      while (log0.nextSibling) log0.nextSibling.remove();
+      log0.before(...kids.slice(0, at)); log0.after(...kids.slice(at + 1)); log0.innerHTML = log1.innerHTML;
+    } else col.replaceChildren(fresh);
     const log = col.querySelector(".ch-log");
     if (log) {
-      const keep = log0 ? log0.scrollTop : 0;
-      if (atEnd || !log0) { log.scrollTop = log.scrollHeight; requestAnimationFrame(() => { log.scrollTop = log.scrollHeight; }); } else log.scrollTop = keep;
-      log.addEventListener("scroll", onScroll, { passive: true });
+      if (atEnd) { S.stick = true; log.scrollTop = log.scrollHeight; own(log); requestAnimationFrame(() => { log.scrollTop = log.scrollHeight; own(log); }); } else { log.scrollTop = keep; own(log); }
+      if (!log.dataset.on) { log.dataset.on = "1"; log.addEventListener("scroll", onScroll, { passive: true }); }
     }
     const ta = col.querySelector("#chatText");
     if (ta) { autosize(ta); if (focus) { ta.focus(); try { ta.setSelectionRange(focus[0], focus[1]); } catch {} } }
     const tks = col.querySelector(".ch-row .its"), on = tks && tks.querySelector('[aria-pressed="true"]');
     if (on && (on.offsetLeft < tks.scrollLeft || on.offsetLeft + on.offsetWidth > tks.scrollLeft + tks.clientWidth)) tks.scrollLeft = on.offsetLeft;   // the selected pill is never scrolled out of the row
-    drawFab();
+    drawFab(); drawBar();
   }
+  // ---- the bar on the Summary: a collapsed Gremlin inside the page (Buster, 2026-11-26) ---------------------------------------------------------
+  /** His last line in the general conversation: the log's while the window shows it, the state's (sent with every answer) while it shows a ticket's. */
+  const lastLine = () => {
+    const m = general() ? [...S.msgs].reverse().find((x) => x.role === "agent") : null;
+    return m ? m.body : (S.state && S.state.line) || "";
+  };
+  /** His portrait, his last line and today's proposals as P-pills with "n of 3 left"; nothing for a visitor. A tap opens the window, a P-pill that proposal's slip. @rule 103.2, 106.3 */
+  function barHTML() {
+    const b = live() && barPills(S.state);
+    if (!b) return "";
+    const pills = b.list.map((n) => `<button type="button" class="gb-p" data-g="p" data-n="${esc(n)}"${b.tickets[n] ? ` data-w="${esc(b.tickets[n])}"` : ""} aria-label="${esc(n)}">${ppill(n)}</button>`).join("");
+    return `<div class="gbar" role="group" aria-label="${esc(agent.name)}" data-g="open"><button type="button" class="gb-main" data-g="open">${portrait(true)}<span class="gb-line">${esc(lastLine())}</span></button><div class="gb-today">${pills}<span class="gb-n">${esc(b.left)} of ${esc(b.limit)} left</span></div></div>`;
+  }
+  /** Fills every bar slot on the page (the Summary has one). */
+  function drawBar() { document.querySelectorAll('[data-slot="gremlin-bar"]').forEach((el) => { const h = barHTML(); if (el.innerHTML !== h) el.innerHTML = h; }); }
+  document.addEventListener("click", async (e) => {
+    const bar = e.target.closest && e.target.closest(".gbar");
+    if (!bar || !live()) return;
+    const p = e.target.closest(".gb-p");
+    if (!p) { open(false); return; }
+    if (p.dataset.w) { if (!S.busy) await attach(p.dataset.w, { open: true }); else open(false); return; }   // a commission: its slip is its ticket's, not the general conversation's
+    const sl = Object.values(S.slips).find((x) => x && x.n === p.dataset.n) || (S.proposals || []).find((x) => x.n === p.dataset.n);
+    open(false);
+    const id = (sl && sl.id) || ((S.proposals || []).find((x) => x.n === p.dataset.n) || {}).id;
+    if (id && !S.busy) await pickProposal(id);
+  });
   function autosize(ta) { ta.style.height = "auto"; ta.style.height = Math.min(120, ta.scrollHeight) + "px"; }
   function drawFab() {
     if (!fab) return;
@@ -333,10 +422,12 @@ ${sl.kind !== "action" && (sl.after_text || sl.before_text) ? `<div class="tx cd
     }
     draw(true);
   }
-  function open() {
+  /** `typing` false: opened by a tap on the corner pill or the Summary bar, not to write (a phone's sheet then opens without the keyboard). */
+  function open(typing = true) {
     if (desktop()) { S.open = true; remember(true); } else S.sheet = true;
     place(); draw(true);   // it was drawn while hidden, so it has no place to keep: start at the end
-    const ta = col && col.querySelector("#chatText"); if (ta) ta.focus();
+    // the composer's focus folds the strip away on a phone, so a sheet opened just to look (the pill, the bar) leaves the box alone and the strip is there until the player taps it
+    const ta = col && col.querySelector("#chatText"); if (ta && (desktop() || typing)) ta.focus();
   }
   function minimize() { S.open = false; S.sheet = false; remember(false); place(); }
 
@@ -389,6 +480,7 @@ ${sl.kind !== "action" && (sl.after_text || sl.before_text) ? `<div class="tx cd
   /** Scrolling to the top brings in the day before. @rule 106.7 */
   async function onScroll(e) {
     const log = e.target;
+    if (S.own && performance.now() < S.own.until && Math.abs(log.scrollTop - S.own.top) < 2) return;   // the redraw's own scrolling is not the player's: it never moves S.stick or loads the day before
     S.stick = log.scrollHeight - log.scrollTop - log.clientHeight < 80;
     if (log.scrollTop > 40 || !S.next || S.loading) return;
     S.loading = true;
@@ -411,9 +503,10 @@ ${sl.kind !== "action" && (sl.after_text || sl.before_text) ? `<div class="tx cd
     const rule = general() ? S.rule : null;
     optimistic.rule = rule;
     const at = S.scope;   // the answer can take 30 s: if the window has moved to another ticket by then, it is not that window's line (rule 801.6)
-    const r = await api(`/api/chat/${agent.path}`, S.ticket ? { ticket: S.ticket, body: text } : rule ? { rule, body: text } : { body: text });
+    const redraft = general() ? S.redraft : null;
+    const r = await api(`/api/chat/${agent.path}`, S.ticket ? { ticket: S.ticket, body: text } : { ...(rule ? { rule } : {}), ...(redraft ? { proposal: redraft } : {}), body: text });
     S.busy = false;
-    if (r.ok && rule && r.data.out === "ok") S.rule = null;   // the rule rides on the first message that was answered (not at the cap, or when she is out)
+    if (r.ok && r.data.out === "ok") { if (rule) S.rule = null; if (redraft) { S.redraft = null; S.redraftView = null; } }   // the rule rides on the first message that was answered (not at the cap, or when she is out)
     S.msgs = S.msgs.filter((m) => m !== optimistic);
     if (S.scope !== at) { if (r.ok && r.data.state) S.state = r.data.state; draw(); return; }
     if (!r.ok) {
@@ -451,7 +544,7 @@ ${sl.kind !== "action" && (sl.after_text || sl.before_text) ? `<div class="tx cd
   root.addEventListener("click", async (e) => {
     const el = e.target.closest("[data-c], #chatfab");
     if (!el || !root.contains(el) || !mine()) return;
-    if (el === fab) { open(); return; }
+    if (el === fab) { open(false); return; }
     const a = el.dataset.c;
     if (a === "min") minimize();
     else if (a === "close") { S.sheet = false; place(); }
@@ -462,13 +555,35 @@ ${sl.kind !== "action" && (sl.after_text || sl.before_text) ? `<div class="tx cd
     else if (a === "new") { if (!S.busy && onNew) await hold(el, onNew); }
     else if (a === "detach") { S.ticket = null; S.slip = null; await showScope(null); draw(); }
     else if (a === "detach-rule") { S.rule = null; draw(); }
+    else if (a === "detach-redraft") { S.redraft = null; S.redraftView = null; draw(); }
+    else if (a === "redraft") { const sl = Object.values(S.slips).find((x) => x && x.n === el.dataset.n) || (S.redraft === el.dataset.n ? S.redraftView : null); const f = sl && sl.result && sl.result.fixes[Number(el.dataset.i)]; if (f) await redraft(el.dataset.n, f, sl); }
     else if (a === "lock" || a === "unlock") await hold(el, () => lockOrUnlock(el.dataset.id, a === "lock" ? "confirm" : "withdraw"));
+    else if (a === "lockt" || a === "unlockt") await hold(el, () => lockTicket(el.dataset.n, a === "lockt" ? "confirm" : "withdraw"));
+    else if (a === "redraw") await hold(el, () => redrawEntry(el.dataset.n, el.dataset.name));
   });
   root.addEventListener("input", (e) => {
     if (e.target.id !== "chatText" || !mine()) return;
     S.draft = e.target.value; autosize(e.target);
     const b = col.querySelector('[data-c="send"]'); if (b) b.disabled = S.busy || !S.draft.trim();
   });
+  // The strip is folded (class "kb" on the column, CSS in site.css) while the composer has focus on a phone. It comes back only when nothing is pressing: a
+  // blur caused by the press on a control in the log (Lock it in, an option, a pill) must not move the log between press and click, so while a pointer is down
+  // in the window the strip stays folded, and it unfolds a moment after the pointer is up, once that click has run. A blur with no pointer down (the keyboard
+  // dismissed, the box taken away) unfolds at the next frame. A log that was at its end stays at its end; one scrolled up keeps its place.
+  let down = false, unfoldTimer = 0;
+  const typing = () => !!col && col.querySelector("#chatText") === document.activeElement;
+  function unfold() {
+    clearTimeout(unfoldTimer);
+    if (!col || down || typing() || !col.classList.contains("kb")) return;
+    col.classList.remove("kb");
+    const log = col.querySelector(".ch-log");
+    if (log && S.stick !== false) { log.scrollTop = log.scrollHeight; own(log); }
+  }
+  root.addEventListener("focusin", (e) => { if (e.target.id === "chatText") { clearTimeout(unfoldTimer); col.classList.add("kb"); } });
+  root.addEventListener("focusout", (e) => { if (e.target.id === "chatText") requestAnimationFrame(unfold); });   // next frame: a redraw that puts the box back has refocused it by then
+  root.addEventListener("pointerdown", () => { down = true; clearTimeout(unfoldTimer); });
+  const released = () => { if (!down) return; down = false; unfoldTimer = setTimeout(unfold, 400); };   // the click follows the pointer-up at once; the fold ends after it
+  document.addEventListener("pointerup", released); document.addEventListener("pointercancel", released);
   root.addEventListener("keydown", (e) => {
     if (!mine()) return;
     if (e.target.id === "chatText" && e.key === "Enter" && !e.shiftKey && desktop()) { e.preventDefault(); send(); }
@@ -502,11 +617,63 @@ ${sl.kind !== "action" && (sl.after_text || sl.before_text) ? `<div class="tx cd
     await readState();
     if (onProposals) await onProposals();
   }
+  /**
+   * Lock it in / Unlock on a ticket's slip: confirm (801.1) or withdraw its proposal (103.3), the player's own click, costing no message. The slip is read again
+   * from the server, so it shows what is true; the Workshop and the strip follow. @rule 801.1, 103.3, 801.7
+   */
+  async function lockTicket(n, what) {
+    if (!n || S.locking) return;
+    S.lockErr[n] = ""; S.locking = true;
+    let r, page = null;
+    try {
+      const unlockId = what === "withdraw" ? S.slip && S.slip.n === n && S.slip.unlock_id : null;
+      if (what === "withdraw" && !unlockId) return;
+      r = await api(what === "confirm" ? `/api/tickets/${encodeURIComponent(n)}/confirm` : `/api/proposals/${encodeURIComponent(unlockId)}/withdraw`, {});
+      if (!r.ok) S.lockErr[n] = (r.data && r.data.error) || "Something went wrong.";
+      // the ticket's page is read again, but it only replaces the slip if the window is still on that ticket: a player who picked another one while the request was out keeps that one (rule 801.6)
+      const pr = await api(`/api/tickets/${encodeURIComponent(n)}`);
+      page = pr.ok && pr.data && pr.data.ticket && pr.data.ticket.mine ? pr.data.ticket : null;
+      if (page) { noteTicket(page); if (S.slip && S.slip.n === n) S.slip = page; }
+    } finally { S.locking = false; }
+    if (page && onTicket) await onTicket(page);
+    await readState();
+    if (onProposals) await onProposals();
+  }
+  /** Redraw from the slip: the entry is drawn again (one of his messages, rule 106.7), and the slip watches until the picture lands. @rule 801.2, 106.7 */
+  async function redrawEntry(n, name) {
+    const key = String(name || "").toLowerCase();
+    if (!n || !name || S.artBusy) return;
+    S.artBusy = true; S.artErr[key] = "";
+    try {
+      const r = await api(`/api/tickets/${encodeURIComponent(n)}/art`, { entry: name, action: "redraw" });
+      if (r.ok && r.data && r.data.ticket) { if (S.slip && S.slip.n === n) S.slip = r.data.ticket; } else S.artErr[key] = (r.data && r.data.error) || "Something went wrong.";
+    } finally { S.artBusy = false; }
+    draw();
+    watchArt();
+    if (S.slip && onTicket) await onTicket(S.slip);
+    await readState();   // the counter moved
+  }
+  /**
+   * A ticket page changed somewhere else (the card locked, unlocked or redrew it): when the slip is that ticket's it follows, so it never says DRAFT over a locked one. @rule 801.2
+   */
+  function showTicket(t) {
+    if (!t || !S.slip || S.slip.n !== t.n || !t.mine) return;
+    S.slip = t; noteTicket(t); draw(); watchArt();
+  }
   /** A rule card's "Propose a change": the window opens in the general conversation with that rule riding on the next message. @rule 103.1 */
   async function attachRule(num, o = {}) {
     S.rule = num || null;
     if (S.ticket) { S.ticket = null; S.slip = null; if (S.loaded) await showScope(null); }
     if (o.open) open(); else draw();
+  }
+  /** A not-applied proposal's fix (rule 107.7): the window opens in the general conversation with the redraft in the box, unsent, and that proposal riding on the next message. @rule 107.7 */
+  async function redraft(n, fix, view) {
+    S.redraft = n; S.redraftView = view || null; S.rule = null;
+    if (S.ticket) { S.ticket = null; S.slip = null; if (S.loaded) await showScope(null); }
+    open();
+    if (!S.draft.trim() || S.draft === S.filled) S.draft = S.filled = `Redraft ${n}: ${String(fix || "")}`.slice(0, 2000);   // the player's own words in the box are never overwritten
+    draw(true);
+    const ta = col && col.querySelector("#chatText"); if (ta && mine()) ta.focus();
   }
   /** A ticket is what the next messages are about (and the window opens on it). @rule 801.2 */
   async function attach(n, o = {}) {
@@ -528,5 +695,5 @@ ${sl.kind !== "action" && (sl.after_text || sl.before_text) ? `<div class="tx cd
   }
   /** Can he be reached? True until the server says there is no key. @rule 106.3 */
   const ready = () => !S.state || S.state.ready !== false;
-  return { sync, attach, attachRule, open, load, minimize, ready, prefill, state: () => S, draw, reduced };
+  return { sync, attach, attachRule, redraft, showTicket, open, load, minimize, ready, prefill, state: () => S, draw, drawBar, barHTML, reduced };
 }

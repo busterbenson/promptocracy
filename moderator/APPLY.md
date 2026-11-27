@@ -39,7 +39,7 @@ script runs them after you and tells you what failed.
    changed the clauses that cite it too, rule 108.3).
    Make the code match the text. A rule that does something has a module `rules/<n>.ts` exporting
    `defineRule({ rule: <n>, <hook>(...) {...} })` from `promptocracy/engine`. Hooks: `actionAllowed` (refuse an action),
-   `afterAction` (chart effects), `spawnTile`, `applyOrder` (rule 107.2), `onEnacted` (points), `dayEnd` (champion: the player who wins the Era). Every
+   `afterAction` (chart effects), `spawnTile`, `applyOrder` (rule 107.2), `onEnacted` (points), `dayEnd` (champion: the player who wins the Era), `night` (board effects: appear, step, move, bite, rest, rise; `move` puts a living player's piece on a charted tile nothing stands on, and a refused move is skipped and logged). Every
    function carries a JSDoc `/** @rule <n> */` tag naming a rule or clause that exists in `RULES.md`. Import nothing but
    `promptocracy/engine` (tests may also import `node:test`, `node:assert/strict` and `promptocracy/engine/testing`). No
    `fetch`, `globalThis`, `eval`, `Function`, `process`, `env`, `caches` or dynamic `import(`.
@@ -66,6 +66,17 @@ script runs them after you and tells you what failed.
    library (`docs/nomic-library/index.md`; where your copy is, below) for precedent, and name each page you relied on in
    the result file's `library` list, so it goes in the night log. If the library isn't there, go on without it.
 
+9. **Can the game carry it out?** Under "The check the site made" below are the criteria the site used before the proposal could be
+   locked in, and what the game records. If the proposal relies on something the game doesn't have, and its code can't work it out from
+   what is recorded, it can't be applied: write the result file with outcome `not_applied`, say what is missing, and give `fixes`.
+
+10. **An entry that is not built yet (rule 703.4).** A proposal may name an entry an open commission makes, by that commission ("the
+   Flower (W4)"); the proposal's data lists them under `entries.pending`, and the catalog's under `entries.built`. Apply it like any
+   other proposal: that entry not existing yet is never a reason for `not_applied`. Its code finds the entry by the commission that
+   makes it, with `entryMadeBy(ctx.catalog, "W4", "item")` from the engine API (the entry whose `madeBy` is that ticket and whose
+   kind matches), and does nothing while there is none: its hooks allow, and it returns no effects. Its tests cover both: the entry
+   absent (the rule does nothing) and present (a fixture entry in the catalog with `madeBy` set; the rule acts).
+
 ## The result file
 
 Before you finish, write `MODERATOR-RESULT.json` at the top of the repo (the script reads and deletes it):
@@ -75,6 +86,11 @@ Before you finish, write `MODERATOR-RESULT.json` at the top of the repo (the scr
 { "outcome": "not_applied", "reason": "one sentence the proposer can act on" }
 { "outcome": "applied", "conflict": { "rule": 402, "why": "one sentence", "other_claims": [], "other_yields": [], "proposal_claims": [] } }
 ```
+
+`not_applied` (and an `applied` with a `conflict` that the script then finds prevails) may add
+`"fixes": ["one change the proposer could propose instead", ...]`: one to three, each one plain sentence to the proposer, only when
+there are real alternatives (a smaller or reworded proposal the game CAN carry out). With none, leave `fixes` out and the proposer is
+given the general suggestion to split or simplify.
 
 Any of them may add `"library": ["docs/nomic-library/<page>.md"]`, the library pages you relied on,
 `"restates": ["<clause>"]`, the clauses the draft repeats from another clause (step 1), and

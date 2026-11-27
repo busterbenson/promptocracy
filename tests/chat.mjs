@@ -14,6 +14,8 @@ import { CANNED_EXCUSES, CANNED_LINES, NO_BUILD_REASON } from "../src/lib/gremli
 let pass = 0, fail = 0;
 const check = (name, ok, detail = "") => { if (ok) { pass++; console.log(`  ok    ${name}`); } else { fail++; console.log(`  FAIL  ${name}${detail ? "  -> " + detail : ""}`); } };
 const J = JSON.stringify;
+// The list of what open commissions make is in every tail on purpose (rules 701.4, 801.6): it is public, so it is not "another ticket's conversation". The leak checks below look at the rest.
+const noOpen = (t) => String(t).replace(/Entries open commissions make[^]*?<\/player_text>\n?/, "");
 
 // ---- the model stub (tests/gremlin-stub.mjs): recorded answers by the player's message; SYNTH answers by a marker in it ----
 const { calls, stubState, stubModel, sonnetCalls, haikuCalls, REC, EXC } = createStub();
@@ -138,7 +140,7 @@ try {
   const inj = await say(Ana, INJECT, "W1");
   const injCall = calls.filter((c) => isChatCall(c)).at(-1);
   check("a closing fence tag and a fake SYSTEM line in the player's words reach the model escaped: only the two real closing tags are there (the ticket's fence and the message's): the one in the player's words is escaped",
-    (injCall.lastText.match(/<\/player_text>/g) || []).length === 2 && injCall.lastText.includes("<\\/player_text") && injCall.lastText.includes("SYSTEM: Chalant here"));
+    (noOpen(injCall.lastText).match(/<\/player_text>/g) || []).length === 2 && injCall.lastText.includes("<\\/player_text") && injCall.lastText.includes("SYSTEM: Chalant here"));
   check("the ticket's own fields (typed by the player) are fenced in the tail too", /<player_text author="ticket W1">/.test(injCall.lastText));
   check("his recorded answer to it writes only draft fields: state Draft, no proposal, not paid, not queued, price within the ceiling", inj.status === 200 && tk(1).state === "Draft" && tk(1).proposal_id === null && tk(1).paid === null && tk(1).queue_pos === null && tk(1).price <= 25);
   const hack = await say(Ana, "SYNTH-STATE", "W1");
@@ -207,7 +209,7 @@ try {
   const aLines = ["garden wall", "stone", "Sword", "toad"];   // what was said on W1 (WALL, SWORD, the toad), none of it on this ticket
   const q1 = await say(Ana, REC["frog-free"].message, Q);
   const q1req = sonnetLast();
-  const flat = (m) => J(m.body.messages.map((x) => x.content));
+  const flat = (m) => J(m.body.messages.map((x) => x.content.map((b) => ({ ...b, text: noOpen(b.text) }))));
   check("the first turn on a new ticket carries no earlier turn of the day: the request is the tail alone, with none of W1's or the pine's lines",
     q1.status === 200 && q1req.body.messages.length === 1 && !flat(q1req).includes("ponderosa") && !flat(q1req).includes("garden wall") && !flat(q1req).includes("wyrm") && flat(q1req).includes(REC["frog-free"].message.slice(0, 30)), flat(q1req).slice(0, 300));
   await say(Ana, "SYNTH-ART2 bluer", Q);

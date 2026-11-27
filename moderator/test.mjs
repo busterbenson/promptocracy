@@ -7,7 +7,8 @@ import { chmodSync, copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, re
 import { createServer } from "node:http";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
-import { ALLOWED, fence, markOf, prevailing, repairNote, repairsBlock, repairsOfBody, rulebookLinesOk, ruleAge, runOnce, ROOT, scopeProblems, votedWords } from "./process-day.mjs";
+import { CHECK_CRITERIA, ENGINE_FACTS } from "../src/lib/rule-check.js";
+import { ALLOWED, MAX_REASON, fixesOf, missClass, nightCase, reasonFor, REASON_ROOM, clean, fence, fitText, reasonWithSuggestion, auditNote, markOf, prevailing, repairNote, repairsBlock, repairsOfBody, rulebookLinesOk, ruleAge, runOnce, ROOT, scopeProblems, votedWords } from "./process-day.mjs";
 
 let pass = 0, fail = 0;
 const check = (name, ok, detail = "") => { if (ok) pass++; else { fail++; console.log(`FAIL ${name}${detail ? `\n     ${detail}` : ""}`); } };
@@ -35,6 +36,25 @@ check("108.1: a core rule prevails over a majority rule", prevailing(R(402, "maj
 check("108.1: same kind, the older prevails", prevailing(R(402, "majority", { added: 0 }), R(410, "majority", { added: 3 })).number === 402 && prevailing(R(410, "majority", { added: 3 }), R(402, "majority", { added: 0 })).number === 402);
 check("108.1: same kind and age, the lower number prevails", prevailing(R(504, "majority"), R(402, "majority")).number === 402);
 check("108.2: a rule's own claim wins within its kind, never over a core rule", prevailing(R(504, "majority", { claims: [402] }), R(402, "majority")).number === 504 && prevailing(R(504, "majority", { claims: [107] }), R(107, "unanimous")).number === 107);
+
+// Reasons (rule 107.7): cut at a word with "…", and no reason the moderator builds passes the API's MAX_REASON.
+check("fitText: short text is only normalized; long text is cut at a word and ends with an ellipsis, within n", fitText("  a  b\n c ", 20) === "a b c" && fitText("alpha beta gamma delta", 14) === "alpha beta…" && fitText("x".repeat(50), 10) === "x".repeat(9) + "…");
+check("clean: keeps 300 characters (the cut was 100) and strips trailing dots", clean("a ".repeat(140) + "end.").length > 250 && !clean("hello...").endsWith(".") && clean("w ".repeat(300)).length <= 300);
+{
+  const bad = [];
+  for (const len of [0, 1, 50, 99, 100, 101, 250, 314, 315, 316, 399, 400, 401, 600, 5000]) for (const text of ["word ".repeat(1000).slice(0, len), "x".repeat(len), `${"ab ".repeat(1000).slice(0, len)}.`]) {
+    const r = reasonWithSuggestion(text);
+    if (r.length > MAX_REASON || !r.endsWith("propose it again.")) bad.push(len);
+  }
+  check("reasonWithSuggestion: every reason, at any length, is at most 400 and ends with the whole suggestion", bad.length === 0 && REASON_ROOM > 0 && MAX_REASON === 400, J(bad));
+}
+{
+  // 2026-11-26: P1's note read "...the words ask for 'up to 2' P1 was repaired before it was applied", the audit's gap and the repair note
+  // joined with no full stop between them.
+  const n = auditNote(1, "The draft says 'move your piece 2 spaces', which reads as exactly 2, but the words ask for 'up to 2'");
+  const joined = `${n} ${repairNote(1, [{ what: "kept the tag", why: "rule 109.2" }])}`;
+  check("auditNote: the audit's gap ends as a sentence, so a repair note after it starts a new one", /'up to 2'\. P1 was repaired/.test(joined) && auditNote(2, "It differs.").endsWith("differs.") && auditNote(3, "cut here…").endsWith("here…") && !auditNote(4, "ok?").endsWith("?."), joined);
+}
 
 // ---- fixtures ----------------------------------------------------------------------------------------------------
 let n = 0;
@@ -333,6 +353,29 @@ console.log("moderator runner");
   const o5 = t.claims[0]?.outcomes.find((o) => o.number === 5);
   check("same rule twice: a redraft that no longer makes sense is not applied, with the model's reason", o5 && !o5.applied && /no longer makes sense/.test(o5.reason));
 }
+// ---- the night's fixes and how a refusal got through the site's check (rules 106.6, 107.7, 103.9) ----
+console.log("the night's fixes, miss classes and cases");
+{
+  const fx = ["Add a house tile to the catalog first.", "Say it for the whole board.", "x".repeat(300), "a fourth", "", 7];
+  check("fixesOf: at most three strings, each fitted to 200 characters, junk dropped", fixesOf(fx).length === 3 && fixesOf(fx)[2].length <= 200 && fixesOf("no").length === 0 && fixesOf(undefined).length === 0);
+  check("reasonFor: with fixes the reason stands alone (no fixed suggestion); without, the suggestion is added", !/splitting/.test(reasonFor("the game doesn't track which tiles", ["a fix"])) && /splitting it into smaller proposals/.test(reasonFor("the game doesn't track which tiles", [])) && reasonFor("r", ["a"]).length <= MAX_REASON);
+  const P7 = { kind: "add", rule_check: null, base_sha: "a" }, ok = { kind: "add", rule_check: { status: "ok" }, base_sha: "a" }, unch = { kind: "add", rule_check: { status: "unchecked" }, base_sha: "a" };
+  check("missClass: no check or an unchecked one is `unchecked`; a moved rulebook or a redraft is `rules_changed`; otherwise the check passed it: `disagreed`",
+    missClass(P7, { redrafted: false, headSha: "a" }) === "unchecked" && missClass(unch, { redrafted: true, headSha: "b" }) === "unchecked" && missClass(ok, { redrafted: true, headSha: "a" }) === "rules_changed" &&
+    missClass(ok, { redrafted: false, headSha: "b" }) === "rules_changed" && missClass(ok, { redrafted: false, headSha: "a" }) === "disagreed" &&
+    missClass({ ...ok, kind: "repeal" }, { redrafted: false, headSha: "a" }) === "unchecked_kind" && missClass({ ...ok, rule_check: { status: "ok", conflicts: [{ num: "402.3", prevails: 402 }] } }, { redrafted: false, headSha: "a", conflictRule: 402 }) === "warned");
+  const c = nightCase("rickshaw-1", 2, { number: 7, kind: "add", target: "400", words: "x", after_text: "405.1 x", mark: null }, { miss: "unchecked", conflictRule: 402, full_reason: "it conflicts with rule 402" });
+  check("nightCase: id night-<slug>-d<day>-p<n>, group night, the voted kind, target and words, and what the check should have said; none for rules_changed",
+    c.id === "night-rickshaw-1-d2-p7" && c.group === "night" && c.kind === "add" && J(c.expect) === J({ outcome: "drafted", conflicts_include: ["402"] }) && J(nightCase("g", 1, { number: 1, kind: "amend", target: "1", words: "w" }, { miss: "disagreed" }).expect) === J({ outcome: "drafted", check: "blocked" }) && nightCase("g", 1, { number: 1 }, { miss: "rules_changed" }) === null);
+}
+{
+  const t = await night({ scenario: { apply: { 3: { action: "nonsense", fixes: ["Propose it without the fart.", "Say it for rule 202.2 only."] }, 5: { action: "nonsense" } } }, state: { job: job([P(3, "401", { rule_check: null }), P(5, "402.2", { rule_check: { status: "ok" } })]) }, opts: { audit: false } });
+  const o3 = t.claims[0]?.outcomes.find((o) => o.number === 3), o5 = t.claims[0]?.outcomes.find((o) => o.number === 5);
+  check("a not-applied outcome with fixes: the claim carries them and the reason has no fixed suggestion; without fixes the suggestion stays", J(o3.fixes) === J(["Propose it without the fart.", "Say it for rule 202.2 only."]) && !/splitting/.test(o3.reason) && !o5.fixes && /splitting it into smaller proposals/.test(o5.reason), J([o3, o5]));
+  check("the night's prompt carries the same criteria and engine facts as the site's check", t.claude.calls().filter((c) => !c.audit).every((c) => c.criteria === true) && CHECK_CRITERIA.length > 100 && ENGINE_FACTS.length > 100);
+  check("each refusal's class is in the night log; an unchecked one (P3) opens a case through the audit path, a check that passed it (P5, on the same rulebook) is a `disagreed` case too",
+    t.cases.some((c) => c.id === "night-g-d1-p3" && c.group === "night") && t.cases.some((c) => c.id === "night-g-d1-p5") && /"event":"miss"[^\n]*"class":"unchecked"/.test(readFileSync(join(t.stateDir, "g.night.jsonl"), "utf8")), J(t.cases.map((c) => c.id)));
+}
 {
   const t = await night({ scenario: { apply: { 8: { action: "win", to: 50, conflict: { rule: 107, why: "it would change the night's order" } } } }, state: { job: job([P(8, "402.2")]) } });
   const o = t.claims[0]?.outcomes[0];
@@ -341,6 +384,28 @@ console.log("moderator runner");
   check("108: the marks come from the rules as they stood, so a change that flips rule 107 itself to majority still loses to 107", tf.claims[0]?.outcomes[0]?.applied === false && /rule 107, which prevails/.test(tf.claims[0].outcomes[0].reason), J(tf.claims[0]?.outcomes));
   const t2 = await night({ scenario: { apply: { 8: { action: "win", to: 50, conflict: { rule: 504, why: "x" } } } }, state: { job: job([P(8, "402.2")]) } });
   check("108: when the proposal prevails (402 over 504: same kind and age, lower number) it is applied", t2.claims[0]?.outcomes[0]?.applied === true);
+}
+// Not-applied reasons are not cut at 100 characters (the 2026-11-26 count), are cut at a word with "…" when they must be cut, never pass the
+// API's 400 (src/routes/api-moderator.ts MAX_REASON), and the night log keeps the model's whole text.
+{
+  const sentence = (n) => { let s = ""; for (let i = 0; s.length < n; i++) s += `word${i} `; return s.trim().slice(0, n - 1) + "x"; };
+  const long250 = `${sentence(250)}.`, long600 = sentence(600);
+  const nl = (t) => readFileSync(join(t.stateDir, "g.night.jsonl"), "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l));
+  const tn = await night({ scenario: { apply: { 8: { action: "ops", ops: [], result: { outcome: "not_applied", reason: long250 } } } }, state: { job: job([P(8, "402.2")]) }, opts: { audit: false } });
+  const on = tn.claims[0]?.outcomes[0];
+  check("reasons: a 250-character model reason is kept whole (it was cut at 100), then the suggestion", on && !on.applied && on.reason.startsWith(long250.replace(/\.$/, "")) && /Try splitting it into smaller proposals or simplifying it, and propose it again\.$/.test(on.reason), J(on));
+  const tl = await night({ scenario: { apply: { 8: { action: "ops", ops: [], result: { outcome: "not_applied", reason: long600 } } } }, state: { job: job([P(8, "402.2")]) }, opts: { audit: false } });
+  const ol = tl.claims[0]?.outcomes[0];
+  check("reasons: a 600-character reason is cut at a word with an ellipsis, the suggestion is whole, and the whole is at most 400", ol && ol.reason.length <= 400 && /word\d+…\s/.test(ol.reason) && ol.reason.endsWith("propose it again."), J(ol));
+  check("reasons: the night log keeps the model's whole reason", nl(tl).some((e) => e.event === "not_applied" && e.full_reason === long600), J(nl(tl).filter((e) => e.event === "not_applied")));
+  const why250 = sentence(250);
+  const tc = await night({ scenario: { apply: { 8: { action: "win", to: 50, conflict: { rule: 107, why: why250 } } } }, state: { job: job([P(8, "402.2")]) }, opts: { audit: false } });
+  const oc = tc.claims[0]?.outcomes[0];
+  check("reasons: a conflict reason with a long why stays at most 400 with its prefix and the suggestion whole", oc && oc.reason.length <= 400 && /which prevails over it \(rule 108\.4\): word0 /.test(oc.reason) && oc.reason.endsWith("propose it again."), J(oc));
+  check("reasons: the night log keeps the conflict's whole why", nl(tc).some((e) => e.event === "not_applied" && String(e.full_reason).includes(why250)), J(nl(tc).filter((e) => e.event === "not_applied")));
+  const ta = await night({ scenario: { apply: { 3: { action: "points", to: 15 } }, audit: { 3: { material: false, reading: sentence(300), gap: sentence(300) } } }, state: { job: job([P(3, "401")]) } });
+  const au = nl(ta).find((e) => e.event === "audit");
+  check("reasons: an audit's reading and gap keep 300 characters (they were cut at 100)", au && au.reading.length >= 290 && au.gap.length >= 290, J(au));
 }
 {
   const t = await night({ scenario: { apply: { 3: { action: "points", to: 15 } } }, state: { job: job([P(3, "401")]), refuseClaim: true }, opts: { audit: false } });
@@ -995,6 +1060,138 @@ const rulingCalls = (t) => t.claude.calls().filter((c) => c.escalation !== null)
   check("pin: a wording-only amendment (no module change) may update its pin line too", tText.claims[0]?.outcomes[0]?.applied === true, J(tText.claims[0]?.outcomes));
   const tOther = await night({ scenario: { apply: { 4: { action: "ops", ops: [...text15, pin15, { replace: ["rules/rulebook.test.ts", "Once in each Era, the Champion can make one change of their own.", "Once in each Era, nobody can change anything."] }] } } }, state: { job: job([p401]) }, opts: { audit: false, repo: pinRepo() } });
   check("pin: the same amendment that also rewrites the line pinning rule 402 is refused", tOther.claims[0]?.outcomes[0]?.applied === false && /rulebook\.test\.ts changed beyond the lines for the rules/.test(tOther.claims[0].outcomes[0].reason), J(tOther.claims[0]?.outcomes));
+}
+
+// ---- the night's builds (rules 803.2-803.4) ---------------------------------------------------------------------------
+// GET pending's `builds` (src/lib/builds.js pendingBuilds): every Building ticket in queue order, with the ticket as voted and the drawings its
+// requester kept for each entry. The starter rules (templates/) have 803.2, so the fixture games build.
+console.log("the night's builds");
+const ART = (name, n = 1) => `art/${name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${n}`;
+const W = (number, makes, o = {}) => ({
+  ticket: `W${number}`, number, title: o.title ?? `Ticket ${number}`, player: { name: "Ana" }, queue_pos: o.queue_pos ?? number, start_day: o.start_day ?? 1, fails: o.fails ?? 0, note: null,
+  voted: { number, title: o.title ?? `Ticket ${number}`, brief: "A brief.", makes, estimate: o.estimate ?? 1, price: o.price ?? 0, running_cost: "" },
+  entries: makes.filter((m) => m.kind === "entry").map((m) => ({ name: m.name, catalogKind: m.catalogKind ?? null, art: o.art?.[m.name] ?? { saved: [{ key: ART(m.name, 1), prompt: `a ${m.name}` }, { key: ART(m.name, 2), prompt: `another ${m.name}` }], default: ART(m.name, 2) } })),
+  outcome: null,
+});
+const GRASS = { kind: "entry", name: "Grass", catalogKind: "tile", flavor: { colour: "green" } };
+const catalogOn = (bare, ref = "main") => JSON.parse(g(["show", `${ref}:catalog.json`], bare));
+const nightLines = (t, ev) => (existsSync(join(t.stateDir, "g.night.jsonl")) ? readFileSync(join(t.stateDir, "g.night.jsonl"), "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l)).filter((e) => e.event === ev) : []);
+// A rule item's build, as the model would write it: rule 805 in block 800 holding the voted draft, its module (with the attribute the entry's
+// needsBuild key waits for) and its tests. `also` adds more edits (another rule's text, for the scope check).
+const FLOWER_DRAFT = "A Flower smells of what its scent says.";
+const FLOWER = { kind: "entry", name: "Flower", catalogKind: "item", attrs: { scent: "sweet" }, needsBuild: ["scent"] };
+const MOD805 = '// Rule 805, Flowers.\nimport { defineRule } from "promptocracy/engine";\n\n/** The attribute a Flower\'s scent is (805.1). */\nexport const attributes = [{ key: "scent", type: "text", kinds: ["item"] }];\n\nexport default defineRule({ rule: 805 });\n';
+const TEST805 = 'import { test } from "node:test";\nimport assert from "node:assert/strict";\nimport rule, { attributes } from "./805.ts";\ntest("805.1: an item has a scent", () => {\n  assert.equal(rule.rule, 805);\n  assert.deepEqual(attributes.map((a) => a.key), ["scent"]);\n});\n';
+const build805 = (also = []) => ({ action: "ops", ops: [{ replace: ["RULES.md", "## 900. Actions", `### 805 Flowers [m]\n**805.1** ${FLOWER_DRAFT}\n\n## 900. Actions`] }, { write: ["rules/805.ts", MOD805] }, { write: ["rules/805.test.ts", TEST805] }, ...also], result: { outcome: "built" } });
+{
+  // An entry-only ticket (W1 Grass): plain code writes the catalog entry, no model call. A night with only builds still claims, tags and deploys.
+  const t = await night({ scenario: { apply: {} }, state: { job: job([], { builds: [W(1, [GRASS])] }) } });
+  const cat = catalogOn(t.repo.bare), b = t.claims[0]?.builds?.[0];
+  check("entry only: T1 Grass is written with madeBy W1, the night's day, its attrs and flavor, and the drawings kept with the one picked as default",
+    J(cat) === J([{ id: "T1", name: "Grass", kind: "tile", attrs: {}, flavor: { colour: "green" }, art: { saved: [{ key: ART("Grass", 1), prompt: "a Grass" }, { key: ART("Grass", 2), prompt: "another Grass" }], default: ART("Grass", 2) }, madeBy: "W1", day: 1 }]), J(cat));
+  check("entry only: no model call", t.claude.calls().length === 0, J(t.claude.calls().map((c) => c.ticket ?? c.number)));
+  check("entry only: the claim carries W1 built, with its commit and made [T1]", b?.ticket === "W1" && b.outcome === "built" && /^[0-9a-f]{40}$/.test(b.commit) && J(b.made) === J(["T1"]) && b.commit === g(["rev-parse", "main"], t.repo.bare).trim(), J(t.claims[0]));
+  check("entry only: one commit, 'W1: Ticket 1 (day 1, commission)', with the Ticket: W1 trailer", log(t.repo.bare)[0] === "W1: Ticket 1 (day 1, commission)" && /^Ticket: W1$/m.test(g(["log", "-1", "--format=%B", "main"], t.repo.bare)), J(log(t.repo.bare)));
+  check("only builds: the night is claimed with no proposal outcomes, tagged day-1 at the claimed commit and deployed", t.r.status === "claimed" && J(t.claims[0]?.outcomes) === "[]" && remoteTags(t.repo.bare).includes("day-1") && g(["rev-parse", "day-1^{commit}"], t.repo.bare).trim() === t.claims[0].sha && t.deploys.length === 1 && t.deploys[0].sha === t.claims[0].sha, J([t.r, remoteTags(t.repo.bare), t.deploys]));
+  check("entry only: the night log has the build", nightLines(t, "built").some((e) => e.ticket === "W1" && J(e.made) === J(["T1"])), J(nightLines(t, "built")));
+}
+{
+  // A uses item writes nothing; ids are the next free number per kind letter, in queue order; a duplicate (same kind and name) is the entry already there.
+  const t = await night({ scenario: { apply: {} }, state: { job: job([], { builds: [W(1, [GRASS]), W(2, [{ kind: "entry", name: "Bog", catalogKind: "tile" }, { kind: "uses", name: "Grass", catalogKind: "tile", num: "W1" }]), W(3, [{ kind: "uses", name: "Grass", catalogKind: "tile", num: "W1" }]), W(5, [{ kind: "entry", name: "grass", catalogKind: "tile" }])] }) } });
+  const cat = catalogOn(t.repo.bare), bs = Object.fromEntries((t.claims[0]?.builds ?? []).map((b) => [b.ticket, b]));
+  check("uses: W2's uses item adds nothing; W2's own entry is T2 (the next free tile number after W1's T1)", J(cat.map((e) => [e.id, e.name, e.madeBy])) === J([["T1", "Grass", "W1"], ["T2", "Bog", "W2"]]) && J(bs.W2?.made) === J(["T2"]), J([cat, bs.W2]));
+  check("uses: a ticket that only uses an entry is built with nothing added (its commit, made empty)", bs.W3?.outcome === "built" && /^[0-9a-f]{40}$/.test(bs.W3.commit) && !(bs.W3.made?.length), J(bs.W3));
+  check("duplicate: W5's grass tile uses Grass (T1), the entry already there, and adds nothing", bs.W5?.outcome === "built" && J(bs.W5.made) === J(["T1"]) && cat.length === 2, J([bs.W5, cat]));
+  check("uses: no model call for any of them", t.claude.calls().length === 0);
+}
+{
+  // A rule item: one model call (moderator/BUILD.md); the rule's text, module and tests are committed with the entry, in one commit.
+  const t = await night({ scenario: { build: { W2: build805() } }, state: { job: job([], { builds: [W(2, [FLOWER, { kind: "rule", draft: FLOWER_DRAFT }], { title: "Flower" })] }) } });
+  const b = t.claims[0]?.builds?.[0], files = g(["show", "--name-only", "--format=", "main"], t.repo.bare).trim().split("\n").sort();
+  check("rule item: built, with made [I1, 805]", b?.outcome === "built" && J(b.made) === J(["I1", "805"]), J(t.claims[0]?.builds));
+  check("rule item: the one commit has catalog.json, RULES.md, rules/805.ts, its test and game.json", J(files) === J(["RULES.md", "catalog.json", "game.json", "rules/805.test.ts", "rules/805.ts"]) && log(t.repo.bare)[0] === "W2: Flower (day 1, commission)", J([files, log(t.repo.bare)]));
+  check("rule item: the voted draft is in RULES.md word for word and the entry keeps its scent (the attribute rule 805 defines)", g(["show", "main:RULES.md"], t.repo.bare).includes(`**805.1** ${FLOWER_DRAFT}`) && J(catalogOn(t.repo.bare)[0].attrs) === J({ scent: "sweet" }) && catalogOn(t.repo.bare)[0].madeBy === "W2", J(catalogOn(t.repo.bare)));
+  const c = t.claude.calls().find((x) => x.ticket === "W2");
+  check("rule item: the model runs restricted with file tools only, on the BUILD prompt, with no secret in its environment", c && c.build && c.restricted && c.tools === "Read,Edit,Write,Glob,Grep" && !c.env.some((k) => k !== "CLAUDE_CODE_OAUTH_TOKEN" && /TOKEN|CLOUDFLARE|GITHUB|GH_|ANTHROPIC|SECRET|KEY|PROMPTOCRACY/i.test(k)), J(c && { build: c.build, tools: c.tools }));
+  check("rule item: the model is told the entry's id and madeBy (so its code can find it), and gets no brief", /"id": "I1"/.test(c?.buildPrompt ?? "") && /"madeBy": "W2"/.test(c?.buildPrompt ?? "") && !/A brief\./.test(c?.buildPrompt ?? ""), (c?.buildPrompt ?? "").slice(-1200));
+}
+{
+  // A build that touches a rule its ticket doesn't make is refused: failed, with the reason; nothing of it is committed.
+  const t = await night({ scenario: { build: { W2: build805([{ replace: ["RULES.md", "gets 10 points when it is applied", "gets 15 points when it is applied"] }]) } }, state: { job: job([], { builds: [W(2, [FLOWER, { kind: "rule", draft: FLOWER_DRAFT }])] }) } });
+  const b = t.claims[0]?.builds?.[0];
+  check("scope: a build that changes rule 401 too is failed, with a reason naming rule 401", b?.outcome === "failed" && /rule 401/.test(b.reason) && b.reason.length <= 400, J(b));
+  check("scope: it was given its 2 fixes (3 calls), and nothing of it is on main (no catalog entry either)", t.claude.calls().filter((c) => c.ticket === "W2").length === 3 && log(t.repo.bare)[0] === "day 0" && J(catalogOn(t.repo.bare)) === "[]", J(log(t.repo.bare)));
+  check("scope: the night is still claimed, tagged and deployed", t.r.status === "claimed" && t.deploys.length === 1);
+}
+{
+  // A ticket the Worker lists as not built: its commit is reverted, like a proposal listed as not applied.
+  const t = await night({ scenario: { apply: {} }, state: { job: job([], { builds: [W(1, [GRASS])] }) } });
+  const built = t.claims[0]?.builds?.[0]?.commit;
+  // The deploy never went live: the site ended the night timed_out, and W1 is still Building ("not built tonight").
+  const t2 = await night({ scenario: { apply: {} }, state: { job: null, not_applied: [], processed: [{ n: 1, status: "timed_out", commit_sha: t.claims[0]?.sha }] }, opts: { repo: t.repo, stateDir: t.stateDir } });
+  const body = g(["log", "-1", "--format=%B", "main"], t.repo.bare);
+  check("not built: the next run reverts W1's commit, with a Reverts-Ticket: W1 trailer, and Grass is gone from catalog.json", t2.r.reconciled && /^Revert W1: not built \(day 1\)/.test(log(t.repo.bare)[0]) && /^Reverts-Ticket: W1$/m.test(body) && J(catalogOn(t.repo.bare)) === "[]", J([t2.r, log(t.repo.bare)]));
+  check("not built: day-1 held it, so the reverted rules are tagged day-1.1 and deployed", remoteTags(t.repo.bare).includes("day-1.1") && J(catalogOn(t.repo.bare, "day-1.1")) === "[]" && t2.deploys.length === 1, J([remoteTags(t.repo.bare), t2.deploys]));
+  const t3 = await night({ scenario: { apply: {} }, state: { job: null, not_applied: [], processed: [{ n: 1, status: "timed_out", commit_sha: t.claims[0]?.sha }] }, opts: { repo: t.repo, stateDir: t.stateDir } });
+  check("not built: the reconcile is done once (a second run reverts nothing more)", !t3.r.reconciled && log(t.repo.bare).filter((s) => /^Revert W1/.test(s)).length === 1, J(t3.r));
+  // Night 2: the site lists W1 again (still Building). It is built afresh as T1, in a new commit.
+  const t4 = await night({ scenario: { apply: {} }, state: { job: job([], { day: 2, builds: [W(1, [GRASS])] }) }, opts: { repo: t.repo, stateDir: t.stateDir } });
+  const b4 = t4.claims[0]?.builds?.[0];
+  check("not built: the next night builds W1 again, T1 in a new commit", b4?.outcome === "built" && b4.commit !== built && J(b4.made) === J(["T1"]) && log(t.repo.bare)[0] === "W1: Ticket 1 (day 2, commission)", J([b4, log(t.repo.bare).slice(0, 3)]));
+}
+{
+  // The night lists W1 while its commit from an earlier night is still on main (that night never went live): reverted first, then built again.
+  const t = await night({ scenario: { apply: {} }, state: { job: job([], { builds: [W(1, [GRASS])] }) } });
+  const t2 = await night({ scenario: { apply: {} }, state: { job: job([], { day: 2, builds: [W(1, [GRASS])] }) }, opts: { repo: t.repo } });
+  check("not built (listed again): W1's day-1 commit is reverted before the night builds it again, so T1 is there once", J(log(t.repo.bare).slice(0, 3)) === J(["W1: Ticket 1 (day 2, commission)", "Revert W1: not built (day 1)", "W1: Ticket 1 (day 1, commission)"]) && J(catalogOn(t.repo.bare).map((e) => e.id)) === J(["T1"]) && t2.claims[0]?.builds?.[0]?.outcome === "built", J(log(t.repo.bare).slice(0, 4)));
+}
+{
+  // Out of time: a build the night has no time for is no_time, not failed (803.4), whether it never started or the night's end cut it short.
+  const tight = new Date(Date.now() + 5 * 60_000 - 1000).toISOString();   // inside the claim margin: no time to start anything
+  const t = await night({ scenario: { apply: {} }, state: { job: job([], { deadline_at: tight, builds: [W(1, [GRASS])] }) } });
+  const b = t.claims[0]?.builds?.[0];
+  check("no time: a build the night has no time left for is no_time, not failed, and nothing is committed", b?.outcome === "no_time" && !("reason" in b) && log(t.repo.bare)[0] === "day 0", J(t.claims[0]?.builds));
+  const cut = new Date(Date.now() + 5 * 60_000 + 4000).toISOString();   // 4 s of the night left: the model's call is cut short by the night, not by its own budget
+  const t2 = await night({ scenario: { build: { W2: { action: "sleep", ms: 15_000 } } }, state: { job: job([], { deadline_at: cut, builds: [W(2, [FLOWER, { kind: "rule", draft: FLOWER_DRAFT }])] }) } });
+  const b2 = t2.claims[0]?.builds?.[0];
+  check("no time: a build the night's end cuts short is no_time, not failed", b2?.outcome === "no_time" && log(t2.repo.bare)[0] === "day 0", J(t2.claims[0]?.builds ?? t2.r));
+}
+{
+  // needs_engine: the build needs something only a platform PR can give. One-line note in the claim, nothing committed, a notification for Chalant's day.
+  const note = "a give action: the engine has no way for one player to hand an item to another";
+  const t = await night({ scenario: { build: { W4: { action: "ops", ops: [], result: { outcome: "needs_engine", note } } } }, state: { job: job([], { builds: [W(4, [{ kind: "entry", name: "Flower", catalogKind: "item" }, { kind: "rule", draft: "Once a day, a living player can give a Flower to another player." }], { title: "Flower" })] }) } });
+  const b = t.claims[0]?.builds?.[0];
+  check("needs_engine: the claim has W4 needs_engine with the one-line note", b?.outcome === "needs_engine" && b.note === note, J(b));
+  check("needs_engine: nothing of W4 is committed (not even its entry)", log(t.repo.bare)[0] === "day 0" && J(catalogOn(t.repo.bare)) === "[]", J(log(t.repo.bare)));
+  const f = t.notes.find((x) => /needs-engine-W4/.test(x));
+  const text = f ? readFileSync(join(t.notifyDir, f), "utf8") : "";
+  check("needs_engine: a notification file asks for the platform PR, naming W4 and the note", !!f && text.includes("W4") && text.includes(note) && /platform PR/.test(text), J(t.notes));
+  check("needs_engine: the notification carries no player text (not the ticket's title)", !!f && !text.includes("Flower"), text);
+}
+{
+  // Preflight P1: a ticket that only uses an entry is an empty commit. When its night times out, the reconcile reverts it without throwing
+  // (`git revert` refuses an empty commit), so later nights are not stuck behind it.
+  const t = await night({ scenario: { apply: {} }, state: { job: job([], { builds: [W(3, [{ kind: "uses", name: "Grass", catalogKind: "tile", num: "T1" }])] }) } });
+  const t2 = await night({ scenario: { apply: {} }, state: { job: null, not_applied: [], processed: [{ n: 1, status: "timed_out", commit_sha: t.claims[0]?.sha }] }, opts: { repo: t.repo, stateDir: t.stateDir } });
+  check("not built (empty commit): a uses-only ticket's commit is reverted with its trailer, and the run doesn't fail", t2.r.status === "idle" && /^Revert W3: not built \(day 1\)/.test(log(t.repo.bare)[0]) && /^Reverts-Ticket: W3$/m.test(g(["log", "-1", "--format=%B", "main"], t.repo.bare)), J([t2.r, log(t.repo.bare).slice(0, 3)]));
+}
+{
+  // Preflight P2: a rule that is new tonight must hold one of the ticket's drafts; a heading (with a module) that no rule item asked for is refused.
+  const extra = [{ replace: ["RULES.md", "\n## 900. Actions", "\n### 806 Extra [m]\n\n## 900. Actions"] }, { write: ["rules/806.ts", '// Rule 806.\nimport { defineRule } from "promptocracy/engine";\n\nexport default defineRule({ rule: 806 });\n'] }];
+  const t = await night({ scenario: { build: { W2: build805(extra) } }, state: { job: job([], { builds: [W(2, [FLOWER, { kind: "rule", draft: FLOWER_DRAFT }])] }) } });
+  const b = t.claims[0]?.builds?.[0];
+  check("scope: a new rule 806 that holds no draft of the ticket is refused (failed, naming it), nothing committed", b?.outcome === "failed" && /rule 806 is new but holds no draft of W2/.test(b.reason) && log(t.repo.bare)[0] === "day 0", J(b));
+}
+{
+  // Preflight P2: the model can't run at all (the CLI fails, no result file): the moderator's trouble, not the ticket's. no_time, no strike (803.4).
+  const t = await night({ scenario: { build: {} }, state: { job: job([], { builds: [W(2, [FLOWER, { kind: "rule", draft: FLOWER_DRAFT }])] }) } });
+  const b = t.claims[0]?.builds?.[0];
+  check("model can't run: the build is no_time, not failed, and the night log has the error", b?.outcome === "no_time" && nightLines(t, "model_error").some((e) => e.ticket === "W2"), J([b, nightLines(t, "model_error")]));
+}
+{
+  // A game whose job has no `builds` (its rules lack 803.2): the claim sends no builds key, as before.
+  const t = await night({ scenario: { apply: { 3: { action: "points", to: 15 } } }, state: { job: job([P(3, "401")]) }, opts: { audit: false } });
+  check("no 803.2: a job without builds is claimed without a builds key", t.r.status === "claimed" && !("builds" in (t.claims[0] ?? {})), J(t.claims[0]));
 }
 
 console.log(`${pass} passed, ${fail} failed`);

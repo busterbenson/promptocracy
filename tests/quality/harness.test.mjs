@@ -11,8 +11,9 @@ import { runChatCase } from "./chat.mjs";
 import { answerKey, caseStatus, codeChecks } from "./grade.mjs";
 import { BlockedHost, CapReached, Meter, ROOT, assertNoKeys, assertScratch, guardFetch, loadKeys, makeRunTmp, scrubEnv } from "./lib.mjs";
 import { nightCapped, parseClaude, runNight } from "./night.mjs";
-import { esc, renderPage } from "./page.mjs";
-import { cloneCase, scratchFromDir } from "./scratch.mjs";
+import { esc, renderPage, repsTable } from "./page.mjs";
+import { catalogOf, cloneCase, scratchFromDir } from "./scratch.mjs";
+import { pipeline } from "./pipeline.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 let pass = 0, fail = 0;
@@ -133,6 +134,76 @@ const fOk = ok.fetch(async () => new Response(JSON.stringify({ usage: { input_to
 await fOk("https://api.anthropic.com/v1/messages", { body: JSON.stringify({ model: "claude-sonnet-5-5" }) });
 check("meter: a call's cost is counted from its usage (1000 in + 100 out at sonnet prices = 3000 micro)", ok.spent === 3000, String(ok.spent));
 
+// ---- 7b. the chat stage runs the production path for a draft: the game's catalog, and the route's own retries ---------------------------------
+{
+  const DAY2 = readFileSync(join(ROOT, "tests", "fixtures", "rickshaw-day-2", "RULES.md"), "utf8");
+  const book2 = parseBook(DAY2);
+  const CAT = [{ id: "C1", name: "Blob", kind: "creature", attrs: {}, flavor: {}, art: { saved: [], default: null } }];
+  // the catalog: read as the bundler reads it, from the scratch game's catalog.json
+  const cdir = join(T, "catgame");
+  mkdirSync(cdir, { recursive: true });
+  writeFileSync(join(cdir, "catalog.json"), readFileSync(join(ROOT, "tests", "fixtures", "rickshaw-day-2", "catalog.json"), "utf8"));
+  const read = catalogOf(cdir);
+  check("catalogOf reads the game's catalog.json as the bundler does (readCatalog): id, kind and name of each entry", read.length === 1 && read[0].id === "C1" && read[0].kind === "creature" && read[0].name === "Blob", JSON.stringify(read));
+  const nocat = join(T, "nocatgame");
+  mkdirSync(nocat, { recursive: true });
+  check("catalogOf: a game with no catalog.json has none ([]), as the bundler has it", catalogOf(nocat).length === 0);
+  writeFileSync(join(nocat, "catalog.json"), '[{"id":"X9","kind":"nonsense","name":"?"}]');
+  check("catalogOf throws on a catalog that is not valid (a run never checks blind)", await throws(() => catalogOf(nocat)));
+  check("pipeline refuses to run the check without the game's catalog (null), and takes an empty one", await throws(() => pipeline({}, book2, DAY2, { kind: "amend", target: "401.1", words: "x" }, {}, { draftcheck: {}, catalog: null })));
+
+  // a scripted model, drafter and check: the chat stage is the real code around them
+  const answer = (words, say = `say ${words}`) => JSON.stringify({ say, draft: words ? { kind: "amend", target: "401.1", words } : undefined });
+  const rig = (queue, { refuseWords = [] } = {}) => {
+    const seen = { requests: [], checks: [] };
+    const agent = { callModel: async (_env, req) => { seen.requests.push(JSON.stringify(req.messages)); const t = queue.shift(); return t === undefined ? { ok: false, code: "failed", reason: "empty queue" } : { ok: true, text: t, usage: null }; } };
+    class DrafterError extends Error { constructor(code, msg, reason) { super(msg); this.code = code; this.reason = reason; } }
+    const drafter = { DrafterError, drafterReady: () => true, draftRewording: async (_e, _b, _m, req) => { if (refuseWords.includes(req.words)) throw new DrafterError("refused", "stub drafter says no", "declined"); return { after_text: `**401.1** ${req.words}.`, settings: {}, conflicts: [] }; } };
+    const fixes = ["fix A", "fix B", "fix C", "fix D"].map((say) => ({ say, kind: null, target: null, words: null }));
+    const draftcheck = { runCheck: async (_e, _md, _book, catalog, d) => { seen.checks.push({ catalog, words: d.words }); return d.words.startsWith("blocked") ? { check: { status: "blocked", conflicts: [], missing: [{ what: "a thing", why: "not recorded" }], fixes } } : { check: { status: "ok", conflicts: [], missing: [], fixes: [] } }; } };
+    return { seen, x: { meter: new Meter({ capUsd: 5 }), agent, drafter, draftcheck, keys: { model: "k" }, rulesMd: DAY2, book: book2, actions: [], catalog: CAT } };
+  };
+  const mk = (id, turns) => ({ id, agent: "starling", title: id, turns, if_asked: [], expect: {} });
+
+  const a1 = rig([answer("blocked words"), answer("fixed words", "I changed it")]);
+  const r1 = await runChatCase(mk("retry-check", ["do it"]), a1.x);
+  check("chat: the rule check is run with the game's catalog (the same array the run loaded), for each draft", a1.seen.checks.length === 2 && a1.seen.checks.every((c) => c.catalog === CAT), JSON.stringify(a1.seen.checks.map((c) => c.words)));
+  check("chat: a blocked check gets the route's redraft: a second model call that carries the check's findings (found), no refusal text", a1.seen.requests.length === 2 && /rule check found the game can't carry it out/.test(a1.seen.requests[1]) && !/refused by the drafter/.test(a1.seen.requests[1]), String(a1.seen.requests.length));
+  check("chat: the retry's draft is the one that stands, and it was checked", r1.draft?.words === "fixed words" && r1.draft.check?.status === "ok" && r1.turns[0].say === "I changed it" && (r1.turns[0].retry || []).join() === "redraft 1 after rule check passed", JSON.stringify(r1.turns[0].retry));
+  check("chat: the retry's cost is in the case (two model calls and two checks are metered per turn)", r1.error === null && r1.turns.length === 1 && r1.draft_count === 1);
+
+  check("chat: the turn records the standing slip (kind, words, the rule check, fixes) for the first-answer keys", r1.turns[0].slip?.check === "ok" && r1.turns[0].slip.words === "fixed words" && r1.turns[0].slip.fresh === true && r1.turns[0].slip.kind === "amend");
+
+  const a2 = rig([answer("blocked one"), answer("blocked two"), answer("blocked three"), answer(null, "explained"), answer(null, "ok then")]);
+  const r2 = await runChatCase(mk("no-second-retry", ["do it", "and now?"]), a2.x);
+  check("chat: three blocked drafts: two redrafts and one explanation call for the turn (4 calls, 3 checks), then the next turn's call", a2.seen.requests.length === 5 && a2.seen.checks.length === 3 && r2.turns[0].say === "explained" && r2.draft?.words === "blocked one", `${a2.seen.requests.length} ${a2.seen.checks.length} ${r2.draft?.words}`);
+  check("chat: a blocked slip's options are the check's fixes, three at most", (r2.turns[0].options || []).join() === "fix A,fix B,fix C", (r2.turns[0].options || []).join());
+  check("chat: the next turn's tail carries the stored check (the slip says why Lock it in is off), as the route's `drafted` does", /rule check found the game can't carry it out/.test(a2.seen.requests[4]), a2.seen.requests[2].slice(0, 300));
+
+  const a3 = rig([answer("refused words"), answer("accepted words")], { refuseWords: ["refused words"] });
+  const r3 = await runChatCase(mk("retry-refusal", ["do it"]), a3.x);
+  check("chat: a refused draft gets one retry with the drafter's reason, and the second draft is checked", a3.seen.requests.length === 2 && /refused by the drafter/.test(a3.seen.requests[1]) && r3.draft?.words === "accepted words" && a3.seen.checks.length === 1 && r3.turns[0].retried === true);
+  const a4 = rig([answer("refused words"), answer("blocked words"), answer("never asked")], { refuseWords: ["refused words"] });
+  const r4 = await runChatCase(mk("one-retry-in-all", ["do it"]), a4.x);
+  check("chat: a refusal retry that lands a blocked draft is redrafted (refusal, then block, then a redraft that passes)", a4.seen.requests.length === 3 && r4.draft?.words === "never asked" && r4.draft?.check?.status === "ok", String(a4.seen.requests.length));
+
+  // a case's `pending` (the commissions it says are open, rules 701.4 and 703.4) reaches the prompt, the rule check and the answer reader, as the route's entriesFor does
+  const a5 = rig([JSON.stringify({ say: "W4 makes the Flower.", draft: { kind: "amend", target: "401.1", words: "a creature that eats a flower loses a heart", uses: ["W4", "W99"] } })]);
+  let checkPending = null;
+  const inner = a5.x.draftcheck.runCheck;
+  a5.x.draftcheck = { runCheck: async (...args) => { checkPending = args[6]; return inner(...args); } };
+  const r5 = await runChatCase({ ...mk("pending-entries", ["a creature that eats a flower loses a heart"]), pending: [{ ticket: 4, owner: "Sarah", state: "Ready", name: "Flower", catalogKind: "item" }] }, a5.x);
+  check("chat: a case's pending entries are in the request's tail (W4 makes Flower, item, Sarah, Ready) and go to the rule check", /W4 makes Flower \(item\), Sarah, Ready/.test(a5.seen.requests[0]) && JSON.stringify(checkPending) === JSON.stringify([{ name: "Flower", catalogKind: "item", ticket: "W4", owner: "Sarah", state: "Ready" }]), JSON.stringify(checkPending));
+  check("chat: the draft's uses keep W4 and drop W99, and the grader reads them", JSON.stringify(r5.draft?.uses) === '["W4"]' && codeChecks({ id: "x", agent: "gremlin", expect: { uses: ["W4"] } }, r5, null).every((k) => k.pass) && codeChecks({ id: "x", agent: "gremlin", expect: { uses: ["W5"] } }, r5, null).some((k) => !k.pass), JSON.stringify(r5.draft?.uses));
+
+  // the wiring: both sides call the one function, and the run loads the catalog
+  const chatSrc = readFileSync(join(HERE, "chat.mjs"), "utf8"), routeSrc = readFileSync(join(ROOT, "src", "routes", "api-chat.ts"), "utf8"), runSrc = readFileSync(join(HERE, "run.mjs"), "utf8");
+  check("wiring: the route and the harness both call draftTurn from src/lib/draft-turn.js", /import \{ draftTurn \} from "\.\.\/\.\.\/src\/lib\/draft-turn\.js"/.test(chatSrc) && /import \{ draftTurn \} from "\.\.\/lib\/draft-turn\.js"/.test(routeSrc) && /await draftTurn\(/.test(chatSrc) && /await draftTurn\(/.test(routeSrc));
+  const routeAsks = (routeSrc.match(/await ask\(/g) || []).length;
+  check("wiring: the route asks the model again only inside draftTurn (the turn's own first ask is the one `await ask()` left) and the harness has no retry flags of its own", routeAsks === 1 && !/let retried/.test(routeSrc + chatSrc), String(routeAsks));
+  check("wiring: run.mjs loads the game's catalog (catalogOf) into the chat stage's context", /catalogOf\(join\(runTmp, "scratch", "seed"\)\)/.test(runSrc) && /book, actions, catalog \}/.test(runSrc));
+}
+
 // ---- 8. the page ------------------------------------------------------------------------------------------------------------------------------
 const page = renderPage(fixture, { agreement: "grader agreed with you on 7 of 9 marked cases" });
 check("page: no raw <script> from a model or a player outside the page's own one", (page.match(/<script/g) || []).length === 1 && !/<script>alert/.test(page) && !/<img src=x/.test(page));
@@ -142,6 +213,30 @@ check("page: an action's and a commission's night reads n/a, not a green", /nigh
 check("page: a known fail is labelled EXPECTED FAIL and the summary and agreement are on top", page.includes("EXPECTED FAIL") && page.includes("agreed with you on 7 of 9") && page.includes("tagline:"));
 check("page: no blank line inside the HTML (the markdown renderer would end the block)", !/\n\n/.test(page.split("---\n").slice(2).join("---\n").trim()));
 check("esc handles quotes and ampersands", esc(`<a href="x">&'`) === "&lt;a href=&quot;x&quot;&gt;&amp;&#39;");
+
+// ---- 9. first-answer keys and --repeat (the first answer is the standing slip of turn 1) ------------------------------------------------
+{
+  const slip = (o = {}) => ({ kind: "add", target: "200", words: "Each day has a moon.", after_text: "205.1 Each day has a moon, worked out from the 29.53-day cycle.", check: "ok", missing: [], fixes: [], engine_note: null, ...o });
+  const res = (turn, extra = {}) => ({ turns: [{ say: "Drafted it.", guesses: "I guessed block 200.", options: [], ...turn }], draft_count: 1, draft: {}, ...extra });
+  const run = (expect, r) => codeChecks({ id: "x", expect }, r, null).filter((k) => !k.pass).map((k) => k.name);
+  check("first_answer: an ok slip with the right words passes", run({ first_answer: { check: "ok", engine_note: false, words_re: ["moon", "29\\.53"], guess: true } }, res({ slip: slip() })).length === 0);
+  check("first_answer: a blocked slip fails an ok case, and says what it got", run({ first_answer: { check: "ok" } }, res({ slip: slip({ check: "blocked", missing: [{ what: "the real moon", why: "x" }] }) })).some((n) => /rule check says ok/.test(n)));
+  check("first_answer: no slip fails", run({ first_answer: { check: "ok" } }, res({})).some((n) => /a slip stands/.test(n)));
+  check("first_answer: words_re and not_words_re read the draft", run({ first_answer: { not_words_re: "random" } }, res({ slip: slip({ after_text: "a random moon" }) })).length === 1 && run({ first_answer: { words_re: ["bite"] } }, res({ slip: slip() })).length === 1);
+  check("first_answer: engine_note true needs the note, false needs none", run({ first_answer: { engine_note: true } }, res({ slip: slip() })).length === 1 && run({ first_answer: { engine_note: true } }, res({ slip: slip({ engine_note: "needs the engine to learn moving a player" }) })).length === 0 && run({ first_answer: { engine_note: false } }, res({ slip: slip({ engine_note: "x" }) })).length === 1);
+  check("first_answer: blocked must name the missing item; options may not carry a banned word", run({ first_answer: { check: "blocked", missing_names_re: "stood" } }, res({ slip: slip({ check: "blocked", missing: [{ what: "how long a piece stood", why: "" }] }) })).length === 0 && run({ first_answer: { options_not_re: "creature" } }, res({ slip: slip(), options: ["a creature rule"] })).length === 1);
+  check("first_answer: says_not_re reads his line", run({ first_answer: { says_not_re: "no rule takes" } }, res({ slip: slip(), say: "No rule takes points away." })).length === 1);
+  check("first_answer any: one whole alternative passes the case; none fails it", run({ first_answer: { any: [{ check: "ok", engine_note: true }, { check: "blocked" }] } }, res({ slip: slip({ check: "blocked" }) })).length === 0 && run({ first_answer: { any: [{ check: "ok", engine_note: true }, { check: "blocked" }] } }, res({ slip: slip() })).length === 1);
+  check("turn_slip: reads the standing slip of that turn", run({ turn_slip: [{ turn: 2, check: "ok" }] }, { turns: [{ say: "a", slip: slip({ check: "blocked" }) }, { say: "b", slip: slip() }], draft_count: 1, draft: {} }).length === 0 && run({ turn_slip: [{ turn: 2, check: "ok" }] }, { turns: [{ say: "a", slip: slip() }, { say: "b", slip: slip({ check: "blocked" }) }], draft_count: 1, draft: {} }).length === 1);
+  const cs = [{ id: "a", rep: 1, reps: 3, status: "pass", turns: [{ slip: slip() }] }, { id: "a", rep: 2, reps: 3, status: "fail", turns: [{ slip: slip({ check: "blocked" }) }] }, { id: "a", rep: 3, reps: 3, status: "pass", turns: [{ slip: slip({ engine_note: "n" }) }] }];
+  const t = repsTable(cs);
+  check("repsTable: k/N per case and each rep's first slip", t.includes("2/3 FAIL") && t.includes("ok / blocked / ok+note") && repsTable([{ id: "a", rep: 1, reps: 1, status: "pass", turns: [] }]) === "");
+  const rp = renderPage({ run_id: "r", stage: "chat", date: "d", platform_sha: "s", rules_ref: "x", rules_sha: "y", cost: {}, cases: cs.map((c) => ({ ...c, agent: "gremlin", title: "t", intent: "i", checks: [] })) });
+  check("page with reps: one card a rep, buttons on rep 1 only, no blank line inside", rp.includes('id="case-a-r2"') && (rp.match(/class="qr-mark"/g) || []).length === 1 && !/\n\n/.test(rp.split("---\n").slice(2).join("---\n").trim()));
+  const doc = JSON.parse(readFileSync(join(HERE, "cases.json"), "utf8"));
+  const ids = doc.cases.map((c) => c.id);
+  check("cases: ids are unique and each new case carries a first_answer or turn_slip", new Set(ids).size === ids.length && doc.cases.filter((c) => c.id.startsWith("r-")).every((c) => c.expect.first_answer || c.expect.turn_slip));
+}
 
 // the run directory was made by makeRunTmp() in the real temp dir: only a directory of that shape is removed
 if (T.includes("promptocracy-quality-") && T.startsWith(`${realpathSync(tmpdir())}/`)) rmSync(T, { recursive: true, force: true });

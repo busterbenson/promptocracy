@@ -27,6 +27,15 @@ export function bundleFor(game: { slug: string }): { bundle: Bundle; bundled: bo
   return { bundle: own ?? (STARTER as Bundle), bundled: !!own };
 }
 
+// The settings a game plays by: its rules' settings.json when it has a bundle, else the ones stored on the game row. A rule
+// that changes a setting changes settings.json (rule 109.2), so the day's board and checks must read the bundle, as the night
+// does. (2026-11-26: Rickshaw's P1 set turn.move_distance to 2 and the board kept offering 1.)
+/** @rule 101, 109.2 */
+export function gameSettings(game: { slug: string; settings: string }) {
+  const { bundle, bundled } = bundleFor(game);
+  return getSettings(bundled ? bundle.settings : game.settings);
+}
+
 /** @rule 101 */
 export function rulesFor(game: { slug: string }) {
   const { bundle } = bundleFor(game);
@@ -53,10 +62,10 @@ async function loadCreatures(env: Env, gameId: string) {
 }
 /** @rule 602.4 */
 const creaturesOf = (rows: CreatureRow[], tonight: number | null) => rows.map((c) => ({ id: c.id, entry: c.entry_id, x: c.x, y: c.y, z: c.z, hearts: c.hearts, resting: tonight !== null && c.rests_night === tonight }));
-/** The game's catalog entries as the rules read them (rule 701). @rule 701.1 */
+/** The game's catalog entries as the rules read them (rule 701): with the name and the commission that made it, so a rule can find an entry by either (rule 703.4). @rule 701.1, 703.4 */
 function catalogOf(game: { slug: string }) {
   const { bundle } = bundleFor(game);
-  return ((bundle as any).catalog ?? []).map((e: any) => ({ id: e.id, kind: e.kind, attrs: e.attrs ?? {} }));
+  return ((bundle as any).catalog ?? []).map((e: any) => ({ id: e.id, kind: e.kind, name: e.name ?? null, madeBy: e.madeBy ?? null, attrs: e.attrs ?? {} }));
 }
 // The acting player's turn today (rule 202.1: one turn a day each). `turn.moved` is whether they have moved in it; the
 // legacy round/turn numbers stay in ctx for the modules written against them (the engine is additive only).
@@ -67,7 +76,7 @@ const turnOf = (game: any, today: Today) => ({ round: game.round, turn: game.tur
 // A context with no board in it: enough for the questions the turn guard asks (may this player move at all?).
 /** `me` is the acting player's row, so a rule can see their state (rule 603.1). @rule 202.2, 603.1 */
 export function lightContext(game: any, today?: Today, me?: PlayerRow) {
-  return makeContext({ day: game.day || null, now: nowIso(), settings: getSettings(game.settings), turn: turnOf(game, today), players: me ? playersOf([me]) : [] });
+  return makeContext({ day: game.day || null, now: nowIso(), settings: gameSettings(game), turn: turnOf(game, today), players: me ? playersOf([me]) : [] });
 }
 
 // The full context for a move or a spawn: the settings, every piece and every charted tile.
@@ -79,7 +88,7 @@ export async function boardContext(env: Env, game: any, today?: Today) {
     loadCreatures(env, game.id),
   ]);
   return makeContext({
-    day: game.day || null, now: nowIso(), settings: getSettings(game.settings), players: playersOf(pieces.results as PlayerRow[]),
+    day: game.day || null, now: nowIso(), settings: gameSettings(game), players: playersOf(pieces.results as PlayerRow[]),
     creatures: creaturesOf(creatures, game.day || null), catalog: catalogOf(game),
     tiles: makeTiles(tiles), turn: turnOf(game, today), rng: cryptoRng(),
   });
@@ -161,8 +170,7 @@ export async function chooseSpawn(env: Env, game: any) {
 /** @rule 401, 402 */
 async function nightContext(env: Env, game: any, nowMs: number) {
   const pieces = await env.DB.prepare(`SELECT ${PLAYER_COLS} FROM players WHERE game_id = ?`).bind(game.id).all();
-  const { bundle, bundled } = bundleFor(game);
-  return makeContext({ day: game.day || null, now: nowIso(nowMs), settings: getSettings(bundled ? bundle.settings : game.settings), players: playersOf(pieces.results as PlayerRow[]),
+  return makeContext({ day: game.day || null, now: nowIso(nowMs), settings: gameSettings(game), players: playersOf(pieces.results as PlayerRow[]),
     creatures: creaturesOf(await loadCreatures(env, game.id), game.day || null), catalog: catalogOf(game) });
 }
 
@@ -310,8 +318,7 @@ const BOARD_OPEN = "(SELECT board_at FROM days WHERE game_id = ? AND n = ?) IS N
 
 /** The hearts a new player starts with (rule 601.1). @rule 601.1 */
 export function heartsStart(game: { slug: string; settings: string }): number {
-  const { bundle, bundled } = bundleFor(game);
-  return getSettings(bundled ? bundle.settings : game.settings)["hearts.start"];
+  return gameSettings(game)["hearts.start"];
 }
 
 /**
@@ -339,7 +346,7 @@ export async function nightBoardStatements(env: Env, game: any, n: number, nowMs
     creatures: rows.map((c) => ({ id: c.id, entry: c.entry_id, x: c.x, y: c.y, z: c.z, hearts: c.hearts, restsNight: c.rests_night, resting: false })),
   });
   const now = nowIso(nowMs);
-  const names = new Map(((await env.DB.prepare("SELECT id, display_name, color FROM players WHERE game_id = ?").bind(game.id).all()).results as any[]).map((p) => [p.id, { name: p.display_name as string, color: p.color as string }]));
+  const names = new Map(((await env.DB.prepare("SELECT id, display_name, color, mirrored FROM players WHERE game_id = ?").bind(game.id).all()).results as any[]).map((p) => [p.id, { name: p.display_name as string, color: p.color as string, mirrored: p.mirrored as number }]));
   /** @rule 603.1 */
   const pn = (ref: string) => { const p = names.get(ref); return p ? who(p.name, p.color) : "A player"; };
   /** @rule 602.3 */
@@ -362,6 +369,15 @@ export async function nightBoardStatements(env: Env, game: any, n: number, nowMs
       ev("appeared", `${entryName(op.entry)} appeared at ${tileOf(op.x, op.y, op.z)}.`, "appeared", { creature: op.id, entry: op.entry }, null);
     } else if (op.op === "step") {
       stmts.push(env.DB.prepare(`UPDATE creatures SET x = ?, y = ?, z = ? WHERE game_id = ? AND id = ? AND ${open}`).bind(op.x, op.y, op.z, game.id, op.id, ...ob));
+    } else if (op.op === "move") {
+      // A rule moved this piece (rule 504.2's guards were checked by applyBoard). It faces the way it moved, as on a player's own move; it does not chart.
+      const toRight = (op.x - op.from.x) - (op.y - op.from.y);
+      stmts.push(env.DB.prepare(
+        `UPDATE players SET x = ?, y = ?, z = ?, mirrored = ? WHERE game_id = ? AND id = ? AND x = ? AND y = ? AND z = ? AND ${open}`,
+      ).bind(op.x, op.y, op.z, toRight > 0 ? 1 : toRight < 0 ? 0 : (names.get(op.player)?.mirrored ?? 0), game.id, op.player, op.from.x, op.from.y, op.from.z, ...ob));
+      ev("piece_moved", `${pn(op.player)} was moved to ${tileOf(op.x, op.y, op.z)}${op.reason ? ` (${op.reason})` : ""}.`, "moved", { to: { x: op.x, y: op.y, z: op.z }, reason: op.reason }, op.player);
+    } else if (op.op === "move_refused") {
+      ev("move_refused", `${pn(op.player)} could not be moved to ${tileOf(op.x, op.y, op.z)}: ${op.why}.`, "move_refused", { to: { x: op.x, y: op.y, z: op.z }, why: op.why }, names.has(op.player) ? op.player : null);
     } else if (op.op === "rest") {
       stmts.push(env.DB.prepare(`UPDATE creatures SET rests_night = ? WHERE game_id = ? AND id = ? AND ${open}`).bind(op.night, game.id, op.id, ...ob));
     } else if (op.op === "bite" && op.player) {
