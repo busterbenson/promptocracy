@@ -156,10 +156,19 @@ try {
   }
   check("W4, waiting and out of time on those nights, has no failure", tk(4).state === "Building" && tk(4).build_fails === 0);
   {
+    // night 6 also has a rule change: the moderator applies it first (107.2), and the builds settle in the same unlock
+    d1(state, `INSERT INTO proposals (id, game_id, number, player_id, day_proposed, day_ballot, kind, scope, target, words, title, draft_head, before_text, after_text, drafted_by, base_sha, mark, status, needed, electorate, created_at, confirmed_at)
+      VALUES ('bd-r6', '${gid}', 600, '${id.Cy}', 5, 6, 'amend', 'rule', '401', 'w', 'Change 401', 'Change 401', 'b', 'a', 'model', 's', 'majority', 'on_ballot', 2, 3, 'x', 'x')`);
+    d1(state, names.map((n) => `INSERT INTO votes (game_id, proposal_id, player_id, day, vote, cast_at, updated_at) VALUES ('${gid}', 'bd-r6', '${id[n]}', 6, 'yes', 'x', 'x')`).join("; "));
     await midnight();
-    const c6 = await mod("POST", "days/6/claim", { sha: SHA("e"), outcomes: [], builds: [{ ticket: "W4", outcome: "built", commit: SHA("e") }, { ticket: "W3", outcome: "failed", reason: "its tests failed again" }] });
+    const p6 = (await mod("GET", "pending")).data.job;
+    check("night 6 with a rule change: the job lists the change and both builds", J(p6?.passed?.map((p) => p.number)) === "[600]" && J(p6?.builds?.map((b) => b.ticket)) === J(["W4", "W3"]), J(p6));
+    const only = await mod("POST", "days/6/claim", { sha: SHA("e"), outcomes: [{ number: 600, seq: 1, applied: true, commit: SHA("e") }] });
+    check("a claim with the rule change but not the builds is refused (400)", only.status === 400 && day(6).status === "processing", J(only));
+    const c6 = await mod("POST", "days/6/claim", { sha: SHA("e"), outcomes: [{ number: 600, seq: 1, applied: true, commit: SHA("e") }], builds: [{ ticket: "W4", outcome: "built", commit: SHA("e") }, { ticket: "W3", outcome: "failed", reason: "its tests failed again" }] });
     dev("bundle_sha:bd", SHA("e"));
     await cron();
+    check("the rule change is enacted (Cy's 10 points) in the same unlock that settles the builds", d1(state, "SELECT status FROM proposals WHERE id = 'bd-r6'")[0].status === "enacted" && d1(state, `SELECT score FROM players WHERE id = '${id.Cy}'`)[0].score === 10, J(d1(state, "SELECT status FROM proposals WHERE id = 'bd-r6'")));
     check("night 6: W3's third failure: Failed, with the reason; History says so", c6.status === 200 && tk(3).state === "Failed" && tk(3).build_fails === 3 && tk(3).build_note === "its tests failed again" && events("commission_failed").some((e) => e.text === "W3 failed after 3 nights: its tests failed again." && e.day === 6) && logs(3).includes("failed: W3 failed after 3 nights: its tests failed again."), J([tk(3), logs(3)]));
     check("Bo, its requester, is told with the reason (and nobody else is)", d1(state, `SELECT player_id, body, link FROM notifications WHERE game_id = '${gid}' AND kind = 'commission_failed'`).map((r) => [r.player_id === id.Bo, r.body, r.link]).join("|") === [true, "W3 failed after 3 nights: its tests failed again.", "/bd/#w-W3"].join(","));
     check("W4 built the same night: Done; with no entries named, its line is plain", tk(4).state === "Done" && events("commission_done").some((e) => e.text === "W4 is done." && e.day === 6));

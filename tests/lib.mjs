@@ -305,3 +305,20 @@ export async function connect(base, slug, c, origin) {
   if (t.status !== 200) throw new Error(`token: ${t.status} ${JSON.stringify(t.data)}`);
   return { ...t.data, clientId };
 }
+
+// Rule 803.2 is in the starter rules: a night with a paid (Building) ticket waits for the moderator's claim. A test of something else settles
+// such a night the way the moderator does when it has no time left: each build "no_time" (it stays Building, no failure, rule 803.4), the
+// night's commit live, one more cron. Only a night with builds and no rule changes (those are the test's own to claim). `setDev(key, value)`
+// writes a dev_controls row and `cron()` runs the midnight cron; the game needs a moderator token. Returns how many builds it settled.
+let noTimeSeq = 0;
+export async function noTimeNight(base, slug, token, setDev, cron) {
+  const headers = { authorization: `Bearer ${token}` };
+  const job = (await (await fetch(`${base}/${slug}/api/moderator/pending`, { headers, signal: AbortSignal.timeout(20000) })).json()).job;
+  if (!job || job.status !== "processing" || job.passed.length || !job.builds?.length) return 0;
+  const sha = createHash("sha1").update(`${slug}-${job.day}-${++noTimeSeq}`).digest("hex");
+  const r = await fetch(`${base}/${slug}/api/moderator/days/${job.day}/claim`, { method: "POST", headers: { ...headers, "content-type": "application/json" }, body: JSON.stringify({ sha, outcomes: [], builds: job.builds.map((b) => ({ ticket: b.ticket, outcome: "no_time" })) }), signal: AbortSignal.timeout(20000) });
+  if (r.status !== 200) throw new Error(`noTimeNight: the claim was refused: ${r.status} ${await r.text()}`);
+  setDev(`bundle_sha:${slug}`, sha);
+  await cron();
+  return job.builds.length;
+}
