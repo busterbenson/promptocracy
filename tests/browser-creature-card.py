@@ -3,6 +3,7 @@
 import sys
 from urllib.parse import urlparse
 from playwright.sync_api import sync_playwright
+from browser_launch import launch
 
 base, out, cookie = sys.argv[1:4]
 host = urlparse(base).hostname
@@ -42,7 +43,7 @@ def centre(page, sel):
     return bb["x"] + bb["width"] / 2, bb["y"] + bb["height"] / 2
 
 with sync_playwright() as p:
-    b = p.chromium.launch()
+    b = launch(p)
     for w, h in [(1280, 900), (390, 844)]:
       for scheme in ["light", "dark"]:
         tag = f"{w} {scheme}"

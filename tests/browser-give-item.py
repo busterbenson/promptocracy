@@ -4,6 +4,7 @@
 import sys
 from urllib.parse import urlparse
 from playwright.sync_api import sync_playwright
+from browser_launch import launch
 
 base, out, cookie, width = sys.argv[1:5]
 host = urlparse(base).hostname
@@ -21,7 +22,7 @@ def shot(page, name, **kw):
 def text(page, sel): return " ".join(page.inner_text(sel).split())
 
 with sync_playwright() as p:
-    b = p.chromium.launch()
+    b = launch(p)
     c = b.new_context(viewport={"width": w, "height": h}, device_scale_factor=1, color_scheme="light", has_touch=w < 500)
     c.add_cookies([{"name": "s", "value": cookie, "domain": host, "path": "/" + SLUG}])
     page = c.new_page()

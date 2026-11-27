@@ -5,6 +5,7 @@
 import re, sys
 from urllib.parse import urlparse
 from playwright.sync_api import sync_playwright
+from browser_launch import launch
 from pill_align import misaligned, npc_heights_match
 from busy_check import busy_check
 
@@ -76,7 +77,7 @@ def click_tile(page, x, y):
     page.mouse.click(p["x"], p["y"]); page.wait_for_timeout(150)
 
 with sync_playwright() as pw:
-    b = pw.chromium.launch()
+    b = launch(pw)
 
     # ================= the screenshot set: five screens, 1280 and 390, light and dark (before anyone acts) =================
     if out != "-":

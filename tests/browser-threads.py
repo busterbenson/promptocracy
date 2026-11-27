@@ -9,6 +9,7 @@
 import sys
 from urllib.parse import urlparse
 from playwright.sync_api import sync_playwright
+from browser_launch import launch
 from pill_align import misaligned, npc_heights_match
 
 base, out, cookie, stage = sys.argv[1:5]
@@ -44,7 +45,7 @@ def open_ticket(page):
     page.wait_for_timeout(300)
 
 with sync_playwright() as p:
-    b = p.chromium.launch()
+    b = launch(p)
     for w, h, scheme in [(1280, 900, "light"), (390, 844, "light"), (390, 844, "dark")]:
         tag = f"{w}-{scheme}"
         c, page, errors = new_page(b, w, h, scheme)

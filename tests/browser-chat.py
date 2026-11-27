@@ -12,6 +12,7 @@
 import json, re, sys
 from urllib.parse import urlparse
 from playwright.sync_api import sync_playwright
+from browser_launch import launch
 from busy_check import busy_check
 
 base, out, ada_cookie, bo_cookie, cy_cookie, dee_cookie, fay_cookie, eve_cookie, MSG_A, MSG_B, gus_cookie, ivy_cookie, hal_cookie = sys.argv[1:14]
@@ -116,7 +117,7 @@ def vis(page, sel): return page.locator(sel).first.is_visible() if page.locator(
 def msgs(page): return page.locator("#chatLog .msg:not(.greet)").count()   # his first line in an empty general conversation is a greeting, not a message
 
 with sync_playwright() as p:
-    b = p.chromium.launch()
+    b = launch(p)
     for scheme in ["light", "dark"]:
         # ---------------- desktop, 1280
         tag = f"1280-{scheme}"

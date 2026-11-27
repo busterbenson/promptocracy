@@ -7,6 +7,7 @@
 import sys
 from urllib.parse import urlparse
 from playwright.sync_api import sync_playwright
+from browser_launch import launch
 
 base, out, cookie = sys.argv[1:4]
 host = urlparse(base).hostname
@@ -39,7 +40,7 @@ def close_card(page):
     page.keyboard.press("Escape"); page.wait_for_selector("#mroot", state="hidden")
 
 with sync_playwright() as p:
-    b = p.chromium.launch()
+    b = launch(p)
     for scheme in ("light", "dark"):
         for w, h in ((390, 844), (1280, 900)):
             tag = f"{w}-{scheme}"

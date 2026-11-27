@@ -6,6 +6,7 @@
 import sys
 from urllib.parse import urlparse
 from playwright.sync_api import sync_playwright
+from browser_launch import launch
 
 base, out, cookie, W1, W2, W3, H0, H1 = sys.argv[1:9]
 host = urlparse(base).hostname
@@ -45,7 +46,7 @@ def open_ticket(page, n):
     page.click("#tab-workshop"); page.click(f"#p-workshop [data-ticket='{n}']"); page.wait_for_selector("#mroot .mcard")
 
 with sync_playwright() as p:
-    b = p.chromium.launch()
+    b = launch(p)
     for i, (w, h, scheme) in enumerate([(1280, 900, "light"), (1280, 900, "dark"), (390, 844, "light"), (390, 844, "dark")]):
         tag = f"{w}-{scheme}"
         c, page, errors = new_page(b, w, h, scheme)

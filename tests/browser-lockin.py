@@ -8,6 +8,7 @@ import sys
 from urllib.parse import urlparse
 from urllib.request import urlopen
 from playwright.sync_api import sync_playwright
+from browser_launch import launch
 
 base, out, hook = sys.argv[1:4]
 A = sys.argv[4:]
@@ -56,7 +57,7 @@ def card_open(page): return page.evaluate("!document.getElementById('mroot').hid
 def shown_src(page): return page.locator(SLIP + " img.mkart").first.get_attribute("src")
 
 with sync_playwright() as p:
-    b = p.chromium.launch()
+    b = launch(p)
     for who, w, h, scheme in [("eli", 1280, 900, "light"), ("fay", 1280, 900, "dark"), ("gus", 390, 844, "light"), ("hal", 390, 844, "dark")]:
         tag = f"{w}-{scheme}"
         phone = w < 900
