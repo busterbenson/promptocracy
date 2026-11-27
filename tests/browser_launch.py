@@ -25,9 +25,11 @@ def _font_route(route):
         if r.status == 200:
             os.makedirs(CACHE, exist_ok=True)
             ctype = r.headers.get("content-type", "application/octet-stream")
-            with open(path + ".tmp", "wb") as f: f.write(r.body())
-            os.replace(path + ".tmp", path + ".body")
-            with open(path + ".type", "w") as t: t.write(ctype)
+            # concurrent suites share the cache: each writer uses its own temp file, and the body lands last (a reader needs both files)
+            for ext, data in ((".type", ctype.encode()), (".body", r.body())):
+                fd, tmp = tempfile.mkstemp(dir=CACHE)
+                with os.fdopen(fd, "wb") as f: f.write(data)
+                os.replace(tmp, path + ext)
         return route.fulfill(response=r)
     except Exception:
         return route.fulfill(status=200, content_type="text/css" if "googleapis" in url else "font/woff2", body="", headers={"access-control-allow-origin": "*"})
