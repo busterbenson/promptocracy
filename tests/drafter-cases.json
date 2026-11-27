@@ -1085,7 +1085,54 @@
         }
       ]
     },
-    {"id": "night-rickshaw-1-d2-p7", "group": "night", "kind": "add", "target": "400", "words": "A player standing on a house tile can't have points taken away for up to 2 nights. A player gets onto a house tile by moving onto it, and may stay there for up to 2 nights.", "expect": {"outcome": "drafted", "check": "blocked", "missing_any": ["house tile", "how long"], "conflicts_include": ["402.3"]}, "note": "Rickshaw day 2, P7 (not applied: it conflicts with 402 and relies on a house tile the game doesn't have). The rule check (103.9) should have blocked it at draft time. Recorded by hand from the live row; graded by drafter-live once it learns the check (not wired in this change)."},
-    {"id": "night-rickshaw-1-d2-p9", "group": "night", "kind": "amend", "target": "202.2", "words": "Player must use their farts to move around the board and any square that has been occupied previously by a player smells bad and cannot be occupied for another turn", "expect": {"outcome": "drafted", "check": "blocked", "missing_any": ["fart", "occupied"]}, "note": "Rickshaw day 2, P9 (not applied: no rule or catalog entry says what a fart is, and the game doesn't track which tiles a piece has stood on). The rule check (103.9) should have blocked it at draft time. Graded by drafter-live once it learns the check (not wired in this change)."}
+    {
+      "id": "night-rickshaw-1-d2-p7",
+      "group": "night",
+      "kind": "add",
+      "target": "400",
+      "words": "A player standing on a house tile can't have points taken away for up to 2 nights. A player gets onto a house tile by moving onto it, and may stay there for up to 2 nights.",
+      "expect": {
+        "outcome": "drafted",
+        "check": "blocked",
+        "missing_any": [
+          "house tile",
+          "how long"
+        ],
+        "conflicts_include": [
+          "402.3"
+        ]
+      },
+      "note": "Rickshaw day 2, P7 (not applied: it conflicts with 402 and relies on a house tile the game doesn't have). The rule check (103.9) should have blocked it at draft time. Recorded by hand from the live row; graded by drafter-live once it learns the check (not wired in this change)."
+    },
+    {
+      "id": "night-rickshaw-1-d2-p9",
+      "group": "night",
+      "kind": "amend",
+      "target": "202.2",
+      "words": "Player must use their farts to move around the board and any square that has been occupied previously by a player smells bad and cannot be occupied for another turn",
+      "expect": {
+        "outcome": "drafted",
+        "check": "blocked",
+        "missing_any": [
+          "fart",
+          "occupied"
+        ]
+      },
+      "note": "Rickshaw day 2, P9 (not applied: no rule or catalog entry says what a fart is, and the game doesn't track which tiles a piece has stood on). The rule check (103.9) should have blocked it at draft time. Graded by drafter-live once it learns the check (not wired in this change)."
+    },
+    {
+      "id": "night-rickshaw-1-d3-p14",
+      "group": "night",
+      "kind": "addclause",
+      "target": "504",
+      "words": "A tile charted by a move (504.1) is a tile entry picked at random from the tile entries in the catalog (701.1). If the catalog has no tile entry, the tile is a blank default tile.",
+      "mark": "majority",
+      "after_text": "504.3 A tile charted by a move (504.1) is a tile entry picked at random from the tile entries in the catalog (701.1). If the catalog has no tile entry, the tile is a blank default tile.",
+      "expect": {
+        "outcome": "drafted",
+        "check": "blocked"
+      },
+      "note": "The night refused P14 (unchecked) in rickshaw-1 day 3: The game can't give a charted tile a catalog entry yet: charting records only a tile's position, so no rule's code can make a new tile a Grass or a Stinky Square or remember which one it is, and you can propose this clause again once the engine has that power."
+    }
   ]
 }
