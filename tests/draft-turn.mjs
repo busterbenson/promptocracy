@@ -49,6 +49,38 @@ console.log("the drafter refuses (rule 103.1)");
   const f = rig({ answers: [ans("w1")], drafts: [{ refused: { error: "no" }, why: "refused" }] });
   const of = await f.run();
   check("a retry whose call fails is logged and the refusal stands", of.res.refused && f.log.logged.join() === "undefined:failed:retry after refusal failed" && of.notes.length === 0, f.log.logged.join());
+  const g0 = rig({ answers: [ans("w1"), ans("w2")], drafts: [{ refused: { error: "no" }, why: "refused" }], bad: ["r2"] });
+  const og0 = await g0.run();
+  check("a retry whose answer is unreadable is logged invalid and the refusal stands", og0.res.refused && g0.log.logged.join() === "r2:invalid:retry after refusal failed", g0.log.logged.join());
+  const d0 = rig({ answers: [ans("w1"), ans("w2")], drafts: [{ refused: { error: "gate" }, why: "day gate" }], noDraft: "closed" });
+  check("never when the day's gate is what refused", (await d0.run(), d0.log.asked.length === 0));
+  const s = rig({ answers: [ans("w1"), ans("w2"), ans("w3"), ans("w4")], drafts: [{ refused: { error: "no" }, why: "refused" }, { refused: { error: "no again" }, why: "refused" }, { refused: { error: "and again" }, why: "refused" }] });
+  const os = await s.run();
+  check("two refusal retries at most: three refusals end it, and the second retry carries the second reason", s.log.asked.length === 2 && s.log.asked[1].retry === "no again" && os.res.refused?.error === "and again", String(s.log.asked.length));
+  const s2 = rig({ answers: [ans("w1"), ans("w2"), ans("w3")], drafts: [{ refused: { error: "no" }, why: "refused" }, { refused: { error: "no again" }, why: "refused" }, { id: "p3", check: { status: "ok" } }] });
+  check("a second refusal retry that drafts is the slip", (await s2.run()).res.id === "p3");
+}
+
+console.log("the rule check blocks the draft: he redrafts himself (rule 103.9, Buster 2026-11-26)");
+{
+  const t = rig({ answers: [ans("w1"), ans("w2")], drafts: [{ id: "p1", check: blocked }, { id: "p2", check: { status: "ok" } }] });
+  const o = await t.run();
+  check("one redraft that passes: asked with the findings, in redraft mode, no refusal text", t.log.asked.length === 1 && t.log.asked[0].retry === undefined && t.log.asked[0].found === blocked && t.log.asked[0].mode === "redraft");
+  check("the passing redraft is the slip and the answer shown; the first call is logged", o.res.id === "p2" && o.a.say === "say w2" && o.notes.join() === "redraft 1 after rule check passed" && t.log.logged.join() === "r1:ok:rule check blocked; redraft 1 passed", t.log.logged.join() + o.notes.join());
+  check("a passing redraft's options are his own (no fixes are offered for a slip that passes)", o.a.options.length === 0);
+  const s3 = rig({ answers: [ans("w1"), ans("w2"), ans("w3")], drafts: [{ id: "p1", check: blocked }, { id: "p2", check: blocked }, { id: "p3", check: { status: "ok" } }] });
+  const os3 = await s3.run();
+  check("block, block, ok: the second redraft passes (two redrafts at most), and it was told the second block's findings", s3.log.asked.length === 2 && os3.res.id === "p3" && os3.a.say === "say w3" && s3.log.asked[1].found === blocked && s3.log.tried.length === 3);
+  const f3 = rig({ answers: [ans("w1"), ans("w2"), ans("w3"), ans(null, { options: ["own"] })], drafts: [{ id: "p1", check: blocked }, { id: "p2", check: blocked }, { id: "p3", check: blocked }] });
+  const of3 = await f3.run();
+  check("block, block, block: two redrafts, then one explanation call; the player's FIRST draft stays, with the check's fixes as options", f3.log.asked.length === 3 && f3.log.asked[2].mode === "explain" && f3.log.tried.length === 3 && of3.res.id === "p1" && of3.a.options.join() === "fix one,fix two,fix three" && of3.a.say === "say none" && !of3.a.draft, JSON.stringify(f3.log.asked.map((x) => x.mode)));
+  check("the explanation is told the FIRST draft's findings; the total is 1 + 2 + 1 model calls and 3 drafts", f3.log.asked[2].found === blocked && of3.notes.join() === "no redraft passed (2 tried): the first draft stands");
+  const k = rig({ answers: [ans("w1", { guesses: "I guessed: block 200." }), ans(null, { options: ["a"] })], drafts: [{ id: "p1", check: blocked }] });
+  const ok = await k.run();
+  check("he finds no faithful version (a redraft with no draft): his words are the explanation, no extra call, the first draft stays, its guesses ride along", k.log.asked.length === 1 && ok.res.id === "p1" && ok.a.say === "say none" && ok.a.guesses === "I guessed: block 200." && ok.a.options.join() === "fix one,fix two,fix three", String(k.log.asked.length));
+  const r = rig({ answers: [ans("w1"), ans("w2"), ans(null)], drafts: [{ id: "p1", check: blocked }, { refused: { error: "no" }, why: "refused" }] });
+  const or = await r.run();
+  check("a redraft the drafter refuses ends the redrafts; the first draft stays (a refusal does not erase it) and he explains", or.res.id === "p1" && !or.res.refused && r.log.asked.length === 2 && r.log.asked[1].mode === "explain");
   const g = rig({ answers: [ans("w1"), ans("w2"), ans(null, { options: ["o"] })], drafts: [{ id: "p1", check: blocked }], bad: ["r2"] });
   const og = await g.run();
   check("a redraft whose answer is unreadable ends the redrafts and is logged; the first draft stays and he explains", og.res.id === "p1" && og.a.say === "say none" && g.log.logged[0] === "r2:invalid:redraft 1 after rule check failed" && g.log.asked.length === 2 && g.log.asked[1].mode === "explain", g.log.logged.join());

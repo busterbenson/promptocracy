@@ -1,10 +1,11 @@
 // The general chat turn's draft step, with no database (src/routes/api-chat.ts generalTurn calls it, and so does the quality harness, tests/quality/chat.mjs,
-// so the two cannot drift). The model's draft goes to the drafter; once more in the same turn if the drafter refuses (rule 103.1), with its reason, for the
+// so the two cannot drift). The model's draft goes to the drafter; up to twice in the same turn if the drafter refuses (rule 103.1), with its reason, for the
 // nearest version that drafts. When the rule check (rule 103.9) then BLOCKS the draft, Gremlin redrafts it himself, up to REDRAFTS times in the same turn, to the
 // nearest version that keeps what the player asked for; the first that passes the check is the slip. When none passes, the player's own first draft stays on the
 // slip, and one more call has him say what the game lacks and give options that keep the intent (Buster, 2026-11-26: "craft rules that are valid and in the
 // spirit of the players request without any back and forth"). A draft the check could not run on gets one call to say so, as before. The caller supplies the I/O.
 export const REDRAFTS = 2;
+export const REFUSAL_RETRIES = 2;   // the drafter's refusal is often a shape it states plainly ("no headings and no numbered lines"): he gets the reason up to twice
 
 const same = (x, y) => !!x && !!y && x.kind === y.kind && String(x.target ?? "") === String(y.target ?? "");
 
@@ -23,7 +24,7 @@ const same = (x, y) => !!x && !!y && x.kind === y.kind && String(x.target ?? "")
 export async function draftTurn({ r, a, noDraft = null, ask, read, tryDraft, after = async () => {}, log = async () => {}, redrafts = REDRAFTS }) {
   const notes = [];
   let res = await tryDraft(a);
-  if (res.refused && !noDraft) {
+  for (let k = 0; k < REFUSAL_RETRIES && res.refused && !noDraft && res.why !== "no second draft"; k++) {
     const r2 = await ask(String(res.refused.error));
     await after();
     const a2 = r2.ok ? read(r2) : null;
@@ -32,7 +33,7 @@ export async function draftTurn({ r, a, noDraft = null, ask, read, tryDraft, aft
       r = r2; a = a2;
       notes.push(`retry after refusal: ${res.why}`);
       res = a.draft ? await tryDraft(a) : { refused: res.refused, why: "no second draft" };
-    } else { await log(r2, r2.ok ? "invalid" : r2.code, "retry after refusal failed"); }
+    } else { await log(r2, r2.ok ? "invalid" : r2.code, "retry after refusal failed"); break; }
   }
   // The check could not run: the draft stands (its slip says why Lock it in is off) and he gets one call to say so. A new check runs on the player's next message or on Lock it in.
   if (res.id && res.check && res.check.status === "unchecked" && !noDraft) {

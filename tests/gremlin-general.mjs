@@ -355,7 +355,7 @@ try {
     const t1 = tix().length;
     const nm = await Ana.post(CH, { ticket: `W${ticket.number}`, body: "SYNTH-MOVE SYNTH-G-COMMISSION and again" });
     check("never two moves in a turn: a message moved here whose answer asks for a commission stays here, and no second ticket is opened", nm.status === 200 && tix().length === t1 && nm.data.scope === null);
-    // a draft the drafter refuses gets ONE more try in the same turn, with the reason; never two
+    // a draft the drafter refuses gets one more try in the same turn, with the reason, and a second if that is refused; never a third
     const g1 = generalCallsNow(), d1c = drafterCalls();
     stubState.retry = { say: "Nearest one that drafts.", draft: { kind: "add", target: "300", words: "A player can't propose twice about the same rule in one day." } };
     const rt = await say(Ana, "SYNTH-G-REFUSED-THEN fix points");
@@ -364,7 +364,7 @@ try {
     stubState.retry = { say: "Still no.", draft: { kind: "amend", target: "998", words: "x" } };
     const rt2 = await say(Ana, "SYNTH-G-REFUSED-THEN fix points again");
     stubState.retry = null;
-    check("when the second draft is refused too there is no third call: his words and the refusal are shown", generalCallsNow() === g2 + 2 && !slipOf(rt2) && !!rt2.data.messages[1].refused);
+    check("when the second draft is refused too he gets one more try with the second reason (two retries at most), and then his words and the refusal are shown", generalCallsNow() === g2 + 3 && !slipOf(rt2) && !!rt2.data.messages[1].refused);
     // the rule check (rule 103.9): a draft the check finds the game can't carry out is made, with Lock it in off and the reason beside it, and he gets ONE more try
     // with the findings (a redraft, up to twice; one more call to explain when none passes); his options are the check's fixes (up to three); the first draft stays when none passes
     const MISSING = { conflicts: [], missing: [{ what: "house tile", why: "No rule makes a house tile." }], fixes: [{ say: "Add a house tile to the catalog first." }, { say: "Protect points on a tile you can already name." }, { say: "Say it for the whole board." }, { say: "A fourth, dropped." }] };
