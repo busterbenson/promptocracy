@@ -157,6 +157,9 @@ mark{background:color-mix(in srgb,var(--accent) 28%,transparent);color:inherit;b
 .ht.off{fill:none;stroke:var(--ink-muted);stroke-width:1}
 .sth{margin-left:6px}
 .givebtn{margin-top:6px}
+.hold{display:inline-flex;align-items:center;gap:8px;margin:0 12px 4px 0}
+.hold .artimg.big,.hold .arttile.big{width:36px;height:36px;border-radius:8px;font-size:1.1rem}
+.hold .xn{color:var(--ink-muted);font-variant-numeric:tabular-nums}
 .players .st{display:block;font-family:var(--font-mono);font-size:.58rem;color:var(--ink-muted);font-weight:400}
 
 /* the book: tabs, then one panel (Summary, Rulebook, Workshop, History) */

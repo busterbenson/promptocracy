@@ -1,6 +1,6 @@
 // PUBLIC. Never include emails, player ids or the join code.
 import { getPlayer } from "../lib/auth";
-import { stateOf } from "../engine/host";
+import { itemEntriesOf, loadHeld, stateOf } from "../engine/host";
 import { eraView } from "../lib/eras";
 import { Ctx, colorOf, json, seatLimit } from "../lib/util";
 
@@ -8,11 +8,18 @@ import { Ctx, colorOf, json, seatLimit } from "../lib/util";
 export const get = async ({ env, data, request }: Ctx) => {
   const g = data.game!;
   const viewer = await getPlayer(env, request, g);
+  // What each player holds (rule 704.1): public, like hearts. Each item with its name and the rule that gives it (its `acquired` attribute).
+  const held = await loadHeld(env, g.id), catalog = itemEntriesOf(g);
+  /** @rule 704.1 */
+  const itemsOf = (h: Record<string, number>) => Object.entries(h).flatMap(([entry, count]) => {
+    const e = catalog.find((c) => c.id === entry);
+    return e && count > 0 ? [{ entry, name: e.name ?? entry, count, acquired: (e.attrs as any)?.acquired ?? null }] : [];
+  });
   const players = (
     await env.DB.prepare(
-      "SELECT display_name AS name, color, shape, score, turn_order, is_host, hearts, dead_day, ghost_day FROM players WHERE game_id = ? ORDER BY turn_order",
+      "SELECT id, display_name AS name, color, shape, score, turn_order, is_host, hearts, dead_day, ghost_day FROM players WHERE game_id = ? ORDER BY turn_order",
     ).bind(g.id).all()
-  ).results.map(({ dead_day, ghost_day, ...p }: any) => ({ ...p, color: colorOf(p.color), is_host: !!p.is_host, state: stateOf({ dead_day, ghost_day }), dead_day: dead_day ?? null, ghost_day: ghost_day ?? null }));
+  ).results.map(({ id, dead_day, ghost_day, ...p }: any) => ({ ...p, items: itemsOf(held[id] ?? {}), color: colorOf(p.color), is_host: !!p.is_host, state: stateOf({ dead_day, ghost_day }), dead_day: dead_day ?? null, ghost_day: ghost_day ?? null }));
   const events = (
     await env.DB.prepare("SELECT kind, text, created_at FROM events WHERE game_id = ? ORDER BY id DESC LIMIT 50")
       .bind(g.id)

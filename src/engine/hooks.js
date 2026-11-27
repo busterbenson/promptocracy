@@ -44,6 +44,11 @@ export const HOOKS = Object.freeze({
   // Giving a dead player a heart (rule 603.4): `giveHeart(ctx, giver, target)`, target = the dead player's ref. A veto hook that, like championChange,
   // is opt-in: a game whose rules have no module for it has no giving of hearts (the site refuses), so repealing the rule removes the action.
   giveHeart: { mode: "veto", wired: true },
+  // Giving another player an item of the catalog (rule 704.1: an item comes by the rule that gives it to you): `giveItem(ctx, giver, target, entry)`,
+  // target = the receiver's ref, entry = the catalog item's id. Opt-in like giveHeart, with one difference: undefined means "this rule says nothing about
+  // that item" and null means "allowed". A give needs at least one rule that answers null and no rule that refuses, so a rule about one item never has to
+  // veto every other item (giveHeart treats null and undefined alike). A give MOVES the item: the giver must hold one (the engine checks it, last).
+  giveItem: { mode: "veto", wired: true },
   // An action type (rule 103.5): actionType() names it (its type, its parameters, the rules it touches) and applyAction(ctx, action)
   // does it when a passed action proposal is applied. A module implements both or neither; the engine calls applyAction of the one
   // module whose actionType names the action's type, so these two are not run in sequence over every module.
@@ -57,7 +62,9 @@ export const HOOKS = Object.freeze({
   ending: { mode: "decide", wired: true },
 });
 
-export const ACTION_KINDS = Object.freeze(["move", "propose", "vote", "end_turn", "give_heart"]);
+/** What giveItem answers when no rule is about the item (rule 704.1): the day's answer leaves such an item out, so it gets no button. */
+export const NO_RULE_GIVES = "No rule lets you give that.";
+export const ACTION_KINDS = Object.freeze(["move", "propose", "vote", "end_turn", "give_heart", "give_item"]);
 // The statuses a refusal may carry (what the routes answer with). 400 is the default.
 export const REFUSAL_STATUSES = Object.freeze([400, 403, 409, 500]);
 export const MAX_CHART_TILES = 500;
@@ -135,14 +142,14 @@ export function cryptoRng() {
 //   day        the day number (rule 203.1), or null before the game's first day
 //   now        ISO time of the request
 //   settings   the game's settings (src/lib/settings.js getSettings)
-//   players    [{ref, color, score, x, y, z, living, hearts, state: "living" | "dead" | "ghost", deadDay}]  (rule 603.1)
+//   players    [{ref, color, score, x, y, z, living, hearts, state: "living" | "dead" | "ghost", deadDay, items}]  (rule 603.1); items = {entryId: count}, the catalog items they hold (rule 704.1)
 //   creatures  [{id, entry, x, y, z, hearts | null, resting}]: the creatures on the board, in the order they appeared (rule 602)
 //   nextCreatureId  the id the next creature to appear gets (an appear effect, then step or rest it by this id in the same night)
 //   catalog    [{id, kind, name, madeBy, attrs}]: the game's catalog entries (rule 701); read an attribute with attr()  (ref is the engine's stable reference to a player)
 //   tiles      has(x,y,z) / get(x,y,z) / list()
 //   rulebook   { marks }  the mark of each rule by number; empty until proposals arrive
 //   rng        () => float in [0,1)
-//   turn       { round, turn, moved, gave }  gave: the acting player has given a heart today (rule 603.4). moved: the acting player has moved in today's turn (rule 202.1, one turn a day).
+//   turn       { round, turn, moved, gave, given }  given: [{entry, to}], the items the acting player has given today (rule 704.1). gave: the acting player has given a heart today (rule 603.4). moved: the acting player has moved in today's turn (rule 202.1, one turn a day).
 //              round and turn are the legacy turn-model numbers, kept because the engine is additive only
 //   judge      optional, for rules that need a ruling (none yet)
 /** @rule 101 */
@@ -153,13 +160,13 @@ export function makeContext(o) {
     settings: o.settings,
     players: (o.players ?? []).map((p) => {
       const state = p.state ?? (p.living === false ? "dead" : "living");
-      return { ref: p.ref, color: p.color, score: p.score ?? 0, x: p.x, y: p.y, z: p.z ?? 0, living: state === "living", hearts: p.hearts ?? 3, state, deadDay: p.deadDay ?? null };
+      return { ref: p.ref, color: p.color, score: p.score ?? 0, x: p.x, y: p.y, z: p.z ?? 0, living: state === "living", hearts: p.hearts ?? 3, state, deadDay: p.deadDay ?? null, items: { ...(p.items ?? {}) } };
     }),
     creatures: (o.creatures ?? []).map((c) => ({ id: c.id, entry: c.entry, x: c.x, y: c.y, z: c.z ?? 0, hearts: c.hearts ?? null, resting: !!c.resting })),
     nextCreatureId: o.nextCreatureId ?? 1 + Math.max(0, ...(o.creatures ?? []).map((c) => c.id)),
     catalog: (o.catalog ?? []).map((e) => ({ id: e.id, kind: e.kind, name: e.name ?? null, madeBy: e.madeBy ?? null, attrs: { ...(e.attrs ?? {}) } })),
     rulebook: { marks: o.rulebook?.marks ?? {} },
-    turn: { round: o.turn?.round ?? 0, turn: o.turn?.turn ?? 0, moved: !!o.turn?.moved, gave: !!o.turn?.gave },
+    turn: { round: o.turn?.round ?? 0, turn: o.turn?.turn ?? 0, moved: !!o.turn?.moved, gave: !!o.turn?.gave, given: (o.turn?.given ?? []).map((g) => ({ entry: g.entry, to: g.to })) },
   };
   deepFreeze(ctx);
   // Functions are added after the freeze of the data, then the whole object is sealed.
@@ -179,9 +186,9 @@ export function makeContext(o) {
 const isInt = (n) => Number.isSafeInteger(n);
 /** @rule 101 */
 const isStr = (s, max = 400) => typeof s === "string" && s.length > 0 && s.length <= max;
-export const EFFECT_TYPES = Object.freeze(["chart", "points", "log", "champion", "appear", "step", "move", "bite", "rest", "rise", "game_over"]);
+export const EFFECT_TYPES = Object.freeze(["chart", "grant", "points", "log", "champion", "appear", "step", "move", "bite", "rest", "rise", "game_over"]);
 export const ENDINGS = Object.freeze(["paradox", "last_standing", "everyone_dead"]);
-export const APPLIED_EFFECTS = Object.freeze(["chart"]);
+export const APPLIED_EFFECTS = Object.freeze(["chart", "grant"]);
 // What the night's hooks may return, and the engine applies at the unlock (src/lib/day.ts): points when a change takes
 // effect (rule 401) and the Era won at the end of the night (rule 402).
 export const NIGHT_EFFECTS = Object.freeze(["points", "champion", "appear", "step", "move", "bite", "rest", "rise", "game_over"]);
@@ -229,6 +236,8 @@ export function validateEffect(e) {
         if (t.entry !== undefined && !isStr(t.entry, 40)) return "chart has a tile whose entry is not a short string";
       }
       return null;
+    case "grant":
+      return isStr(e.player, 100) && isStr(e.entry, 40) && isInt(e.count) && e.count >= 1 && e.count <= 99 ? null : "grant needs a player, an item entry and a whole count from 1 to 99";
     case "points":
       return isStr(e.player, 100) && isInt(e.delta) && isStr(e.reason) ? null : "points needs player, whole delta and reason";
     case "log":
@@ -266,6 +275,8 @@ export function validateEffects(list) {
 export const effects = Object.freeze({
   /** @rule 504.1 */
   chart: (tiles) => ({ type: "chart", tiles: tiles.map((t) => ({ x: t.x, y: t.y, z: t.z ?? 0, ...(typeof t.entry === "string" ? { entry: t.entry } : {}) })) }),
+  /** @rule 704.1 */
+  grant: (player, entry, count = 1) => ({ type: "grant", player, entry, count }),
   /** @rule 401 */
   points: (player, delta, reason) => ({ type: "points", player, delta, reason }),
   /** @rule 101 */
@@ -419,6 +430,30 @@ export function assembleRules(modules, { label = "rules" } = {}) {
         return { error: r.error, status: r.status ?? 400, rule: m.rule };
       }
       return null;
+    },
+    // {ok: true, rule} (the first rule that allowed it) or {error, status, rule}: whether `giver` may give `target` the item `entry` (rule 704.1). Opt-in: no module
+    // is a refusal; the first refusal in rule order wins; with no refusal at least one rule must answer null, and a rule answers undefined for an item it
+    // is not about, so an item no rule is about can't be given.
+    /** @rule 704.1 */
+    giveItem(ctx, giver, target, entry) {
+      const mods = implementers("giveItem");
+      if (target === giver.ref) return { error: "Give it to another player.", status: 409, rule: 0 };   // a give moves an item between two players, whatever the rules say
+      if (!mods.length) return { error: "The game's rules have no giving of items.", status: 409, rule: 0 };
+      let allowedBy = null;
+      for (const m of mods) {
+        const r = call(m, "giveItem", [ctx, giver, target, entry]);
+        if (r === undefined) continue;
+        if (r === null) { if (allowedBy === null) allowedBy = m.rule; continue; }
+        if (typeof r?.error !== "string" || !r.error || (r.status !== undefined && !REFUSAL_STATUSES.includes(r.status))) {
+          throw new RuleError(m.rule, "giveItem", new Error("must return undefined, null or {error, status?}"));
+        }
+        return { error: r.error, status: r.status ?? 400, rule: m.rule };
+      }
+      if (allowedBy === null) return { error: NO_RULE_GIVES, status: 409, rule: 0 };
+      // Giving moves the item (Buster, 2026-11-27: "Giving a flower loses a flower"): a giver who holds none can't give, whatever the rules say.
+      const me = ctx.players.find((p) => p.ref === giver.ref);
+      if ((me?.items?.[entry] ?? 0) < 1) return { error: `You have no ${ctx.catalog.find((e) => e.id === entry)?.name ?? "such item"}.`, status: 409, rule: allowedBy };
+      return { ok: true, rule: allowedBy };
     },
     // every module's effects, joined in rule order, each list validated.
     /** @rule 504 */
