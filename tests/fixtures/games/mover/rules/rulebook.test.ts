@@ -20,14 +20,14 @@ test("the modules assemble: exactly one spawn rule and one order rule", () => {
   assert.deepEqual(rules.implementers("championChange"), [402]);
   assert.deepEqual(rules.implementers("actionAllowed"), [202, 504, 604]);
   assert.deepEqual(rules.implementers("giveHeart"), [603]);
-  assert.deepEqual(rules.implementers("night"), [602, 603, 605]);
+  assert.deepEqual(rules.implementers("night"), [602, 603, 605, 606]);
   assert.deepEqual(rules.implementers("ending"), [404]);
   assert.deepEqual(rules.implementers("actionType"), [901]);
   assert.deepEqual(rules.implementers("applyAction"), [901]);
 });
 test("the text still has the rules the modules belong to", () => {
   const nums = parseRulesMd(rulesMd).rules.map((r) => r.number);
-  for (const n of [107, 202, 401, 402, 504, 505, 704, 901, 605]) assert.ok(nums.includes(n));
+  for (const n of [107, 202, 401, 402, 504, 505, 704, 901, 605, 606]) assert.ok(nums.includes(n));
 });
 test("402 is Eras: reaching the number of points wins an Era, ties by night order, points reset, the Champion names the next Era and has one change (the site enforces it)", () => {
   const flat = rulesMd.replace(/\s+/g, " ");
@@ -56,7 +56,7 @@ test("103, 104 and 105 name the one exception for the Champion's change (402.4),
 test("block 600 and rule 404: hearts, hostile creatures, death, Ghosts and the three endings, with the core edits for the dead (603.1, 604.1)", () => {
   const book = parseRulesMd(rulesMd);
   const flat = rulesMd.replace(/\s+/g, " ");
-  assert.deepEqual(book.rules.filter((r) => Math.floor(r.number / 100) === 6).map((r) => r.number), [601, 602, 603, 604, 605]);
+  assert.deepEqual(book.rules.filter((r) => Math.floor(r.number / 100) === 6).map((r) => r.number), [601, 602, 603, 604, 605, 606]);
   assert.ok(book.rules.some((r) => r.number === 404));
   for (const c of ["601.1", "601.2", "601.3", "602.1", "602.2", "602.3", "602.4", "602.5", "603.1", "603.2", "603.3", "603.4", "604.1", "604.2", "404.1", "404.2", "404.3", "404.4"]) assert.ok(flat.includes(`**${c}**`), c);
   for (const [k, v] of [["hearts.start", 3], ["creatures.appear_steps", 3], ["creatures.bite", 1], ["death.ghost_days", 3]] as const) {

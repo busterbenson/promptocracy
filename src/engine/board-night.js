@@ -2,9 +2,11 @@
 // players and the creatures. Plain JavaScript with no D1 in it, so the Worker (src/engine/host.ts, which turns the result into one batch) and the tests
 // (plain node) share ONE implementation. An effect the board can't take (an uncharted or occupied tile, an unknown creature, a rise for someone who
 // isn't dead) THROWS: refused, never dropped, so a rule can't pass its tests with an effect that silently does nothing. Two exceptions, a rule's
-// move and a step onto a tile already taken that night: those are skipped and logged as ops (move_refused, step_refused), because each rule picks
-// its tiles from the same starting board and a collision between two rules must not hold the whole night open.
+// move and a step onto a tile already taken that night: those are skipped and logged as ops (move_refused, step_refused). The night's rules run one at a
+// time and each plans from the board the earlier ones left (602.6), so they should not collide; the skip stays as the backstop, so a collision
+// that does slip through must not hold the whole night open.
 import { attr } from "./api.js";
+import { makeContext } from "./hooks.js";
 import { placeOp } from "./capabilities/structures.js";
 
 /** @rule 602.2 */
@@ -28,12 +30,15 @@ function moveOp(P, e, tiles, occupied) {
 }
 
 /**
- * Applies `effects` for night `n`. `players`: [{ref, x, y, z, hearts, state, deadDay}], `creatures`: the live ones [{id, entry, x, y, z, hearts, resting, restsNight}],
- * `catalog`: [{id, kind, attrs}], `tiles`: has(x, y, z), `nextId`: the id the first appearing creature gets, `structures`: the structures already on the board
- * [{entry, x, y, z, w, h}] (optional). Returns {players, creatures, structures, ops, died, rose} where ops are the records the host writes (in order).
+ * The night's board as one state that effects are applied to in turn: `createBoard(init)`, then `board.apply(effects)` any number of times, then `board.result()`.
+ * `board.snapshot()` is the board as it stands now, in the shape `makeContext` takes, so the rule that comes next in the night can be given a ctx that shows what
+ * the rules before it did (602.6). Applying a list in several `apply` calls gives exactly what applying the joined list in one does: the same state is carried
+ * through, a creature's refused step included. `init` is what `applyBoard` takes, less `effects`: `players`: [{ref, x, y, z, hearts, state, deadDay}], `creatures`: the live
+ * ones [{id, entry, x, y, z, hearts, resting, restsNight}], `catalog`: [{id, kind, attrs}], `tiles`: has(x, y, z), `nextId`: the id the first appearing creature gets,
+ * `structures`: the structures already on the board [{entry, x, y, z, w, h}] (optional).
  * @rule 602.4, 603.1, 603.3
  */
-export function applyBoard({ n, effects, players, creatures, catalog, tiles, nextId, structures = [] }) {
+export function createBoard({ n, players, creatures, catalog, tiles, nextId, structures = [] }) {
   const P = new Map(players.map((p) => [p.ref, { ...p }]));
   const C = creatures.map((c) => ({ ...c }));
   const S = structures.map((x) => ({ ...x }));
@@ -44,82 +49,127 @@ export function applyBoard({ n, effects, players, creatures, catalog, tiles, nex
   const occupied = (x, y, z) => [...P.values()].some(here(x, y, z)) || C.some((c) => !c.gone && here(x, y, z)(c));
   /** @rule 603.2 */
   const live = (cid) => C.find((c) => c.id === cid && !c.gone);
-  for (const e of effects) {
-    switch (e.type) {
-      case "appear": {
-        const entry = catalog.find((x) => x.id === e.entry);
-        if (!entry) throw new Error(`appear: no catalog entry ${e.entry}`);
-        const { x, y, z } = e.tile;
-        if (!tiles.has(x, y, z)) throw new Error(`appear: ${x},${y},${z} is not charted`);
-        if (occupied(x, y, z)) throw new Error(`appear: ${x},${y},${z} is occupied`);
-        const h = attr(entry, "hearts");
-        const c = { id: id++, entry: entry.id, x, y, z, hearts: Number.isInteger(h) ? h : null, resting: false, restsNight: null };
-        C.push(c);
-        ops.push({ op: "appear", id: c.id, entry: c.entry, x, y, z, hearts: c.hearts });
-        break;
-      }
-      case "place": {
-        const o = placeOp(e, catalog, tiles, occupied, S);
-        S.push({ entry: o.entry, x: o.x, y: o.y, z: o.z, w: o.w, h: o.h });
-        ops.push(o);
-        break;
-      }
-      case "step": {
-        const c = live(e.creature);
-        if (!c) throw new Error(`step: no creature ${e.creature} on the board`);
-        const { x, y, z } = e.to;
-        if (!tiles.has(x, y, z)) throw new Error(`step: ${x},${y},${z} is not charted`);
-        // Each rule's night sees the same board, so two rules (602's Blob, 606's Pancake) can pick one tile in a night. The later step is skipped and
-        // logged, as a refused move is: the creature stays where it is (602.4), and one collision does not hold the whole night open.
-        // Its later steps tonight were planned from the tile it didn't reach, so they are skipped too: it stays where it is, never jumps a tile.
-        if (blocked.has(c.id)) { ops.push({ op: "step_refused", id: c.id, entry: c.entry, x, y, z, why: "an earlier step was refused" }); break; }
-        if (occupied(x, y, z)) { blocked.add(c.id); ops.push({ op: "step_refused", id: c.id, entry: c.entry, x, y, z, why: `${x},${y},${z} is occupied` }); break; }
-        c.x = x; c.y = y; c.z = z;
-        ops.push({ op: "step", id: c.id, x, y, z });
-        break;
-      }
-      case "move": {
-        ops.push(moveOp(P, e, tiles, occupied));
-        break;
-      }
-      case "rest": {
-        const c = live(e.creature);
-        if (!c) throw new Error(`rest: no creature ${e.creature} on the board`);
-        c.restsNight = n + 1;
-        ops.push({ op: "rest", id: c.id, night: n + 1 });
-        break;
-      }
-      case "bite": {
-        const t = e.target;
-        if (t.player !== undefined) {
-          const p = P.get(t.player);
-          if (!p) throw new Error(`bite: no player ${t.player}`);
-          if (p.state !== "living") break; // the dead take no more bites (601.3)
-          const left = Math.max(0, p.hearts - e.hearts);
-          ops.push({ op: "bite", player: p.ref, hearts: p.hearts - left, left });
-          p.hearts = left;
-          if (left === 0) { p.state = "dead"; p.deadDay = n; died.push(p.ref); ops.push({ op: "die", player: p.ref }); }
-        } else {
-          const c = live(t.creature);
-          if (!c) break; // already gone tonight
-          if (c.hearts === null) break; // a creature with no hearts can't lose any (601.2)
-          const left = Math.max(0, c.hearts - e.hearts);
-          ops.push({ op: "bite", creature: c.id, hearts: c.hearts - left, left });
-          c.hearts = left;
-          if (left === 0) { c.gone = true; ops.push({ op: "gone", id: c.id }); }
+  /** @rule 602.4, 603.1, 603.3 */
+  function apply(effects) {
+    for (const e of effects) {
+      switch (e.type) {
+        case "appear": {
+          const entry = catalog.find((x) => x.id === e.entry);
+          if (!entry) throw new Error(`appear: no catalog entry ${e.entry}`);
+          const { x, y, z } = e.tile;
+          if (!tiles.has(x, y, z)) throw new Error(`appear: ${x},${y},${z} is not charted`);
+          if (occupied(x, y, z)) throw new Error(`appear: ${x},${y},${z} is occupied`);
+          const h = attr(entry, "hearts");
+          const c = { id: id++, entry: entry.id, x, y, z, hearts: Number.isInteger(h) ? h : null, resting: false, restsNight: null };
+          C.push(c);
+          ops.push({ op: "appear", id: c.id, entry: c.entry, x, y, z, hearts: c.hearts });
+          break;
         }
-        break;
+        case "place": {
+          const o = placeOp(e, catalog, tiles, occupied, S);
+          S.push({ entry: o.entry, x: o.x, y: o.y, z: o.z, w: o.w, h: o.h });
+          ops.push(o);
+          break;
+        }
+        case "step": {
+          const c = live(e.creature);
+          if (!c) throw new Error(`step: no creature ${e.creature} on the board`);
+          const { x, y, z } = e.to;
+          if (!tiles.has(x, y, z)) throw new Error(`step: ${x},${y},${z} is not charted`);
+          // Each rule's night sees the same board, so two rules (602's Blob, 606's Pancake) can pick one tile in a night. The later step is skipped and
+          // logged, as a refused move is: the creature stays where it is (602.4), and one collision does not hold the whole night open.
+          // Its later steps tonight were planned from the tile it didn't reach, so they are skipped too: it stays where it is, never jumps a tile.
+          if (blocked.has(c.id)) { ops.push({ op: "step_refused", id: c.id, entry: c.entry, x, y, z, why: "an earlier step was refused" }); break; }
+          if (occupied(x, y, z)) { blocked.add(c.id); ops.push({ op: "step_refused", id: c.id, entry: c.entry, x, y, z, why: `${x},${y},${z} is occupied` }); break; }
+          c.x = x; c.y = y; c.z = z;
+          ops.push({ op: "step", id: c.id, x, y, z });
+          break;
+        }
+        case "move": {
+          ops.push(moveOp(P, e, tiles, occupied));
+          break;
+        }
+        case "rest": {
+          const c = live(e.creature);
+          if (!c) throw new Error(`rest: no creature ${e.creature} on the board`);
+          c.restsNight = n + 1;
+          ops.push({ op: "rest", id: c.id, night: n + 1 });
+          break;
+        }
+        case "bite": {
+          const t = e.target;
+          if (t.player !== undefined) {
+            const p = P.get(t.player);
+            if (!p) throw new Error(`bite: no player ${t.player}`);
+            if (p.state !== "living") break; // the dead take no more bites (601.3)
+            const left = Math.max(0, p.hearts - e.hearts);
+            ops.push({ op: "bite", player: p.ref, hearts: p.hearts - left, left });
+            p.hearts = left;
+            if (left === 0) { p.state = "dead"; p.deadDay = n; died.push(p.ref); ops.push({ op: "die", player: p.ref }); }
+          } else {
+            const c = live(t.creature);
+            if (!c) break; // already gone tonight
+            if (c.hearts === null) break; // a creature with no hearts can't lose any (601.2)
+            const left = Math.max(0, c.hearts - e.hearts);
+            ops.push({ op: "bite", creature: c.id, hearts: c.hearts - left, left });
+            c.hearts = left;
+            if (left === 0) { c.gone = true; ops.push({ op: "gone", id: c.id }); }
+          }
+          break;
+        }
+        case "rise": {
+          const p = P.get(e.player);
+          if (!p || p.state !== "dead") throw new Error(`rise: ${e.player} is not a dead player`);
+          p.state = "ghost"; rose.push(p.ref);
+          ops.push({ op: "rise", player: p.ref });
+          break;
+        }
+        default:
+          throw new Error(`the board can't apply a ${e.type} effect`);
       }
-      case "rise": {
-        const p = P.get(e.player);
-        if (!p || p.state !== "dead") throw new Error(`rise: ${e.player} is not a dead player`);
-        p.state = "ghost"; rose.push(p.ref);
-        ops.push({ op: "rise", player: p.ref });
-        break;
-      }
-      default:
-        throw new Error(`the board can't apply a ${e.type} effect`);
     }
   }
-  return { players: [...P.values()], creatures: C.filter((c) => !c.gone), structures: S, ops, died, rose };
+  /** @rule 602.4, 603.1, 603.3 */
+  const result = () => ({ players: [...P.values()], creatures: C.filter((c) => !c.gone), structures: S, ops, died, rose });
+  return {
+    apply,
+    result,
+    /**
+     * The board as it stands, as `makeContext` options (players, creatures, structures, nextCreatureId): everything else a ctx has (day, settings, catalog, tiles ...) the
+     * caller adds. A creature keeps the `resting` it started the night with (a creature that rests tonight rests the NEXT night, 602.5), and one that appeared tonight is not
+     * resting. A structure placed tonight has no row yet, so it gets the next negative id (the ids the placement capability gives, src/engine/capabilities/placement.js).
+     * @rule 602.6
+     */
+    snapshot() {
+      let fresh = 0;
+      return {
+        players: [...P.values()].map((p) => ({ ...p })),
+        creatures: C.filter((c) => !c.gone).map((c) => ({ id: c.id, entry: c.entry, x: c.x, y: c.y, z: c.z, hearts: c.hearts, resting: !!c.resting })),
+        structures: S.map((o) => ({ ...o, id: o.id ?? -1 - fresh++ })),
+        nextCreatureId: id,
+      };
+    },
+  };
+}
+
+/**
+ * Applies `effects` for night `n` in one go: `createBoard` and a single `apply`. Same arguments as `createBoard`, plus `effects`. Returns {players, creatures, structures, ops, died, rose}
+ * where ops are the records the host writes (in order).
+ * @rule 602.4, 603.1, 603.3
+ */
+export function applyBoard({ effects, ...init }) {
+  const board = createBoard(init);
+  board.apply(effects);
+  return board.result();
+}
+
+/**
+ * The night's rules run one at a time, lowest rule number first (rule 602.6), on `board`. `ctx` is what the first rule sees; after each rule its effects go onto the board and
+ * the next is given `makeContext({...base, ...board.snapshot()})`: the board as that rule's predecessors left it (their steps, appearances with their ids, moves, bites, deaths,
+ * risings and structures placed). `base` is every ctx option that is not the board (day, now, settings, catalog, tiles, rng ...), so the rng, the settings and the catalog
+ * are the ones every rule has always shared. Returns the rules' effects joined in order, validated as `rules.night` does; the board has all of them applied, which is the same
+ * as applying that list once. @rule 602.6
+ */
+export function runNight(rules, board, { ctx, base, info }) {
+  return rules.night(ctx, info, (effects) => { board.apply(effects); return makeContext({ ...base, ...board.snapshot() }); });
 }

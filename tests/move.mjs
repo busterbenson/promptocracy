@@ -53,6 +53,18 @@ try {
   setClock("2026-03-12T07:00:05.000Z");
   await cron();
   check("a dead player's piece lies where it fell: not moved, logged as not living", at(first).x === 0 && events("move_refused").length === 3 && /not living/.test(events("move_refused")[2].text), JSON.stringify([at(first), events("move_refused")]));
+
+  console.log("night 5: the night's rules run one at a time, each on the board the one before it left (602.6)");
+  // 605 (Shove) moves the first player east; 606 (Follow) moves the second onto the tile west of the first player, wherever the first stands when 606 runs.
+  // Given the board as 605 left it, 606 puts the second player on the tile the first just left; given the board the night started with, one tile short of it.
+  d1(state, `UPDATE players SET hearts = 3, dead_day = NULL WHERE game_id = '${gid}' AND display_name = '${first}'`);
+  // The quiet nights before this one spawned hostile creatures (602.3) that chase the players; clear them so none stands on the tile the check is about.
+  d1(state, `UPDATE creatures SET gone_day = 4 WHERE game_id = '${gid}'`);
+  place(first, 1, 3); place(second, -3, -3);
+  setClock("2026-03-13T07:00:05.000Z");
+  await cron();
+  check("the first player was shoved east (1,3 to 2,3) and the second was put on the tile it left (1,3), not on (0,3) the night's first board would have given",
+    at(first).x === 2 && at(first).y === 3 && at(second).x === 1 && at(second).y === 3 && events("piece_moved").length >= 3, JSON.stringify([at(first), at(second), events("piece_moved").slice(-2)]));
 } catch (e) {
   fail++;
   console.log("  FAIL  harness error:", e?.stack || e);

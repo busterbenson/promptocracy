@@ -11,8 +11,10 @@
 //
 // ENGINE CHANGES ARE ADDITIVE ONLY: a new hook or a new optional ctx field reaches every game in a separate
 // platform change. Nothing here may change what an existing module sees.
-// (The one exception, rule 402: the `win` effect became `champion` when Eras replaced the game-over win. Only the starter
-// pack and Rickshaw Game 1, then in setup, used it; the later only-one-alive win brings its own effect back.)
+// (The exceptions: rule 402, the `win` effect became `champion` when Eras replaced the game-over win. Only the starter
+// pack and Rickshaw Game 1, then in setup, used it; the later only-one-alive win brings its own effect back. And rule 602.6, Buster
+// 2026-11-27: each `night` rule is given the board as the rules before it left it, not the board the night started with. A rule that
+// never read what another rule moved sees no difference, and 504.2 already says no piece moves onto a tile another stands on.)
 import { validCoord } from "../lib/geometry.js";
 import { capabilityEffects, capabilityHooks, CAPABILITIES } from "./capabilities/index.js";
 
@@ -57,6 +59,8 @@ const CORE_HOOKS = {
   applyAction: { mode: "sequence", wired: true },
   // The night's board (rules 602-603): called EVERY night, after the night's proposals and actions are applied, with `applied` = the P-numbers
   // applied tonight (empty on a quiet night). Returns appear, step, move (a living player's piece), bite, rest and rise effects, applied in order (src/engine/host.ts).
+  // The rules run one at a time, lowest rule number first (rule 602.6), and each is given the ctx AFTER the rules before it: their steps, appearances (with their ids),
+  // moves, bites, deaths and risings. A creature a rule rests tonight rests the next night (602.5), so it is not `resting` for the rule that follows.
   night: { mode: "sequence", wired: true },
   // How the game ends (rule 404): called once after the night's board, only when someone died, with the state as it stands after the bites.
   // Returns a game_over effect or null. At most one rule decides (a game with none never ends by death).
@@ -382,16 +386,22 @@ export function assembleRules(modules, { label = "rules" } = {}) {
   const call = (m, hook, args) => {
     try { return m[hook](...args); } catch (e) { throw new RuleError(m.rule, hook, e); }
   };
-  /** @rule 401, 402 */
-  const nightEffects = (hook, args) => {
+  // The effects of a night hook, every rule's joined in rule order, each rule's list validated. `after(effects, rule)`, when given, is called with each
+  // rule's validated effects (tagged with its rule) and answers the ctx the NEXT rule is given: the night's board uses it so each rule plans from the board the
+  // rules before it left (602.6). Without it every rule is given `args[0]`.
+  /** @rule 401, 402, 602.6 */
+  const nightEffects = (hook, args, after) => {
     const out = [];
+    let ctx = args[0];
     for (const m of implementers(hook)) {
-      const r = call(m, hook, args) ?? [];
+      const r = call(m, hook, [ctx, ...args.slice(1)]) ?? [];
       const takes = NIGHT_HOOK_EFFECTS[hook];
       const bad = validateEffects(r) ?? r.map((e) => (!NIGHT_EFFECTS.includes(e.type) ? `the ${e.type} effect can't be used at night`
         : takes.includes(e.type) ? null : `the ${e.type} effect can't be returned by ${hook} (it takes: ${takes.join(", ")})`)).find(Boolean);
       if (bad) throw new RuleError(m.rule, hook, new Error(bad));
-      out.push(...r.map((e) => ({ ...e, rule: m.rule })));
+      const tagged = r.map((e) => ({ ...e, rule: m.rule }));
+      out.push(...tagged);
+      if (after) ctx = after(tagged, m.rule) ?? ctx;
     }
     return out;
   };
@@ -523,10 +533,12 @@ export function assembleRules(modules, { label = "rules" } = {}) {
     dayEnd(ctx, results) {
       return nightEffects("dayEnd", [ctx, deepFreeze(JSON.parse(JSON.stringify(results)))]);
     },
-    // The night's board (rules 602, 603): every rule's `night` effects, joined in rule order, validated. `info` is {applied: [P numbers]}.
-    /** @rule 602.3, 603.3 */
-    night(ctx, info) {
-      return nightEffects("night", [ctx, deepFreeze({ applied: [...(info?.applied ?? [])] })]);
+    // The night's board (rules 602, 603): every rule's `night` effects, joined in rule order, validated. `info` is {applied: [P numbers]}. The rules run one at a
+    // time (602.6): `after(effects, rule)` is called with each rule's effects and answers the ctx the next rule sees, so a rule plans from the board the earlier
+    // ones left, not from the board the night started with. Without `after` every rule sees `ctx` (a game's own tests call it so).
+    /** @rule 602.3, 603.3, 602.6 */
+    night(ctx, info, after) {
+      return nightEffects("night", [ctx, deepFreeze({ applied: [...(info?.applied ?? [])] })], after);
     },
     // How the game ends (rule 404): a game_over effect or null, from the one rule that decides it. `info` is {died: [player refs]}.
     /** @rule 404 */

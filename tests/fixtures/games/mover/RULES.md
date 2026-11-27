@@ -268,6 +268,9 @@ that a move onto it would chart (rule 504.1) is already charted.
 ### 605 Shove [m]
 **605.1** At the end of each day, the first player in the game's order is moved 1 step east, if that tile is charted and nothing stands on it.
 
+### 606 Follow [m]
+**606.1** At the end of each day, when the first player in the game's order stands on the top row, the second player is moved onto the tile just west of the first player, if that tile is charted and nothing stands on it.
+
 ## 700. Making things
 
 ### 701 The catalog [m]

@@ -58,7 +58,7 @@ test("block 600 and rule 404: hearts, hostile creatures, death, Ghosts and the t
   const flat = rulesMd.replace(/\s+/g, " ");
   assert.deepEqual(book.rules.filter((r) => Math.floor(r.number / 100) === 6).map((r) => r.number), [601, 602, 603, 604]);
   assert.ok(book.rules.some((r) => r.number === 404));
-  for (const c of ["601.1", "601.2", "601.3", "602.1", "602.2", "602.3", "602.4", "602.5", "603.1", "603.2", "603.3", "603.4", "604.1", "604.2", "404.1", "404.2", "404.3", "404.4"]) assert.ok(flat.includes(`**${c}**`), c);
+  for (const c of ["601.1", "601.2", "601.3", "602.1", "602.2", "602.3", "602.4", "602.5", "602.6", "603.1", "603.2", "603.3", "603.4", "604.1", "604.2", "404.1", "404.2", "404.3", "404.4"]) assert.ok(flat.includes(`**${c}**`), c);
   for (const [k, v] of [["hearts.start", 3], ["creatures.appear_steps", 3], ["creatures.bite", 1], ["death.ghost_days", 3]] as const) {
     assert.equal(settings[k], v);
     assert.ok(flat.includes(`[setting: ${k}]`), k);
@@ -69,6 +69,7 @@ test("block 600 and rule 404: hearts, hostile creatures, death, Ghosts and the t
   assert.ok(flat.includes("Every player who may vote (104.2), the proposer included, may vote"));
   assert.ok(flat.includes("Each day, every living player (603.1) and every Ghost (604.1) gets one turn."));
   assert.ok(flat.includes("the first living player (603.1) who is unable to complete a turn wins."));
+  assert.ok(flat.includes("**602.6** At night the rules that move or bite act one at a time, lowest rule number first, and each starts from the board the one before it left: where creatures stand, who was bitten, who died. So a creature can step onto a tile another has just left, and two creatures never end the night on one tile (504.2)."));
   assert.ok(flat.includes("**404.3** Last one standing: when a night's deaths leave one living player (603.1), the game ends badly. Nobody wins, and that player becomes the King of Ghosts."));
   assert.ok(flat.includes("**604.1** A Ghost has a turn each day (202.1). On it, a Ghost can move (202.2) and end its turn (202.4). It can't make proposals or vote."));
 });
