@@ -101,11 +101,16 @@ with sync_playwright() as p:
         page.click(SLIP + " .wpill"); page.wait_for_selector('#mroot [data-w="unlock"]')
         page.click('#mroot [data-w="unlock"]'); page.wait_for_selector("#wfTitle")
         check(f"{tag}: Unlock on the card, and the chat's slip behind it says DRAFT again", stamp(page) == "DRAFT", stamp(page))
-        # ---- the card's Redraw: the chat's slip shows the new picture
+        # ---- the card's Redraw. The lock-in kept the entry's newest drawing (rule 801.2: with none kept, the newest is kept and shown), so a Redraw after the
+        # Unlock adds a candidate beside it: the slip keeps showing the kept one until the player keeps the new one and makes it the default, and then it follows
         before = shown_src(page)
         page.click('#mroot [data-w="art"][data-act="redraw"]')
+        page.wait_for_selector('#mroot [data-w="art"][data-act="save"]', timeout=25000)
+        check(f"{tag}: Redraw on the card adds a drawing beside the one kept at lock-in, and the slip in the chat still shows the kept one (801.2)", shown_src(page) == before and page.locator("#mroot .wkart .is-default").count() == 1)
+        page.click('#mroot [data-w="art"][data-act="save"]'); page.wait_for_selector('#mroot [data-w="art"][data-act="default"]')
+        page.click('#mroot [data-w="art"][data-act="default"]')
         page.wait_for_function("(b) => { const i = document.querySelector('#chatLog .slip img.mkart'); return i && i.getAttribute('src') !== b; }", arg=before, timeout=25000)
-        check(f"{tag}: Redraw on the card, and the slip in the chat shows the new picture", shown_src(page) != before)
+        check(f"{tag}: the new drawing made the default on the card, and the slip in the chat shows the new picture", shown_src(page) != before)
         # ---- back closes the card; the X gives its history entry back
         page.keyboard.press("Escape"); page.wait_for_timeout(400)
         check(f"{tag}: Escape closes the card and the history is as it was before it opened", not card_open(page) and page.evaluate("history.length") == h0 + 1 and page.url == url0, f"{page.evaluate('history.length')} vs {h0 + 1}")
