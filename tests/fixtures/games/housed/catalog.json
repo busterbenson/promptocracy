@@ -1,0 +1,82 @@
+[
+ {
+  "id": "C1",
+  "name": "Blob",
+  "kind": "creature",
+  "attrs": {
+   "temper": "hostile",
+   "hearts": 3
+  },
+  "flavor": {}
+ },
+ {
+  "id": "C2",
+  "name": "Pancake",
+  "kind": "creature",
+  "attrs": {
+   "hearts": 3,
+   "temper": "neutral"
+  },
+  "flavor": {
+   "species": "small bengal cat"
+  },
+  "art": {
+   "saved": [
+    {
+     "key": "082f6da2ebcfc648649a920fb91e76e510a2cec41cc3bbde3b94b7074ef19434",
+     "prompt": "A small bengal cat, awake."
+    }
+   ],
+   "default": "082f6da2ebcfc648649a920fb91e76e510a2cec41cc3bbde3b94b7074ef19434"
+  },
+  "madeBy": "W2",
+  "day": 1
+ },
+ {
+  "id": "C3",
+  "name": "Pancake asleep",
+  "kind": "creature",
+  "attrs": {
+   "hearts": 3,
+   "temper": "neutral"
+  },
+  "flavor": {
+   "pose": "sleeping"
+  },
+  "art": {
+   "saved": [
+    {
+     "key": "651413745860e99c4907f95123e332331d5dca2ec75ca9b9d337defd640cc0a3",
+     "prompt": "A small bengal cat, asleep."
+    }
+   ],
+   "default": "651413745860e99c4907f95123e332331d5dca2ec75ca9b9d337defd640cc0a3"
+  },
+  "madeBy": "W2",
+  "day": 1
+ },
+ {
+  "id": "S1",
+  "name": "House",
+  "kind": "structure",
+  "attrs": {
+   "size": {
+    "w": 2,
+    "h": 2
+   },
+   "refuge": true
+  },
+  "flavor": {},
+  "art": {
+   "saved": [
+    {
+     "key": "e7e41ddf2d0c3cee8733e5e1286ff928b448eca399a5727d7e566dfd3e5e6a94",
+     "prompt": "A small house."
+    }
+   ],
+   "default": "e7e41ddf2d0c3cee8733e5e1286ff928b448eca399a5727d7e566dfd3e5e6a94"
+  },
+  "madeBy": "W6",
+  "day": 1
+ }
+]

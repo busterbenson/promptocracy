@@ -10,7 +10,7 @@
 //   b.setReach(tiles)         dashed highlight on the tiles you may move to ([{x, y}]); none clears
 //   b.screenPos(x, y)         page coordinates of a tile's centre (tests use this to click it)
 //   b.recenter(meKey)         back to the whole island, or onto the viewer's piece
-import { HW, HH, DEPTH, ensureDefs, pieceSVG, creatureSVG } from "/js/pieces.js";
+import { HW, HH, DEPTH, ensureDefs, pieceSVG, creatureSVG, creatureArtSVG } from "/js/pieces.js";
 
 export const LONG_PRESS_MS = 500;
 const f1 = (n) => n.toFixed(1);
@@ -42,7 +42,7 @@ const artPatterns = (arts, id) => arts.map((a, i) => `<pattern id="${id}-a${i}" 
 
 // The whole scene as markup. `sel` is the selected tile; `me` the color key of the viewer. Used by the board and the landing page.
 export function sceneSVG(board, { sel = null, me = null, id = "b", showFog = true, reach = [] } = {}) {
-  const tiles = board.tiles.filter((t) => t.z === 0), arts = artList(tiles);
+  const tiles = board.tiles.filter((t) => t.z === 0), structures = (board.structures || []).filter((o) => o.at.z === 0), arts = artList([...tiles, ...structures]);
   const charted = new Set(tiles.map((t) => K(t.x, t.y)));
   const fog = showFog ? ring(charted, 2) : new Set(), fog1 = showFog ? ring(charted, 1) : new Set();
   let s = `<defs><radialGradient id="${id}-g" cx="50%" cy="50%" r="50%"><stop offset=".35" stop-color="#fff"/><stop offset="1" stop-color="#000"/></radialGradient>
@@ -71,6 +71,11 @@ export function sceneSVG(board, { sel = null, me = null, id = "b", showFog = tru
     const ai = t.art ? arts.indexOf(t.art) : -1;
     s += `<polygon class="top" data-x="${x}" data-y="${y}" points="${pts(q)}"${ai >= 0 ? ` style="fill:url(#${id}-a${ai})"` : ""}/>`;
   }
+  // Structures (rule 701.5): the entry's drawing over its whole footprint, w by h tiles, on the land and under every piece. Back to front. A tap goes through to the tile under it.
+  for (const o of [...structures].sort((a, b) => (b.at.x + b.at.y + b.w + b.h) - (a.at.x + a.at.y + a.w + a.h))) {
+    const q = [P(o.at.x, o.at.y), P(o.at.x + o.w, o.at.y), P(o.at.x + o.w, o.at.y + o.h), P(o.at.x, o.at.y + o.h)], ai = o.art ? arts.indexOf(o.art) : -1;
+    s += `<polygon class="structure${ai >= 0 ? "" : " plain"}" data-structure="${o.id}" points="${pts(q)}"${ai >= 0 ? ` style="fill:url(#${id}-a${ai})"` : ""}/>`;
+  }
   if (fog.size) {
     const list = [...fog].map((k) => k.split(",").map(Number));
     const far = (fx, fy) => list.reduce((m, p) => (fx * p[0] + fy * p[1] > fx * m[0] + fy * m[1] ? p : m), list[0]);
@@ -90,7 +95,7 @@ export function sceneSVG(board, { sel = null, me = null, id = "b", showFog = tru
     .sort((a, b) => ((b.p || b.c).at.x + (b.p || b.c).at.y) - ((a.p || a.c).at.x + (a.p || a.c).at.y));
   for (const { p, c } of standing) {
     const at = P((p || c).at.x + .5, (p || c).at.y + .5);
-    const art = p ? pieceSVG({ shape: p.shape, color: p.color, mirrored: !!p.mirrored, state: p.state, part: "shadow" }) : creatureSVG(c, { part: "shadow" });
+    const art = p ? pieceSVG({ shape: p.shape, color: p.color, mirrored: !!p.mirrored, state: p.state, part: "shadow" }) : creatureSVG(c, { part: "shadow" }) || creatureArtSVG(c, { part: "shadow" });
     if (art) s += `<g class="${p ? "piece-shadow" : "creature-shadow"}" transform="translate(${f1(at[0])},${f1(at[1])})">${art}</g>`;
   }
   for (const { p, c } of standing) {
@@ -99,7 +104,7 @@ export function sceneSVG(board, { sel = null, me = null, id = "b", showFog = tru
       s += `<g class="piece" data-piece="${esc(p.color.key)}" transform="translate(${f1(at[0])},${f1(at[1])})">${pieceSVG({ shape: p.shape, color: p.color, mirrored: !!p.mirrored, state: p.state, part: "art" })}</g>`;
     } else {
       const at = P(c.at.x + .5, c.at.y + .5);
-      const art = creatureSVG(c, { part: "art" }) || `<circle cy="-13" r="11" class="cring"/><text y="-8.5" text-anchor="middle" class="cletter">${esc(String(c.entry || c.kind || "C").charAt(0))}</text>`;
+      const art = creatureSVG(c, { part: "art" }) || creatureArtSVG(c, { part: "art" }) || `<circle cy="-13" r="11" class="cring"/><text y="-8.5" text-anchor="middle" class="cletter">${esc(String(c.entry || c.kind || "C").charAt(0))}</text>`;
       s += `<g class="creature" data-creature="${c.id}" transform="translate(${f1(at[0])},${f1(at[1])})">${art}${c.resting ? '<text x="12" y="-26" class="czz">z</text>' : ""}</g>`;
     }
   }
@@ -153,6 +158,7 @@ export async function createBoard(container, { onSelect } = {}) {
     const named = new Map();
     for (const p of board.pieces) if (p.at.z === 0 && p.name) { const k = K(p.at.x, p.at.y); named.set(k, [...(named.get(k) || []), me && p.color.key === me ? `${p.name} (you)` : p.name]); }
     for (const c of board.creatures || []) if (c.at.z === 0) { const k = K(c.at.x, c.at.y); named.set(k, [...(named.get(k) || []), `${c.name}${c.resting ? " (resting)" : ""}`]); }
+    for (const o of board.structures || []) if (o.at.z === 0) for (let dx = 0; dx < o.w; dx++) for (let dy = 0; dy < o.h; dy++) { const k = K(o.at.x + dx, o.at.y + dy); named.set(k, [...(named.get(k) || []), o.name]); }   // a structure's name on each tile of it
     for (const t of board.tiles) if (t.z === 0 && t.name) { const k = K(t.x, t.y); named.set(k, [...(named.get(k) || []), t.name]); }   // a tile entry's name comes after whoever stands on it
     for (const [k, names] of named) labels.set(k, labels.get(k) ? `${names.join(", ")} · ${labels.get(k)}` : names.join(", "));
     if (!fitted) { fitted = true; if (container.clientWidth < 600 && me) centerOnMe(me); else fit(); }

@@ -1,5 +1,5 @@
 // GET /<slug>/api/board: the charted tiles and the pieces on them. PUBLIC: no emails, no ids.
-import { bundleFor, gameSettings, stateOf } from "../engine/host";
+import { boardContext, bundleFor, creatureDrawings, gameSettings, rulesFor, stateOf } from "../engine/host";
 import { ensureTiles, loadTiles } from "../lib/board";
 import { HASH } from "../lib/art.js";
 import { DIAGONAL_MOVES, SHARED_TILES } from "../lib/board-rules.js";
@@ -14,7 +14,7 @@ const tileArt = (slug: string, e: any): string | null => {
   return typeof key === "string" && HASH.test(key) ? `/${slug}/art/${key}` : null;
 };
 
-/** @rule 501, 601, 602, 603.1, 404, 701.1 */
+/** @rule 501, 601, 602, 603.1, 404, 701.1, 701.5 */
 export const get = async ({ env, data }: Ctx) => {
   const g = data.game!;
   await ensureTiles(env, g);
@@ -23,7 +23,10 @@ export const get = async ({ env, data }: Ctx) => {
   ).results as any[];
   const tiles = await loadTiles(env, g.id);
   const creatures = (await env.DB.prepare("SELECT id, entry_id, x, y, z, hearts, rests_night, appeared_day FROM creatures WHERE game_id = ? AND gone_day IS NULL ORDER BY id").bind(g.id).all()).results as any[];
+  const structures = (await env.DB.prepare("SELECT id, entry_id, x, y, z, w, h FROM structures WHERE game_id = ? AND gone_day IS NULL ORDER BY id").bind(g.id).all()).results as any[];
   const entries = new Map(((bundleFor(g).bundle as any).catalog ?? []).map((e: any) => [e.id, e]));
+  // The drawing a rule shows for a creature (701.1): the entry its creatureDrawing hook answers, else its own. Asked only when the game has such a rule.
+  const drawn = rulesFor(g).implementers("creatureDrawing").length ? creatureDrawings(g, await boardContext(env, g)) : {};
   const S = gameSettings(g);
   return json({
     settings: S, // the board's rules as data: public, like the rules text
@@ -49,7 +52,13 @@ export const get = async ({ env, data }: Ctx) => {
       id: c.id, entry: c.entry_id, name: entries.get(c.entry_id)?.name ?? c.entry_id, kind: entries.get(c.entry_id)?.kind ?? "creature", hearts: c.hearts,
       temper: entries.get(c.entry_id)?.attrs?.temper ?? null, appeared_day: c.appeared_day ?? null,   // the catalog's temper (602.1) and the day it appeared (602.3), for its card
       max_hearts: entries.get(c.entry_id)?.attrs?.hearts ?? null,   // its catalog hearts (601): the full scale its card draws
+      art: tileArt(g.slug, entries.get(drawn[c.id] ?? c.entry_id)), // the default drawing of the entry a rule answered, else its own entry's (701.1); null when it has none
       resting: g.day > 0 && c.rests_night === g.day, at: { x: c.x, y: c.y, z: c.z, label: tileLabel(c.x, c.y, c.z) },
+    })),
+    // The structures on the board (701.5): `at` is the lowest corner of the footprint, w tiles along x and h along y.
+    structures: structures.map((o) => ({
+      id: o.id, entry: o.entry_id, name: entries.get(o.entry_id)?.name ?? o.entry_id, kind: "structure", w: o.w, h: o.h, art: tileArt(g.slug, entries.get(o.entry_id)),
+      at: { x: o.x, y: o.y, z: o.z, label: tileLabel(o.x, o.y, o.z) },
     })),
   });
 };

@@ -970,6 +970,87 @@
         "drafts_max": 1
       },
       "known_fail": null
+    },
+    {
+      "id": "r-pancake-w2",
+      "agent": "gremlin",
+      "start": "general",
+      "title": "W2's rules: Pancake moves toward its owner; her sleeping drawing (commission W2 open)",
+      "pending": [
+        {
+          "ticket": 2,
+          "owner": "Buster",
+          "state": "Approved",
+          "name": "Pancake",
+          "catalogKind": "creature"
+        },
+        {
+          "ticket": 2,
+          "owner": "Buster",
+          "state": "Approved",
+          "name": "Pancake asleep",
+          "catalogKind": "creature"
+        }
+      ],
+      "turns": [
+        "Pancake moves toward its owner each turn, 1 to 3 steps, then sleeps the next turn and does not move."
+      ],
+      "if_asked": [],
+      "intent": "A rule about the creature a commission is making (Pancake, W2). The engine can place a built creature, tell a rule each entry's owner (the commission's requester) and a creature's rest, so nothing is missing: it is drafted, the check passes it with no engine note, and it is never called an engine gap.",
+      "expect": {
+        "ends_in": "proposal",
+        "no_escalation": true,
+        "first_answer": {
+          "check": "ok",
+          "engine_note": false,
+          "kind": [
+            "add",
+            "addclause"
+          ],
+          "words_re": [
+            "pancake",
+            "owner"
+          ]
+        }
+      },
+      "known_fail": null
+    },
+    {
+      "id": "r-refuge-w6",
+      "agent": "gremlin",
+      "start": "general",
+      "title": "W6's rule: a refuge protects from bites (commission W6 open)",
+      "pending": [
+        {
+          "ticket": 6,
+          "owner": "Sarah",
+          "state": "Approved",
+          "name": "House",
+          "catalogKind": "structure"
+        }
+      ],
+      "turns": [
+        "A living player standing in a tile of a structure with the refuge attribute cannot be bitten by hostile creatures."
+      ],
+      "if_asked": [],
+      "intent": "A rule about structures and bites. The engine has structures on the board, a rule can protect a player from a bite, and 602.5 already says a creature bites every living player next to it that no rule protects, so nothing is missing and nothing conflicts: it is drafted, the check passes it with no engine note.",
+      "expect": {
+        "ends_in": "proposal",
+        "no_escalation": true,
+        "first_answer": {
+          "check": "ok",
+          "engine_note": false,
+          "kind": [
+            "add",
+            "addclause"
+          ],
+          "words_re": [
+            "refuge",
+            "bite"
+          ]
+        }
+      },
+      "known_fail": null
     }
   ]
 }

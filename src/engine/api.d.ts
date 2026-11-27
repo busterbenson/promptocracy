@@ -5,8 +5,10 @@ export type Tile = { x: number; y: number; z: number; entry?: string | null };
 export type Settings = Record<string, any>;
 export type Player = { ref: string; color: string; score: number; x: number; y: number; z: number; living: boolean; hearts: number; state: "living" | "dead" | "ghost"; deadDay: number | null };
 export type Creature = { id: number; entry: string; x: number; y: number; z: number; hearts: number | null; resting: boolean };
-/** An entry of the catalog. `madeBy` is the commission that made it ("W4"), `name` its name; null when the entry has none (rule 703.4). */
-export type CatalogEntry = { id: string; kind: string; name: string | null; madeBy: string | null; attrs: Record<string, unknown> };
+/** An entry of the catalog. `madeBy` is the commission that made it ("W4"), `name` its name; null when the entry has none (rule 703.4). `requester` is the ref of the player whose commission made it (null for a starter entry). */
+export type CatalogEntry = { id: string; kind: string; name: string | null; madeBy: string | null; requester: string | null; attrs: Record<string, unknown> };
+/** A structure on the board (rule 701.5): `entry` is its catalog entry; x, y is the lowest corner of its footprint, which is w tiles along x and h along y on level z. */
+export type Structure = { id: number; entry: string; x: number; y: number; z: number; w: number; h: number };
 export type Tiles = { has(x: number, y: number, z?: number): boolean; get(x: number, y: number, z?: number): Tile | undefined; list(): Tile[]; size: number };
 export type Mark = "majority" | "unanimous";
 export type Ctx = {
@@ -17,6 +19,10 @@ export type Ctx = {
   players: readonly Player[];
   /** The creatures on the board, in the order they appeared (rule 602). */
   creatures: readonly Creature[];
+  /** The structures on the board (rule 701.5). Find the one on a tile with structureAt(). */
+  structures: readonly Structure[];
+  /** May this creature bite this player (rule 602.5)? Runs every rule's biteAllowed: false when one refuses. A creature or player may be given by id or ref. A biteAllowed handler must not call it. */
+  mayBite(creature: Creature | number, player: Player | string): boolean;
   /** The id the next creature to appear will get: step or rest it by this id later in the same night. */
   nextCreatureId: number;
   /** The game's catalog entries (rule 701). Read an attribute with attr(). */
@@ -46,6 +52,8 @@ export type Effect =
   | { type: "log"; template: string; args: Record<string, unknown> }
   | { type: "champion"; player: string; reason: string }
   | { type: "appear"; entry: string; tile: Tile }
+  /** night only: a structure entry onto the board, `tile` its lowest x and y. Every tile of its footprint must be charted, with no piece or creature on it and no other structure. Refused (the night fails) otherwise. */
+  | { type: "place"; entry: string; tile: Tile }
   | { type: "step"; creature: number; to: Tile }
   /** night only: moves a living player's piece to a charted tile with no piece or creature on it. Skipped, and logged in History, when the tile is uncharted or occupied or the player is not living. Does not chart. */
   | { type: "move"; player: string; to: Tile; reason?: string }
@@ -90,6 +98,13 @@ export type Hooks = {
   /** Every night, after the night's proposals and actions are applied (rule 602, 603). `applied` = the P-numbers applied tonight (empty on a quiet night).
    *  appear, step, move (a player's piece), bite, rest and rise effects, applied in order. */
   night?(ctx: Ctx, info: { applied: number[] }): Effect[];
+  /** Where a creature or structure that was just built goes (rule 701.5): a tile (a structure's lowest x and y), null (it is not placed) or undefined (no say). The lowest rule number that answers wins;
+   *  when none does the engine places it at random on an unoccupied charted tile. Asked once, the night it is built. */
+  placement?(ctx: Ctx, entry: CatalogEntry): Tile | null | undefined;
+  /** The id of the catalog entry whose drawing the board shows for this creature, or undefined for its own entry's (rule 701.1). The lowest rule number that answers wins. */
+  creatureDrawing?(ctx: Ctx, creature: Creature): string | undefined;
+  /** May this creature bite this player (rule 602.5)? null, or a refusal naming the rule. Asked through ctx.mayBite. */
+  biteAllowed?(ctx: Ctx, creature: Creature, player: Player): Refusal | null;
   /** Once after the night's board, only when someone died; ctx is the board after the bites (rule 404). A game_over effect or null. At most one module. */
   ending?(ctx: Ctx, info: { died: string[] }): Effect | null;
 };
@@ -104,6 +119,8 @@ export const effects: {
   /** dayEnd only: this player wins the Era (rule 402): the Era ends, points reset, they are the Champion. */
   champion(player: string, reason: string): Effect;
   appear(entry: string, tile: { x: number; y: number; z?: number }): Effect;
+  /** night only: put a structure entry on the board; `tile` is the lowest x and y of its footprint (rule 701.5). */
+  place(entry: string, tile: { x: number; y: number; z?: number }): Effect;
   step(creature: number, to: { x: number; y: number; z?: number }): Effect;
   /** night only: move this living player's piece to a charted, unoccupied tile (rule 504.2's guards). A refused move is skipped and logged; it does not chart. */
   move(player: string, to: { x: number; y: number; z?: number }, reason?: string): Effect;
@@ -128,3 +145,5 @@ export const ENGINE_VERSION: number;
  */
 export function entryMadeBy(catalog: readonly CatalogEntry[] | null | undefined, ticket: string, kind: string, name?: string): CatalogEntry | undefined;
 export function attr(entry: { attrs?: Record<string, unknown> } | null | undefined, key: string): unknown;
+/** The structure whose footprint holds the tile (x, y, z), or undefined (rule 701.5). */
+export function structureAt(ctx: { structures: readonly Structure[] }, x: number, y: number, z?: number): Structure | undefined;

@@ -183,18 +183,18 @@ under rule 101 or 102; a follow-up change claims them and moves `src/` into the 
 
 ## src/lib/rule-check.js (12)
 
-- line 50: `core`
-- line 58: `norm`
-- line 60: `ruleText`
-- line 71: `claimsOf`
-- line 72: `yieldsOf`
-- line 73: `ruleNumOf`
-- line 116: `fence`
-- line 117: `catalogLine`
-- line 165: `n`
-- line 187: `own`
-- line 189: `clip`
-- line 192: `listed`
+- line 52: `core`
+- line 60: `norm`
+- line 62: `ruleText`
+- line 73: `claimsOf`
+- line 74: `yieldsOf`
+- line 75: `ruleNumOf`
+- line 118: `fence`
+- line 119: `catalogLine`
+- line 167: `n`
+- line 189: `own`
+- line 191: `clip`
+- line 194: `listed`
 
 ## src/lib/settings.js (12)
 

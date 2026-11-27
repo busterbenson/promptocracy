@@ -14,6 +14,7 @@
 // (The one exception, rule 402: the `win` effect became `champion` when Eras replaced the game-over win. Only the starter
 // pack and Rickshaw Game 1, then in setup, used it; the later only-one-alive win brings its own effect back.)
 import { validCoord } from "../lib/geometry.js";
+import { capabilityEffects, capabilityHooks, CAPABILITIES } from "./capabilities/index.js";
 
 // HOW SEVERAL RULES SHARE A HOOK. A rule never edits another rule's code. Each rule module registers its own handler
 // for each hook it cares about, and the engine calls every handler. Each hook has exactly one combine mode:
@@ -26,7 +27,7 @@ import { validCoord } from "../lib/geometry.js";
 //             Buster's approval, and until then two handlers fail the assembly rather than silently picking one.
 // wired: the engine calls it today. A module that implements a hook that is not wired is refused (it would bundle
 //        and never run); the name is reserved so a later change can wire it. Its "exactly one" rule waits too.
-export const HOOKS = Object.freeze({
+const CORE_HOOKS = {
   actionAllowed: { mode: "veto", wired: true },
   afterAction: { mode: "sequence", wired: true },
   spawnTile: { mode: "decide", wired: true },
@@ -55,7 +56,12 @@ export const HOOKS = Object.freeze({
   // How the game ends (rule 404): called once after the night's board, only when someone died, with the state as it stands after the bites.
   // Returns a game_over effect or null. At most one rule decides (a game with none never ends by death).
   ending: { mode: "decide", wired: true },
-});
+};
+// The core hooks, then the capabilities' (src/engine/capabilities/: placement, creatureDrawing, biteAllowed ...).
+export const HOOKS = Object.freeze({ ...CORE_HOOKS, ...capabilityHooks() });
+// Optional single-value hooks: any number of rules may answer, the lowest rule number that gives an answer wins, none is fine (the default applies). `ending` is
+// optional with at most one; a capability's hook says `optional: true` (src/engine/capabilities/).
+const OPTIONAL_DECIDE = Object.freeze(["ending", ...Object.entries(capabilityHooks()).filter(([, h]) => h.optional).map(([k]) => k)]);
 
 export const ACTION_KINDS = Object.freeze(["move", "propose", "vote", "end_turn", "give_heart"]);
 // The statuses a refusal may carry (what the routes answer with). 400 is the default.
@@ -138,8 +144,9 @@ export function cryptoRng() {
 //   players    [{ref, color, score, x, y, z, living, hearts, state: "living" | "dead" | "ghost", deadDay}]  (rule 603.1)
 //   creatures  [{id, entry, x, y, z, hearts | null, resting}]: the creatures on the board, in the order they appeared (rule 602)
 //   nextCreatureId  the id the next creature to appear gets (an appear effect, then step or rest it by this id in the same night)
-//   catalog    [{id, kind, name, madeBy, attrs}]: the game's catalog entries (rule 701); read an attribute with attr()  (ref is the engine's stable reference to a player)
+//   catalog    [{id, kind, name, madeBy, requester, attrs}]  requester: the player (ref) whose commission made the entry, or null (a starter entry): the game's catalog entries (rule 701); read an attribute with attr()  (ref is the engine's stable reference to a player)
 //   tiles      has(x,y,z) / get(x,y,z) / list()
+//   structures [{id, entry, x, y, z, w, h}]: the structures on the board (x, y = the footprint's lowest corner, w by h tiles), read with structureAt() (rule 701.5)
 //   rulebook   { marks }  the mark of each rule by number; empty until proposals arrive
 //   rng        () => float in [0,1)
 //   turn       { round, turn, moved, gave }  gave: the acting player has given a heart today (rule 603.4). moved: the acting player has moved in today's turn (rule 202.1, one turn a day).
@@ -157,14 +164,17 @@ export function makeContext(o) {
     }),
     creatures: (o.creatures ?? []).map((c) => ({ id: c.id, entry: c.entry, x: c.x, y: c.y, z: c.z ?? 0, hearts: c.hearts ?? null, resting: !!c.resting })),
     nextCreatureId: o.nextCreatureId ?? 1 + Math.max(0, ...(o.creatures ?? []).map((c) => c.id)),
-    catalog: (o.catalog ?? []).map((e) => ({ id: e.id, kind: e.kind, name: e.name ?? null, madeBy: e.madeBy ?? null, attrs: { ...(e.attrs ?? {}) } })),
+    catalog: (o.catalog ?? []).map((e) => ({ id: e.id, kind: e.kind, name: e.name ?? null, madeBy: e.madeBy ?? null, attrs: { ...(e.attrs ?? {}) }, ...Object.assign({}, ...CAPABILITIES.map((c) => c.catalogEntry?.(e) ?? {})) })),
     rulebook: { marks: o.rulebook?.marks ?? {} },
+    ...Object.assign({}, ...CAPABILITIES.map((c) => c.ctxData?.(o) ?? {})),
     turn: { round: o.turn?.round ?? 0, turn: o.turn?.turn ?? 0, moved: !!o.turn?.moved, gave: !!o.turn?.gave },
   };
   deepFreeze(ctx);
   // Functions are added after the freeze of the data, then the whole object is sealed.
   const out = { ...ctx, tiles: o.tiles ?? makeTiles([]), rng: o.rng ?? cryptoRng() };
   if (o.judge) out.judge = o.judge;
+  // The functions the capabilities add to ctx (ctx.mayBite ...).
+  for (const c of CAPABILITIES) if (c.ctxFns) Object.assign(out, c.ctxFns(o, out, { RuleError, REFUSAL_STATUSES }));
   return Object.freeze(out);
 }
 
@@ -179,16 +189,16 @@ export function makeContext(o) {
 const isInt = (n) => Number.isSafeInteger(n);
 /** @rule 101 */
 const isStr = (s, max = 400) => typeof s === "string" && s.length > 0 && s.length <= max;
-export const EFFECT_TYPES = Object.freeze(["chart", "points", "log", "champion", "appear", "step", "move", "bite", "rest", "rise", "game_over"]);
+export const EFFECT_TYPES = Object.freeze(["chart", "points", "log", "champion", "appear", "step", "move", "bite", "rest", "rise", "game_over", ...Object.keys(capabilityEffects())]);
 export const ENDINGS = Object.freeze(["paradox", "last_standing", "everyone_dead"]);
 export const APPLIED_EFFECTS = Object.freeze(["chart"]);
 // What the night's hooks may return, and the engine applies at the unlock (src/lib/day.ts): points when a change takes
 // effect (rule 401) and the Era won at the end of the night (rule 402).
-export const NIGHT_EFFECTS = Object.freeze(["points", "champion", "appear", "step", "move", "bite", "rest", "rise", "game_over"]);
+export const NIGHT_EFFECTS = Object.freeze(["points", "champion", "appear", "step", "move", "bite", "rest", "rise", "game_over", ...Object.entries(capabilityEffects()).filter(([, e]) => e.night).map(([k]) => k)]);
 // What each night hook's enactment applies (src/engine/host.ts): points from onEnacted, the Era's winner from dayEnd. Any other
 // effect is refused, never dropped, so a rule can't pass its tests with an effect that would silently do nothing.
 export const NIGHT_HOOK_EFFECTS = Object.freeze({ onEnacted: Object.freeze(["points"]), dayEnd: Object.freeze(["champion"]), applyAction: Object.freeze(["points"]),
-  night: Object.freeze(["appear", "step", "move", "bite", "rest", "rise"]), ending: Object.freeze(["game_over"]) });
+  night: Object.freeze(["appear", "step", "move", "bite", "rest", "rise", ...Object.entries(capabilityEffects()).filter(([, e]) => e.night).map(([k]) => k)]), ending: Object.freeze(["game_over"]) });
 
 // ---- action types (rule 103.5) ----------------------------------------------------
 // What a module's actionType() answers: {type, name, touches: [rule numbers], params: [{key, label, kind: "player" | "int", ...}]}.
@@ -253,6 +263,7 @@ export function validateEffect(e) {
     case "game_over":
       return ENDINGS.includes(e.ending) && (e.player === null || isStr(e.player, 100)) && isStr(e.reason) ? null : "game_over needs an ending (paradox, last_standing or everyone_dead), a player or null, and a reason";
     default:
+      if (Object.hasOwn(capabilityEffects(), e.type)) return capabilityEffects()[e.type].validate(e);   // an effect a capability adds
       return `unknown effect type ${JSON.stringify(e.type)}`;
   }
 }
@@ -286,6 +297,8 @@ export const effects = Object.freeze({
   rise: (player) => ({ type: "rise", player }),
   /** @rule 404 */
   gameOver: (ending, player, reason) => ({ type: "game_over", ending, player: player ?? null, reason }),
+  // the effects the capabilities add (place ...)
+  ...Object.fromEntries(Object.entries(capabilityEffects()).map(([k, e]) => [k, e.make])),
 });
 /** @rule 101 */
 export const refuse = (error, status = 400) => ({ error, status });
@@ -333,6 +346,7 @@ export function assembleRules(modules, { label = "rules" } = {}) {
       if (implementers(hook).length > 1) problems.push(`ending needs at most one rule to implement it, found ${implementers(hook).length} (${implementers(hook).map((m) => m.rule).join(", ")})`);
       continue;
     }
+    if (OPTIONAL_DECIDE.includes(hook)) continue;   // placement, creatureDrawing: any number, the lowest rule number that answers wins
     if (spec.mode === "decide" && spec.wired) {
       const n = implementers(hook).length;
       if (n !== 1) problems.push(`${hook} needs exactly one rule to implement it, found ${n}${n ? ` (${implementers(hook).map((m) => m.rule).join(", ")})` : ""}`);
@@ -490,6 +504,8 @@ export function assembleRules(modules, { label = "rules" } = {}) {
       if (bad) throw new RuleError(m.rule, "ending", new Error(bad));
       return { ...r, rule: m.rule };
     },
+    // The methods of the capabilities' hooks (src/engine/capabilities/): placement, creatureDrawing, biteAllowed ...
+    ...Object.assign({}, ...CAPABILITIES.map((c) => c.methods?.({ implementers, call, modules: sorted, RuleError, REFUSAL_STATUSES, validCoord }) ?? {})),
     // the one spawn rule: a tile from `candidates`, or null when there is room nowhere.
     /** @rule 505 */
     spawnTile(ctx, candidates) {

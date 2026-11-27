@@ -19,6 +19,7 @@ export const CHECK_CRITERIA = [
  * What the game records and what a rule's code can hook, in plain words (src/engine/api.d.ts is the source; tests/rule-check.mjs fails when a
  * field or a hook there is missing from this text). @rule 103.9
  */
+import { capabilitySentences } from "../engine/capabilities/index.js";
 export const ENGINE_FACTS = [
   "ENGINE FACTS: what the game records and what a rule's code can do.",
   "Recorded for each player (Player): ref (who they are), color, score (their points), x, y, z (where their piece is now), living, hearts, state (living, dead or ghost), deadDay (the day they died).",
@@ -27,6 +28,7 @@ export const ENGINE_FACTS = [
   "Also known to a rule's code: the day, the time, the settings, the catalog entries (Catalog: each has id, kind, name, madeBy (the commission that made it, like W4) and attrs; a rule finds one by its id or by madeBy and kind), each rule's mark (majority or unanimous) and a random number. From the time (ctx.now, a date) a rule's code can work out anything a calculation gives, with no outside source: a weekday, a season, the moon's phase by its 29.53-day cycle; such a thing is NOT missing and needs no record. What it can't do is fetch anything from outside the game (rule code makes no network calls).",
   "Hooks a rule's code can use: actionAllowed (may this action happen), afterAction (effects after an action), spawnTile (where a player joins), voteMark, electorate, tally, applyOrder, onEnacted, dayEnd (the end of a day), championChange, giveHeart, actionType and applyAction (action proposals), night (every night), ending (after a death).",
   "Effects a rule's code can have, and what each acts on: chart (tiles, each new tile optionally a tile entry), points (a player), log (a message), champion (a player), appear (a catalog entry onto a tile), step (a CREATURE, one tile), move (at night: a living player's piece to a charted tile nothing stands on), bite (a player or a creature), rest (a creature), rise (a player), game_over (the ending).",
+  "Engine capabilities (each is a power rules have, so a rule that needs one of these is NOT an engine gap):\n" + capabilitySentences().map((x) => `- ${x}`).join("\n"),
   "NOT recorded: where a piece has been before, how long it has stood anywhere, what a player did on earlier days, anything about a tile beyond its position and its catalog entry. A rule that needs one of these needs the game to record it first.",
 ].join("\n");
 

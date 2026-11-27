@@ -90,6 +90,7 @@ export function stageEngine(dir) {
   mkdirSync(join(dest, "scripts"), { recursive: true });
   writeFileSync(join(dest, "package.json"), JSON.stringify({ name: rootPkg.name, type: "module", exports: rootPkg.exports }, null, 2));
   for (const f of ["api.js", "api.d.ts", "hooks.js", "rulesmd.js", "testing.js"]) cpSync(join(ROOT, "src", "engine", f), join(dest, "src", "engine", f));
+  cpSync(join(ROOT, "src", "engine", "capabilities"), join(dest, "src", "engine", "capabilities"), { recursive: true });   // the capabilities hooks.js and api.js import
   for (const f of ["geometry.js", "settings.js", "board-rules.js"]) cpSync(join(ROOT, "src", "lib", f), join(dest, "src", "lib", f));
   cpSync(join(ROOT, "scripts", "check-game.mjs"), join(dest, "scripts", "check-game.mjs"));
   return dest;

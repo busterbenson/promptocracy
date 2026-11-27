@@ -3,6 +3,7 @@
 // (plain node) share ONE implementation. An effect the board can't take (an uncharted or occupied tile, an unknown creature, a rise for someone who
 // isn't dead) THROWS: refused, never dropped, so a rule can't pass its tests with an effect that silently does nothing.
 import { attr } from "./api.js";
+import { placeOp } from "./capabilities/structures.js";
 
 /** @rule 602.2 */
 const here = (x, y, z) => (o) => o.x === x && o.y === y && o.z === z;
@@ -26,13 +27,14 @@ function moveOp(P, e, tiles, occupied) {
 
 /**
  * Applies `effects` for night `n`. `players`: [{ref, x, y, z, hearts, state, deadDay}], `creatures`: the live ones [{id, entry, x, y, z, hearts, resting, restsNight}],
- * `catalog`: [{id, kind, attrs}], `tiles`: has(x, y, z), `nextId`: the id the first appearing creature gets.
- * Returns {players, creatures, ops, died, rose} where ops are the records the host writes (in order).
+ * `catalog`: [{id, kind, attrs}], `tiles`: has(x, y, z), `nextId`: the id the first appearing creature gets, `structures`: the structures already on the board
+ * [{entry, x, y, z, w, h}] (optional). Returns {players, creatures, structures, ops, died, rose} where ops are the records the host writes (in order).
  * @rule 602.4, 603.1, 603.3
  */
-export function applyBoard({ n, effects, players, creatures, catalog, tiles, nextId }) {
+export function applyBoard({ n, effects, players, creatures, catalog, tiles, nextId, structures = [] }) {
   const P = new Map(players.map((p) => [p.ref, { ...p }]));
   const C = creatures.map((c) => ({ ...c }));
+  const S = structures.map((x) => ({ ...x }));
   const ops = [], died = [], rose = [];
   let id = nextId;
   /** @rule 602.2 */
@@ -51,6 +53,12 @@ export function applyBoard({ n, effects, players, creatures, catalog, tiles, nex
         const c = { id: id++, entry: entry.id, x, y, z, hearts: Number.isInteger(h) ? h : null, resting: false, restsNight: null };
         C.push(c);
         ops.push({ op: "appear", id: c.id, entry: c.entry, x, y, z, hearts: c.hearts });
+        break;
+      }
+      case "place": {
+        const o = placeOp(e, catalog, tiles, occupied, S);
+        S.push({ entry: o.entry, x: o.x, y: o.y, z: o.z, w: o.w, h: o.h });
+        ops.push(o);
         break;
       }
       case "step": {
@@ -106,5 +114,5 @@ export function applyBoard({ n, effects, players, creatures, catalog, tiles, nex
         throw new Error(`the board can't apply a ${e.type} effect`);
     }
   }
-  return { players: [...P.values()], creatures: C.filter((c) => !c.gone), ops, died, rose };
+  return { players: [...P.values()], creatures: C.filter((c) => !c.gone), structures: S, ops, died, rose };
 }

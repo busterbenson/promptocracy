@@ -9,6 +9,8 @@ import { join as pjoin } from "node:path";
 import { ROOT } from "./lib.mjs";
 import { ACTION_KINDS, HOOKS, RuleError, RuleSetError, assembleRules, deepFreeze, defineRule, effects, makeContext, makeTiles, refuse, seededRng, validateActionType, validateEffect } from "../src/engine/hooks.js";
 import { lintModule } from "../src/engine/lint.js";
+import { applyBoard } from "../src/engine/board-night.js";
+import { makeCtx } from "../src/engine/testing.js";
 import { checkRulebook, citedRules, parseRulesMd } from "../src/engine/rulesmd.js";
 import { DEFAULT_SETTINGS, validateSettings } from "../src/lib/settings.js";
 import { BundleError, bundleGames, checkTree, latestDayTag, runNode, runSandboxed } from "../scripts/bundle-games.mjs";
@@ -185,7 +187,7 @@ check("makeTiles exposes entry, null by default", (() => {
 check("points, log and champion effects have their own shapes; an unknown type fails", validateEffect({ type: "points", player: "a", delta: 10, reason: "r" }) === null && validateEffect({ type: "points", player: "a", delta: 1.5, reason: "r" }) !== null && validateEffect({ type: "log", template: "t", args: {} }) === null && validateEffect({ type: "log", template: "t", args: [] }) !== null && validateEffect({ type: "champion", player: "a", reason: "r" }) === null && validateEffect({ type: "champion", player: "a" }) !== null && validateEffect({ type: "win", player: "a", reason: "r" }) !== null && validateEffect({ type: "spawn" }) !== null && validateEffect(null) !== null);
 
 console.log("the engine API a game imports");
-check("promptocracy/engine exports exactly the promised names", J(Object.keys(api).sort()) === J(["ACTION_KINDS", "DIAGONAL_MOVES", "ENGINE_VERSION", "HOOKS", "SHARED_TILES", "attr", "chartOffsets", "chartedAround", "defineRule", "effects", "entryMadeBy", "refuse", "tileLabel", "validCoord", "withinSteps"]), J(Object.keys(api).sort()));
+check("promptocracy/engine exports exactly the promised names", J(Object.keys(api).sort()) === J(["ACTION_KINDS", "DIAGONAL_MOVES", "ENGINE_VERSION", "HOOKS", "SHARED_TILES", "attr", "chartOffsets", "chartedAround", "defineRule", "effects", "entryMadeBy", "refuse", "structureAt", "tileLabel", "validCoord", "withinSteps"]), J(Object.keys(api).sort()));
 check("package.json exports ./engine (+ types) and ./engine/testing, nothing else of src", (() => {
   const e = JSON.parse(readFileSync(pjoin(ROOT, "package.json"), "utf8")).exports;
   return e["./engine"].default === "./src/engine/api.js" && e["./engine"].types === "./src/engine/api.d.ts" && e["./engine/testing"] === "./src/engine/testing.js" && Object.keys(e).length === 3;
@@ -375,7 +377,7 @@ check("hookClaimProblems: every hook the LOADED module has must be a tagged func
 }
 
 console.log("how rules share a hook");
-check("every wired hook declares one combine mode: veto (can-I), sequence (effects), decide (one handler)", J(Object.fromEntries(Object.entries(HOOKS).filter(([, h]) => h.wired).map(([k, h]) => [k, h.mode]))) === '{"actionAllowed":"veto","afterAction":"sequence","spawnTile":"decide","applyOrder":"decide","onEnacted":"sequence","dayEnd":"sequence","championChange":"veto","giveHeart":"veto","actionType":"sequence","applyAction":"sequence","night":"sequence","ending":"decide"}' && Object.values(HOOKS).every((h) => ["veto", "sequence", "decide"].includes(h.mode)));
+check("every wired hook declares one combine mode: veto (can-I), sequence (effects), decide (one handler)", J(Object.fromEntries(Object.entries(HOOKS).filter(([, h]) => h.wired).map(([k, h]) => [k, h.mode]))) === '{"actionAllowed":"veto","afterAction":"sequence","spawnTile":"decide","applyOrder":"decide","onEnacted":"sequence","dayEnd":"sequence","championChange":"veto","giveHeart":"veto","actionType":"sequence","applyAction":"sequence","night":"sequence","ending":"decide","placement":"decide","creatureDrawing":"decide","biteAllowed":"veto"}' && Object.values(HOOKS).every((h) => ["veto", "sequence", "decide"].includes(h.mode)));
 check("championChange (402.4): a game with no module for it has no Champion's change (a refusal); with one it is allowed; any module may refuse, with its rule named; a bad answer is a RuleError", (() => {
   const none = assembleRules([one, order]).championChange(ctx, A);
   const yes = assembleRules([one, order, m(402, { championChange: () => null })]).championChange(ctx, A);
@@ -617,6 +619,50 @@ console.log("the day: midnights in the game's time zone, the lock, End turn");
     DEFAULT_SETTINGS["game.timezone"] === LA && validTimeZone("Europe/Oslo") && !validTimeZone("Mars/Olympus") && !validTimeZone("") && !validTimeZone(5) &&
     OPTIONAL_SETTINGS.includes("game.timezone") && (() => { const { ["game.timezone"]: _, ...old } = DEFAULT_SETTINGS; return validateSettings(old).length === 0; })() &&
     validateSettings({ ...DEFAULT_SETTINGS, "game.timezone": "Nowhere/Land" }).length === 1 && getSettings({ "game.timezone": "Nowhere/Land" })["game.timezone"] === LA && getSettings({ "game.timezone": "Asia/Tokyo" })["game.timezone"] === "Asia/Tokyo");
+}
+
+console.log("built entries are placed, structures, a creature's drawing, protected bites (rules 701.5, 701.1, 602.5)");
+{
+  const t = (x, y) => ({ x, y, z: 0 });
+  const grid = makeTiles([0, 1, 2, 3].flatMap((x) => [0, 1, 2, 3].map((y) => ({ x, y, z: 0 }))));
+  const cat = [{ id: "S1", kind: "structure", attrs: { size: { w: 2, h: 2 }, refuge: true } }, { id: "S2", kind: "structure", attrs: {} }, { id: "C2", kind: "creature", attrs: { hearts: 3 } }];
+  const P = (ref, x, y) => ({ ref, x, y, z: 0, hearts: 3, state: "living", deadDay: null });
+  const board = (e, o = {}) => applyBoard({ n: 4, effects: e, players: o.players ?? [], creatures: o.creatures ?? [], catalog: cat, tiles: o.tiles ?? grid, nextId: 1, structures: o.structures ?? [] });
+  const err = (e, o) => { try { board(e, o); return ""; } catch (x) { return x.message; } };
+  check("placement: place validates its fields, is a night effect only, and the constructor makes it", validateEffect(effects.place("S1", t(0, 0))) === null && validateEffect({ type: "place", entry: "S1" }) !== null && validateEffect({ type: "place", tile: t(0, 0) }) !== null
+    && validateEffect(effects.place("S1", { x: 0, y: 0 })) === null && J(effects.place("S1", { x: 1, y: 2 })) === J({ type: "place", entry: "S1", tile: { x: 1, y: 2, z: 0 } }));
+  const r = board([effects.place("S1", t(1, 1))]);
+  check("applyBoard place: a 2x2 structure lands on its 4 tiles, with the op the host writes; it blocks nothing, a creature may appear on it and a piece stand on it",
+    r.ops[0].op === "place" && r.ops[0].w === 2 && r.ops[0].h === 2 && r.ops[0].x === 1 && r.structures.length === 1
+    && board([effects.place("S1", t(1, 1)), effects.appear("C2", t(2, 2))]).creatures.length === 1 && board([effects.place("S1", t(1, 1))], { players: [], structures: [] }).players.length === 0);
+  check("applyBoard place: an uncharted tile in the footprint, a piece or creature on any tile, another structure under it, a non-structure entry, a structure with no size and an unknown entry all throw",
+    /not charted/.test(err([effects.place("S1", t(3, 3))])) && /occupied/.test(err([effects.place("S1", t(0, 0))], { players: [P("a", 1, 1)] })) && /occupied/.test(err([effects.place("S1", t(0, 0))], { creatures: [{ id: 9, entry: "C2", x: 0, y: 1, z: 0, hearts: 3, restsNight: null }] }))
+    && /under another structure/.test(err([effects.place("S1", t(0, 0)), effects.place("S1", t(1, 1))])) && /under another structure/.test(err([effects.place("S1", t(0, 0))], { structures: [{ entry: "S1", x: 1, y: 1, z: 0, w: 2, h: 2 }] }))
+    && /not a structure/.test(err([effects.place("C2", t(0, 0))])) && /no size/.test(err([effects.place("S2", t(0, 0))])) && /no catalog entry/.test(err([effects.place("S9", t(0, 0))])));
+  const mk = (rule, hooks) => defineRule({ rule, ...hooks });
+  const rs = (...mods) => assembleRules([one, order, ...mods]);
+  const c0 = makeContext({ now: "t", settings: DEFAULT_SETTINGS, tiles: grid, catalog: cat, rng: seededRng("p") });
+  const tileA = t(1, 0), tileB = t(2, 0);
+  check("placement (decide, optional): no module = undefined (the engine places it); the lowest rule number that answers wins; null = not placed; a bad tile is a RuleError",
+    rs().placement(c0, cat[0]) === undefined && J(rs(mk(620, { placement: () => tileB }), mk(610, { placement: () => tileA })).placement(c0, cat[0])) === J({ x: 1, y: 0, z: 0 })
+    && rs(mk(610, { placement: () => undefined }), mk(620, { placement: () => null })).placement(c0, cat[0]) === null && J(rs(mk(610, { placement: () => undefined }), mk(620, { placement: () => tileB })).placement(c0, cat[0])) === J({ x: 2, y: 0, z: 0 })
+    && throws(() => rs(mk(610, { placement: () => ({ x: "a" }) })).placement(c0, cat[0])) instanceof RuleError);
+  check("creatureDrawing (decide, optional): undefined = its own; the lowest rule number that answers wins; a non-string answer is a RuleError",
+    rs().creatureDrawing(c0, { id: 1, entry: "C2" }) === undefined && rs(mk(630, { creatureDrawing: () => "C9" }), mk(620, { creatureDrawing: () => "C8" })).creatureDrawing(c0, { id: 1, entry: "C2" }) === "C8"
+    && rs(mk(620, { creatureDrawing: () => undefined }), mk(630, { creatureDrawing: () => "C9" })).creatureDrawing(c0, { id: 1, entry: "C2" }) === "C9" && throws(() => rs(mk(610, { creatureDrawing: () => 5 })).creatureDrawing(c0, { id: 1, entry: "C2" })) instanceof RuleError);
+  const players = [{ ref: "a", x: 0, y: 0 }, { ref: "b", x: 3, y: 3 }];
+  const refuseA = mk(608, { biteAllowed: (c, cr, pl) => (pl.ref === "a" ? refuse("a is safe (608)") : null) });
+  const cx = (mods) => makeCtx({ players, creatures: [{ id: 1, entry: "C2", x: 1, y: 1 }], catalog: cat, modules: mods });
+  const cr = { id: 1, entry: "C2", x: 1, y: 1, z: 0, hearts: 3, resting: false };
+  check("biteAllowed (veto): one refusal makes ctx.mayBite false for that player only; no module means true; a creature or player may be given by id or ref; a bad answer is a RuleError",
+    cx([refuseA]).mayBite(cr, "a") === false && cx([refuseA]).mayBite(1, "b") === true && cx([]).mayBite(cr, "a") === true && makeCtx({ players }).mayBite(cr, "a") === true && cx([refuseA]).mayBite(99, "a") === false
+    && J(rs(refuseA).biteAllowed(c0, cr, { ref: "a" })) === J({ error: "a is safe (608)", status: 400, rule: 608 }) && rs(refuseA).biteAllowed(c0, cr, { ref: "b" }) === null
+    && throws(() => cx([mk(608, { biteAllowed: () => ({ nope: 1 }) })]).mayBite(cr, "a")) instanceof RuleError);
+  const cs = makeContext({ now: "t", settings: DEFAULT_SETTINGS, players: [], tiles: grid, catalog: [{ id: "S1", kind: "structure", madeBy: "W6", requester: "ana", attrs: {} }, { id: "C9", kind: "creature", attrs: {} }], structures: [{ id: 3, entry: "S1", x: 1, y: 1, w: 2, h: 2 }] });
+  check("makeContext carries structures and each entry's requester (null when it has none); structureAt finds the structure holding any of its tiles, and nothing outside",
+    cs.structures.length === 1 && cs.catalog[0].requester === "ana" && cs.catalog[1].requester === null && makeContext({ now: "t", settings: {} }).structures.length === 0
+    && [[1, 1], [2, 1], [1, 2], [2, 2]].every(([x, y]) => api.structureAt(cs, x, y)?.id === 3) && api.structureAt(cs, 3, 1) === undefined && api.structureAt(cs, 0, 1) === undefined && api.structureAt(cs, 1, 1, 1) === undefined && api.structureAt({}, 1, 1) === undefined);
+  check("placement, creatureDrawing and biteAllowed are wired, and a module that defines them is accepted", HOOKS.placement.wired && HOOKS.creatureDrawing.wired && HOOKS.biteAllowed.wired && HOOKS.biteAllowed.mode === "veto" && throws(() => defineRule({ rule: 640, placement: () => null, creatureDrawing: () => undefined, biteAllowed: () => null })) === null);
 }
 
 check("the real manifest lists Rickshaw Game 1 at busterbenson/promptocracy-rickshaw", (() => {
