@@ -26,7 +26,7 @@ export function slipCriteria(label, turn, x) {
   const add = (name, pass, detail = "") => out.push(chk(`${label}: ${name}`, pass, detail));
   add("a slip stands", !!sl, sl ? "" : `no slip; he said: ${say.slice(0, 120)}`);
   if (!sl) return out;
-  if (x.check) add(`the rule check says ${x.check}`, sl.check === x.check, `got ${sl.check ?? "no check"}${sl.missing?.length ? ` (${sl.missing.map((m) => m.what).join("; ")})` : ""}`);
+  if (x.check) add(`the rule check says ${x.check}`, sl.check === x.check, `got ${sl.check ?? "no check"}${sl.unchecked_reason ? ` [${sl.unchecked_reason}]` : ""}${sl.missing?.length ? ` (${sl.missing.map((m) => m.what).join("; ")})` : ""}`);
   if (x.engine_note === true) add("an engine note rides on the slip", !!sl.engine_note, sl.engine_note || "none");
   if (x.engine_note === false) add("no engine note", !sl.engine_note, sl.engine_note || "");
   if (x.kind) add("draft kind", list(x.kind).includes(sl.kind), `got ${sl.kind}, wanted ${list(x.kind).join(" or ")}`);

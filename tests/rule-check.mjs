@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { ROOT } from "./lib.mjs";
 import { parseBook } from "../src/lib/proposals.js";
-import { CHECK_CRITERIA, ENGINE_FACTS, blockedReason, checkConflictNums, checkPrompt, lockRefusalOf, checkSchema, prevailVerdicts, prevailing, readCheck } from "../src/lib/rule-check.js";
+import { CHECK_CRITERIA, ENGINE_FACTS, blockedReason, checkConflictNums, checkPrompt, checkVersion, engineNote, isStale, lockRefusalOf, checkSchema, prevailVerdicts, prevailing, readCheck, sameDraft } from "../src/lib/rule-check.js";
 
 let pass = 0, fail = 0;
 const check = (name, ok, detail = "") => { if (ok) { pass++; console.log(`  ok    ${name}`); } else { fail++; console.log(`  FAIL  ${name}${detail ? "  -> " + detail : ""}`); } };
@@ -34,7 +34,7 @@ console.log("the prompt");
   const p = checkPrompt(DAY2, CATALOG, d);
   check("the rulebook comes first (the cached part), then the catalog; the criteria and engine facts are in the system prompt; the player's words cannot close their tag",
     p.rulebook.startsWith("The rulebook:") && p.rulebook.includes("The catalog (rule 701.1):") && p.system.includes(CHECK_CRITERIA) && p.system.includes(ENGINE_FACTS) && !/<\/words>[^<]*ignore/.test(p.rest) && p.rest.includes("405.1 A thing."));
-  check("the answer's schema asks for conflicts, missing and fixes", J(checkSchema().required) === J(["conflicts", "missing", "fixes"]));
+  check("the answer's schema asks for conflicts, missing, engine and fixes (each fix says whether it keeps the intent)", J(checkSchema().required) === J(["conflicts", "missing", "engine", "fixes"]) && checkSchema().properties.fixes.items.required.includes("keeps_intent"));
 }
 
 console.log("the answer's reader");
@@ -85,6 +85,31 @@ console.log("the lock-in refusal is gated on the rulebook having rule 103.9");
   check("a rulebook without 103.9 (the day-2 one) is never refused by a check: the rule it enforces is not in the book yet", lockRefusalOf(B, blocked) === null && lockRefusalOf(B, { status: "unchecked" }) === null);
 }
 check("a rule's code can work things out from the date (the moon's phase, a season) with no record and no outside source: the engine facts say so, so the check doesn't call it missing (Buster's moon rule, 11-26)", String(ENGINE_FACTS).includes("moon's phase") && /no network calls/.test(String(ENGINE_FACTS)));
+
+
+console.log("Buster's principle, the two kinds of gap, the check's version and the engine note (2026-11-26)");
+{
+  check("the criteria say new code and changed code are never a gap, and name the two gaps: missing data (missing) and a missing engine power (engine)", /NEVER a gap/.test(CHECK_CRITERIA) && /MISSING DATA/.test(CHECK_CRITERIA) && /MISSING ENGINE POWER/.test(CHECK_CRITERIA) && /changing what existing code does/.test(CHECK_CRITERIA));
+  check("the criteria say a value the code can compute is not missing, and a setting the change adds is defined by it", /can compute whenever it is needed/.test(CHECK_CRITERIA) && /\[setting: key\]\) is defined by the change/.test(CHECK_CRITERIA));
+  check("the criteria ask each fix to keep the outcome and its source (never random for real, never flavor for a rule, never a smaller number than the setting allows)", /KEEP the outcome the player named and its source/.test(CHECK_CRITERIA) && /never a smaller number than the settings allow/.test(CHECK_CRITERIA) && /keeps_intent/.test(CHECK_CRITERIA));
+  check("the engine facts say what each effect acts on: step is a creature, no effect moves a player's piece", /step \(a CREATURE/.test(ENGINE_FACTS) && /no effect moves a player's piece/.test(ENGINE_FACTS) && /points \(a player\)/.test(ENGINE_FACTS));
+  const api = readFileSync(new URL("../src/engine/api.d.ts", import.meta.url), "utf8");
+  const stepFields = /type: "step"; ([^}]+)\}/.exec(api)?.[1] ?? "";
+  check("every Effect's subject in api.d.ts (creature, player, entry, tile) is named beside its effect in the engine facts", /creature/.test(stepFields) && /CREATURE/.test(ENGINE_FACTS) && /player/.test(ENGINE_FACTS) && /entry/i.test(ENGINE_FACTS));
+
+  const v = checkVersion("claude-sonnet-5-5");
+  check("checkVersion is stable for the same model and changes with the model", /^[0-9a-f]{8}$/.test(v) && v === checkVersion("claude-sonnet-5-5") && v !== checkVersion("claude-haiku-5-5"));
+  check("isStale: another version, or none, is stale; the same is not; a draft never checked is not (nothing to refresh)", isStale({ status: "blocked", v: "00000000" }, v) && isStale({ status: "ok" }, v) && isStale({ status: "unchecked" }, v) && !isStale({ status: "ok", v }, v) && !isStale(null, v));
+  const row = { words: "On a full moon every player moves 2 steps.", after_text: "205.1 On a full moon every player moves 2 steps." };
+  check("sameDraft: the draft's words sent again (a Redraft prefix, case, spacing, a full stop, the clause number aside) are the same; other words and short ones are not", sameDraft("on a full moon  every player moves 2 steps", row) && sameDraft("Redraft as: On a full moon every player moves 2 steps.", row) && sameDraft("205.1 On a full moon every player moves 2 steps.", row) && !sameDraft("On a new moon every player moves 2 steps.", row) && !sameDraft("ok", { words: "ok" }) && !sameDraft("hello there friend", null));
+  const book = B;
+  const draft = { kind: "add", target: "400" };
+  const r = readCheck(book, draft, JSON.stringify({ conflicts: [], missing: [], engine: [{ what: "moving a player's piece.", why: "No effect moves a player." }, { what: "", why: "x" }, { what: "b", why: "y" }, { what: "c", why: "z" }], fixes: [{ say: "Keep it.", keeps_intent: true }, { say: "A random moon instead.", keeps_intent: false }, { say: "No flag at all." }] }));
+  check("readCheck reads the engine list (two at most, empty ones dropped) and drops a fix that does not keep the intent, keeps one that does or does not say", r.ok && r.engine.length === 2 && r.engine[0].what === "moving a player's piece." && r.fixes.map((f) => f.say).join("|") === "Keep it.|No flag at all.", JSON.stringify(r));
+  check("an answer from before the engine list (the night's, a recorded one) has none and reads as before; a non-list engine is malformed", readCheck(book, draft, JSON.stringify({ conflicts: [], missing: [], fixes: [] })).engine.length === 0 && readCheck(book, draft, JSON.stringify({ conflicts: [], missing: [], fixes: [], engine: "x" })).error === "malformed");
+  check("engineNote: one short line naming the power, empty when none", engineNote([{ what: "moving a player's piece." }]) === "Needs the engine to learn: moving a player's piece." && engineNote([]) === "" && engineNote(null) === "");
+  check("the check's prompt asks for the engine list and keeps_intent", /\"engine\"/.test(checkPrompt(DAY2, [], { kind: "add", target: "400", words: "x" }).system) && /keeps_intent/.test(checkPrompt(DAY2, [], { kind: "add", target: "400", words: "x" }).system));
+}
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

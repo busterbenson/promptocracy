@@ -166,5 +166,21 @@ console.log("action drafts: her prompt learns the game's action types, her answe
   check("she still has no field that locks, withdraws or votes: an action answer with a lock field loses it", !("lock" in (read({ say: "x", lock: true, confirm: "P1", draft: { kind: "action", type: "grant", params: [] } })).draft));
 }
 
+
+console.log("first answer: new code is the game, a block is redrafted, a rule is not a commission (Buster, 2026-11-26)");
+{
+  const sys = S.systemStatic();
+  check("the prompt says new code and changed code are never a reason to shrink a rule, and to work a value out instead of storing it (the real moon from the date)", /RULES ARE THE GAME/.test(sys) && /never shrink, soften, refuse or hand back a rule because it needs new code or changes what an existing rule does/.test(sys) && /the moon's phase from the date/.test(sys));
+  check("it says an engine power the game lacks is still drafted (the slip carries the note), and only what the game cannot remember or fetch stops a draft", /moving a player's piece\) is still drafted/.test(sys) && /cannot remember or fetch/.test(sys));
+  check("a commission is a new ENTRY (or a rule that makes one do something); a change with no new entry is a rule, never a commission", /NEW catalog entry/.test(sys) && /makes no new entry is a RULE: draft it here, never a commission/.test(sys));
+  check("the old ban on redrafting is gone: no 'never draft a changed or smaller version', no 'draft again only if the player asks'", !/Never draft a changed or smaller version/.test(sys) && !/draft again only if the player asks/.test(S.tailText({ label: "A", message: "m", found: { status: "blocked", missing: [{ what: "x", why: "y" }], fixes: [] }, foundMode: "redraft" })));
+  const blocked = { status: "blocked", missing: [{ what: "the real moon", why: "not recorded" }], fixes: [{ say: "Work it out from the date." }] };
+  const rd = S.tailText({ label: "A", message: "m", found: blocked, foundMode: "redraft" });
+  check("a redraft's tail tells him to draft it again NOW, keep what the player asked for and its source, name a dropped part in guesses, say a changed kind in guesses, and make no draft only when no faithful version can pass", /REDRAFT\. Draft it again NOW/.test(rd) && /A real value stays real/.test(rd) && /never 1/.test(rd) && /name in "guesses"/.test(rd) && /If you change the kind of change/.test(rd) && /make no draft/.test(rd) && /fence|rule check/.test(rd));
+  const ex = S.tailText({ label: "A", message: "m", found: blocked, foundMode: "explain" });
+  check("the explain tail keeps the player's own draft on screen, forbids a new draft, and asks for options that keep the intent", /player's own draft stays on their screen/.test(ex) && /Do not draft again/.test(ex) && /keep what the player asked for/.test(ex) && !/REDRAFT\./.test(ex));
+  check("the next turn's tail for a blocked slip that stands says what is missing and offers the fixes; a new message or a picked fix is drafted", /player can't lock it in yet/.test(S.tailText({ label: "A", message: "m", drafted: { head: "h", after_text: "t", conflicts: [], check: blocked } })) && /draft that/.test(S.tailText({ label: "A", message: "m", drafted: { head: "h", after_text: "t", conflicts: [], check: blocked } })));
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

@@ -169,7 +169,7 @@ ${refused ? `<div class="tx">${esc(last.refusal)}</div>` : ""}
 ${sl.words ? `<div class="yw">${esc(`Your words: “${sl.words}”`)}</div>` : ""}
 ${sl.kind !== "action" && (sl.after_text || sl.before_text) ? `<div class="tx cdiff">${diffOf(sl)}</div>` : ""}
 <dl>${actionRows(sl)}<dt>Change</dt><dd>${esc(KIND[sl.kind] || sl.kind)}${sl.target ? ` ${rpill(sl.target)}` : ""}</dd>${sl.settings && Object.keys(sl.settings).length ? `<dt>Sets</dt><dd>${esc(settingsLine(sl.settings))}</dd>` : ""}<dt>Needs</dt><dd>${needs}</dd><dt>Conflicts</dt><dd>${sl.conflicts && sl.conflicts.length ? sl.conflicts.map((n) => rpill(n)).join(" ") : "none"}${prevailHTML(sl)}</dd></dl>
-${sl.uses_note ? `<p class="cnote unote">${textHTML(sl.uses_note)}</p>` : ""}<div class="act">${act}</div>${err}</section>`;
+${sl.uses_note ? `<p class="cnote unote">${textHTML(sl.uses_note)}</p>` : ""}${sl.engine_note ? `<p class="cnote">${textHTML(sl.engine_note)}</p>` : ""}<div class="act">${act}</div>${err}</section>`;
   }
   /** Which rule prevails in each conflict the rule check named (rule 108.1), beside the conflicts. @rule 108.1, 108.3 */
   const prevailHTML = (sl) => ((sl.check && sl.check.conflicts) || []).filter((c) => c.prevails !== null).map((c) => ` <span class="cwhy">${String(c.prevails) === String(c.num).split(".")[0] ? `${rpill(String(c.prevails))} prevails` : "this prevails"}</span>`).join("");

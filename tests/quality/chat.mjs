@@ -3,7 +3,7 @@
 // message, and a draft goes through the REAL drafter pipeline (tests/quality/pipeline.mjs) and the REAL rule check, with the game's catalog, and the retries after a refusal and after a blocked
 // check are src/lib/draft-turn.js, the same function the route calls (api-chat.ts generalTurn). History, slip and ticket are
 // held in memory, built the way the route builds them (api-chat.ts generalTurn / ticketTurn); no database (plan section 1).
-import { CHAT_TIMEOUT_MS, MODEL, MOODS, OUTPUT_CAP_TOKENS, answerSchema as gremlinSchema, gremlinRequest, moodOf, readGremlinAnswer, systemStatic as gremlinSystem } from "../../src/lib/gremlin.js";
+import { CHAT_TIMEOUT_MS, MODEL, MOODS, OUTPUT_CAP_TOKENS, answerSchema as gremlinSchema, gremlinRequest, moodOf, moveOf, readGremlinAnswer, systemStatic as gremlinSystem } from "../../src/lib/gremlin.js";
 import { checkQuote, generalSchema, plainForQuote, readGeneralAnswer, generalRequest, systemStatic as generalSystem } from "../../src/lib/gremlin-rules.js";
 import { draftTurn } from "../../src/lib/draft-turn.js";
 import { STARTER_CATALOG } from "../lib.mjs";
@@ -26,7 +26,7 @@ function slipRecord(p, asked, fresh) {
   return {
     kind: p.req.kind, target: p.req.target, words: asked.words ?? "", after_text: p.after_text, head: p.head, fresh,
     check: c?.status ?? null, missing: (c?.missing || []).map((m) => ({ what: m.what, why: m.why })), fixes: (c?.fixes || []).map((f) => f.say),
-    engine_note: c?.engine_note ?? null,
+    engine_note: c?.engine_note ?? null, unchecked_reason: c?.reason ?? null,
   };
 }
 
@@ -61,9 +61,9 @@ async function generalCase(c, x, res, o) {
   const entries = entriesOf(c, x.catalog);   // the catalog's entries and what the case's open commissions make (rules 701.4, 703.4)
   for (let message = nextLine(c, sent, state); message !== null; message = nextLine(c, ++sent, state)) {
     x.meter.guard(63_000, `${c.id} turn ${sent + 1}`);
-    const request = (retry, found) => generalRequest({
+    const request = (retry, found, foundMode) => generalRequest({
       rulesMd: x.rulesMd, localDate: LOCAL_DATE, perDay: PER_DAY, actions: x.actions, history, label: "Ada", message, rule: null,
-      slip, drafted, made: 0, limit: PER_DAY, noDraft: null, retry, found, redraft: null, entries,
+      slip, drafted, made: 0, limit: PER_DAY, noDraft: null, retry, found, foundMode, redraft: null, entries,
     });
     const { system, messages } = request();
     const turn = { player: message, say: null, quotes: [], dropped: [], escalate: null, asked_for: null, outcome: null, micro: 0, ms: 0, usage: null };
@@ -91,8 +91,8 @@ async function generalCase(c, x, res, o) {
       // Only the I/O is the harness's: the model call, and the pipeline for the draft (which makes the check, with the game's catalog).
       const t = await draftTurn({
         r, a, noDraft: null, read,
-        ask: async (retry, found) => {
-          const again = request(retry, found);
+        ask: async (retry, found, mode) => {
+          const again = request(retry, found, mode);
           const { value: r2, slot: s2 } = await x.meter.slotted(() => x.agent.callModel(env, { model: MODEL, system: again.system, messages: again.messages, maxTokens: OUTPUT_CAP_TOKENS, timeoutMs: CHAT_TIMEOUT_MS, schema: generalSchema(), effort: "low" }));
           turn.micro += s2.micro; turn.ms += s2.ms;
           if (x.meter.capHit) throw new CapReached(x.meter.capHit);
@@ -164,7 +164,7 @@ async function gremlinCase(c, x, res, o) {
     const a = readGremlinAnswer(r.text, { ceiling: CEILING, systemText: gremlinSystem({ ceiling: CEILING }), catalog: STARTER_CATALOG, entries, makes: ticket.makes, price: ticket.price });
     if (!a.ok) { turn.error = `unreadable answer: ${a.code} ${clip(a.reason, 120)}`; res.error = turn.error; return; }
     // a rule change or an action asked on a ticket: the message goes to the general conversation, and the case continues there with the rest of the script
-    if (a.move === "general" && !moved && !a.refusal) {
+    if (moveOf(a, { makes: ticket.makes }) === "general" && !moved) {
       turn.say = a.say; turn.moved = true; turn.outcome = "moved to general"; res.moved_to_general = true;
       return generalCase({ ...c, turns: c.turns }, x, res, { sent, moved: true });
     }

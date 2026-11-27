@@ -168,24 +168,24 @@ check("meter: a call's cost is counted from its usage (1000 in + 100 out at sonn
   const a1 = rig([answer("blocked words"), answer("fixed words", "I changed it")]);
   const r1 = await runChatCase(mk("retry-check", ["do it"]), a1.x);
   check("chat: the rule check is run with the game's catalog (the same array the run loaded), for each draft", a1.seen.checks.length === 2 && a1.seen.checks.every((c) => c.catalog === CAT), JSON.stringify(a1.seen.checks.map((c) => c.words)));
-  check("chat: a blocked check gets the route's one retry: a second model call that carries the check's findings (found), no refusal text", a1.seen.requests.length === 2 && /rule check found the game can't carry it out/.test(a1.seen.requests[1]) && !/refused by the drafter/.test(a1.seen.requests[1]), String(a1.seen.requests.length));
-  check("chat: the retry's draft is the one that stands, and it was checked", r1.draft?.words === "fixed words" && r1.draft.check?.status === "ok" && r1.turns[0].say === "I changed it" && (r1.turns[0].retry || []).join() === "retry after rule check: blocked", JSON.stringify(r1.turns[0].retry));
+  check("chat: a blocked check gets the route's redraft: a second model call that carries the check's findings (found), no refusal text", a1.seen.requests.length === 2 && /rule check found the game can't carry it out/.test(a1.seen.requests[1]) && !/refused by the drafter/.test(a1.seen.requests[1]), String(a1.seen.requests.length));
+  check("chat: the retry's draft is the one that stands, and it was checked", r1.draft?.words === "fixed words" && r1.draft.check?.status === "ok" && r1.turns[0].say === "I changed it" && (r1.turns[0].retry || []).join() === "redraft 1 after rule check passed", JSON.stringify(r1.turns[0].retry));
   check("chat: the retry's cost is in the case (two model calls and two checks are metered per turn)", r1.error === null && r1.turns.length === 1 && r1.draft_count === 1);
 
   check("chat: the turn records the standing slip (kind, words, the rule check, fixes) for the first-answer keys", r1.turns[0].slip?.check === "ok" && r1.turns[0].slip.words === "fixed words" && r1.turns[0].slip.fresh === true && r1.turns[0].slip.kind === "amend");
 
-  const a2 = rig([answer("blocked one"), answer("blocked two"), answer(null, "ok then")]);
+  const a2 = rig([answer("blocked one"), answer("blocked two"), answer("blocked three"), answer(null, "explained"), answer(null, "ok then")]);
   const r2 = await runChatCase(mk("no-second-retry", ["do it", "and now?"]), a2.x);
-  check("chat: never a second retry (two blocked drafts: two calls for the turn, then the next turn's)", a2.seen.requests.length === 3 && a2.seen.checks.length === 2, String(a2.seen.requests.length));
+  check("chat: three blocked drafts: two redrafts and one explanation call for the turn (4 calls, 3 checks), then the next turn's call", a2.seen.requests.length === 5 && a2.seen.checks.length === 3 && r2.turns[0].say === "explained" && r2.draft?.words === "blocked one", `${a2.seen.requests.length} ${a2.seen.checks.length} ${r2.draft?.words}`);
   check("chat: a blocked slip's options are the check's fixes, three at most", (r2.turns[0].options || []).join() === "fix A,fix B,fix C", (r2.turns[0].options || []).join());
-  check("chat: the next turn's tail carries the stored check (the slip says why Lock it in is off), as the route's `drafted` does", /rule check found the game can't carry it out/.test(a2.seen.requests[2]), a2.seen.requests[2].slice(0, 300));
+  check("chat: the next turn's tail carries the stored check (the slip says why Lock it in is off), as the route's `drafted` does", /rule check found the game can't carry it out/.test(a2.seen.requests[4]), a2.seen.requests[2].slice(0, 300));
 
   const a3 = rig([answer("refused words"), answer("accepted words")], { refuseWords: ["refused words"] });
   const r3 = await runChatCase(mk("retry-refusal", ["do it"]), a3.x);
   check("chat: a refused draft gets one retry with the drafter's reason, and the second draft is checked", a3.seen.requests.length === 2 && /refused by the drafter/.test(a3.seen.requests[1]) && r3.draft?.words === "accepted words" && a3.seen.checks.length === 1 && r3.turns[0].retried === true);
   const a4 = rig([answer("refused words"), answer("blocked words"), answer("never asked")], { refuseWords: ["refused words"] });
   const r4 = await runChatCase(mk("one-retry-in-all", ["do it"]), a4.x);
-  check("chat: a refusal retry that lands a blocked draft is NOT retried again (one retry in all)", a4.seen.requests.length === 2 && r4.draft?.check?.status === "blocked", String(a4.seen.requests.length));
+  check("chat: a refusal retry that lands a blocked draft is redrafted (refusal, then block, then a redraft that passes)", a4.seen.requests.length === 3 && r4.draft?.words === "never asked" && r4.draft?.check?.status === "ok", String(a4.seen.requests.length));
 
   // a case's `pending` (the commissions it says are open, rules 701.4 and 703.4) reaches the prompt, the rule check and the answer reader, as the route's entriesFor does
   const a5 = rig([JSON.stringify({ say: "W4 makes the Flower.", draft: { kind: "amend", target: "401.1", words: "a creature that eats a flower loses a heart", uses: ["W4", "W99"] } })]);

@@ -22,7 +22,7 @@ import { notify } from "../lib/notify";
 import { commissionsFor } from "../lib/ticket-view";
 import { COMMISSION_SNAPSHOT_SQL } from "../lib/tickets.js";
 import { ACTION_DRAFT_INSERT_SQL, CONFIRMED_TODAY_SQL, CONFIRM_SQL, DRAFT_INSERT_SQL, NOT_WIRED_REASON, WITHDRAW_SQL, conflictSentence, draftOf, markFor, needsModel, normKind, notWiredConflictRefusal, notWiredRefusal, parseBook, proposalLimitMessage, readRequest } from "../lib/proposals.js";
-import { checkDraft, CHECKED_KINDS } from "../lib/draft-check";
+import { checkDraft, CHECKED_KINDS, refreshCheck } from "../lib/draft-check";
 import { lockRefusalOf, checkConflictNums } from "../lib/rule-check.js";
 import { catalogFor } from "./api-catalog";
 import { openEntriesFor } from "../lib/pending-entries";
@@ -104,6 +104,7 @@ export function view(r: any, viewerId?: string | null, electorate?: number) {
     conflicts: JSON.parse(r.conflicts || "[]"),
     conflict_note: conflictNote(JSON.parse(r.conflicts || "[]"), checkOf(r)),
     uses_note: usesNote(usesOf_(r)),
+    engine_note: (r.player_id === viewerId ? checkOf(r)?.engine_note : null) ?? null,   // the one line a slip carries when the change needs an engine power the game lacks (103.9)
     check: r.player_id === viewerId ? checkOf(r) : undefined,
     settings: JSON.parse(r.settings || "{}"),
     drafted_by: r.drafted_by,
@@ -272,6 +273,8 @@ export async function confirm(ctx: Ctx, player: any, id: string, nowMs: number):
   const { book, sha } = await bookFor(game);
   if (row.base_sha !== sha) return out({ error: "The rules have changed since this was drafted. Draft it again." }, 409);
   // The rule check (rule 103.9): a draft that relies on something the game doesn't have, or that couldn't be checked, is not locked in.
+  // A check made on other criteria or another model than today's (or one that never completed) is made again first: a fix that deployed after the draft unblocks it without a redraft.
+  await refreshCheck(env, game, timeZoneOf(game), player.id, (await bookFor(game)).md, book, catalogFor(game).entries, (await openEntriesFor(env, game, player.id)).pending ?? [], row, nowMs);
   const why = lockRefusal(book, row);
   if (why) return out({ error: why, check: row.rule_check ? JSON.parse(row.rule_check) : null }, 409);
   const mark = markFor(book, row);
