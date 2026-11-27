@@ -114,6 +114,9 @@ try {
     t1 && t1.name === "Grass" && t1.art === "/tiled/art/082f6da2ebcfc648649a920fb91e76e510a2cec41cc3bbde3b94b7074ef19434"
     && t2 && t2.name === "Bog" && t2.art === null && blank && blank.name === null && blank.art === null && blank.entry === null, J([t1, t2, blank]));
   check("the board stays public and carries no ids or emails", !JSON.stringify(api2).includes("@") && !("entry_id" in api2.tiles[0]));
+  d1(state, `UPDATE tiles SET entry_id = 'T9' WHERE game_id = '${gid}' AND x = 8 AND y = 8; INSERT OR REPLACE INTO tiles (game_id, x, y, z, charted_at, entry_id) VALUES ('${gid}', 9, 9, 0, 'x', 'C1')`);
+  const dangling = (await client(A).get("/tiled/api/board")).data.tiles;
+  check("a tile whose entry the catalog no longer has (or that is not a tile entry) is listed as blank, so no card is offered that cannot open", [[8, 8], [9, 9]].every(([x, y]) => { const t = dangling.find((d) => d.x === x && d.y === y); return t && t.entry === null && t.name === null && t.art === null; }), J(dangling.filter((d) => d.x >= 8 && d.y >= 8)));
   const rep = await ana.post("/tiled/api/action", { kind: "move", x: 3, y: 2, z: 0 });
   check("a second move the same day is refused as before (the capability changed nothing about turns)", rep.status !== 200, rep.text);
 } catch (e) {

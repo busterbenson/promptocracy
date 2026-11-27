@@ -35,7 +35,8 @@ export const get = async ({ env, data }: Ctx) => {
     // `entry` is the tile's catalog tile entry (701.1) with its name and the address of its default drawing; all null for a blank tile.
     tiles: tiles.map((t) => {
       const e: any = t.entry ? entries.get(t.entry) : null;
-      return { x: t.x, y: t.y, z: t.z, label: tileLabel(t.x, t.y, t.z), entry: t.entry ?? null, name: e?.name ?? null, art: tileArt(g.slug, e) };
+      const known = e?.kind === "tile";   // an entry the catalog no longer has (or no longer a tile) is listed as a blank tile, never as a card that cannot open
+      return { x: t.x, y: t.y, z: t.z, label: tileLabel(t.x, t.y, t.z), entry: known ? t.entry : null, name: known ? e.name ?? null : null, art: known ? tileArt(g.slug, e) : null };
     }),
     pieces: players.map((p) => ({
       name: p.display_name, color: colorOf(p.color), shape: p.shape, mirrored: !!p.mirrored, score: p.score, turn_order: p.turn_order,
