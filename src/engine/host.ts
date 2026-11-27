@@ -10,7 +10,7 @@ import { getSettings } from "../lib/settings.js";
 import { GONE_REASON } from "../lib/votes.js";
 import { parseBook } from "../lib/proposals.js";
 import { Env, nowIso, who } from "../lib/util";
-import { applyBoard } from "./board-night.js";
+import { createBoard, runNight } from "./board-night.js";
 import { choosePlacements } from "./capabilities/placement.js";
 import { endGameStatements } from "../lib/end";
 import { grantStatements } from "../lib/items";
@@ -444,7 +444,7 @@ export function creatureDrawings(game: any, ctx: any): Record<number, string> {
 
 /**
  * The statements for night n's board, or null when the game's rules have nothing to run (no `night` hook) or it already ran. Builds the context, asks
- * rules.night(ctx, {applied}) (every night, a quiet one included), applies its effects in order to an in-memory copy (applyBoard), asks rules.ending
+ * rules.night(ctx, {applied}) (every night, a quiet one included, each rule on the board the one before it left: runNight), applies its effects in order to an in-memory copy (createBoard), asks rules.ending
  * when someone died, and returns ONE batch, every statement guarded by BOARD_OPEN and the last one setting days.board_at, so a retried night applies
  * nothing twice. @rule 602.3, 603.3, 404
  */
@@ -460,16 +460,23 @@ export async function nightBoardStatements(env: Env, game: any, n: number, nowMs
   const tiles = makeTiles(await loadTiles(env, game.id));
   const rng = cryptoRng(), biteRules = biteRulesOf(game);
   // What was built tonight is placed first (rule 701.5), and the night's own rules see it on the board (the creature ids it takes come before theirs).
-  const placed = await placeBuilt(env, game, n, makeContext({ day: game.day || null, now: nowIso(nowMs), settings: ctx.settings, players: ctx.players.map((p: any) => ({ ...p })), creatures: ctx.creatures, structures: ctx.structures, catalog: ctx.catalog, tiles, rng, biteRules }), nextId);
-  const full = makeContext({ day: game.day || null, now: nowIso(nowMs), settings: ctx.settings, players: ctx.players.map((p: any) => ({ ...p })), creatures: [...ctx.creatures, ...placed.creatures],
-    structures: [...ctx.structures, ...placed.structures], catalog: ctx.catalog, tiles, rng, nextCreatureId: nextId + placed.creatures.length, biteRules });
-  const effects = [...placed.effects, ...rules.night(full, { applied })];
+  const base = { day: game.day || null, now: nowIso(nowMs), settings: ctx.settings, catalog: ctx.catalog, tiles, rng, biteRules };
+  const placed = await placeBuilt(env, game, n, makeContext({ ...base, players: ctx.players.map((p: any) => ({ ...p })), creatures: ctx.creatures, structures: ctx.structures }), nextId);
+  const full = makeContext({ ...base, players: ctx.players.map((p: any) => ({ ...p })), creatures: [...ctx.creatures, ...placed.creatures],
+    structures: [...ctx.structures, ...placed.structures], nextCreatureId: nextId + placed.creatures.length });
+  // The night's rules run one at a time, lowest rule number first (rule 602.6): each is given the board as the rules before it left it (their steps, appearances, moves,
+  // bites, deaths and risings), not the board the night started with, so two rules cannot plan onto one tile. The effects go onto one in-memory board in that order, which
+  // is the same as applying the whole list once, so the batch below (History, ids, the BOARD_OPEN guards) is as it has always been.
   const rows = await loadCreatures(env, game.id);
-  const res = applyBoard({
-    n, effects, tiles, catalog: ctx.catalog, nextId, structures: ctx.structures,
+  const resting = new Map<number, boolean>(ctx.creatures.map((c: any) => [c.id, c.resting]));
+  const board = createBoard({
+    n, tiles, catalog: ctx.catalog, nextId, structures: ctx.structures,
     players: ctx.players.map((p: any) => ({ ...p })),
-    creatures: rows.map((c) => ({ id: c.id, entry: c.entry_id, x: c.x, y: c.y, z: c.z, hearts: c.hearts, restsNight: c.rests_night, resting: false })),
+    creatures: rows.map((c) => ({ id: c.id, entry: c.entry_id, x: c.x, y: c.y, z: c.z, hearts: c.hearts, restsNight: c.rests_night, resting: !!resting.get(c.id) })),
   });
+  board.apply(placed.effects);
+  runNight(rules, board, { ctx: full, base, info: { applied } });
+  const res = board.result();
   const now = nowIso(nowMs);
   const names = new Map(((await env.DB.prepare("SELECT id, display_name, color, mirrored FROM players WHERE game_id = ?").bind(game.id).all()).results as any[]).map((p) => [p.id, { name: p.display_name as string, color: p.color as string, mirrored: p.mirrored as number }]));
   /** @rule 603.1 */
@@ -500,7 +507,7 @@ export async function nightBoardStatements(env: Env, game: any, n: number, nowMs
     } else if (op.op === "step") {
       stmts.push(env.DB.prepare(`UPDATE creatures SET x = ?, y = ?, z = ? WHERE game_id = ? AND id = ? AND ${open}`).bind(op.x, op.y, op.z, game.id, op.id, ...ob));
     } else if (op.op === "move") {
-      // A rule moved this piece (rule 504.2's guards were checked by applyBoard). It faces the way it moved, as on a player's own move; it does not chart.
+      // A rule moved this piece (rule 504.2's guards were checked by the board). It faces the way it moved, as on a player's own move; it does not chart.
       const toRight = (op.x - op.from.x) - (op.y - op.from.y);
       stmts.push(env.DB.prepare(
         `UPDATE players SET x = ?, y = ?, z = ?, mirrored = ? WHERE game_id = ? AND id = ? AND x = ? AND y = ? AND z = ? AND ${open}`,
