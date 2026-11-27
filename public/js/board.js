@@ -34,14 +34,20 @@ const bbox = (keys) => {
   return { x: a, y: b, w: c - a, h: d - b };
 };
 
+// A tile entry's drawing fills the tiles that are it: one pattern per distinct drawing, sized to each tile (rule 701.1).
+// Only an address the Worker serves is ever drawn.
+const ART = /^\/[A-Za-z0-9_-]+\/art\/[0-9a-f]{64}$/;
+const artList = (tiles) => [...new Set(tiles.map((t) => t.art).filter((a) => typeof a === "string" && ART.test(a)))];
+const artPatterns = (arts, id) => arts.map((a, i) => `<pattern id="${id}-a${i}" width="1" height="1" viewBox="0 0 1 1" preserveAspectRatio="xMidYMid slice"><image href="${esc(a)}" width="1" height="1" preserveAspectRatio="xMidYMid slice"/></pattern>`).join("");
+
 // The whole scene as markup. `sel` is the selected tile; `me` the color key of the viewer. Used by the board and the landing page.
 export function sceneSVG(board, { sel = null, me = null, id = "b", showFog = true, reach = [] } = {}) {
-  const tiles = board.tiles.filter((t) => t.z === 0);
+  const tiles = board.tiles.filter((t) => t.z === 0), arts = artList(tiles);
   const charted = new Set(tiles.map((t) => K(t.x, t.y)));
   const fog = showFog ? ring(charted, 2) : new Set(), fog1 = showFog ? ring(charted, 1) : new Set();
   let s = `<defs><radialGradient id="${id}-g" cx="50%" cy="50%" r="50%"><stop offset=".35" stop-color="#fff"/><stop offset="1" stop-color="#000"/></radialGradient>
 <mask id="${id}-m" maskUnits="userSpaceOnUse" x="-900" y="-700" width="1800" height="1400"><rect x="-900" y="-700" width="1800" height="1400" fill="url(#${id}-g)"/></mask>
-<pattern id="${id}-h" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(30)"><rect width="6" height="6" style="fill:var(--fog)"/><line x1="0" y1="0" x2="0" y2="6" style="stroke:var(--line);stroke-width:1.3"/></pattern></defs>`;
+<pattern id="${id}-h" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(30)"><rect width="6" height="6" style="fill:var(--fog)"/><line x1="0" y1="0" x2="0" y2="6" style="stroke:var(--line);stroke-width:1.3"/></pattern>${artPatterns(arts, id)}</defs>`;
   let g = "";
   const R = 18;
   for (let k = -R; k <= R; k++) {
@@ -62,7 +68,8 @@ export function sceneSVG(board, { sel = null, me = null, id = "b", showFog = tru
     const { x, y } = t, q = top(x, y);
     if (!charted.has(K(x - 1, y))) { const f = [q[3], q[0], dn(q[0], DEPTH), dn(q[3], DEPTH)]; s += `<polygon class="face" points="${pts(f)}"/><polygon class="s1" points="${pts(f)}"/>`; }
     if (!charted.has(K(x, y - 1))) { const f = [q[0], q[1], dn(q[1], DEPTH), dn(q[0], DEPTH)]; s += `<polygon class="face" points="${pts(f)}"/><polygon class="s2" points="${pts(f)}"/>`; }
-    s += `<polygon class="top" data-x="${x}" data-y="${y}" points="${pts(q)}"/>`;
+    const ai = t.art ? arts.indexOf(t.art) : -1;
+    s += `<polygon class="top" data-x="${x}" data-y="${y}" points="${pts(q)}"${ai >= 0 ? ` style="fill:url(#${id}-a${ai})"` : ""}/>`;
   }
   if (fog.size) {
     const list = [...fog].map((k) => k.split(",").map(Number));
@@ -146,6 +153,7 @@ export async function createBoard(container, { onSelect } = {}) {
     const named = new Map();
     for (const p of board.pieces) if (p.at.z === 0 && p.name) { const k = K(p.at.x, p.at.y); named.set(k, [...(named.get(k) || []), me && p.color.key === me ? `${p.name} (you)` : p.name]); }
     for (const c of board.creatures || []) if (c.at.z === 0) { const k = K(c.at.x, c.at.y); named.set(k, [...(named.get(k) || []), `${c.name}${c.resting ? " (resting)" : ""}`]); }
+    for (const t of board.tiles) if (t.z === 0 && t.name) { const k = K(t.x, t.y); named.set(k, [...(named.get(k) || []), t.name]); }   // a tile entry's name comes after whoever stands on it
     for (const [k, names] of named) labels.set(k, labels.get(k) ? `${names.join(", ")} · ${labels.get(k)}` : names.join(", "));
     if (!fitted) { fitted = true; if (container.clientWidth < 600 && me) centerOnMe(me); else fit(); }
     else if (!touched) fit();

@@ -1,6 +1,7 @@
 // Types for "promptocracy/engine". Rule modules are erasable TypeScript: these types are for the editor and for
 // review; nothing here exists at run time except what api.js exports.
-export type Tile = { x: number; y: number; z: number };
+/** `entry` is the tile's catalog tile entry id (701.1), or null for a blank tile. */
+export type Tile = { x: number; y: number; z: number; entry?: string | null };
 export type Settings = Record<string, any>;
 export type Player = { ref: string; color: string; score: number; x: number; y: number; z: number; living: boolean; hearts: number; state: "living" | "dead" | "ghost"; deadDay: number | null };
 export type Creature = { id: number; entry: string; x: number; y: number; z: number; hearts: number | null; resting: boolean };
@@ -97,7 +98,7 @@ export type RuleModule = { rule: number } & Hooks;
 export function defineRule<T extends RuleModule>(mod: T): Readonly<T>;
 export function refuse(error: string, status?: 400 | 403 | 409 | 500): Refusal;
 export const effects: {
-  chart(tiles: Array<{ x: number; y: number; z?: number }>): Effect;
+  chart(tiles: Array<{ x: number; y: number; z?: number; entry?: string }>): Effect;
   points(player: string, delta: number, reason: string): Effect;
   log(template: string, args?: Record<string, unknown>): Effect;
   /** dayEnd only: this player wins the Era (rule 402): the Era ends, points reset, they are the Champion. */

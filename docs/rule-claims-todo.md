@@ -7,7 +7,7 @@ Every function that carries out the game should say which rule it implements, wi
 `src/` is only reported for now: these functions have no claim yet. Site plumbing such as sign-in and email goes
 under rule 101 or 102; a follow-up change claims them and moves `src/` into the strict set.
 
-198 of 633 functions outside `src/engine/` are unclaimed.
+196 of 634 functions outside `src/engine/` are unclaimed.
 
 ## src/index.ts (6)
 
@@ -54,12 +54,10 @@ under rule 101 or 102; a follow-up change claims them and moves `src/` into the 
 - line 39: `getPlayer`
 - line 51: `destroySession`
 
-## src/lib/board.ts (4)
+## src/lib/board.ts (2)
 
-- line 9: `chartTile`
-- line 15: `chartAll`
-- line 24: `ensureTiles`
-- line 33: `loadTiles`
+- line 17: `chartAll`
+- line 26: `ensureTiles`
 
 ## src/lib/build.js (3)
 

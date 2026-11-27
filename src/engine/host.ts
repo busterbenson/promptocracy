@@ -144,12 +144,17 @@ export function checkGiveHeart(game: any, ctx: any, giver: { ref: string }, targ
 }
 
 // Runs the game's afterAction hooks and turns the effects into D1 statements for the action's own batch.
-/** @rule 504 */
+/** @rule 504, 701.1 */
 export function afterActionStatements(env: Env, game: any, ctx: any, actor: { ref: string }, action: any, now = nowIso()) {
   const stmts: any[] = [];
+  const tileEntries = new Set<string>(catalogOf(game).filter((e: any) => e.kind === "tile").map((e: any) => e.id));
   for (const e of rulesFor(game).afterAction(ctx, actor, action)) {
     if (!APPLIED_EFFECTS.includes(e.type)) throw new RuleError(0, "afterAction", new Error(`the ${e.type} effect is not applied yet`));
-    for (const t of e.tiles) stmts.push(chartTile(env, game.id, t.x, t.y, t.z, now));
+    for (const t of e.tiles) {
+      // A tile entry must be one of the catalog's tile entries (rule 701.1): the rule picked it from ctx.catalog, so a mismatch is the rule's bug.
+      if (t.entry != null && !tileEntries.has(t.entry)) throw new RuleError(0, "afterAction", new Error(`chart names ${t.entry}, which is not a tile entry of the catalog`));
+      stmts.push(chartTile(env, game.id, t.x, t.y, t.z, now, t.entry ?? null));
+    }
   }
   return stmts;
 }
