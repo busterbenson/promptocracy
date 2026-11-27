@@ -111,7 +111,7 @@ export function createStub() {
     if (stubState.mode === "garbled") return send(200, { content: [{ type: "text", text: "sorry, I lost my JSON" }], stop_reason: "end_turn", usage: { input_tokens: 5, output_tokens: 5 } });
     if (kind === "general") {
       const msg = lastText.slice(lastText.lastIndexOf("The player's new message:"));   // only the NEW message picks the answer: the slip and the rule card above it carry other words
-      const retry = lastText.includes("Your draft this turn was refused by the drafter") || lastText.includes("That draft stays on the player's screen as it is");   // a refusal, or the rule check's findings (rule 103.9)
+      const retry = lastText.includes("Your draft this turn was refused by the drafter") || lastText.includes("REDRAFT. Draft it again NOW") || lastText.includes("No version of it passed the rule check");   // a refusal, or the rule check's findings (rule 103.9)
       if (retry && stubState.retryFail) return send(500, { error: {} });   // the second call fails (tests/gremlin-general.mjs: the first call is logged once)
       if (retry && stubState.retry) return send(200, { content: [{ type: "text", text: J(stubState.retry) }], stop_reason: "end_turn", usage: { input_tokens: 400, output_tokens: 80 } });
       const m = Object.keys(GENERAL_SYNTH).sort((a, b) => b.length - a.length).find((k) => msg.includes(k));

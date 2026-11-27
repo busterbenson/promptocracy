@@ -57,7 +57,10 @@
         "mark": "majority",
         "drafts_max": 1,
         "draft_by_turn": 2,
-        "night": "any"
+        "night": "any",
+        "first_answer": {
+          "check": "ok"
+        }
       },
       "known_fail": null,
       "start": "general"
@@ -261,7 +264,10 @@
         "no_escalation": true,
         "drafts_max": 1,
         "draft_by_turn": 1,
-        "no_dead_end": true
+        "no_dead_end": true,
+        "first_answer": {
+          "check": "ok"
+        }
       },
       "known_fail": null
     },
@@ -319,7 +325,7 @@
         "A player standing on a house tile can't have points taken away for up to 2 nights. A player gets onto a house tile by moving onto it, and may stay there for up to 2 nights."
       ],
       "if_asked": [],
-      "intent": "Rickshaw P7, the words that passed day 2 and were not applied: the game has no house tile and does not record how long a piece has stood anywhere, and 402.3 resets points. The draft is an added rule and the rule check (103.9) blocks it.",
+      "intent": "Rickshaw P7, the words that passed day 2 and were not applied: the game has no house tile and does not record how long a piece has stood anywhere, and 402.3 resets points. Buster's decision 2026-11-26: the part that can't be done is left out and named (the 2-night limit), the rest is drafted; or it stays blocked naming how long. It is never drafted as written with the memory it needs.",
       "expect": {
         "draft": {
           "kind": [
@@ -327,9 +333,26 @@
             "addclause"
           ]
         },
-        "check": "blocked",
         "no_escalation": true,
-        "no_dead_end": true
+        "no_dead_end": true,
+        "ends_in": "proposal",
+        "first_answer": {
+          "says_not_re": "no rule (takes|removes)",
+          "any": [
+            {
+              "check": "ok",
+              "words_re": [
+                "house",
+                "point"
+              ],
+              "guess_re": "night|left out|leave out|dropped|limit|can't|record"
+            },
+            {
+              "check": "blocked",
+              "missing_names_re": "how long|nights|stood|stay|record|remember"
+            }
+          ]
+        }
       },
       "known_fail": null
     },
@@ -348,7 +371,10 @@
         "draft_by_turn": 1,
         "guesses": true,
         "no_dead_end": true,
-        "no_escalation": true
+        "no_escalation": true,
+        "first_answer": {
+          "check": "ok"
+        }
       },
       "known_fail": null
     },
@@ -461,7 +487,396 @@
         },
         "check": "ok",
         "no_escalation": true,
-        "no_dead_end": true
+        "no_dead_end": true,
+        "first_answer": {
+          "check": "ok"
+        }
+      },
+      "known_fail": null
+    },
+    {
+      "id": "r-moon-first",
+      "agent": "gremlin",
+      "start": "general",
+      "title": "The moon session, first message (11-26, msg 162)",
+      "turns": [
+        "I propose that on a day when there’s a full moon that all players heal 1 heart and are impervious to bites. But on a new moon a new monster spawns on the board."
+      ],
+      "if_asked": [],
+      "intent": "Buster's real first message. One answer: a drafted rule that passes the check (the moon is worked out from the date, not stored), healing and bite protection on a full moon and a new monster on a new moon, with his guesses named in one line. No escalation, no commission, no back and forth. (The check may add an engine note: healing hearts is an effect the engine has no name for.)",
+      "expect": {
+        "ends_in": "proposal",
+        "no_escalation": true,
+        "first_answer": {
+          "check": "ok",
+          "kind": [
+            "add",
+            "addclause"
+          ],
+          "words_re": [
+            "heal|heart",
+            "bit(e|ten)|bites",
+            "moon.{0,60}new|new.{0,10}moon"
+          ],
+          "guess": true
+        }
+      },
+      "known_fail": null
+    },
+    {
+      "id": "r-moon-real",
+      "agent": "gremlin",
+      "start": "general",
+      "title": "The moon: the real cycle (msgs 162, 164)",
+      "turns": [
+        "I propose that on a day when there’s a full moon that all players heal 1 heart and are impervious to bites. But on a new moon a new monster spawns on the board.",
+        "The full moon and new moon should be determined by the real lunar cycle, in the game’s time zone."
+      ],
+      "if_asked": [],
+      "intent": "After the real-cycle follow-up the slip stands and passes, and the real moon stays real: not a random moon, not a day-number cycle, not a setting or a record.",
+      "expect": {
+        "ends_in": "proposal",
+        "no_escalation": true,
+        "turn_slip": [
+          {
+            "turn": 2,
+            "check": "ok",
+            "words_re": [
+              "real|lunar|29\\.53"
+            ],
+            "not_words_re": "random (moon|phase)|moon.{0,30}(chosen|picked|set) at random|by hand|calendar (setting|record)|\\[setting: moon"
+          }
+        ]
+      },
+      "known_fail": null
+    },
+    {
+      "id": "r-moon-from-general",
+      "agent": "gremlin",
+      "start": "general",
+      "title": "A rule asked for exactly (msg 192) in the general conversation",
+      "turns": [
+        "Draft exactly this as a new rule in block 200: Each day has a moon: full, new or neither. It is the real moon on that day's date in the game's time zone (203.1), worked out from the moon's 29.53-day cycle. Other rules can read it as a condition. On its own it has no effect on play."
+      ],
+      "if_asked": [],
+      "intent": "The moon rule word for word. It is a plain rule (it makes no entry), so it is drafted here and passes the check; no ticket is opened.",
+      "expect": {
+        "ends_in": "proposal",
+        "drafts_max": 1,
+        "no_escalation": true,
+        "first_answer": {
+          "check": "ok",
+          "words_re": [
+            "moon",
+            "29\\.53|lunar|real"
+          ]
+        }
+      },
+      "known_fail": null
+    },
+    {
+      "id": "r-moon-from-ticket",
+      "agent": "gremlin",
+      "start": "ticket",
+      "title": "The same rule asked on a ticket (msg 192, the live case: it was sent to a commission)",
+      "turns": [
+        "Draft exactly this as a new rule in block 200: Each day has a moon: full, new or neither. It is the real moon on that day's date in the game's time zone (203.1), worked out from the moon's 29.53-day cycle. Other rules can read it as a condition. On its own it has no effect on play."
+      ],
+      "if_asked": [],
+      "intent": "Asked on a ticket, a rule that makes no entry is not a commission: the message goes to the general conversation and is drafted as a plain rule that passes the check. No ticket is left holding it.",
+      "expect": {
+        "ends_in": "proposal",
+        "no_escalation": true,
+        "first_answer": {
+          "check": "ok",
+          "engine_note": false,
+          "words_re": [
+            "moon"
+          ]
+        }
+      },
+      "known_fail": null
+    },
+    {
+      "id": "r-moon-changes-move",
+      "agent": "gremlin",
+      "start": "general",
+      "title": "A rule that changes how an existing rule works must pass (Buster's principle)",
+      "turns": [
+        "On a full moon every player moves 2 steps instead of 1."
+      ],
+      "if_asked": [],
+      "intent": "Buster, 2026-11-26: new rules require new code and change how existing code works; that is the game. A rule that changes the move on a full moon is drafted and passes: the moon is worked out from the date, the move is existing code the rule changes. Not blocked for needing new code.",
+      "expect": {
+        "ends_in": "proposal",
+        "no_escalation": true,
+        "first_answer": {
+          "check": "ok",
+          "words_re": [
+            "moon",
+            "2 steps|two steps|2 spaces|two spaces"
+          ]
+        }
+      },
+      "known_fail": null
+    },
+    {
+      "id": "r-fart-christin",
+      "agent": "gremlin",
+      "start": "general",
+      "title": "Christin's fart rule, first message (msg 94)",
+      "turns": [
+        "Player must use their farts to move around the board and any square that has been occupied previously by a player smells bad and cannot be occupied for another turn"
+      ],
+      "if_asked": [],
+      "intent": "The smell needs the game to remember where a piece has been (not recorded): a data gap. He drafts what works and says in one line what is left out, or the slip stays blocked on the memory gap with options that keep the smell. Never a 1-space move or a creature rule instead.",
+      "expect": {
+        "no_escalation": true,
+        "first_answer": {
+          "any": [
+            {
+              "check": "ok",
+              "words_re": [
+                "fart"
+              ],
+              "not_words_re": "1 space|one space|creature",
+              "guess_re": "occupied|been|before|stood|left out|leave out|dropped|remember|record"
+            },
+            {
+              "check": "blocked",
+              "missing_names_re": "been|before|occupied|stood|record|remember|history",
+              "options_not_re": "creature",
+              "not_words_re": "1 space|one space"
+            }
+          ]
+        }
+      },
+      "known_fail": null
+    },
+    {
+      "id": "r-fart-goes-thru",
+      "agent": "gremlin",
+      "start": "general",
+      "title": "Christin: 'Change it so it will go thru' (msgs 94, 97)",
+      "turns": [
+        "Player must use their farts to move around the board and any square that has been occupied previously by a player smells bad and cannot be occupied for another turn",
+        "Change it so it will go thru"
+      ],
+      "if_asked": [],
+      "intent": "Her vague follow-up is redrafted, not refused: the slip stands and passes (or stays blocked on the memory gap) without a creature rule or a one-space move; nothing is asked that she can't answer.",
+      "expect": {
+        "no_escalation": true,
+        "turn_slip": [
+          {
+            "turn": 2,
+            "words_re": [
+              "fart"
+            ],
+            "not_words_re": "creature|1 space|one space",
+            "any": [
+              {
+                "check": "ok"
+              },
+              {
+                "check": "blocked",
+                "missing_names_re": "been|before|occupied|stood|record|remember|history"
+              }
+            ]
+          }
+        ]
+      },
+      "known_fail": null
+    },
+    {
+      "id": "r-house-sarah",
+      "agent": "gremlin",
+      "start": "general",
+      "title": "Sarah's house with her ticket pending (msg 84)",
+      "pending": [
+        {
+          "ticket": 5,
+          "owner": "Sarah",
+          "state": "Proposed",
+          "name": "House",
+          "catalogKind": "structure"
+        }
+      ],
+      "turns": [
+        "A player inside can’t have any points taken away for 2 nights. They can get in by moving on to a house tile and they can stay up to 2 nights"
+      ],
+      "if_asked": [],
+      "intent": "A plain rule about an entry a ticket makes (the House). It is drafted, uses the House ticket, and never says 'no rule takes points away' (402.3 resets points). The 2-night limit needs a memory the game lacks: either the draft passes with that limit named as left out, or it stays blocked naming how long.",
+      "expect": {
+        "ends_in": "proposal",
+        "no_escalation": true,
+        "first_answer": {
+          "says_not_re": "no rule (takes|removes)",
+          "any": [
+            {
+              "check": "ok",
+              "words_re": [
+                "house",
+                "point"
+              ],
+              "guess_re": "night|left out|leave out|dropped|limit|can't|record"
+            },
+            {
+              "check": "blocked",
+              "missing_names_re": "how long|nights|stood|stay|record|remember"
+            }
+          ]
+        }
+      },
+      "known_fail": null
+    },
+    {
+      "id": "r-flower-buster",
+      "agent": "gremlin",
+      "start": "general",
+      "title": "Flowers to creatures with W4 pending (msg 125)",
+      "pending": [
+        {
+          "ticket": 4,
+          "owner": "Sarah",
+          "state": "Ready",
+          "name": "Flower",
+          "catalogKind": "item"
+        }
+      ],
+      "turns": [
+        "Players can also give flowers to creatures. If the creature is hostile, it will eat the flower and lose 1 heart."
+      ],
+      "if_asked": [],
+      "intent": "A rule about a Flower W4 already makes, with no new entry: a plain rule, drafted here, naming W4, opens no ticket. The check passes it (an engine note is fine) or blocks it naming the one thing the game does not record (which player holds a Flower); it never makes a second Flower.",
+      "expect": {
+        "ends_in": "proposal",
+        "uses": [
+          "W4"
+        ],
+        "no_escalation": true,
+        "first_answer": {
+          "any": [
+            {
+              "check": "ok",
+              "words_re": [
+                "flower"
+              ]
+            },
+            {
+              "check": "blocked",
+              "missing_names_re": "hold|inventor|carr|record|which players|how many"
+            }
+          ]
+        }
+      },
+      "known_fail": null
+    },
+    {
+      "id": "r-vote-default",
+      "agent": "gremlin",
+      "start": "general",
+      "title": "Christin's vote default (msg 133), a control",
+      "turns": [
+        "if more than 1 player besides the player proposing the proposal votes yes and no other player voted then it defaults the proposal to being accepted"
+      ],
+      "if_asked": [],
+      "intent": "A rule about votes that the game can carry out: drafted at once, one draft, the check passes.",
+      "expect": {
+        "ends_in": "proposal",
+        "drafts_max": 1,
+        "no_escalation": true,
+        "first_answer": {
+          "check": "ok"
+        }
+      },
+      "known_fail": null
+    },
+    {
+      "id": "r-engine-gap",
+      "agent": "gremlin",
+      "start": "general",
+      "title": "P20's words: a rule that moves another player (engine move, #145)",
+      "turns": [
+        "Add this rule: At the end of each day, for each living player who is next to another living player (602.2), there is a 15% chance that the other player is moved 1 step in a random direction, onto an unoccupied charted tile."
+      ],
+      "if_asked": [],
+      "intent": "The engine can move a player's piece at night (the move effect, #145), so nothing is missing: the check passes it (status ok) with no engine note, and Lock it in is allowed. Not blocked.",
+      "expect": {
+        "ends_in": "proposal",
+        "no_escalation": true,
+        "first_answer": {
+          "check": "ok",
+          "engine_note": false,
+          "kind": [
+            "add",
+            "addclause"
+          ],
+          "words_re": [
+            "15"
+          ]
+        }
+      },
+      "known_fail": null
+    },
+    {
+      "id": "r-dott-edge",
+      "agent": "gremlin",
+      "start": "general",
+      "title": "Dott's edge-of-the-board move (msg 156)",
+      "turns": [
+        "If next to a player there is a 15% chance that the other player will be automatically moved to the edge of the board in any direction"
+      ],
+      "if_asked": [],
+      "intent": "Moving a player is a missing engine power, not missing data: the draft passes with a note that the engine must learn it. Not blocked, not shrunk to 1 step.",
+      "expect": {
+        "ends_in": "proposal",
+        "no_escalation": true,
+        "first_answer": {
+          "check": "ok",
+          "engine_note": true,
+          "words_re": [
+            "15|edge"
+          ],
+          "not_words_re": "1 step|one step|1 space|one space"
+        }
+      },
+      "known_fail": null
+    },
+    {
+      "id": "r-data-gap-stood",
+      "agent": "gremlin",
+      "start": "general",
+      "title": "A rule that needs a memory the game does not keep (must block)",
+      "turns": [
+        "A player who has stood on the same tile for 3 days in a row gets 5 points."
+      ],
+      "if_asked": [],
+      "intent": "How long a piece has stood anywhere is not recorded (a true data gap): the check blocks it and names that. The slip is the player's own draft; options keep the intent.",
+      "expect": {
+        "no_escalation": true,
+        "first_answer": {
+          "check": "blocked",
+          "missing_names_re": "stood|stand|days|how long|record|remember|history"
+        }
+      },
+      "known_fail": null
+    },
+    {
+      "id": "r-outside-source",
+      "agent": "gremlin",
+      "start": "general",
+      "title": "A rule that needs an outside source (must block)",
+      "turns": [
+        "Each day, every player gets 2 points if it rained in Seattle yesterday."
+      ],
+      "if_asked": [],
+      "intent": "Rule code makes no network calls and the game has no weather: an outside source, a true gap. The check blocks it and says so.",
+      "expect": {
+        "no_escalation": true,
+        "first_answer": {
+          "check": "blocked",
+          "missing_names_re": "weather|rain|outside|source|Seattle|record"
+        }
       },
       "known_fail": null
     }

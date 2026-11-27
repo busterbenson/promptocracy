@@ -22,7 +22,7 @@ import { notify } from "../lib/notify";
 import { commissionsFor } from "../lib/ticket-view";
 import { COMMISSION_SNAPSHOT_SQL } from "../lib/tickets.js";
 import { ACTION_DRAFT_INSERT_SQL, CONFIRMED_TODAY_SQL, CONFIRM_SQL, DRAFT_INSERT_SQL, NOT_WIRED_REASON, WITHDRAW_SQL, conflictSentence, draftOf, markFor, needsModel, normKind, notWiredConflictRefusal, notWiredRefusal, parseBook, proposalLimitMessage, readRequest } from "../lib/proposals.js";
-import { checkDraft, CHECKED_KINDS } from "../lib/draft-check";
+import { checkDraft, CHECKED_KINDS, refreshCheck } from "../lib/draft-check";
 import { lockRefusalOf, checkConflictNums } from "../lib/rule-check.js";
 import { catalogFor } from "./api-catalog";
 import { openEntriesFor } from "../lib/pending-entries";
@@ -104,6 +104,7 @@ export function view(r: any, viewerId?: string | null, electorate?: number) {
     conflicts: JSON.parse(r.conflicts || "[]"),
     conflict_note: conflictNote(JSON.parse(r.conflicts || "[]"), checkOf(r)),
     uses_note: usesNote(usesOf_(r)),
+    engine_note: (r.player_id === viewerId ? checkOf(r)?.engine_note : null) ?? null,   // the one line a slip carries when the change needs an engine power the game lacks (103.9)
     check: r.player_id === viewerId ? checkOf(r) : undefined,
     settings: JSON.parse(r.settings || "{}"),
     drafted_by: r.drafted_by,
@@ -269,9 +270,18 @@ export async function confirm(ctx: Ctx, player: any, id: string, nowMs: number):
   if (!row) return out({ error: "There is no such draft of yours." }, 404);
   if (row.status !== "draft") return out({ error: row.status === "withdrawn" ? "That proposal was withdrawn. Draft it again." : `That is already P${row.number}.` }, 409);
   if (row.day_proposed !== game.day) return out({ error: `That draft is from day ${row.day_proposed}. Draft it again today.` }, 409);
-  const { book, sha } = await bookFor(game);
+  const { md, book, sha } = await bookFor(game);
   if (row.base_sha !== sha) return out({ error: "The rules have changed since this was drafted. Draft it again." }, 409);
   // The rule check (rule 103.9): a draft that relies on something the game doesn't have, or that couldn't be checked, is not locked in.
+  // A check made on other criteria or another model than today's (or one that never completed) is made again first: a fix that deployed after the draft unblocks it without a redraft.
+  await refreshCheck(env, game, timeZoneOf(game), player.id, md, book, catalogFor(game).entries, (await openEntriesFor(env, game, player.id)).pending ?? [], row, nowMs);
+  // The re-check may have made a model call (up to 30 s, and one that failed or returned the same answer leaves the row as it was): the write below uses the clock NOW, and meets the lock if the call ran past midnight (rule 107.1).
+  nowMs = await clockNow(env);
+  const late = turnBlock(game, day, turn, player, "propose", nowMs);
+  if (late) return out(refusalBody(late), late.status);
+  // The stored conflicts are held to the not-wired parts on every lock-in (103.6), as `prepareDraft` does: a check made again can add one, and it stays stored for the next try
+  const unwired = notWiredConflictRefusal(book, JSON.parse(row.conflicts || "[]"));
+  if (unwired) return out({ error: unwired, drafting: "refused", reason: NOT_WIRED_REASON }, 422);
   const why = lockRefusal(book, row);
   if (why) return out({ error: why, check: row.rule_check ? JSON.parse(row.rule_check) : null }, 409);
   const mark = markFor(book, row);
