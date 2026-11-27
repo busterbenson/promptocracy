@@ -172,6 +172,8 @@ check("meter: a call's cost is counted from its usage (1000 in + 100 out at sonn
   check("chat: the retry's draft is the one that stands, and it was checked", r1.draft?.words === "fixed words" && r1.draft.check?.status === "ok" && r1.turns[0].say === "I changed it" && (r1.turns[0].retry || []).join() === "retry after rule check: blocked", JSON.stringify(r1.turns[0].retry));
   check("chat: the retry's cost is in the case (two model calls and two checks are metered per turn)", r1.error === null && r1.turns.length === 1 && r1.draft_count === 1);
 
+  check("chat: the turn records the standing slip (kind, words, the rule check, fixes) for the first-answer keys", r1.turns[0].slip?.check === "ok" && r1.turns[0].slip.words === "fixed words" && r1.turns[0].slip.fresh === true && r1.turns[0].slip.kind === "amend");
+
   const a2 = rig([answer("blocked one"), answer("blocked two"), answer(null, "ok then")]);
   const r2 = await runChatCase(mk("no-second-retry", ["do it", "and now?"]), a2.x);
   check("chat: never a second retry (two blocked drafts: two calls for the turn, then the next turn's)", a2.seen.requests.length === 3 && a2.seen.checks.length === 2, String(a2.seen.requests.length));
