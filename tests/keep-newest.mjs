@@ -80,25 +80,35 @@ try {
   const k4 = await Ana.post(`${T}/W${w4}/confirm`, {});
   check("no row is saved and nothing is under art/", k4.status === 200 && tk(w4).state === "Proposed" && refs(w4).every((r) => !r.saved && !r.is_default) && art(e1) === null, k4.text);
 
+  console.log("a confirm that did not finish is settled, and the drawing is kept then (rule 801.2)");
+  // the proposal is on the ballot but the ticket still reads Draft (the second half of the confirm died): the player's next read settles it
+  const w8 = await draft(Ana, "Otter"), o1 = draw(w8, "Otter"), o2 = draw(w8, "Otter");
+  await Ana.post(`${T}/W${w8}/confirm`, {});
+  d1(state, `UPDATE tickets SET state = 'Draft' WHERE game_id = '${gid}' AND number = ${w8}; UPDATE art_refs SET saved = 0, is_default = 0 WHERE ticket_id = '${tk(w8).id}'`);
+  const settled = await Ana.post(`${T}/W${w8}/edit`, { title: "A new title" });
+  check("the settle answers 409 (it is on the ballot), the ticket is Proposed, and the newest drawing is kept", settled.status === 409 && tk(w8).state === "Proposed" && row(w8, o2).saved === 1 && row(w8, o2).is_default === 1 && row(w8, o1).saved === 0 && !!art(o2), settled.text + J(refs(w8)));
+
   console.log("the operator script, for tickets that left Draft before this (rule 801.2)");
-  // W5: Bo's open ticket already past Draft with two drawings and none kept (as Rickshaw's W1 is); W6: a Draft (left alone)
+  // Bo's open ticket already past Draft with two drawings and none kept (as Rickshaw's W1 is); a Draft after it is left alone
   const w5 = await draft(Bo, "Heron"), h1 = draw(w5, "Heron"), h2 = draw(w5, "Heron"), h3 = draw(w5, "Heron", { gone: true });
   d1(state, `UPDATE tickets SET state = 'Ready' WHERE game_id = '${gid}' AND number = ${w5}`);
   const w6 = await draft(Cy, "Mole"), m1 = draw(w6, "Mole");
+  const w9 = await draft(Bo, "Lynx"), l1 = draw(w9, "Lynx");   // a shelved ticket (closed): nothing is kept for it
+  d1(state, `UPDATE tickets SET state = 'Shelved' WHERE game_id = '${gid}' AND number = ${w9}`);
   const dry = (...args) => execFileSync(process.execPath, [pjoin(ROOT, "scripts/keep-newest-drawings.mjs"), "kn", ...args], { env: { PATH: process.env.PATH, PROMPTOCRACY_API: A, PROMPTOCRACY_MODERATOR_TOKEN_KN: TOKEN }, encoding: "utf8", timeout: 60000 });
   const snapshot = J([refs(w5), refs(w6), [h1, h2, h3, m1].map((h) => art(h) === null)]);
   const out = dry();
-  check("a dry run (the default) lists W5's entry with the drawing it would keep, newest first, and says one is gone", /W5 \(Ready\) Heron: keeps /.test(out) && out.includes(`keeps ${h2.slice(0, 8)}`) && /picture gone/.test(out), out);
-  check("it lists no draft (W6) and no ticket that already kept one (W1..W4 kept or have none that survive are not W5)", !/W6\b/.test(out) && !/W1 \(|W2 \(|W3 \(/.test(out));
+  check("a dry run (the default) lists the Ready ticket's entry with the drawing it would keep, newest first, and says one is gone", new RegExp(`W${w5} \\(Ready\\) Heron: keeps `).test(out) && out.includes(`keeps ${h2.slice(0, 8)}`) && /picture gone/.test(out), out);
+  check("it lists no draft and no ticket that already kept one", !new RegExp(`W${w6}\\b`).test(out) && ![w1, w2, w3].some((n) => out.includes(`W${n} (`)));
   check("and it writes nothing: rows and art/ are as they were", J([refs(w5), refs(w6), [h1, h2, h3, m1].map((h) => art(h) === null)]) === snapshot && !refs(w5).some((r) => r.saved));
   const bad = await fetch(`${A}/kn/api/moderator/keep-drawings`, { method: "POST", headers: { authorization: "Bearer not-the-token-0123456789", "content-type": "application/json" }, body: "{}" });
   const badList = await fetch(`${A}/kn/api/moderator/unkept-drawings`);
   check("the routes are the moderator's: a wrong token or none is 401 and keeps nothing", bad.status === 401 && badList.status === 401 && !refs(w5).some((r) => r.saved));
   const applied = dry("--apply");
-  check("--apply keeps W5's newest surviving drawing: saved, default, copied to art/", /\nW5 Heron: kept /.test(applied) && /\nW4 Eel: gone/.test(applied) && row(w5, h2).saved === 1 && row(w5, h2).is_default === 1 && row(w5, h1).saved === 0 && !!art(h2), applied + J(refs(w5)));
-  check("the Draft (W6) is untouched", refs(w6).every((r) => !r.saved) && art(m1) === null && tk(w6).state === "Draft");
+  check("--apply keeps the Ready ticket's newest surviving drawing: saved, default, copied to art/", new RegExp(`\\nW${w5} Heron: kept `).test(applied) && new RegExp(`\\nW${w4} Eel: gone`).test(applied) && row(w5, h2).saved === 1 && row(w5, h2).is_default === 1 && row(w5, h1).saved === 0 && !!art(h2), applied + J(refs(w5)));
+  check("the Draft and the Shelved ticket are untouched, and their dry-run listing never named them", refs(w6).every((r) => !r.saved) && art(m1) === null && tk(w6).state === "Draft" && refs(w9).every((r) => !r.saved) && art(l1) === null && !new RegExp(`W${w9}\\b`).test(out));
   const again = dry();
-  check("a second run no longer lists W5 (W4 stays listed: no picture of it survives), and --apply again keeps nothing more", !/W5\b/.test(again) && /W4 .*NO drawing survives/.test(again) && !/: kept /.test(dry("--apply")) && refs(w5).filter((r) => r.saved).length === 1 && refs(w4).every((r) => !r.saved));
+  check("a second run no longer lists it (the one with no surviving picture stays listed: no picture of it survives), and --apply again keeps nothing more", !new RegExp(`W${w5}\\b`).test(again) && new RegExp(`W${w4} .*NO drawing survives`).test(again) && !/: kept /.test(dry("--apply")) && refs(w5).filter((r) => r.saved).length === 1 && refs(w4).every((r) => !r.saved));
 } catch (e) {
   fail++;
   console.log("  FAIL  " + (e.stack || e.message));

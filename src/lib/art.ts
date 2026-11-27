@@ -184,8 +184,9 @@ export async function redrawFailed(ctx: Ctx, game: any, player: any, ticket: any
 
 // ---- saving, and the default ---------------------------------------------------------------------------------------------------------
 // The player's own gate, in the SQL: their draft, not tied to a proposal, the day open for them (EDIT_GUARD).
-// `system` is the platform keeping a drawing for the player (keepNewest): the ticket has left Draft, so the player's gate cannot hold.
-const gateOf = (game: any, player: any, ticket: any, nowMs: number, system = false) => system ? { sql: "ticket_id = ?", binds: [ticket.id] } : { sql: `ticket_id IN (SELECT id FROM tickets WHERE ${EDIT_GUARD})`, binds: [ticket.id, player.id, ...dayOpenBinds(game.day, nowMs, player.id)] };
+// `system` is the platform keeping a drawing for the player (keepNewest): the ticket has left Draft, so the player's gate cannot hold; its gate is
+// that the ticket is still open and past Draft (KEEP_STATES), checked in the SQL like the player's.
+const gateOf = (game: any, player: any, ticket: any, nowMs: number, system = false) => system ? { sql: `ticket_id IN (SELECT id FROM tickets WHERE id = ? AND state IN (${KEEP_STATES.map(() => "?").join(", ")}))`, binds: [ticket.id, ...KEEP_STATES] } : { sql: `ticket_id IN (SELECT id FROM tickets WHERE ${EDIT_GUARD})`, binds: [ticket.id, player.id, ...dayOpenBinds(game.day, nowMs, player.id)] };
 
 export type Done = { status: number; body: any };
 

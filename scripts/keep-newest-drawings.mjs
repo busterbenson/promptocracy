@@ -7,7 +7,7 @@
 //   node scripts/keep-newest-drawings.mjs <slug>            list only (the default; --dry-run says the same)
 //   node scripts/keep-newest-drawings.mjs <slug> --apply    keep them
 //
-// Environment (from ~/chalantbot/.env; never printed): PROMPTOCRACY_API (default https://promptocracy.us),
+// Environment (export them from ~/chalantbot/.env first, e.g. `set -a; . ~/chalantbot/.env; set +a`; never printed): PROMPTOCRACY_API (default https://promptocracy.us),
 // PROMPTOCRACY_MODERATOR_TOKEN_<SLUG> (SLUG upper-cased, - as _). Run it again after --apply and it lists nothing.
 import { pathToFileURL } from "node:url";
 
