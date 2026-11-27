@@ -5,7 +5,7 @@
 //   CHECK_MODEL   the model for the check (default claude-sonnet-5-5, never MODEL_NAME, which is the drafter's); set it to another to switch.
 // No MODEL_API_KEY: the check is not run, like every other model call (a mechanical draft still works). With a key, any failure is `unchecked`.
 import { callModel, logCall, monthSpend } from "./agent";
-import { checkPrompt, checkSchema, checkVersion, engineNote, isStale, prevailVerdicts, readCheck } from "./rule-check.js";
+import { checkConflictNums, checkPrompt, checkSchema, checkVersion, engineNote, isStale, prevailVerdicts, readCheck } from "./rule-check.js";
 import { Env, nowIso } from "./util";
 
 export type RuleCheck = {
@@ -88,7 +88,13 @@ export async function refreshCheck(env: Env, game: any, tz: string, playerId: st
   const fresh = await checkDraft(env, game, tz, playerId, md, book, catalog,
     { kind: row.kind, target: row.target, new_num: row.new_num, mark: row.mark, head: row.draft_head, before_text: row.before_text, after_text: row.after_text, words: row.words }, nowMs, pending);
   if (!fresh || (fresh.status === "unchecked" && current)) return current;
-  try { await env.DB.prepare("UPDATE proposals SET rule_check = ? WHERE id = ? AND status = 'draft'").bind(JSON.stringify(fresh), row.id).run(); } catch { return current; }
+  // The conflicts the draft shows (proposals.conflicts: the drafter's own, plus the check's) follow the new check: the old check's go, the new check's come in.
+  let conflicts: string[] = [];
+  try { conflicts = JSON.parse(row.conflicts || "[]"); } catch { conflicts = []; }
+  const was = checkConflictNums(current), now = checkConflictNums(fresh);
+  conflicts = [...new Set([...conflicts.filter((n) => !was.includes(n) || now.includes(n)), ...now])];
+  try { await env.DB.prepare("UPDATE proposals SET rule_check = ?, conflicts = ? WHERE id = ? AND status = 'draft'").bind(JSON.stringify(fresh), JSON.stringify(conflicts), row.id).run(); } catch { return current; }
   row.rule_check = JSON.stringify(fresh);
+  row.conflicts = JSON.stringify(conflicts);
   return fresh;
 }

@@ -110,6 +110,13 @@ try {
   stubs.check = { status: 500 };
   const lockFail = await ana.post(`${P}/${st2.data.proposal.id}/confirm`, {});
   check("a stale check whose refresh fails keeps the old check (still blocked here), never an 'unchecked' that hides it", lockFail.status === 409 && lockFail.data.check.status === "blocked", lockFail.text);
+  const st3 = await draftAdd("A player on a house tile loses no points for 2 nights, a third stale one.");
+  stubs.check = { status: 200, text: J(OK) };
+  sql(`UPDATE proposals SET rule_check = json_set(rule_check, '$.v', '00000000'), conflicts = '[]' WHERE id = '${st3.data.proposal.id}'`);
+  stubs.check = { status: 200, text: J({ conflicts: ["402.3"], missing: [], fixes: [] }) };
+  await ana.post(`${P}/${st3.data.proposal.id}/confirm`, {});
+  check("a check made again at lock-in that names a conflict puts it on the draft's conflicts too (the warning voters see), keeping the drafter's own", JSON.parse(sql(`SELECT conflicts FROM proposals WHERE id = '${st3.data.proposal.id}'`)[0].conflicts).includes("402.3"));
+  sql(`UPDATE proposals SET status = 'withdrawn' WHERE id = '${st3.data.proposal.id}'`);   // it locked in (a conflict only warns): frees the day's slot
   sql(`DELETE FROM proposals WHERE id = '${st2.data.proposal.id}'`);
   sql(`UPDATE proposals SET status = 'withdrawn' WHERE id = '${st.data.proposal.id}'`);   // frees the day's slot for the tests below
   stubs.check = { status: 200, text: J({ ...OK, engine: [{ what: "moving a player's piece", why: "No effect moves a player." }] }) };
