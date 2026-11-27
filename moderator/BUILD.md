@@ -53,8 +53,12 @@ after you and tells you what failed.
 6. **Tests.** Add tests for what the rule does in `rules/<n>.test.ts`: with the entry present (a fixture entry in the catalog
    with `madeBy` set; the rule acts) and absent (the rule does nothing).
 7. **Can it be built tonight?** Under "The check the site made" below is what the game records and what rule code can do.
-   - If the draft can't be written as a rule (it is not a rule, it contradicts a rule the game has, or it can't be put in the
-     rules without changing its words), write the result file with outcome `not_built` and the reason.
+   - An entry or a thing that isn't in the game yet (not in the catalog, not on the board, nothing that places it) is never a
+     reason not to build: the rule is written and does nothing until it has something to act on (rule 703.4).
+   - If the draft can't be written as a rule (it is not a rule, or it can't be put in the rules without changing its words),
+     write the result file with outcome `not_built` and the reason.
+   - If the draft can't hold together with a rule the game has (they can't both be followed, rule 108.1), the rule already
+     there prevails: a commission adds rules, it never overrides one. Write `not_built`, naming that rule in the reason.
    - If the rule needs something only a change to the platform can give (a power rule code doesn't have, something the game
      doesn't record, a source outside the game), don't write it: write the result file with outcome `needs_engine` and a
      `note`, one line saying what it needs. The ticket waits for that change, and that isn't a failure (rule 803.4).
