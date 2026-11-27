@@ -3,6 +3,7 @@
 // (Pancake C2 and her sleeping drawing C3, the House S1, all built on day 1; the real rules 602, 606, 607 and 608). Nothing here touches Cloudflare.
 // Run: node tests/structures.mjs
 import { rmSync } from "node:fs";
+import { parseLabel } from "../src/lib/geometry.js";
 import { client, createGame, d1, freePort, join, migrate, newState, startRulesStub, startServer } from "./lib.mjs";
 
 let pass = 0, fail = 0;
@@ -46,11 +47,11 @@ try {
   const cs = creatures(), ss = structures();
   const pancake = cs.find((c) => c.entry_id === "C2");
   check("Pancake is on the board; her sleeping drawing (C3) never is (607.1: not placed)", !!pancake && !cs.some((c) => c.entry_id === "C3"), J(cs));
-  check("the House is placed: one row, 2x2, placed day 1, all four of its tiles charted and clear of every piece and creature",
+  check("the House is placed: one row, 2x2, placed day 1, all four of its tiles charted and clear of every player's piece (a creature may walk onto it later that night: its tiles stay open, 608)",
     ss.length === 1 && ss[0].entry_id === "S1" && ss[0].w === 2 && ss[0].h === 2 && ss[0].placed_day === 1 && (() => {
       const tiles = new Set(d1(state, `SELECT x, y FROM tiles WHERE game_id = '${gid}'`).map((t) => t.x + "," + t.y));
       const foot = [0, 1].flatMap((dx) => [0, 1].map((dy) => [ss[0].x + dx, ss[0].y + dy]));
-      const taken = new Set([...cs.map((c) => c.x + "," + c.y), ...["Ana", "Bo"].map((n) => P(n).x + "," + P(n).y)]);
+      const taken = new Set([...["Ana", "Bo"].map((n) => P(n).x + "," + P(n).y)]);
       return foot.every(([x, y]) => tiles.has(x + "," + y) && !taken.has(x + "," + y));
     })(), J(ss));
   check("History says where each was put: 'Pancake appeared at', 'House was placed at'", /^Pancake appeared at /.test(events("appeared").find((t) => /Pancake/.test(t)) ?? "") && /^House was placed at /.test(events("placed")[0] ?? ""), J([events("appeared"), events("placed")]));
@@ -58,10 +59,12 @@ try {
   setClock("2026-03-10T07:00:05.000Z");
   await cron();
   check("night 2 places nothing again: still one Pancake, one House, one 'placed' line", creatures().filter((c) => c.entry_id === "C2").length === n1.c && structures().length === n1.s && events("placed").length === n1.hist, J([creatures(), structures()]));
-  check("the owner is the commission's requester: after two nights Pancake is closer to Ana (W2's player) than to Bo, or next to her", (() => {
+  // She walks the night she is placed and sleeps the next (606.1), so her spawn tile (from History) is what she is compared with, not where she was after night 1.
+  check("the owner is the commission's requester: Pancake is next to Ana (W2's player) or closer to her than where she appeared", (() => {
     const p = creatures().find((c) => c.entry_id === "C2"), a = P("Ana");
-    return dist(p, a) <= 1 || dist(p, a) < dist(pancake, a);
-  })(), J([creatures().find((c) => c.entry_id === "C2"), pancake, P("Ana")]));
+    const spawn = parseLabel((events("appeared").find((t) => /^Pancake appeared at /.test(t)) ?? "").replace(/^Pancake appeared at /, "").replace(/\.$/, ""));
+    return !!spawn && (dist(p, a) <= 1 || dist(p, a) < dist(spawn, a));
+  })(), J([creatures().find((c) => c.entry_id === "C2"), events("appeared"), P("Ana")]));
 
   console.log("the board: structures and the drawing a rule shows");
   const board = async () => (await client(A).get("/housed/api/board")).data;
@@ -86,10 +89,12 @@ try {
   d1(state, `UPDATE creatures SET gone_day = 2 WHERE game_id = '${gid}' AND entry_id = 'C2'`);
   d1(state, `INSERT INTO creatures (game_id, entry_id, x, y, z, hearts, rests_night, appeared_day) VALUES ('${gid}', 'C1', ${blobAt.x}, ${blobAt.y}, 0, 3, NULL, 1)`);
   const before = { ana: P("Ana").hearts, bo: P("Bo").hearts };
+  // an earlier night's own random Blob may have bitten before this scene: only what this night adds counts
+  const lastEvent = d1(state, `SELECT COALESCE(MAX(id), 0) AS m FROM events WHERE game_id = '${gid}'`)[0].m;
   setClock("2026-03-11T07:00:05.000Z");
   await cron();
   check("Ana (outside) was bitten; Bo (in the House) was not, and the Blob rests because it bit someone", P("Ana").hearts === before.ana - 1 && P("Bo").hearts === before.bo && creatures().some((c) => c.entry_id === "C1" && c.rests_night === 4), J([P("Ana"), P("Bo"), creatures()]));
-  const bites = events("bit");
+  const bites = d1(state, `SELECT text FROM events WHERE game_id = '${gid}' AND kind = 'bit' AND id > ${lastEvent} ORDER BY id`).map((e) => e.text);
   check("exactly one bite in History, and it is Ana's", bites.length === 1 && /Ana/.test(bites[0]), J(bites));
   b = await board();
   check("the board still lists the one structure; nothing was placed again", b.structures.length === 1 && structures().length === 1);
