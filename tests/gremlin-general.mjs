@@ -33,7 +33,7 @@ const startSrv = (opts = {}) => startServer(state, SRV_PORT, ["DEV_MODE=1", `SIT
 try {
   check("the test's state is a throwaway directory, never under ~/chalantbot (a test write must not reach a live store)", !state.startsWith(homedir() + "/chalantbot") && /promptocracy-test-/.test(state), state);
   migrate(state);
-  rules = await startRulesStub(await freePort(), { "/busterbenson/wk/main/RULES.md": "# Rules\n" });
+  rules = await startRulesStub(await freePort(), { "/busterbenson/wk/main/RULES.md": "# Rules\n", "/busterbenson/openwork/main/RULES.md": "# Rules\n" });
   const g = await createGame(state, { slug: "wk", name: "Workshop", max: 6, rulesBase: rules.base, repo: "busterbenson/wk" });
   d1(state, "CREATE TABLE IF NOT EXISTS dev_controls (key TEXT PRIMARY KEY, value TEXT)");
   const dev = (k, v) => d1(state, `INSERT INTO dev_controls (key, value) VALUES ('${k}', '${v}') ON CONFLICT (key) DO UPDATE SET value = excluded.value`);
@@ -420,6 +420,33 @@ try {
     d1(state, `UPDATE games SET day = 2 WHERE id = '${gid}'; INSERT OR IGNORE INTO days (game_id, n, starts_at, ends_at, status) VALUES ('${gid}', 2, '2000-01-01T00:00:00.000Z', '2099-01-01T00:00:00.000Z', 'open')`);   // day 2: the draft is yesterday's
     check("a draft of an earlier day is not in the strip (it can no longer be locked in)", !(await strip(Cy)).proposals.some((x) => x.id === d2id));
     d1(state, `UPDATE games SET day = 1 WHERE id = '${gid}'; DELETE FROM days WHERE game_id = '${gid}' AND n = 2`);
+  }
+
+  console.log("rule 106.8: in a game whose rulebook has it, he reads everyone's open proposals, tickets and ticket discussion, in both conversations, and never a vote or a private chat");
+  {
+    const ow = await createGame(state, { slug: "openwork", name: "Open work", max: 6, rulesBase: rules.base, repo: "busterbenson/openwork" });
+    const oid = d1(state, "SELECT id FROM games WHERE slug = 'openwork'")[0].id;
+    const op = {};
+    for (const [i, n] of ["Ana", "Bo"].entries()) op[n] = await join(A, "openwork", ow.code, { email: `${n.toLowerCase()}@openwork.example.com`, name: n, color: ["teal", "cobalt"][i] });
+    d1(state, `UPDATE games SET status = 'playing', day = 1, phase = 'open' WHERE id = '${oid}'; INSERT OR IGNORE INTO days (game_id, n, starts_at, ends_at, status) VALUES ('${oid}', 1, '2000-01-01T00:00:00.000Z', '2099-01-01T00:00:00.000Z', 'open')`);
+    const pid = Object.fromEntries(["Ana", "Bo"].map((n) => [n, d1(state, `SELECT id FROM players WHERE game_id = '${oid}' AND display_name = '${n}'`)[0].id]));
+    const P = (id, number, player, status, words, extra = "") => `INSERT INTO proposals (id, game_id, number, player_id, day_proposed, day_ballot, kind, scope, target, words, draft_head, after_text, drafted_by, base_sha, mark, status, yes, no, needed, created_at, confirmed_at) VALUES ('${id}', '${oid}', ${number === null ? "NULL" : number}, '${pid[player]}', 1, ${status === "draft" ? "NULL" : 2}, 'addclause', 'clause', '401', '${words}', 'head', 'after ${words}', 'model', 'sha', ${status === "draft" ? "NULL" : "'majority'"}, '${status}', ${status === "on_ballot" ? "7, 5, 4" : "NULL, NULL, NULL"}, '2026-11-10T10:00:00Z', ${status === "draft" ? "NULL" : "'2026-11-10T10:00:00Z'"})`;
+    d1(state, [P("op1", 1, "Bo", "confirmed", "BO-LOCKED-IN-WORDS"), P("op2", null, "Bo", "draft", "BO-SECRET-DRAFT-WORDS"), P("op3", 2, "Bo", "on_ballot", "BO-BALLOT-WORDS")].join("; "));
+    d1(state, `INSERT INTO tickets (id, game_id, number, player_id, title, brief, makes, state, created_at, updated_at) VALUES ('ot1', '${oid}', 1, '${pid.Bo}', 'Bo lantern', 'BO-LANTERN-BRIEF', '[{"kind":"entry","name":"Lantern","catalogKind":"item"}]', 'Proposed', 'x', 'x'), ('ot2', '${oid}', 2, '${pid.Bo}', 'Bo hidden', 'BO-DRAFT-TICKET-BRIEF', '[]', 'Draft', 'x', 'x'), ('ot3', '${oid}', 3, '${pid.Ana}', 'Ana mine', 'ANA-OWN-DRAFT-BRIEF', '[]', 'Draft', 'x', 'x')`);
+    d1(state, `INSERT INTO ticket_posts (ticket_id, game_id, author_kind, player_id, body, at) VALUES ('ot1', '${oid}', 'player', '${pid.Bo}', 'BO-PUBLIC-THREAD-POST', '2026-11-10T10:00:00Z')`);
+    d1(state, `INSERT INTO chat_messages (game_id, player_id, agent, local_date, day, role, body, ticket_id, at) VALUES ('${oid}', '${pid.Bo}', 'gremlin', '2026-11-10', 1, 'player', 'BO-PRIVATE-CHAT-WITH-GREMLIN', NULL, '2026-11-10T10:00:00Z'), ('${oid}', '${pid.Bo}', 'gremlin', '2026-11-10', 1, 'player', 'BO-PRIVATE-TICKET-CHAT', 'ot1', '2026-11-10T10:00:00Z')`);
+    const last = (kind) => calls.filter((c) => c.kind === kind).at(-1);
+    const gOW = await op.Ana.post("/openwork/api/chat/gremlin", { body: Q_WITHDRAW });
+    const gt = last("general")?.lastText ?? "";
+    check("the general conversation's tail holds Bo's locked-in and on-the-ballot proposals, Bo's open ticket with its public post, and Ana's own draft ticket", gOW.status === 200 && /BO-LOCKED-IN-WORDS/.test(gt) && /BO-BALLOT-WORDS/.test(gt) && /BO-LANTERN-BRIEF/.test(gt) && /BO-PUBLIC-THREAD-POST/.test(gt) && /ANA-OWN-DRAFT-BRIEF/.test(gt), gOW.status + " " + gt.slice(0, 300));
+    check("...and not Bo's draft proposal or draft ticket, not the votes (7 yes, 5 no, 4 needed), not Bo's private chat with him", !/BO-SECRET-DRAFT-WORDS|BO-DRAFT-TICKET-BRIEF|BO-PRIVATE-(CHAT|TICKET-CHAT)/.test(gt) && !/\b7\b[^]{0,40}\b5\b/.test(gt.replace(/[^]*Everything here is public work/, "")) && !/yes|no vote|needed/i.test(gt.replace(/[^]*<player_text author="open work">/, "").replace(/<\/player_text>[^]*/, "")), gt.slice(0, 400));
+    const tOW = await op.Ana.post("/openwork/api/chat/gremlin", { ticket: "W3", body: "SYNTH-OPTIONS what is going on" });
+    const tt = last("ticket")?.lastText ?? "";
+    check("the ticket conversation's tail holds it too (Bo's proposals, ticket and post), and not the ticket being drafted twice, nor a draft, a vote or a private chat", tOW.status === 200 && /BO-LOCKED-IN-WORDS/.test(tt) && /BO-LANTERN-BRIEF/.test(tt) && /BO-PUBLIC-THREAD-POST/.test(tt) && !/BO-SECRET-DRAFT-WORDS|BO-DRAFT-TICKET-BRIEF|BO-PRIVATE-(CHAT|TICKET-CHAT)/.test(tt) && (tt.match(/ANA-OWN-DRAFT-BRIEF/g) || []).length === 1, tOW.status + " " + tt.slice(0, 300));
+    const wkLast = generalCallsNow();
+    const gWK = await Ana.post(CH, { body: Q_WITHDRAW });
+    const wt = last("general")?.lastText ?? "";
+    check("in the game without 106.8 (wk) the same turn has no such section: the game's own tail is as before", gWK.status !== undefined && generalCallsNow() === wkLast + 1 && !/open work|Rule 106\.8|BO-LOCKED-IN-WORDS/.test(wt), wt.slice(0, 200));
   }
 
   console.log("no key: she is out (section 4.4)");

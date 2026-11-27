@@ -196,6 +196,17 @@ check("meter: a call's cost is counted from its usage (1000 in + 100 out at sonn
   check("chat: a case's pending entries are in the request's tail (W4 makes Flower, item, Sarah, Ready) and go to the rule check", /W4 makes Flower \(item\), Sarah, Ready/.test(a5.seen.requests[0]) && JSON.stringify(checkPending) === JSON.stringify([{ name: "Flower", catalogKind: "item", ticket: "W4", owner: "Sarah", state: "Ready" }]), JSON.stringify(checkPending));
   check("chat: the draft's uses keep W4 and drop W99, and the grader reads them", JSON.stringify(r5.draft?.uses) === '["W4"]' && codeChecks({ id: "x", agent: "gremlin", expect: { uses: ["W4"] } }, r5, null).every((k) => k.pass) && codeChecks({ id: "x", agent: "gremlin", expect: { uses: ["W5"] } }, r5, null).some((k) => !k.pass), JSON.stringify(r5.draft?.uses));
 
+  // a case's `open_work` (everyone's open proposals and tickets, rule 106.8) reaches the tail only when the scratch game's rulebook has 106.8, and a case's say_names is graded
+  const OW = { proposals: [{ number: 14, name: "Sarah", kind: "addclause", scope: "clause", target: "401", words: "x", draft_head: "h", after_text: "a", mark: "majority", status: "on_ballot", ticket_id: null }], tickets: [], posts: [] };
+  const withRule = { byNum: { ...book2.byNum, "106.8": {} } };
+  const a6 = rig([answer("some words")]);
+  await runChatCase({ ...mk("open-work", ["does it clash?"]), open_work: OW }, { ...a6.x, book: withRule });
+  const a7 = rig([answer("some words")]);
+  await runChatCase({ ...mk("open-work-off", ["does it clash?"]), open_work: OW }, { ...a7.x, book: { byNum: { ...book2.byNum, "106.8": undefined } } });
+  check("chat: a case's open_work is in the request's tail when the rulebook has 106.8 (P14, Sarah), and absent when it does not", /P14 \(Sarah/.test(a6.seen.requests[0]) && !/P14|Rule 106\.8/.test(a7.seen.requests[0]));
+  const named = { turns: [{ say: "That runs against P14 from Sarah." }], draft: null };
+  check("grader: say_names needs his line to name the proposal", codeChecks({ id: "x", agent: "gremlin", expect: { say_names: "P14" } }, named, null).every((k) => k.pass) && codeChecks({ id: "x", agent: "gremlin", expect: { say_names: "P15" } }, named, null).some((k) => !k.pass));
+
   // the wiring: both sides call the one function, and the run loads the catalog
   const chatSrc = readFileSync(join(HERE, "chat.mjs"), "utf8"), routeSrc = readFileSync(join(ROOT, "src", "routes", "api-chat.ts"), "utf8"), runSrc = readFileSync(join(HERE, "run.mjs"), "utf8");
   check("wiring: the route and the harness both call draftTurn from src/lib/draft-turn.js", /import \{ draftTurn \} from "\.\.\/\.\.\/src\/lib\/draft-turn\.js"/.test(chatSrc) && /import \{ draftTurn \} from "\.\.\/lib\/draft-turn\.js"/.test(routeSrc) && /await draftTurn\(/.test(chatSrc) && /await draftTurn\(/.test(routeSrc));
