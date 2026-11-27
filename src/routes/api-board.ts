@@ -26,7 +26,8 @@ export const get = async ({ env, data }: Ctx) => {
   const structures = (await env.DB.prepare("SELECT id, entry_id, x, y, z, w, h FROM structures WHERE game_id = ? AND gone_day IS NULL ORDER BY id").bind(g.id).all()).results as any[];
   const entries = new Map(((bundleFor(g).bundle as any).catalog ?? []).map((e: any) => [e.id, e]));
   // The drawing a rule shows for a creature (701.1): the entry its creatureDrawing hook answers, else its own. Asked only when the game has such a rule.
-  const drawn = rulesFor(g).implementers("creatureDrawing").length ? creatureDrawings(g, await boardContext(env, g)) : {};
+  let drawn: Record<number, string> = {};
+  if (rulesFor(g).implementers("creatureDrawing").length) { try { drawn = creatureDrawings(g, await boardContext(env, g)); } catch (e: any) { console.error(e?.message || e); } }   // the public board still answers without the rules' drawings
   const S = gameSettings(g);
   return json({
     settings: S, // the board's rules as data: public, like the rules text

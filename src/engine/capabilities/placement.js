@@ -16,12 +16,14 @@ export function choosePlacements({ entries, ask, ctx, nextId }) {
     && !creatures.some((c) => c.x === x && c.y === y && c.z === z) && !structures.some((o) => covers(o, x, y, z));
   for (const entry of entries) {
     const size = entry.kind === "structure" ? entry.attrs?.size : undefined;
-    if (entry.kind === "structure" && !size) continue;   // a structure the rules can't size has no footprint to place (704.1)
+    /** Does the whole footprint (one tile for a creature) starting at t lie on charted tiles nothing occupies? @rule 701.5 */
+    const fits = (t) => !size ? free(t.x, t.y, t.z) : Array.from({ length: size.w * size.h }, (_, i) => [t.x + (i % size.w), t.y + Math.floor(i / size.w)]).every(([x, y]) => free(x, y, t.z));
+    if (entry.kind === "structure" && !size) { out.noRoom.push(entry.id); continue; }   // a structure the rules can't size has no footprint to place (704.1)
     let at = ask(entry);
     if (at === null) continue;
+    // A tile a rule named that is not free (uncharted, taken by a piece or by an entry placed a moment ago) is not placed, with a History line, rather than failing the night.
+    if (at !== undefined && !fits(at)) { out.noRoom.push(entry.id); continue; }
     if (at === undefined) {
-      /** @rule 701.5 */
-      const fits = (t) => !size ? free(t.x, t.y, t.z) : Array.from({ length: size.w * size.h }, (_, i) => [t.x + (i % size.w), t.y + Math.floor(i / size.w)]).every(([x, y]) => free(x, y, t.z));
       const candidates = ctx.tiles.list().filter((t) => t.z === 0 && fits(t));
       if (!candidates.length) { out.noRoom.push(entry.id); continue; }
       const t = candidates[Math.floor(ctx.rng() * candidates.length)];

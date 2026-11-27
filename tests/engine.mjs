@@ -11,6 +11,7 @@ import { ACTION_KINDS, HOOKS, RuleError, RuleSetError, assembleRules, deepFreeze
 import { lintModule } from "../src/engine/lint.js";
 import { applyBoard } from "../src/engine/board-night.js";
 import { makeCtx } from "../src/engine/testing.js";
+import placement from "../src/engine/capabilities/placement.js";
 import { checkRulebook, citedRules, parseRulesMd } from "../src/engine/rulesmd.js";
 import { DEFAULT_SETTINGS, validateSettings } from "../src/lib/settings.js";
 import { BundleError, bundleGames, checkTree, latestDayTag, runNode, runSandboxed } from "../scripts/bundle-games.mjs";
@@ -662,6 +663,17 @@ console.log("built entries are placed, structures, a creature's drawing, protect
   check("makeContext carries structures and each entry's requester (null when it has none); structureAt finds the structure holding any of its tiles, and nothing outside",
     cs.structures.length === 1 && cs.catalog[0].requester === "ana" && cs.catalog[1].requester === null && makeContext({ now: "t", settings: {} }).structures.length === 0
     && [[1, 1], [2, 1], [1, 2], [2, 2]].every(([x, y]) => api.structureAt(cs, x, y)?.id === 3) && api.structureAt(cs, 3, 1) === undefined && api.structureAt(cs, 0, 1) === undefined && api.structureAt(cs, 1, 1, 1) === undefined && api.structureAt({}, 1, 1) === undefined);
+  const place = (entries, ask, o = {}) => placement.choosePlacements({ entries, ask, nextId: 1, ctx: makeContext({ now: "t", settings: DEFAULT_SETTINGS, tiles: o.tiles ?? grid, players: o.players ?? [], creatures: [], structures: [], catalog: cat, rng: seededRng("q") }) });
+  const house = { id: "S1", kind: "structure", attrs: { size: { w: 2, h: 2 } } }, house2 = { ...house, id: "S3" }, cat1 = { id: "C2", kind: "creature", attrs: { hearts: 3 } };
+  const big = makeTiles([0, 1, 2, 3, 4, 5].flatMap((x) => [0, 1, 2, 3, 4, 5].map((y) => ({ x, y, z: 0 }))));
+  const r1 = place([house, house2, cat1], () => undefined, { tiles: big });
+  check("choosePlacements: with no rule's say every entry gets its own place (a structure's whole footprint free of the others, a creature on a free tile), and the ids go on from nextId",
+    r1.effects.length === 3 && r1.noRoom.length === 0 && r1.creatures[0].id === 1 && (() => { const b = applyBoard({ n: 4, effects: r1.effects, players: [], creatures: [], catalog: [...cat, { ...cat[0], id: "S3" }], tiles: big, nextId: 1 }); return b.structures.length === 2 && b.creatures.length === 1; })());
+  const same = place([house, house2], () => t(0, 0));
+  check("choosePlacements: two entries a rule sends to the same tile: the second is not placed (a History line), the night does not fail", same.effects.length === 1 && same.noRoom.join() === "S3");
+  check("choosePlacements: a tile a rule names that is uncharted, partly off the chart, or under a piece is not placed; null is not placed and says nothing; no room anywhere = noRoom; a structure with no size = noRoom",
+    place([house], () => t(9, 9)).noRoom.length === 1 && place([house], () => t(3, 3)).noRoom.length === 1 && place([cat1], () => t(0, 0), { players: [P("a", 0, 0)] }).noRoom.length === 1
+    && place([house], () => null).noRoom.length === 0 && place([house], () => null).effects.length === 0 && place([house], () => undefined, { tiles: makeTiles([t(0, 0)]) }).noRoom.length === 1 && place([{ id: "S2", kind: "structure", attrs: {} }], () => undefined).noRoom.length === 1);
   check("placement, creatureDrawing and biteAllowed are wired, and a module that defines them is accepted", HOOKS.placement.wired && HOOKS.creatureDrawing.wired && HOOKS.biteAllowed.wired && HOOKS.biteAllowed.mode === "veto" && throws(() => defineRule({ rule: 640, placement: () => null, creatureDrawing: () => undefined, biteAllowed: () => null })) === null);
 }
 
