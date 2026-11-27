@@ -3,7 +3,7 @@
 // It is NOT part of `npm test` and not in CI: it needs model keys and costs money. Run it by hand or from the mini's launchd job:
 //
 //   node tests/quality/run.mjs --stage chat|night [--only id,id] [--grade] [--no-grade] [--publish] [--cap-usd 1.50]
-//        [--repeat N] [--max-claude-calls 15] [--claude-cap-usd 8] [--rules-ref day-0.23] [--out-dir DIR] [--list] [--from results.json]
+//        [--repeat N] [--day-ceiling-usd 3] [--max-claude-calls 15] [--claude-cap-usd 8] [--rules-ref day-0.23] [--out-dir DIR] [--list] [--from results.json]
 //
 // Exit 0 when every case not marked known_fail passes its code checks; 1 otherwise; 2 for a setup error. What is real and what is
 // stubbed is in the page's table and in the plan (docs: the planner's PLAN.md, section 1). Safety: tests/quality/harness.test.mjs.
@@ -116,7 +116,7 @@ const removed = scrubEnv();   // nothing that reaches the live game, its databas
 for (const k of ["PROMPTOCRACY_MODEL_API_KEY", "GEMINI_API_KEY", "CLAUDE_API_KEY", "ANTHROPIC_API_KEY"]) delete process.env[k];
 if (stage === "night") process.env.CLAUDE_CODE_OAUTH_TOKEN = keys.claude;   // runModel hands claude only this one credential
 
-const meter = new Meter({ capUsd: Number(flag("cap-usd", 1.5)), maxClaudeCalls: Number(flag("max-claude-calls", 15)), claudeCapUsd: Number(flag("claude-cap-usd", 8)), ledgerFile: join(ROOT, ".quality-live-ledger.json") });
+const meter = new Meter({ capUsd: Number(flag("cap-usd", 1.5)), maxClaudeCalls: Number(flag("max-claude-calls", 15)), claudeCapUsd: Number(flag("claude-cap-usd", 8)), dayCeilingUsd: Number(flag("day-ceiling-usd", 3)), ledgerFile: join(ROOT, ".quality-live-ledger.json") });
 const realFetch = globalThis.fetch;
 globalThis.fetch = meter.fetch(realFetch);   // only the two model hosts are reachable from here on
 
