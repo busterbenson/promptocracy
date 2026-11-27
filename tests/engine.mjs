@@ -402,10 +402,11 @@ check("giveItem (704.1): opt-in: no module → refusal; null allows with its rul
   const refusedWins = give([m(706, { giveItem: () => null }), m(707, { giveItem: () => refuse("not today", 409) })]);
   const otherSilent = give([m(706, { giveItem: (c, g, t, e) => (e === "I1" ? null : undefined) }), m(707, { giveItem: () => undefined })]);
   const empty = give([m(706, { giveItem: () => null })], hold(0));
+  const selfGive = assembleRules([one, order, m(706, { giveItem: () => null })]).giveItem(hold(1), A, "a", "I1");
   const bad = throws(() => give([m(706, { giveItem: () => ({ status: 409 }) })]));
   const bad2 = throws(() => give([m(706, { giveItem: () => true })]));
   return none.status === 409 && /no giving of items/.test(none.error) && yes.ok === true && yes.rule === 706 && silent.error === NO_RULE_GIVES && silent.rule === 0 && refusedWins.error === "not today" && refusedWins.rule === 707
-    && otherSilent.ok === true && otherSilent.rule === 706 && empty.status === 409 && empty.error === "You have no Flower." && bad instanceof RuleError && bad.rule === 706 && bad2 instanceof RuleError;
+    && otherSilent.ok === true && otherSilent.rule === 706 && empty.status === 409 && empty.error === "You have no Flower." && selfGive.status === 409 && selfGive.error === "Give it to another player." && bad instanceof RuleError && bad.rule === 706 && bad2 instanceof RuleError;
 })(), "");
 check("makeContext (704.1): players carry items (default {}), turn carries given (default []); both frozen", (() => {
   const c = makeContext({ now: "t", settings: DEFAULT_SETTINGS, players: [{ ref: "a", x: 0, y: 0, items: { I1: 2 } }, { ref: "b", x: 1, y: 1 }], turn: { given: [{ entry: "I1", to: "b" }] } });

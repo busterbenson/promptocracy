@@ -437,6 +437,7 @@ export function assembleRules(modules, { label = "rules" } = {}) {
     /** @rule 704.1 */
     giveItem(ctx, giver, target, entry) {
       const mods = implementers("giveItem");
+      if (target === giver.ref) return { error: "Give it to another player.", status: 409, rule: 0 };   // a give moves an item between two players, whatever the rules say
       if (!mods.length) return { error: "The game's rules have no giving of items.", status: 409, rule: 0 };
       let allowedBy = null;
       for (const m of mods) {
