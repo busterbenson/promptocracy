@@ -101,11 +101,23 @@ with sync_playwright() as p:
         page.click(SLIP + " .wpill"); page.wait_for_selector('#mroot [data-w="unlock"]')
         page.click('#mroot [data-w="unlock"]'); page.wait_for_selector("#wfTitle")
         check(f"{tag}: Unlock on the card, and the chat's slip behind it says DRAFT again", stamp(page) == "DRAFT", stamp(page))
-        # ---- the card's Redraw: the chat's slip shows the new picture
+        # ---- the card's Redraw. The lock-in kept the entry's newest drawing (rule 801.2: with none kept, the newest is kept and shown), so a Redraw after the
+        # Unlock adds a candidate beside it: the slip keeps showing the kept one until the player keeps the new one and makes it the default, and then it follows
         before = shown_src(page)
+        thumbs = lambda: page.locator("#mroot .wkart .artstrip li").count()
+        n_before = thumbs()
         page.click('#mroot [data-w="art"][data-act="redraw"]')
+        # The strip already holds a Save button before the new drawing lands: the first drawing of the entry was never kept (only the newest was, at lock-in), so
+        # waiting on a Save button alone is not waiting on the Redraw. Wait for the strip to grow by one and for the Redraw to be over (Redraw offered again, no
+        # "Drawing" state), then act on the NEW drawing's own buttons, by its hash.
+        page.wait_for_function("(n) => document.querySelectorAll('#mroot .wkart .artstrip li').length > n && !document.querySelector('#mroot .wkart .estate[role=status]') && !!document.querySelector('#mroot [data-w=\"art\"][data-act=\"redraw\"]')", arg=n_before, timeout=25000)
+        new_li = page.locator("#mroot .wkart .artstrip li").last
+        new_hash = new_li.locator('[data-act="save"]').get_attribute("data-hash")
+        check(f"{tag}: Redraw on the card adds a drawing beside the one kept at lock-in, and the slip in the chat still shows the kept one (801.2)", shown_src(page) == before and thumbs() == n_before + 1 and bool(new_hash) and page.locator("#mroot .wkart .is-default").count() == 1)
+        page.click(f'#mroot [data-w="art"][data-act="save"][data-hash="{new_hash}"]'); page.wait_for_selector(f'#mroot [data-w="art"][data-act="default"][data-hash="{new_hash}"]', timeout=25000)
+        page.click(f'#mroot [data-w="art"][data-act="default"][data-hash="{new_hash}"]')
         page.wait_for_function("(b) => { const i = document.querySelector('#chatLog .slip img.mkart'); return i && i.getAttribute('src') !== b; }", arg=before, timeout=25000)
-        check(f"{tag}: Redraw on the card, and the slip in the chat shows the new picture", shown_src(page) != before)
+        check(f"{tag}: the new drawing made the default on the card, and the slip in the chat shows the new picture", shown_src(page) != before)
         # ---- back closes the card; the X gives its history entry back
         page.keyboard.press("Escape"); page.wait_for_timeout(400)
         check(f"{tag}: Escape closes the card and the history is as it was before it opened", not card_open(page) and page.evaluate("history.length") == h0 + 1 and page.url == url0, f"{page.evaluate('history.length')} vs {h0 + 1}")

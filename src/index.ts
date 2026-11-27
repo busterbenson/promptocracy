@@ -194,6 +194,8 @@ async function route(request: Request, env: Env, execCtx: ExecutionContext): Pro
   if (sub === "api" && segs.length === 4 && segs[2] === "moderator" && segs[3] === "agents") return run({ get: apiModerator.agents }, method, ctx);
   if (sub === "api" && segs.length === 4 && segs[2] === "moderator" && segs[3] === "escalations") return run({ get: apiModerator.escalations }, method, ctx);
   if (sub === "api" && segs.length === 4 && segs[2] === "moderator" && segs[3] === "rulings") return run({ get: apiModerator.rulings }, method, ctx);
+  if (sub === "api" && segs.length === 4 && segs[2] === "moderator" && segs[3] === "unkept-drawings") return run({ get: apiModerator.unkeptDrawings }, method, ctx);
+  if (sub === "api" && segs.length === 4 && segs[2] === "moderator" && segs[3] === "keep-drawings") return run({ post: apiModerator.keepDrawings }, method, ctx);
   if (sub === "api" && segs.length === 6 && segs[2] === "moderator" && segs[3] === "escalations" && /^\d{1,9}$/.test(segs[4]) && (segs[5] === "answer" || segs[5] === "delivered" || segs[5] === "ruled")) {
     ctx.params.id = segs[4];
     return run({ post: segs[5] === "answer" ? apiModerator.answer : segs[5] === "ruled" ? apiModerator.ruled : apiModerator.delivered }, method, ctx);

@@ -184,7 +184,9 @@ export async function redrawFailed(ctx: Ctx, game: any, player: any, ticket: any
 
 // ---- saving, and the default ---------------------------------------------------------------------------------------------------------
 // The player's own gate, in the SQL: their draft, not tied to a proposal, the day open for them (EDIT_GUARD).
-const gateOf = (game: any, player: any, ticket: any, nowMs: number) => ({ sql: `ticket_id IN (SELECT id FROM tickets WHERE ${EDIT_GUARD})`, binds: [ticket.id, player.id, ...dayOpenBinds(game.day, nowMs, player.id)] });
+// `system` is the platform keeping a drawing for the player (keepNewest): the ticket has left Draft, so the player's gate cannot hold; its gate is
+// that the ticket is still open and past Draft (KEEP_STATES), checked in the SQL like the player's.
+const gateOf = (game: any, player: any, ticket: any, nowMs: number, system = false) => system ? { sql: `ticket_id IN (SELECT id FROM tickets WHERE id = ? AND state IN (${KEEP_STATES.map(() => "?").join(", ")}))`, binds: [ticket.id, ...KEEP_STATES] } : { sql: `ticket_id IN (SELECT id FROM tickets WHERE ${EDIT_GUARD})`, binds: [ticket.id, player.id, ...dayOpenBinds(game.day, nowMs, player.id)] };
 
 export type Done = { status: number; body: any };
 
@@ -202,7 +204,7 @@ async function ensureCopy(env: Env, hash: string, force: boolean): Promise<{ her
  * A second save of the same drawing changes nothing. A drawing whose tmp/ copy has expired is gone unless the same bytes are already saved.
  * @rule 801.2
  */
-export async function save(env: Env, game: any, player: any, ticket: any, name: string, hash: string, nowMs: number): Promise<Done> {
+export async function save(env: Env, game: any, player: any, ticket: any, name: string, hash: string, nowMs: number, system = false): Promise<Done> {
   const ref: any = await env.DB.prepare("SELECT id, saved FROM art_refs WHERE ticket_id = ? AND lower(entry_name) = lower(?) AND hash = ?").bind(ticket.id, name, hash).first();
   if (!ref) return { status: 404, body: { error: "That is not one of this entry's drawings." } };
   if (ref.saved) {
@@ -218,7 +220,7 @@ export async function save(env: Env, game: any, player: any, ticket: any, name: 
   const n: any = await env.DB.prepare("SELECT COUNT(*) AS n FROM art_refs WHERE ticket_id = ? AND lower(entry_name) = lower(?) AND saved = 1").bind(ticket.id, name).first();
   if ((n?.n ?? 0) >= MAX_SAVED) return { status: 409, body: { error: `An entry keeps at most ${MAX_SAVED} drawings.` } };
   const has: any = await env.DB.prepare("SELECT 1 AS x FROM art_refs WHERE ticket_id = ? AND lower(entry_name) = lower(?) AND is_default = 1").bind(ticket.id, name).first();
-  const g = gateOf(game, player, ticket, nowMs);
+  const g = gateOf(game, player, ticket, nowMs, system);
   let up: any;
   try { up = await env.DB.prepare(`UPDATE art_refs SET saved = 1, is_default = ? WHERE id = ? AND saved = 0 AND ${g.sql}`).bind(has ? 0 : 1, ref.id, ...g.binds).run(); }
   catch { up = null; }   // two saves raced for the default: the other one has it
@@ -234,6 +236,69 @@ export async function save(env: Env, game: any, player: any, ticket: any, name: 
     return threw ? { status: 502, body: { error: "The drawing could not be kept just now. Try again." } } : { status: 409, body: { error: "That drawing is gone. Draw it again." } };
   }
   return { status: 200, body: { ok: true, copied: c.copied } };
+}
+
+/** The tickets past Draft that are still open: their entries keep a drawing (keepNewest). @rule 801.2 */
+export const KEEP_STATES = ["Proposed", "Ready", "On hold", "Approved", "Building"];
+
+/**
+ * The entries of a ticket that has drawings and keeps none (rule 801.2), each with its drawings newest first.
+ * @rule 801.2
+ */
+export async function unkeptEntries(env: Env, ticket: any): Promise<{ name: string; drawings: { id: number; hash: string }[] }[]> {
+  let makes: any[] = [];
+  try { makes = JSON.parse(ticket.makes || "[]"); } catch { /* a ticket whose makes cannot be read has no entries */ }
+  const refs = ((await env.DB.prepare("SELECT id, hash, entry_name, saved FROM art_refs WHERE ticket_id = ? ORDER BY id DESC").bind(ticket.id).all()).results ?? []) as any[];
+  const out: { name: string; drawings: { id: number; hash: string }[] }[] = [];
+  for (const e of entriesOf(makes)) {
+    const mine = refs.filter((r) => r.entry_name.toLowerCase() === e.name.toLowerCase());
+    if (mine.length && !mine.some((r) => r.saved) && !out.some((o) => o.name.toLowerCase() === e.name.toLowerCase())) out.push({ name: e.name, drawings: mine.map((r) => ({ id: r.id, hash: r.hash })) });
+  }
+  return out;
+}
+
+/**
+ * An entry the player kept no drawing of keeps its newest (rule 801.2): called when a ticket leaves Draft, and by the operator script for
+ * the tickets that left it before this rule did. The newest drawing goes through save() (so it is saved, the default, and copied to art/);
+ * one whose tmp/ copy has expired is skipped for the next newest, and an entry with none left keeps none (logged). An entry that already
+ * keeps a drawing is untouched, so a second call changes nothing. Only a ticket in KEEP_STATES; never throws.
+ * @rule 801.2
+ */
+export async function keepNewest(env: Env, game: any, ticket: any, nowMs: number): Promise<{ entry: string; hash: string | null; outcome: "kept" | "gone" | "error" }[]> {
+  const done: { entry: string; hash: string | null; outcome: "kept" | "gone" | "error" }[] = [];
+  if (!KEEP_STATES.includes(ticket?.state)) return done;
+  try {
+    for (const e of await unkeptEntries(env, ticket)) {
+      let outcome: "kept" | "gone" | "error" = "gone", hash: string | null = null;
+      for (const d of e.drawings) {
+        const r = await save(env, game, null, ticket, e.name, d.hash, nowMs, true);
+        if (r.status === 200) { outcome = "kept"; hash = d.hash; break; }
+        if (r.status !== 409) { outcome = "error"; break; }   // the bucket failed just now: not "gone", so a later run tries again
+      }
+      if (outcome !== "kept") console.error(`art: ${ticket.id} ${e.name}: no drawing could be kept (${outcome})`);
+      done.push({ entry: e.name, hash, outcome });
+    }
+  } catch (err: any) { console.error("art: keeping the newest drawing failed:", err?.message || "error"); }
+  return done;
+}
+
+/**
+ * Every open ticket of the game, past Draft, with an entry that has drawings and keeps none, and for each such entry its drawings newest
+ * first with whether a picture still exists for it (tmp/ or art/): the first that does is the one keepNewest keeps. Reads only. @rule 801.2
+ */
+export async function unkeptTickets(env: Env, game: any) {
+  const rows = ((await env.DB.prepare(`SELECT id, number, state, makes FROM tickets WHERE game_id = ? AND state IN (${KEEP_STATES.map(() => "?").join(", ")}) ORDER BY number`).bind(game.id, ...KEEP_STATES).all()).results ?? []) as any[];
+  const out: any[] = [];
+  for (const t of rows) {
+    const entries = [];
+    for (const e of await unkeptEntries(env, t)) {
+      const drawings = [];
+      for (const d of e.drawings) drawings.push({ ...d, here: !!((await env.ART.head(tmpKey(d.hash))) || (await env.ART.head(artKey(d.hash)))) });
+      entries.push({ entry: e.name, drawings, keep: drawings.find((d) => d.here)?.hash ?? null });
+    }
+    if (entries.length) out.push({ ticket: `W${t.number}`, state: t.state, entries });
+  }
+  return out;
 }
 
 /** Picks the drawing the entry shows: it must be one the player saved. @rule 801.2 */

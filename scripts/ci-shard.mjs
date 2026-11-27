@@ -21,7 +21,7 @@ const MINUTES = { "tests/quality/harness.test.mjs": 0.3, "tests/board.mjs": 9.1,
   "tests/design.mjs": 0.3, "tests/catalog.mjs": 0.2, "tests/gremlin.mjs": 0.2, "scripts/check-rule-claims.mjs": 0.1, "scripts/check-ticket-states.mjs": 0.1, "moderator/schedule.test.mjs": 0.1, "moderator/escalations.test.mjs": 0.2,
   // estimates (see above)
   "tests/threads.mjs": 2.2, "tests/gremlin-general.mjs": 2.5, "tests/gremlin-rules.mjs": 0.3, "tests/one-gremlin-migration.mjs": 0.5, "tests/threads-browser.mjs": 2.0, "tests/propose-bar-browser.mjs": 3.0,
-  "tests/ticket-hold.mjs": 1.5, "tests/ticket-hold-browser.mjs": 1.5, "tests/art.mjs": 2.2, "tests/art-sweep.mjs": 0.1, "tests/local-d1.mjs": 0.3, "tests/art-browser.mjs": 2.0 };
+  "tests/ticket-hold.mjs": 1.5, "tests/ticket-hold-browser.mjs": 1.5, "tests/art.mjs": 2.2, "tests/keep-newest.mjs": 1.0, "tests/art-sweep.mjs": 0.1, "tests/local-d1.mjs": 0.3, "tests/art-browser.mjs": 2.0 };
 const DEFAULT = 2.5;
 const file = (cmd) => cmd.replace(/^node\s+/, "");
 
