@@ -173,6 +173,15 @@ check("the action kinds are move, propose, vote, end_turn; and deepFreeze is ide
 
 console.log("effects");
 check("a chart effect needs integer tiles inside the world, at most 500", validateEffect({ type: "chart", tiles: [{ x: 1, y: 2, z: 0 }] }) === null && validateEffect({ type: "chart", tiles: [{ x: 1.5, y: 0 }] }) !== null && validateEffect({ type: "chart", tiles: [{ x: 2e6, y: 0 }] }) !== null && validateEffect({ type: "chart", tiles: Array.from({ length: 501 }, () => ({ x: 0, y: 0 })) }) !== null && validateEffect({ type: "chart" }) !== null);
+check("chart keeps a tile's entry", (() => {
+  const e = effects.chart([{ x: 1, y: 2, entry: "T1" }, { x: 3, y: 4, z: 1 }]);
+  return validateEffect(e) === null && e.tiles[0].entry === "T1" && !("entry" in e.tiles[1]) && J(e.tiles[1]) === J({ x: 3, y: 4, z: 1 }) && validateEffect({ type: "chart", tiles: [{ x: 0, y: 0, entry: "T1" }] }) === null;
+})());
+check("chart refuses an entry that is not a short string", [7, null, "", "T".repeat(41), {}, ["T1"], true].every((entry) => validateEffect({ type: "chart", tiles: [{ x: 0, y: 0, entry }] }) !== null) && validateEffect({ type: "chart", tiles: [{ x: 0, y: 0, entry: "T".repeat(40) }] }) === null && J(effects.chart([{ x: 0, y: 0, entry: 7 }]).tiles) === J([{ x: 0, y: 0, z: 0 }]));
+check("makeTiles exposes entry, null by default", (() => {
+  const t = makeTiles([{ x: 1, y: 2, z: 0 }, { x: 3, y: 4, z: 0, entry: "T2" }]);
+  return t.get(1, 2).entry === null && t.get(3, 4).entry === "T2" && Object.isFrozen(t.get(3, 4)) && t.list().length === 2;
+})());
 check("points, log and champion effects have their own shapes; an unknown type fails", validateEffect({ type: "points", player: "a", delta: 10, reason: "r" }) === null && validateEffect({ type: "points", player: "a", delta: 1.5, reason: "r" }) !== null && validateEffect({ type: "log", template: "t", args: {} }) === null && validateEffect({ type: "log", template: "t", args: [] }) !== null && validateEffect({ type: "champion", player: "a", reason: "r" }) === null && validateEffect({ type: "champion", player: "a" }) !== null && validateEffect({ type: "win", player: "a", reason: "r" }) !== null && validateEffect({ type: "spawn" }) !== null && validateEffect(null) !== null);
 
 console.log("the engine API a game imports");

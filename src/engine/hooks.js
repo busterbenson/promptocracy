@@ -99,7 +99,7 @@ const tileKey = (x, y, z) => `${x},${y},${z}`;
 /** @rule 501 */
 export function makeTiles(rows) {
   const map = new Map();
-  for (const t of rows) map.set(tileKey(t.x, t.y, t.z ?? 0), Object.freeze({ x: t.x, y: t.y, z: t.z ?? 0 }));
+  for (const t of rows) map.set(tileKey(t.x, t.y, t.z ?? 0), Object.freeze({ x: t.x, y: t.y, z: t.z ?? 0, entry: t.entry ?? null }));
   return Object.freeze({
     /** @rule 501 */
     has: (x, y, z = 0) => map.has(tileKey(x, y, z)),
@@ -170,7 +170,7 @@ export function makeContext(o) {
 
 // ---- effects ------------------------------------------------------------------
 // A closed union. The engine validates every effect a module returns and applies it in the action's own batch.
-//   chart  {type:"chart", tiles:[{x,y,z}]}            chart blank tiles (a no-op for charted ones)
+//   chart  {type:"chart", tiles:[{x,y,z,entry?}]}     chart tiles; a tile may name a tile entry of the catalog (701.1), kept only when the tile is newly charted (a no-op for charted ones)
 //   points {type:"points", player, delta, reason}      (applied once points arrive)
 //   log    {type:"log", template, args}                (applied once the day log arrives)
 //   champion {type:"champion", player, reason}         (dayEnd only: this player wins the Era, rule 402)
@@ -224,7 +224,10 @@ export function validateEffect(e) {
   switch (e.type) {
     case "chart":
       if (!Array.isArray(e.tiles) || e.tiles.length > MAX_CHART_TILES) return `chart needs a tiles list of at most ${MAX_CHART_TILES}`;
-      for (const t of e.tiles) if (!t || !validCoord(t.x, t.y, t.z ?? 0)) return "chart has a tile with bad coordinates";
+      for (const t of e.tiles) {
+        if (!t || !validCoord(t.x, t.y, t.z ?? 0)) return "chart has a tile with bad coordinates";
+        if (t.entry !== undefined && !isStr(t.entry, 40)) return "chart has a tile whose entry is not a short string";
+      }
       return null;
     case "points":
       return isStr(e.player, 100) && isInt(e.delta) && isStr(e.reason) ? null : "points needs player, whole delta and reason";
@@ -262,7 +265,7 @@ export function validateEffects(list) {
 // The effect constructors modules use (re-exported by api.js).
 export const effects = Object.freeze({
   /** @rule 504.1 */
-  chart: (tiles) => ({ type: "chart", tiles: tiles.map((t) => ({ x: t.x, y: t.y, z: t.z ?? 0 })) }),
+  chart: (tiles) => ({ type: "chart", tiles: tiles.map((t) => ({ x: t.x, y: t.y, z: t.z ?? 0, ...(typeof t.entry === "string" ? { entry: t.entry } : {}) })) }),
   /** @rule 401 */
   points: (player, delta, reason) => ({ type: "points", player, delta, reason }),
   /** @rule 101 */
