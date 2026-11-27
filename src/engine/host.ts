@@ -12,10 +12,11 @@ import { Env, nowIso, who } from "../lib/util";
 import { applyBoard } from "./board-night.js";
 import { choosePlacements } from "./capabilities/placement.js";
 import { endGameStatements } from "../lib/end";
+import { grantStatements } from "../lib/items";
 import { tileLabel } from "../lib/geometry.js";
-import { APPLIED_EFFECTS, RuleError, assembleRules, cryptoRng, makeContext, makeTiles } from "./hooks.js";
+import { APPLIED_EFFECTS, NO_RULE_GIVES, RuleError, assembleRules, cryptoRng, makeContext, makeTiles } from "./hooks.js";
 
-export { RuleError };
+export { RuleError, NO_RULE_GIVES };
 type Bundle = { slug?: string; day?: number; sha?: string; rulesMd: string; settings: any; modules: any[] };
 type Refusal = { error: string; status: number; rule?: number };
 
@@ -50,11 +51,20 @@ export function rulesFor(game: { slug: string }) {
 }
 
 type PlayerRow = { id: string; color: string; score: number; x: number; y: number; z: number; hearts?: number; dead_day?: number | null; ghost_day?: number | null };
+type Held = Record<string, Record<string, number>>; // player id -> entry id -> how many (rule 704.1)
 /** A player's state (rule 603.1): living, dead, or a Ghost (603.3). @rule 603.1, 603.3 */
 export const stateOf = (p: { dead_day?: number | null; ghost_day?: number | null }): "living" | "dead" | "ghost" => (p.dead_day == null ? "living" : p.ghost_day != null ? "ghost" : "dead");
 /** @rule 102, 603.1 */
-const playersOf = (rows: PlayerRow[]) => rows.map((p) => ({ ref: p.id, color: p.color, score: p.score, x: p.x, y: p.y, z: p.z, hearts: p.hearts ?? 3, state: stateOf(p), deadDay: p.dead_day ?? null }));
+const playersOf = (rows: PlayerRow[], held: Held = {}) => rows.map((p) => ({ ref: p.id, color: p.color, score: p.score, x: p.x, y: p.y, z: p.z, hearts: p.hearts ?? 3, state: stateOf(p), deadDay: p.dead_day ?? null, items: held[p.id] ?? {} }));
 const PLAYER_COLS = "id, color, score, x, y, z, hearts, dead_day, ghost_day";
+
+/** The items each player holds (rule 704.1). @rule 704.1 */
+export async function loadHeld(env: Env, gameId: string): Promise<Held> {
+  const held: Held = {};
+  const rows = (await env.DB.prepare("SELECT player_id, entry_id, SUM(count) AS n FROM player_items WHERE game_id = ? AND count > 0 GROUP BY player_id, entry_id").bind(gameId).all()).results as any[];
+  for (const r of rows) (held[r.player_id] ??= {})[r.entry_id] = r.n;
+  return held;
+}
 
 type CreatureRow = { id: number; entry_id: string; x: number; y: number; z: number; hearts: number | null; rests_night: number | null };
 /** The creatures on the board (not gone), in the order they appeared (rule 602). @rule 602.4 */
@@ -90,9 +100,16 @@ const structuresOf = (rows: StructureRow[]) => rows.map((r) => ({ id: r.id, entr
 const biteRulesOf = (game: { slug: string }) => bundleFor(game).bundle.modules;
 // The acting player's turn today (rule 202.1: one turn a day each). `turn.moved` is whether they have moved in it; the
 // legacy round/turn numbers stay in ctx for the modules written against them (the engine is additive only).
-type Today = { moved?: boolean; gave?: boolean } | null | undefined;
-/** @rule 202.1, 202.2 */
-const turnOf = (game: any, today: Today) => ({ round: game.round, turn: game.turn, moved: !!today?.moved, gave: !!today?.gave });
+// `given` is what they gave today of items (rule 704.1).
+type Today = { moved?: boolean; gave?: boolean; given?: { entry: string; to: string }[] } | null | undefined;
+/** @rule 202.1, 202.2, 704.1 */
+const turnOf = (game: any, today: Today) => ({ round: game.round, turn: game.turn, moved: !!today?.moved, gave: !!today?.gave, given: today?.given ?? [] });
+
+/** The items `giver` gave today: [{entry, to}] (rule 704.1). The once-a-day state is these rows (item_moves) themselves. @rule 704.1 */
+export async function loadGiven(env: Env, gameId: string, giverId: string, day: number | null): Promise<{ entry: string; to: string }[]> {
+  if (day == null) return [];
+  return ((await env.DB.prepare("SELECT entry_id, player_id FROM item_moves WHERE game_id = ? AND kind = 'give' AND from_player_id = ? AND day = ? ORDER BY id").bind(gameId, giverId, day).all()).results as any[]).map((r) => ({ entry: r.entry_id, to: r.player_id }));
+}
 
 // A context with no board in it: enough for the questions the turn guard asks (may this player move at all?).
 /** `me` is the acting player's row, so a rule can see their state (rule 603.1). @rule 202.2, 603.1 */
@@ -103,15 +120,16 @@ export function lightContext(game: any, today?: Today, me?: PlayerRow) {
 // The full context for a move or a spawn: the settings, every piece and every charted tile.
 /** @rule 501 */
 export async function boardContext(env: Env, game: any, today?: Today) {
-  const [tiles, pieces, creatures, structures, catalog] = await Promise.all([
+  const [tiles, pieces, creatures, structures, catalog, held] = await Promise.all([
     loadTiles(env, game.id),
     env.DB.prepare(`SELECT ${PLAYER_COLS} FROM players WHERE game_id = ?`).bind(game.id).all(),
     loadCreatures(env, game.id),
     loadStructures(env, game.id),
     catalogWithRequesters(env, game),
+    loadHeld(env, game.id),
   ]);
   return makeContext({
-    day: game.day || null, now: nowIso(), settings: gameSettings(game), players: playersOf(pieces.results as PlayerRow[]),
+    day: game.day || null, now: nowIso(), settings: gameSettings(game), players: playersOf(pieces.results as PlayerRow[], held),
     creatures: creaturesOf(creatures, game.day || null), structures: structuresOf(structures), catalog,
     tiles: makeTiles(tiles), turn: turnOf(game, today), rng: cryptoRng(), biteRules: biteRulesOf(game),
   });
@@ -166,6 +184,30 @@ export function checkGiveHeart(game: any, ctx: any, giver: { ref: string }, targ
   }
 }
 
+// Does the game have giving of items at all (a module for the giveItem hook, rule 704.1)? The day's answer offers it only then.
+/** @rule 704.1 */
+export const hasGiveItem = (game: any): boolean => rulesFor(game).implementers("giveItem").length > 0;
+
+/** The catalog's items (rule 704.1: what can be given). @rule 704.1, 701.1 */
+export const itemEntriesOf = (game: any): { id: string; name: string | null; attrs: Record<string, unknown> }[] =>
+  catalogOf(game).filter((e: any) => e.kind === "item");
+
+// May `giver` give `target` the item `entry` (rule 704.1)? Every rule's actionAllowed may veto it, as any turn action; then the giveItem hook, which is
+// opt-in and needs one rule that allows it (an item no rule is about can't be given). {ok, rule}: the rule that allowed it, or the refusal the route sends.
+/** @rule 704.1 */
+export function checkGiveItem(game: any, ctx: any, giver: { ref: string }, target: string, entry: string): { ok: true; rule: number } | Refusal {
+  const vetoed = checkAction(game, ctx, giver, { kind: "give_item", target, entry });
+  if (vetoed) return vetoed;
+  try {
+    const r = rulesFor(game).giveItem(ctx, giver, target, entry);
+    return r.ok ? { ok: true, rule: r.rule } : { error: r.error, status: r.status, rule: r.rule };
+  } catch (e) {
+    if (!(e instanceof RuleError)) throw e;
+    console.error(e.message);
+    return { error: "A rule could not be checked. Try again later.", status: 500, rule: e.rule };
+  }
+}
+
 // Runs the game's afterAction hooks and turns the effects into D1 statements for the action's own batch.
 /** @rule 504, 701.1 */
 export function afterActionStatements(env: Env, game: any, ctx: any, actor: { ref: string }, action: any, now = nowIso()) {
@@ -173,6 +215,14 @@ export function afterActionStatements(env: Env, game: any, ctx: any, actor: { re
   const tileEntries = new Set<string>(catalogOf(game).filter((e: any) => e.kind === "tile").map((e: any) => e.id));
   for (const e of rulesFor(game).afterAction(ctx, actor, action)) {
     if (!APPLIED_EFFECTS.includes(e.type)) throw new RuleError(0, "afterAction", new Error(`the ${e.type} effect is not applied yet`));
+    if (e.type === "grant") {
+      // A grant names a player of the game and an item entry of the catalog (rule 704.1): the rule picked both from ctx, so a mismatch is the rule's bug.
+      const item = itemEntriesOf(game).find((i) => i.id === e.entry);
+      if (!item) throw new RuleError(0, "afterAction", new Error(`grant names ${e.entry}, which is not an item entry of the catalog`));
+      if (!ctx.players.some((p: any) => p.ref === e.player)) throw new RuleError(0, "afterAction", new Error(`grant names ${e.player}, who is not a player of the game`));
+      stmts.push(...grantStatements(env, game, e.player, item, e.count, { now }));
+      continue;
+    }
     for (const t of e.tiles) {
       // A tile entry must be one of the catalog's tile entries (rule 701.1): the rule picked it from ctx.catalog, so a mismatch is the rule's bug.
       if (t.entry != null && !tileEntries.has(t.entry)) throw new RuleError(0, "afterAction", new Error(`chart names ${t.entry}, which is not a tile entry of the catalog`));
@@ -198,7 +248,7 @@ export async function chooseSpawn(env: Env, game: any) {
 /** @rule 401, 402 */
 async function nightContext(env: Env, game: any, nowMs: number) {
   const pieces = await env.DB.prepare(`SELECT ${PLAYER_COLS} FROM players WHERE game_id = ?`).bind(game.id).all();
-  return makeContext({ day: game.day || null, now: nowIso(nowMs), settings: gameSettings(game), players: playersOf(pieces.results as PlayerRow[]),
+  return makeContext({ day: game.day || null, now: nowIso(nowMs), settings: gameSettings(game), players: playersOf(pieces.results as PlayerRow[], await loadHeld(env, game.id)),
     creatures: creaturesOf(await loadCreatures(env, game.id), game.day || null), structures: structuresOf(await loadStructures(env, game.id)),
     catalog: await catalogWithRequesters(env, game), biteRules: biteRulesOf(game) });
 }

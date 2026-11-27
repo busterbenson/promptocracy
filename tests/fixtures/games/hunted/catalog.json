@@ -1,3 +1,34 @@
 [
-  { "id": "C1", "name": "Blob", "kind": "creature", "attrs": { "temper": "hostile", "hearts": 3 }, "flavor": {} }
+  {
+    "id": "C1",
+    "name": "Blob",
+    "kind": "creature",
+    "attrs": {
+      "temper": "hostile",
+      "hearts": 3
+    },
+    "flavor": {}
+  },
+  {
+    "id": "I1",
+    "name": "Flower",
+    "kind": "item",
+    "attrs": {
+      "acquired": "706"
+    },
+    "flavor": {},
+    "madeBy": "W4",
+    "day": 0
+  },
+  {
+    "id": "I2",
+    "name": "Pebble",
+    "kind": "item",
+    "attrs": {
+      "acquired": "704"
+    },
+    "flavor": {},
+    "madeBy": "W5",
+    "day": 0
+  }
 ]

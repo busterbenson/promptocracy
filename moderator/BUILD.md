@@ -38,7 +38,7 @@ after you and tells you what failed.
    file as `"repairs": [{"what": "one short phrase", "why": "one short phrase"}]`.
 4. **The code matches the text.** A rule that does something has a module `rules/<n>.ts` exporting
    `defineRule({ rule: <n>, <hook>(...) {...} })` from `promptocracy/engine`. Hooks: `actionAllowed` (refuse an action),
-   `afterAction` (chart effects; a newly charted tile can be given a catalog tile entry: `effects.chart([{x, y, z, entry: "T1"}])`, read back as `ctx.tiles.get(x, y, z).entry`; pick at random with `ctx.rng()`, never Math.random), `spawnTile`, `applyOrder`, `onEnacted`, `dayEnd`, `night` (board effects: appear, step,
+   `afterAction` (chart effects; a newly charted tile can be given a catalog tile entry: `effects.chart([{x, y, z, entry: "T1"}])`, read back as `ctx.tiles.get(x, y, z).entry`; pick at random with `ctx.rng()`, never Math.random), `spawnTile`, `applyOrder`, `onEnacted`, `dayEnd`, `giveItem(ctx, giver, target, entry)` (may `giver` give `target` the catalog item `entry`: return `refuse(...)` to refuse, `null` to allow, nothing for an item the rule is not about; the site moves it, the giver loses one and the receiver holds one more, read back as `ctx.players[i].items[id]`; `ctx.turn.given` lists the giver's gives today), `night` (board effects: appear, step,
    move, bite, rest, rise). Every function carries a JSDoc `/** @rule <n> */` tag naming a rule or clause that exists in
    `RULES.md`. Import nothing but `promptocracy/engine` (tests may also import `node:test`, `node:assert/strict` and
    `promptocracy/engine/testing`). No `fetch`, `globalThis`, `eval`, `Function`, `process`, `env`, `caches` or dynamic

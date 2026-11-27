@@ -526,11 +526,16 @@ import { hold } from "/js/busy.js";
     const stRef = king(p) ? chip("404") : p.state === "ghost" ? chip("604") : p.state === "dead" ? chip("603.3") : "";
     const giveInfo = DAY && DAY.you && DAY.you.give_heart && DAY.you.give_heart[p.color.key];
     const give = p.state === "dead" && giveInfo ? `<div class="cs"><dt>Revive</dt><dd><button type="button" class="btn small givebtn" data-give="${esc(p.color.key)}"${giveInfo.allowed ? "" : " disabled"}>Give ${esc(p.name)} a heart</button></dd><span class="rr">${chip("603.4")}</span>${giveInfo.allowed ? "" : `<p>${esc(giveInfo.reason || "")}</p>`}</div>` : "";
+    // Holds (rule 704.1): the catalog items this player holds, each with its drawing, its name as an entry link and "x N" when more than one. Omitted when they hold nothing.
+    const holds = (p.items || []).length ? row("Holds", p.items.map(it => `<span class="hold">${(WS && WS.entryArt(it.entry)) || ""}<button type="button" class="linkbtn" data-entry="${esc(it.entry)}">${esc(it.name)}</button>${it.count > 1 ? ` <span class="xn">\u00d7${esc(it.count)}</span>` : ""}</span>`).join(""), p.items.map(it => it.acquired ? chip(esc(String(it.acquired))) : "").join("")) : "";
+    // Give (rule 704.1): one row per item some rule lets you give, on another living-or-not player's card, never your own; a disabled button carries its reason.
+    const giveItems = me ? "" : Object.entries((DAY && DAY.you && DAY.you.give_item && DAY.you.give_item[p.color.key]) || {}).map(([id, c]) =>
+      `<div class="cs"><dt>Give</dt><dd><button type="button" class="btn small givebtn" data-giveitem="${esc(p.color.key)}" data-item="${esc(id)}"${c.allowed ? "" : " disabled"}>Give ${esc(p.name)} a ${esc(c.name)}</button></dd><span class="rr">${chip("704.1")}</span>${c.allowed ? "" : `<p>${esc(c.reason || "")}</p>`}</div>`).join("");
     const rows = [row("Hearts", heartsHTML(p.hearts), chip("601") + stRef, ""), row("Points", esc(p.score), chip("401") + chip("402"), "", "points-text"),
       row("Today", esc(today), chip("202"), "", "player-today"),
       row("Piece", esc(p.state === "ghost" ? "Ghost" : pieceName(p.shape)), chip(p.state === "ghost" ? "604" : "504"), board ? `At ${esc(noLevel(board.at.label))}. Moves ${Number(R.move_distance) === 1 ? "one space" : (Number(R.move_distance) || 1) + " spaces"} a day${R.diagonal_moves ? ", diagonals included" : ""}, and charts the tiles within ${Number(S["board.chart_radius"]) || 2}.` : "")];
     return { cls: "crit", label: p.name, backLabel: p.name,
-      html: `<div class="mtop"><div class="cart">${mini(p, "cartico")}</div><h2>${esc(p.name)}${me ? ' <span class="you">(you)</span>' : ""}</h2><span class="mmeta">${esc(p.color.name)} · player</span><span class="mpill">${esc(stateText(p))}</span></div><dl class="cstats">${rows.join("")}${give}</dl>` };
+      html: `<div class="mtop"><div class="cart">${mini(p, "cartico")}</div><h2>${esc(p.name)}${me ? ' <span class="you">(you)</span>' : ""}</h2><span class="mmeta">${esc(p.color.name)} · player</span><span class="mpill">${esc(stateText(p))}</span></div><dl class="cstats">${rows.join("")}${holds}${give}${giveItems}</dl>` };
   }
   // Things on the board that are not a player's piece. Each is an instance of a catalog entry, and its card is keyed by the entry's kind
   // (creature today). A new kind (an item, a structure) adds one line here and its rows below: the tap, the card host, the tile list
@@ -675,6 +680,15 @@ import { hold } from "/js/busy.js";
     if (TAB === "summary") drawBook();
   }
   document.addEventListener("click", async e => {
+    const gi = e.target.closest("[data-giveitem]");
+    if (gi && !gi.disabled) {
+      await hold(gi, async () => {
+        const r = await api("/api/give-item", { player: gi.dataset.giveitem, entry: gi.dataset.item });
+        await refresh(); await loadDay();
+        if (!r.ok) { const c = $("mroot").querySelector(".mcard dl"); if (c) c.insertAdjacentHTML("beforeend", `<p class="notice err" role="alert">${esc((r.data && r.data.error) || "Something went wrong.")}</p>`); }
+      });
+      return;
+    }
     const g = e.target.closest("[data-give]");
     if (!g || g.disabled) return;
     await hold(g, async () => {

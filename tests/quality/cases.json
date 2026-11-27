@@ -847,6 +847,47 @@
       "known_fail": null
     },
     {
+      "id": "r-flower-w4",
+      "agent": "gremlin",
+      "start": "general",
+      "title": "W4's words: a living player gives a Flower to another player (items players hold and give)",
+      "pending": [
+        {
+          "ticket": 4,
+          "owner": "Sarah",
+          "state": "Approved",
+          "name": "Flower",
+          "catalogKind": "item"
+        }
+      ],
+      "turns": [
+        "Once a day, a living player can give a Flower to another player, and it shows on that player's card."
+      ],
+      "if_asked": [],
+      "intent": "The engine can let a player give an item to another player (the giveItem hook: the site moves it, the giver loses one, the receiver holds one more, shown as ctx.players[i].items and ctx.turn.given), the Flower is an entry W4 is making (703.4), and the card shows what a player holds, so nothing is missing: the rule check passes it (status ok) with no engine note, the draft is a new rule recording uses W4, and Lock it in is allowed. Before the capability the night-3 dry run said needs_engine.",
+      "expect": {
+        "ends_in": "proposal",
+        "no_escalation": true,
+        "no_dead_end": true,
+        "first_answer": {
+          "check": "ok",
+          "engine_note": false,
+          "kind": [
+            "add",
+            "addclause"
+          ],
+          "words_re": [
+            "flower",
+            "give"
+          ]
+        },
+        "uses": [
+          "W4"
+        ]
+      },
+      "known_fail": null
+    },
+    {
       "id": "r-dott-edge",
       "agent": "gremlin",
       "start": "general",

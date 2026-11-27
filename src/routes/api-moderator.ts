@@ -35,7 +35,8 @@ import { builderOn, clockNow, deployDeadline, deployedSha, notAppliedStatements,
 import { claimRows, claimStatements, pendingBuilds, readBuilds } from "../lib/builds.js";
 import { localDate } from "../lib/day-gate.js";
 import { notificationText } from "../lib/escalate.js";
-import { orderPassed } from "../engine/host";
+import { itemEntriesOf, orderPassed } from "../engine/host";
+import { grantStatements } from "../lib/items";
 import { Ctx, json, nowIso, readJson, sha256Hex } from "../lib/util";
 
 const SHA = /^[0-9a-f]{40}$/;
@@ -391,4 +392,52 @@ export const ruled = async (ctx: Ctx) => {
   ]);
   if (!((res[0] as any)?.meta?.changes > 0)) return json({ error: "Already ruled." }, 409);
   return json({ ok: true, where: e.ticket_id ? "ticket" : "chat" });
+};
+
+// The operator's one-time grant of an item to every player (Buster, 2026-11-27: "To start give every player 1 flower"): not a rule and not code that runs on its
+// own. A grant id names it, so running it twice grants once (item_moves' unique index on (game, grant id, player)). The plan (GET) says who would get it; the grant (POST) writes it.
+/** @rule 704.1 */
+async function grantPlan(ctx: Ctx, q: { entry?: unknown; count?: unknown; grant?: unknown }) {
+  const game = ctx.data.game!;
+  const entry = typeof q.entry === "string" ? q.entry : "", grant = typeof q.grant === "string" ? q.grant : "";
+  const count = Number(q.count);
+  const item = itemEntriesOf(game).find((e) => e.id === entry);
+  if (!item) return { error: "No such item in the catalog." as const };
+  if (!Number.isInteger(count) || count < 1 || count > 99) return { error: "count is a whole number from 1 to 99." as const };
+  if (!/^[a-z0-9][a-z0-9._-]{0,63}$/i.test(grant)) return { error: "grant is a short id (letters, digits, . _ -) that names this grant, so it happens once." as const };
+  const players = ((await ctx.env.DB.prepare(
+    `SELECT p.id, p.display_name AS name, p.color,
+            EXISTS (SELECT 1 FROM item_moves m WHERE m.game_id = p.game_id AND m.grant_id = ? AND m.player_id = p.id) AS done
+     FROM players p WHERE p.game_id = ? ORDER BY p.turn_order`,
+  ).bind(grant, game.id).all()).results ?? []) as any[];
+  return { item, count, grant, players };
+}
+
+/** What the grant would do: each player and whether they already have it. Reads only. @rule 704.1 */
+export const grantItemsPlan = async (ctx: Ctx) => {
+  if (!(await authorized(ctx))) return unauthorized();
+  const u = new URL(ctx.request.url);
+  const plan = await grantPlan(ctx, { entry: u.searchParams.get("entry"), count: u.searchParams.get("count"), grant: u.searchParams.get("grant") });
+  if ("error" in plan) return json({ error: plan.error }, 400);
+  return json({ entry: plan.item.id, name: plan.item.name, count: plan.count, grant: plan.grant, players: plan.players.map((p) => ({ name: p.name, color: p.color, already: !!p.done })) });
+};
+
+/** Grants the item to every player who has not had this grant, one batch per player (a second run grants nobody). @rule 704.1 */
+export const grantItems = async (ctx: Ctx) => {
+  if (!(await authorized(ctx))) return unauthorized();
+  const body = await readJson(ctx.request);
+  const plan = await grantPlan(ctx, body ?? {});
+  if ("error" in plan) return json({ error: plan.error }, 400);
+  const game = ctx.data.game!, now = nowIso(await clockNow(ctx.env)), granted: string[] = [], already: string[] = [];
+  for (const p of plan.players) {
+    if (p.done) { already.push(p.name); continue; }
+    try {
+      await ctx.env.DB.batch(grantStatements(ctx.env, game, p.id, plan.item, plan.count, { now, grantId: plan.grant }));
+      granted.push(p.name);
+    } catch (e: any) {
+      if (/UNIQUE constraint failed/i.test(String(e?.message || e) + String(e?.cause?.message || ""))) { already.push(p.name); continue; }   // a racing run got there first
+      throw e;
+    }
+  }
+  return json({ ok: true, granted, already });
 };

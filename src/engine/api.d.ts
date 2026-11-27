@@ -3,7 +3,9 @@
 /** `entry` is the tile's catalog tile entry id (701.1), or null for a blank tile. */
 export type Tile = { x: number; y: number; z: number; entry?: string | null };
 export type Settings = Record<string, any>;
-export type Player = { ref: string; color: string; score: number; x: number; y: number; z: number; living: boolean; hearts: number; state: "living" | "dead" | "ghost"; deadDay: number | null };
+export type Player = { ref: string; color: string; score: number; x: number; y: number; z: number; living: boolean; hearts: number; state: "living" | "dead" | "ghost"; deadDay: number | null;
+  /** The catalog items they hold: entry id to how many (rule 704.1). {} when none. */
+  items: Readonly<Record<string, number>> };
 export type Creature = { id: number; entry: string; x: number; y: number; z: number; hearts: number | null; resting: boolean };
 /** An entry of the catalog. `madeBy` is the commission that made it ("W4"), `name` its name; null when the entry has none (rule 703.4). `requester` is the ref of the player whose commission made it (null for a starter entry). */
 export type CatalogEntry = { id: string; kind: string; name: string | null; madeBy: string | null; requester: string | null; attrs: Record<string, unknown> };
@@ -33,7 +35,9 @@ export type Ctx = {
   /** Float in [0, 1). */
   rng: () => number;
   /** The turn model of the games that still run on turns. Goes when days arrive. */
-  turn: { round: number; turn: number; moved: boolean; gave: boolean };
+  turn: { round: number; turn: number; moved: boolean; gave: boolean;
+    /** The items the acting player has given today, [{entry, to}] (rule 704.1). */
+    given: ReadonlyArray<{ entry: string; to: string }> };
   judge?: (question: string) => unknown;
 };
 export type Actor = { ref: string };
@@ -43,11 +47,15 @@ export type Action =
   | { kind: "vote" }
   | { kind: "end_turn" }
   /** Give one of your hearts to a dead player's piece next to you (rule 603.4). target: the dead player's ref. */
-  | { kind: "give_heart"; target?: string };
+  | { kind: "give_heart"; target?: string }
+  /** Give another player an item of the catalog (rule 704.1). target: the receiver's ref; entry: the item's catalog id. */
+  | { kind: "give_item"; target?: string; entry?: string };
 /** A refusal. status is 400 (default), 403, 409 or 500. */
 export type Refusal = { error: string; status?: 400 | 403 | 409 | 500 };
 export type Effect =
   | { type: "chart"; tiles: Tile[] }
+  /** afterAction only: gives the player `count` of a catalog item (rule 704.1), recorded as held and logged in History. A rule's way to hand out an item (picking one up). */
+  | { type: "grant"; player: string; entry: string; count: number }
   | { type: "points"; player: string; delta: number; reason: string }
   | { type: "log"; template: string; args: Record<string, unknown> }
   | { type: "champion"; player: string; reason: string }
@@ -90,6 +98,11 @@ export type Hooks = {
   /** Whether `giver` may give the dead player `target` (a ref) one of their hearts (rule 603.4). null, or a refusal. A game with no module
    *  for this hook has no giving of hearts. Every module's actionAllowed is asked first, with { kind: "give_heart", target }. */
   giveHeart?(ctx: Ctx, giver: Actor, target: string): Refusal | null;
+  /** Whether `giver` may give `target` (a ref) the catalog item `entry` (rule 704.1). `refuse(...)` refuses; `null` allows; `undefined` says nothing (the rule is
+   *  not about that item). A give needs at least one rule that answers null and none that refuses; the site then records the item as held by the receiver and the
+   *  giver keeps theirs (read it back as ctx.players[i].items[entry]; ctx.turn.given lists the giver's gives today). A game with no module for this hook has no giving of
+   *  items. Every module's actionAllowed is asked first, with { kind: "give_item", target, entry }. */
+  giveItem?(ctx: Ctx, giver: Actor, target: string, entry: string): Refusal | null | undefined;
   /** An action type (rule 103.5). A module has both or neither; its type id is unique in the game. */
   actionType?(): ActionType;
   /** Does the action when a passed action proposal of this module's type is applied. Only points effects. Answer refuse(...) when the
@@ -121,6 +134,7 @@ export const effects: {
   appear(entry: string, tile: { x: number; y: number; z?: number }): Effect;
   /** night only: put a structure entry on the board; `tile` is the lowest x and y of its footprint (rule 701.5). */
   place(entry: string, tile: { x: number; y: number; z?: number }): Effect;
+  grant(player: string, entry: string, count?: number): Effect;
   step(creature: number, to: { x: number; y: number; z?: number }): Effect;
   /** night only: move this living player's piece to a charted, unoccupied tile (rule 504.2's guards). A refused move is skipped and logged; it does not chart. */
   move(player: string, to: { x: number; y: number; z?: number }, reason?: string): Effect;
