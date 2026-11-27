@@ -1,5 +1,6 @@
 // Shared plumbing for the quality harness (tests/quality/run.mjs): keys, the guards that keep a run away from the live game,
 // the cost meter and its caps. Nothing here prints, logs or returns a key value except loadKeys() to its caller.
+import { OPEN_WORK_RULE, openWorkFrom } from "../../src/lib/open-work.js";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { existsSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
@@ -156,4 +157,13 @@ export function entriesOf(c, catalog) {
     built: (catalog || []).map((e) => ({ id: e.id, name: e.name, kind: e.kind, madeBy: e.madeBy ?? null })),
     pending: (c.pending || []).map((p) => ({ name: p.name, catalogKind: p.catalogKind, ticket: `W${p.ticket}`, owner: p.owner, state: p.state })),
   };
+}
+
+/**
+ * What rule 106.8 shows him (everyone's open proposals, tickets and ticket discussion): `case.open_work` ({proposals, tickets, posts}, rows as the route reads them from the
+ * database), shaped by the platform's own openWorkFrom, and only when the scratch game's rulebook has 106.8, as the route gates it. A case with none, or a rulebook without
+ * 106.8, gives null.
+ */
+export function openWorkOf(c, book) {
+  return c.open_work && book?.byNum?.[OPEN_WORK_RULE] ? openWorkFrom(c.open_work) : null;
 }

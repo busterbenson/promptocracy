@@ -8,7 +8,7 @@ import { checkQuote, generalSchema, plainForQuote, readGeneralAnswer, generalReq
 import { draftTurn } from "../../src/lib/draft-turn.js";
 import { STARTER_CATALOG } from "../lib.mjs";
 import { mentionedEntries } from "../../src/lib/entries.js";
-import { CapReached, entriesOf } from "./lib.mjs";
+import { CapReached, entriesOf, openWorkOf } from "./lib.mjs";
 import { pipeline } from "./pipeline.mjs";
 
 export const PLAYERS = [{ id: "ada", name: "Ada" }, { id: "bo", name: "Bo" }, { id: "cy", name: "Cy" }];
@@ -60,11 +60,12 @@ async function generalCase(c, x, res, o) {
   const state = { draft: false, lastSay: "" };
   const env = { MODEL_API_KEY: x.keys.model };
   const entries = entriesOf(c, x.catalog);   // the catalog's entries and what the case's open commissions make (rules 701.4, 703.4)
+  const openWork = openWorkOf(c, x.book);   // everyone's open proposals, tickets and ticket discussion, in a rulebook with 106.8 (rule 106.8)
   for (let message = nextLine(c, sent, state); message !== null; message = nextLine(c, ++sent, state)) {
     x.meter.guard(63_000, `${c.id} turn ${sent + 1}`);
     const request = (retry, found, foundMode) => generalRequest({
       rulesMd: x.rulesMd, localDate: LOCAL_DATE, perDay: PER_DAY, actions: x.actions, history, label: "Ada", message, rule: null,
-      slip, drafted, made: 0, limit: PER_DAY, noDraft: null, retry, found, foundMode, redraft: null, entries,
+      slip, drafted, made: 0, limit: PER_DAY, noDraft: null, retry, found, foundMode, redraft: null, entries, openWork,
     });
     const { system, messages } = request();
     const turn = { player: message, say: null, quotes: [], dropped: [], escalate: null, asked_for: null, outcome: null, micro: 0, ms: 0, usage: null };
@@ -151,11 +152,12 @@ async function gremlinCase(c, x, res, o) {
   const mood = MOODS.find((m) => m[0] === "charmed") || moodOf("quality", LOCAL_DATE);
   const env = { MODEL_API_KEY: x.keys.model };
   const entries = entriesOf(c, x.catalog);   // the catalog's entries and what the case's open commissions make (rules 701.4, 703.4)
+  const openWork = openWorkOf(c, x.book);   // everyone's open proposals, tickets and ticket discussion, in a rulebook with 106.8 (rule 106.8)
   let sent = 0, message = nextLine(c, sent, { draft: true }), moved = !!o.moved;
   res.catalog_shape = "STARTER_CATALOG";   // the scratch game's catalog.json is a different shape; the starter catalog is what the evals use
   while (message !== null) {
     x.meter.guard(63_000, `${c.id} turn ${sent + 1}`);
-    const { system, messages } = gremlinRequest({ ceiling: CEILING, rulesMd: x.rulesMd, mood, localDate: LOCAL_DATE, catalog: STARTER_CATALOG, history, ticket, posts: [], queueDepth: 0, rejected: [], label: "Ada", message, noWrite: null, entries });
+    const { system, messages } = gremlinRequest({ ceiling: CEILING, rulesMd: x.rulesMd, mood, localDate: LOCAL_DATE, catalog: STARTER_CATALOG, history, ticket, posts: [], queueDepth: 0, rejected: [], label: "Ada", message, noWrite: null, entries, openWork });
     const turn = { player: message, say: null, refusal: null, patch: null, rejected: [], escalate: null, outcome: null, micro: 0, ms: 0, usage: null };
     res.turns.push(turn);
     const { value: r, slot } = await x.meter.slotted(() => x.agent.callModel(env, { model: MODEL, system, messages, maxTokens: OUTPUT_CAP_TOKENS, timeoutMs: CHAT_TIMEOUT_MS, schema: gremlinSchema(), effort: "low" }));
