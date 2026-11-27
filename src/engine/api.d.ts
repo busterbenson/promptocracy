@@ -62,6 +62,7 @@ export type Effect =
   | { type: "appear"; entry: string; tile: Tile }
   /** night only: a structure entry onto the board, `tile` its lowest x and y. Every tile of its footprint must be charted, with no piece or creature on it and no other structure. Refused (the night fails) otherwise. */
   | { type: "place"; entry: string; tile: Tile }
+  /** night only: moves a creature one tile. Skipped, and logged in History, when another piece or creature already stands there (another rule may have taken it the same night); the creature stays put. */
   | { type: "step"; creature: number; to: Tile }
   /** night only: moves a living player's piece to a charted tile with no piece or creature on it. Skipped, and logged in History, when the tile is uncharted or occupied or the player is not living. Does not chart. */
   | { type: "move"; player: string; to: Tile; reason?: string }

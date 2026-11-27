@@ -506,6 +506,8 @@ export async function nightBoardStatements(env: Env, game: any, n: number, nowMs
         `UPDATE players SET x = ?, y = ?, z = ?, mirrored = ? WHERE game_id = ? AND id = ? AND x = ? AND y = ? AND z = ? AND ${open}`,
       ).bind(op.x, op.y, op.z, toRight > 0 ? 1 : toRight < 0 ? 0 : (names.get(op.player)?.mirrored ?? 0), game.id, op.player, op.from.x, op.from.y, op.from.z, ...ob));
       ev("piece_moved", `${pn(op.player)} was moved to ${tileOf(op.x, op.y, op.z)}${op.reason ? ` (${op.reason})` : ""}.`, "moved", { to: { x: op.x, y: op.y, z: op.z }, reason: op.reason }, op.player);
+    } else if (op.op === "step_refused") {
+      ev("step_refused", `${entryName(op.entry)} stayed where it was: ${tileOf(op.x, op.y, op.z)} was taken.`, "step_refused", { creature: op.id, entry: op.entry, to: { x: op.x, y: op.y, z: op.z } }, null);
     } else if (op.op === "move_refused") {
       ev("move_refused", `${pn(op.player)} could not be moved to ${tileOf(op.x, op.y, op.z)}: ${op.why}.`, "move_refused", { to: { x: op.x, y: op.y, z: op.z }, why: op.why }, names.has(op.player) ? op.player : null);
     } else if (op.op === "rest") {

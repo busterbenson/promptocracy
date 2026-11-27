@@ -1,7 +1,9 @@
 // The night's board, as a pure function (rules 601-603): the effects the game's `night` hook returned, applied in order to an in-memory copy of the
 // players and the creatures. Plain JavaScript with no D1 in it, so the Worker (src/engine/host.ts, which turns the result into one batch) and the tests
 // (plain node) share ONE implementation. An effect the board can't take (an uncharted or occupied tile, an unknown creature, a rise for someone who
-// isn't dead) THROWS: refused, never dropped, so a rule can't pass its tests with an effect that silently does nothing.
+// isn't dead) THROWS: refused, never dropped, so a rule can't pass its tests with an effect that silently does nothing. Two exceptions, a rule's
+// move and a step onto a tile already taken that night: those are skipped and logged as ops (move_refused, step_refused), because each rule picks
+// its tiles from the same starting board and a collision between two rules must not hold the whole night open.
 import { attr } from "./api.js";
 import { placeOp } from "./capabilities/structures.js";
 
@@ -66,7 +68,9 @@ export function applyBoard({ n, effects, players, creatures, catalog, tiles, nex
         if (!c) throw new Error(`step: no creature ${e.creature} on the board`);
         const { x, y, z } = e.to;
         if (!tiles.has(x, y, z)) throw new Error(`step: ${x},${y},${z} is not charted`);
-        if (occupied(x, y, z)) throw new Error(`step: ${x},${y},${z} is occupied`);
+        // Each rule's night sees the same board, so two rules (602's Blob, 606's Pancake) can pick one tile in a night. The later step is skipped and
+        // logged, as a refused move is: the creature stays where it is (602.4), and one collision does not hold the whole night open.
+        if (occupied(x, y, z)) { ops.push({ op: "step_refused", id: c.id, entry: c.entry, x, y, z, why: `${x},${y},${z} is occupied` }); break; }
         c.x = x; c.y = y; c.z = z;
         ops.push({ op: "step", id: c.id, x, y, z });
         break;
