@@ -31,6 +31,7 @@ import { Ctx, json, nowIso, readJson } from "../lib/util";
 import { draftTurn } from "../lib/draft-turn.js";
 import { catalogFor } from "./api-catalog";
 import { entriesFor, openEntriesFor } from "../lib/pending-entries";
+import { openWorkFor } from "../lib/open-work";
 import { bookFor, catalogOf, draft } from "./api-proposals";
 import { refreshCheck } from "../lib/draft-check";
 import { sameDraft } from "../lib/rule-check.js";
@@ -297,8 +298,9 @@ async function ticketTurn(T: Turn, ticket: any, moved: boolean): Promise<Out> {
   if (ticket.state !== "Draft") noWrite = `W${ticket.number} is ${ticket.state === "Proposed" ? "on the ballot" : shownState(ticket).toLowerCase()}`;
   else { const b = turnBlock(game, day, playerTurn, player, "propose", nowMs); if (b) noWrite = b.error; }
   const entries = await entriesFor(env, game, player.id, ticket.id);   // the catalog's entries and what open commissions make (rules 701.4, 703.4)
+  const openWork = await openWorkFor(env, game, player.id, ticket.id, T.book);   // everyone's open proposals, tickets and ticket discussion, only in a rulebook with 106.8 (rule 106.8)
   const { system, messages } = gremlinRequest({
-    ceiling, rulesMd, mood: moodOf(game.id, date), localDate: date, catalog: catalogFor(game), history: hist, entries,
+    ceiling, rulesMd, mood: moodOf(game.id, date), localDate: date, catalog: catalogFor(game), history: hist, entries, openWork,
     ticket: { number: ticket.number, title: ticket.title, brief: ticket.brief, makes: JSON.parse(ticket.makes || "[]"), estimate: ticket.estimate, running_cost: ticket.running_cost, tasks, price: ticket.price, price_reason: ticket.price_reason },
     posts, queueDepth: queue?.n ?? 0, rejected, notes, label: player.display_name, message: text, noWrite,
   });
@@ -388,6 +390,7 @@ async function generalTurn(T: Turn, moved: boolean): Promise<Out> {
   const blocked = turnBlock(game, day, playerTurn, player, "propose", nowMs);
   const noDraft = blocked ? blocked.error : null;
   const entries = await openEntriesFor(env, game, player.id);   // the catalog's entries and what open commissions make (rules 701.4, 703.4); no Drafts: a rule can't lean on one
+  const openWork = await openWorkFor(env, game, player.id, null, book);   // everyone's open proposals, tickets and ticket discussion, only in a rulebook with 106.8 (rule 106.8)
   // (Not while drafting is shut: a turn that cannot draft makes no model call for a check; the tail then carries the check it has.)
   if (slipRow && slipRow.status === "draft" && !noDraft) await refreshCheck(env, game, tz, player.id, rulesMd, book, catalogFor(game).entries, entries.pending ?? [], slipRow, nowMs, sameDraft(text, slipRow));
   const drafted = lastMeta.refused ? { refused: String(lastMeta.refused.error ?? "") } : lastRow?.proposal_id && slipRow && slipRow.id === lastRow.proposal_id ? { head: slipRow?.draft_head, after_text: slipRow?.after_text, conflicts: slipRow ? JSON.parse(slipRow.conflicts || "[]") : [], check: slipRow?.rule_check ? JSON.parse(slipRow.rule_check) : null } : null;
@@ -395,7 +398,7 @@ async function generalTurn(T: Turn, moved: boolean): Promise<Out> {
     const { system, messages } = generalRequest({
       rulesMd, localDate: date, perDay: limit, actions: catalogOf(game), history: hist, label: player.display_name, message: text, rule,
       slip: slipRow ? { n: slipRow.number ? `P${slipRow.number}` : null, status: slipRow.status === "confirmed" ? "locked in" : "a draft, not locked in", head: slipRow.draft_head, after_text: slipRow.after_text, words: slipRow.words, conflicts: JSON.parse(slipRow.conflicts || "[]") } : null,
-      drafted, made: t0.made, limit, noDraft, retry, found, foundMode: mode, redraft, entries,
+      drafted, made: t0.made, limit, noDraft, retry, found, foundMode: mode, redraft, entries, openWork,
     });
     return callModel(env, { model: MODEL, system, messages, maxTokens: OUTPUT_CAP_TOKENS, timeoutMs: CHAT_TIMEOUT_MS, schema: generalSchema(), effort: "low" });
   };

@@ -907,6 +907,69 @@
         }
       },
       "known_fail": null
+    },
+    {
+      "id": "g-open-proposal-interacts",
+      "agent": "gremlin",
+      "start": "general",
+      "title": "A player's idea against another player's open proposal (rule 106.8)",
+      "open_work": {
+        "proposals": [
+          {
+            "number": 14,
+            "name": "Sarah",
+            "kind": "addclause",
+            "scope": "clause",
+            "target": "401",
+            "draft_head": "Add a clause to rule 401 (Points) after 401.1",
+            "words": "A player who ends their turn next to a hostile creature gets 1 point.",
+            "after_text": "**401.2** A player who ends their turn next to a hostile creature gets 1 point.",
+            "mark": "majority",
+            "status": "on_ballot",
+            "ticket_id": null
+          }
+        ],
+        "tickets": [
+          {
+            "id": "t6",
+            "number": 6,
+            "name": "Bo",
+            "title": "A lantern",
+            "brief": "A lantern that lights the tiles around it.",
+            "state": "Ready",
+            "held_at": null,
+            "makes": [
+              {
+                "kind": "entry",
+                "name": "Lantern",
+                "catalogKind": "item"
+              }
+            ],
+            "price": 2,
+            "player_id": "p-bo"
+          }
+        ],
+        "posts": [
+          {
+            "id": 1,
+            "ticket_id": "t6",
+            "author_kind": "player",
+            "name": "Sarah",
+            "body": "Could it also scare off hostile creatures?"
+          }
+        ]
+      },
+      "turns": [
+        "I want to propose that a player who ends their turn next to a hostile creature loses 1 heart. Does that clash with anything already proposed?"
+      ],
+      "if_asked": [],
+      "intent": "He has read everyone's open work (rule 106.8): he names Sarah's open proposal P14 (1 point for ending a turn next to a hostile creature) as the one this runs against, says how the two interact (a point and a heart lost for the same thing), and drafts the player's idea at once or offers options that build on or answer P14. He does not say how anyone voted or will vote.",
+      "expect": {
+        "say_names": "P14",
+        "no_dead_end": true,
+        "drafts_max": 1
+      },
+      "known_fail": null
     }
   ]
 }
