@@ -20,15 +20,18 @@
 //                                                ticket's thread (or, for a chat turn, in that player's private chat); once only. ruling: true posts it and
 //                                                leaves the escalation open with a ruling owed
 //   POST /<slug>/api/moderator/days/:n/claim      {sha, outcomes: [{number, seq, applied: true, commit} | {number, seq,
-//                                                applied: false, reason}], notes?: [{number, body}]}: accepted only while
+//                                                applied: false, reason}], notes?: [{number, body}], builds?: [...]}: accepted only while
 //                                                day n is processing and before its deadline (107.6); the day goes to
 //                                                deploying. seq is the order the moderator applied them in (1..n, each
-//                                                once); the enactment follows it (107.2).
+//                                                once); the enactment follows it (107.2). builds (a game whose rules have 803.2): one
+//                                                outcome per Building ticket, src/lib/builds.js readBuilds; none for a ticket that isn't.
+//   GET pending's job also lists `builds` there: every Building ticket in queue order (src/lib/builds.js pendingBuilds).
 import { publicEntriesFor } from "../lib/pending-entries";
 import { endGameStatements } from "../lib/end";
 import { logCall, monthSpend } from "../lib/agent";
 import { PRICES } from "../lib/chat.js";
-import { clockNow, deployDeadline, deployedSha, notAppliedStatements, timeZoneOf } from "../lib/day";
+import { builderOn, clockNow, deployDeadline, deployedSha, notAppliedStatements, timeZoneOf } from "../lib/day";
+import { claimRows, claimStatements, pendingBuilds, readBuilds } from "../lib/builds.js";
 import { localDate } from "../lib/day-gate.js";
 import { notificationText } from "../lib/escalate.js";
 import { orderPassed } from "../engine/host";
@@ -53,7 +56,7 @@ async function authorized(ctx: Ctx): Promise<boolean> {
 }
 const unauthorized = () => json({ error: "Not authorized." }, 401);
 
-/** @rule 107.2, 107.7 */
+/** @rule 107.2, 107.7, 803.2 */
 export const pending = async (ctx: Ctx) => {
   if (!(await authorized(ctx))) return unauthorized();
   const { env } = ctx;
@@ -71,8 +74,10 @@ export const pending = async (ctx: Ctx) => {
     ).bind(game.id, day.n).all()).results as any[];
     // A night with only actions (rule 103.8) is the site's own: the moderator has nothing to apply and sees no job.
     const passed = (await orderPassed(env, game, rows, nowMs)).map((r) => ({ ...r, settings: JSON.parse(r.settings || "{}"), conflicts: JSON.parse(r.conflicts || "[]"), rule_check: r.rule_check ? JSON.parse(r.rule_check) : null, player: { name: r.player } }));
+    // The night's builds, after the rule changes (rule 803.2): every Building ticket, in queue order. Only in a game whose rules have 803.2.
+    const builds = builderOn(game) ? await pendingBuilds(env.DB, game, day.n) : [];
     const deadline = Date.parse(day.deadline_at);
-    if (!(day.status === "processing" && !passed.length)) job = { day: day.n, status: day.status, locked_at: day.locked_at, deadline_at: day.deadline_at, deploy_deadline_at: Number.isFinite(deadline) ? nowIso(deployDeadline(deadline)) : null, commit_sha: day.commit_sha, tag: day.tag, entries: passed.length ? await publicEntriesFor(env, game) : null, deploy_live: day.status === "deploying" && !!day.commit_sha && (await deployedSha(env, game)) === day.commit_sha, passed };
+    if (!(day.status === "processing" && !passed.length && !builds.length)) job = { day: day.n, status: day.status, locked_at: day.locked_at, deadline_at: day.deadline_at, deploy_deadline_at: Number.isFinite(deadline) ? nowIso(deployDeadline(deadline)) : null, commit_sha: day.commit_sha, tag: day.tag, entries: passed.length || builds.length ? await publicEntriesFor(env, game) : null, deploy_live: day.status === "deploying" && !!day.commit_sha && (await deployedSha(env, game)) === day.commit_sha, passed, ...(builderOn(game) ? { builds } : {}) };
   }
   const notApplied = (await env.DB.prepare("SELECT number, day_ballot AS day, not_applied_reason AS reason FROM proposals WHERE game_id = ? AND status = 'not_applied' ORDER BY number").bind(game.id).all()).results;
   const owed: any = await env.DB.prepare("SELECT COUNT(*) AS n FROM escalations WHERE game_id = ? AND ruling_owed_at IS NOT NULL AND answered_at IS NULL").bind(game.id).first();
@@ -105,7 +110,7 @@ export const agents = async (ctx: Ctx) => {
   return json({ day: n, calls: calls.results, reasons: reasons.results, players_at_cap: (capped as any)?.n ?? 0, month: { spent_micro: spend.spent, budget_micro: spend.budget, over: spend.over } });
 };
 
-/** @rule 107.6, 107.7, 107.8 */
+/** @rule 107.6, 107.7, 107.8, 803.2 */
 export const claim = async (ctx: Ctx) => {
   if (!(await authorized(ctx))) return unauthorized();
   const { env } = ctx;
@@ -141,6 +146,15 @@ export const claim = async (ctx: Ctx) => {
   if (seen.size !== passed.length) return json({ error: "The outcomes must name each passed proposal once." }, 400);
   const notes = Array.isArray(body.notes) ? body.notes : [];
   for (const x of notes) if (!x || !byNum.has(x.number) || typeof x.body !== "string" || !x.body.trim() || x.body.length > MAX_NOTE) return json({ error: `A note needs a passed proposal's number and a body of at most ${MAX_NOTE} characters.` }, 400);
+  // The builds (rule 803.2): one outcome for each Building ticket, none for a ticket that isn't. A game whose rules don't have 803.2 builds nothing.
+  let builds: any[] = [];
+  if (!builderOn(game)) {
+    if (Array.isArray(body.builds) && body.builds.length) return json({ error: "This game's rules don't build commissions (803.2)." }, 400);
+  } else {
+    const r = readBuilds(body.builds, await claimRows(env.DB, game.id, body.builds), n);
+    if ("error" in r) return json({ error: r.error }, 400);
+    builds = r.items;
+  }
 
   const now = nowIso(nowMs);
   // Every write lands only if THIS claim moved the day to deploying (status and sha), so a late or a second claim
@@ -163,6 +177,7 @@ export const claim = async (ctx: Ctx) => {
        SELECT ?, ?, ?, 'moderator_note', ?, ?, ? WHERE EXISTS (SELECT 1 FROM days WHERE game_id = ? AND n = ? AND status = 'deploying' AND commit_sha = ?)`,
     ).bind(`audit-${q.id}`, game.id, q.player_id, x.body.trim(), `/${game.slug}/`, now, game.id, n, body.sha));
   }
+  stmts.push(...claimStatements(env.DB, builds, n, mine, [game.id, n, body.sha]));
   // The rulings committed with this night: the unlock waits for them (until the deploy deadline), so each is posted inside the lock (rules 107.1, 106.5).
   const held = Array.isArray(body.rulings) ? body.rulings : [];
   if (held.length > 20 || held.some((x: any) => !Number.isInteger(x) || x < 1)) return json({ error: "rulings is up to 20 escalation ids." }, 400);
