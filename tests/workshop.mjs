@@ -457,17 +457,17 @@ try {
     check("the next count pays all three once and approves them, behind the tickets already queued, oldest pass first (W2, then Cy's before Ana's)",
       J(order) === J([2, num(cyT), num(anaT)]) && [2, num(cyT), num(anaT)].every((n, i) => tk(n).state === "Building" && tk(n).queue_pos === q0 + 1 + i && !!tk(n).paid_at && !!tk(n).approved_at), J(order));
     const okNotes = d1(state, `SELECT body, link FROM notifications WHERE game_id = '${gid}' AND kind = 'commission_approved' AND player_id = '${id.Ana}' ORDER BY id`);
-    check("a Ready ticket that is now paid and Approved tells every player, once: W2's line is 'A commission W2 (title, 7 points). Approved: Bo can pay now.' and opens its ticket",
+    check("a Ready ticket that is now paid and Approved tells every player, once: W2's line is 'A commission W2 (title, 7 points). Approved: Bo paid 7 points.' and opens its ticket",
       d1(state, `SELECT COUNT(*) AS n FROM notifications WHERE game_id = '${gid}' AND kind = 'commission_approved'`)[0].n === nPlayers * 3 && okNotes.length === 3 &&
-      okNotes.some((n) => /^A commission W2 \(.*, 7 points\)\. Approved: Bo can pay now\.$/.test(n.body) && n.link === "/wk/#w-W2") && okNotes.every((n) => /^A commission W\d+ \(.+\)\. Approved: \w+ can pay now\.$/.test(n.body)), J(okNotes));
+      okNotes.some((n) => /^A commission W2 \(.*, 7 points\)\. Approved: Bo paid 7 points\.$/.test(n.body) && n.link === "/wk/#w-W2") && okNotes.every((n) => /^A commission W\d+ \(.+\)\. Approved: \w+ paid \d+ points?\.$/.test(n.body) && !/can pay now/.test(n.body)), J(okNotes));
     check("each paid its whole price and no more: Bo 7 to 0, Cy 40 to 0, Ana 5 to 0", score("Bo") === 0 && score("Cy") === 0 && score("Ana") === 0 && tk(2).paid === 7 && tk(num(cyT)).paid === 40 && tk(num(anaT)).paid === 5);
     check("the log says so, once each; the day's log names who paid",
-      d1(state, `SELECT text FROM ticket_log WHERE ticket_id = '${tk(2).id}' AND kind = 'approved'`).map((r) => r.text).join() === `Approved: Bo can pay now. Paid 7 points. Place ${q0 + 1} in the queue.` &&
+      d1(state, `SELECT text FROM ticket_log WHERE ticket_id = '${tk(2).id}' AND kind = 'approved'`).map((r) => r.text).join() === `Approved: Bo paid 7 points. Place ${q0 + 1} in the queue.` &&
       d1(state, `SELECT COUNT(*) AS n FROM events WHERE kind = 'commission_approved' AND text LIKE 'W2 was approved.%'`)[0].n === 1 && d1(state, `SELECT text FROM events WHERE kind = 'commission_approved' AND text LIKE 'W${num(cyT)} was approved.%'`)[0].text === `W${num(cyT)} was approved. Cy paid 40 points.`);
     // points come back (a later win), the count runs again: nothing is charged twice
     d1(state, `UPDATE players SET score = 50 WHERE id = '${id.Bo}'; UPDATE players SET score = 50 WHERE id = '${id.Cy}'; UPDATE players SET score = 50 WHERE id = '${id.Ana}'`);
     await midnight(); await cron();
-    check("a Ready ticket that was paid never charges again, however many nights", score("Bo") === 50 && score("Cy") === 50 && score("Ana") === 50 && d1(state, `SELECT COUNT(*) AS n FROM ticket_log WHERE kind = 'approved' AND text LIKE '%can pay now%'`)[0].n === 3 && queueMax() === q0 + 3, `${score("Bo")}`);
+    check("a Ready ticket that was paid never charges again, however many nights", score("Bo") === 50 && score("Cy") === 50 && score("Ana") === 50 && d1(state, `SELECT COUNT(*) AS n FROM ticket_log WHERE kind = 'approved' AND text LIKE 'Approved: % paid % point%' AND text NOT LIKE '%passed.%'`)[0].n === 3 && queueMax() === q0 + 3, `${score("Bo")}`);
     const rtool = JSON.parse((await tool(A, "wk", (await connect(A, "wk", Bo, SITE)).access_token, "list_tickets")).text).tickets;
     check("the list (web and MCP) shows W2 as Approved now", (await visitor.get(`${T}/W2`)).data.ticket.state === "Building" && rtool.find((t) => t.n === "W2").state === "Building");
     void dayNow;

@@ -359,6 +359,12 @@ console.log("the night's fixes, miss classes and cases");
   const fx = ["Add a house tile to the catalog first.", "Say it for the whole board.", "x".repeat(300), "a fourth", "", 7];
   check("fixesOf: at most three strings, each fitted to 200 characters, junk dropped", fixesOf(fx).length === 3 && fixesOf(fx)[2].length <= 200 && fixesOf("no").length === 0 && fixesOf(undefined).length === 0);
   check("reasonFor: with fixes the reason stands alone (no fixed suggestion); without, the suggestion is added", !/splitting/.test(reasonFor("the game doesn't track which tiles", ["a fix"])) && /splitting it into smaller proposals/.test(reasonFor("the game doesn't track which tiles", [])) && reasonFor("r", ["a"]).length <= MAX_REASON);
+  {
+    const gap = "The game can't give a charted tile a catalog entry yet, and you can propose this clause again once the engine has that power";
+    const g = reasonFor(gap, []);
+    check("reasonFor: an engine-gap reason (it already says to propose again) gets no suggestion and ends in a full stop; over-budget and tests-failed reasons still get it",
+      g === `${gap}.` && !/splitting/.test(reasonWithSuggestion(gap)) && /splitting it into smaller proposals/.test(reasonFor("it ran out of its time budget", [])) && /splitting it into smaller proposals/.test(reasonFor("the game's tests failed after the change", [])), g);
+  }
   const P7 = { kind: "add", rule_check: null, base_sha: "a" }, ok = { kind: "add", rule_check: { status: "ok" }, base_sha: "a" }, unch = { kind: "add", rule_check: { status: "unchecked" }, base_sha: "a" };
   check("missClass: no check or an unchecked one is `unchecked`; a moved rulebook or a redraft is `rules_changed`; otherwise the check passed it: `disagreed`",
     missClass(P7, { redrafted: false, headSha: "a" }) === "unchecked" && missClass(unch, { redrafted: true, headSha: "b" }) === "unchecked" && missClass(ok, { redrafted: true, headSha: "a" }) === "rules_changed" &&
@@ -761,6 +767,11 @@ const rulingCalls = (t) => t.claude.calls().filter((c) => c.escalation !== null)
   const d3 = JSON.parse(/<proposal-data>\n([\s\S]*?)\n<\/proposal-data>/.exec(rulingCalls(t3)[0]?.rulingPrompt ?? "")?.[1] ?? "{}");
   const o6 = t3.claims[0]?.outcomes.find((o) => o.number === 6);
   check("ruling: tonight's applied proposal follows the site's enacted list with its drafted_by; one not applied tonight is left out", o6 && !o6.applied && J(d3.enacted) === J([...enacted, { number: 3, day: 1, kind: "amend", scope: "rule", target: "401", new_num: null, drafted_by: "model" }]), J([o6, d3.enacted]));
+  // 2026-11-27 (ruling 3-1: "the records before me don't show W4"): the site sends the open commissions with each ruling item, and the ruling's data carries them.
+  const ents = { built: [{ id: "C1", name: "Grass", kind: "tile", madeBy: null }], pending: [{ name: "Flower", catalogKind: "item", ticket: "W4", owner: "Sarah", state: "Ready" }] };
+  const te = await night({ scenario: { apply: {}, ruling: { 9: { answer: ANS() } } }, state: { job: job([]), rulings: [ESC(9, { entries: ents })] }, opts: { audit: false } });
+  const de = JSON.parse(/<proposal-data>\n([\s\S]*?)\n<\/proposal-data>/.exec(rulingCalls(te)[0]?.rulingPrompt ?? "")?.[1] ?? "{}");
+  check("ruling: the data carries the open commissions the site sent: W4, what it makes (the Flower, an item) and its state, and the catalog's entries", de.entries?.pending?.[0]?.ticket === "W4" && de.entries.pending[0].name === "Flower" && de.entries.pending[0].catalogKind === "item" && de.entries.pending[0].state === "Ready" && de.entries.built?.[0]?.id === "C1", J(de.entries));
   const t2 = await night({ scenario: { apply: {}, ruling: { 7: { answer: ANS() } } }, state: { job: job([]), rulings: [ESC(7)] }, opts: { audit: false } });
   const d2 = JSON.parse(/<proposal-data>\n([\s\S]*?)\n<\/proposal-data>/.exec(rulingCalls(t2)[0]?.rulingPrompt ?? "")?.[1] ?? "{}");
   check("ruling: a site that sends no enacted list gives an empty one, and a Gremlin ticket's posts keep their kind", J(d2.enacted) === "[]" && d2.posts?.[0]?.kind === "player", J(d2));

@@ -1,7 +1,7 @@
 // GET /api/history (History's per-day ballots): each past day that was counted lists its proposals and commissions with the one sentence
 // (src/lib/history.js), newest day first and paged; a ballot that has not been counted is not there, and no vote is ever shown. A real
 // `wrangler dev` on a throwaway LOCAL D1; the rows are written straight to it. Run: node tests/history.mjs
-import { proposalSentence } from "../src/lib/history.js";
+import { proposalSentence, readyApprovedNotice } from "../src/lib/history.js";
 import { client, createGame, d1, freePort, join, migrate, newState, startPlaying, startRulesStub, startServer } from "./lib.mjs";
 
 let pass = 0, fail = 0;
@@ -16,6 +16,12 @@ check("not applied carries the moderator's reason", proposalSentence({ kind: "re
 check("a commission names its ticket, title and price, and where the ticket stands now", proposalSentence({ kind: "commission", target: "", status: "approved", why: COUNT }, { n: "W3", title: "A bog frog", price: 6, state: "Building" }) === `A commission W3 (A bog frog, 6 points). Approved. It is now Building. ${COUNT}`);
 check("the Champion's change says so", /^The Champion's change: a change to rule 402\./.test(proposalSentence({ kind: "amend", target: "402", champion: 1, status: "enacted", why: "x" })));
 check("a row with no stored count still says how the votes went", /^A new rule 204\. Failed\. 1 voted yes, 2 voted no, 0 did not vote\.$/.test(proposalSentence({ kind: "add", target: "200", new_num: "204", status: "failed", yes: 1, no: 2, absent: 0 })));
+// 2026-11-27 (night 3: W2, W4, W6): a commission that waited as Ready and is paid at the count says it was paid, never "can pay now" (rules 801.4, 803.1).
+{
+  const n = readyApprovedNotice({ n: "W2", title: "Pancake the Bengal cat", price: 9 }, "Buster");
+  check("the notice of a Ready commission paid at the count says it was paid, and not 'can pay now'", n === "A commission W2 (Pancake the Bengal cat, 9 points). Approved: Buster paid 9 points." && !/can pay now/.test(n), n);
+  check("a one-point price is singular", /Approved: Cy paid 1 point\.$/.test(readyApprovedNotice({ n: "W5", title: "A pebble", price: 1 }, "Cy")));
+}
 
 const state = newState();
 let srv = null, stub = null;

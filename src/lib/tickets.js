@@ -358,7 +358,7 @@ export async function readyIds(db, gameId) {
 export function readyStatements(db, game, ids, day, now, notices = new Map()) {
   return ids.flatMap((id) => [
     db.prepare(`UPDATE tickets SET state = 'Approved', approved_at = ?, updated_at = ?, paid = COALESCE(paid, price), queue_pos = ${NEXT_PLACE} WHERE id = ? AND state = 'Ready' AND held_at IS NULL AND ${CAN_PAY}`).bind(now, now, id),
-    ...payStatements(db, "id = ?", [id], game, `'Approved: ' || (SELECT display_name FROM players WHERE game_id = t.game_id AND id = t.player_id) || ' can pay now. ' || CASE WHEN t.paid_at = '${now}' THEN 'Paid ' || ${pts("t.paid")} || '. ' ELSE '' END || 'Place ' || t.queue_pos || ' in the queue.'`, day, now),
+    ...payStatements(db, "id = ?", [id], game, `'Approved: ' || (SELECT display_name FROM players WHERE game_id = t.game_id AND id = t.player_id) || CASE WHEN t.paid_at = '${now}' THEN ' paid ' || ${pts("t.paid")} || '. ' ELSE '. ' END || 'Place ' || t.queue_pos || ' in the queue.'`, day, now),
     // Every player is told, once: the id is the ticket and the player, and it lands only if THIS run approved the ticket.
     ...(notices.has(id) ? [db.prepare(
       `INSERT OR IGNORE INTO notifications (id, game_id, player_id, kind, body, link, created_at)
