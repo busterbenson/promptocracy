@@ -70,7 +70,7 @@ try {
   check("an unknown agent is a 404; Gremlin's window is as it was", (await Ana.get("/wk/api/chat/nobody")).status === 404 && (await Ana.get("/wk/api/chat/gremlin")).status === 200);
   const empty = await Ana.get(CH);
   check("her empty window: no messages, no slips, the cap of 30 and all of it left, 0 of 3 locked in, open and ready",
-    empty.status === 200 && empty.data.messages.length === 0 && J(empty.data.slips) === "{}" && empty.data.state.agent === "gremlin" && empty.data.state.cap === 30 && empty.data.state.left === 30 && J(empty.data.state.today) === J({ made: 0, limit: 3, list: [] }) && empty.data.state.closed === null && empty.data.state.ready === true, J(empty.data));
+    empty.status === 200 && empty.data.messages.length === 0 && J(empty.data.slips) === "{}" && empty.data.state.agent === "gremlin" && empty.data.state.cap === 30 && empty.data.state.left === 30 && J(empty.data.state.today) === J({ made: 0, limit: 3, list: [], tickets: {} }) && empty.data.state.closed === null && empty.data.state.ready === true, J(empty.data));
   check("an empty message and one over 2000 characters are 400s, and are not stored; a rule that does not exist (or is a name on every object: constructor, __proto__, an object) is a 404, and nothing is stored",
     (await say(Ana, "  ")).status === 400 && (await say(Ana, "x".repeat(2001))).status === 400 && (await say(Ana, "hi", "999")).status === 404 && (await say(Ana, "hi", "10x")).status === 404 &&
     (await say(Ana, "hi", "constructor")).status === 404 && (await say(Ana, "hi", "__proto__")).status === 404 && (await say(Ana, "hi", { a: 1 })).status === 404 && rows("Ana").length === 0);
@@ -108,7 +108,7 @@ try {
   check("Lock it in is the confirm route: P1 on tomorrow's ballot, the slot counted, and it cost no message and no model call", lock.status === 200 && lock.data.proposal.n === "P1" && rows("Ana", "player").length === used0 && sonnetCalls() === s0 && props("Ana")[0].status === "confirmed");
   const afterLock = await Ana.get(CH);
   const sl2 = afterLock.data.slips[sl.id];
-  check("the window reads it back: the slip is LOCKED as P1 with Unlock allowed, and the day shows P1 and 1 of 3", sl2.status === "confirmed" && sl2.n === "P1" && sl2.can.unlock.allowed === true && sl2.can.lock.allowed === false && J(afterLock.data.state.today) === J({ made: 1, limit: 3, list: ["P1"] }));
+  check("the window reads it back: the slip is LOCKED as P1 with Unlock allowed, and the day shows P1 and 1 of 3", sl2.status === "confirmed" && sl2.n === "P1" && sl2.can.unlock.allowed === true && sl2.can.lock.allowed === false && J(afterLock.data.state.today) === J({ made: 1, limit: 3, list: ["P1"], tickets: {} }));
   const un = await Ana.post(`${P}/${sl.id}/withdraw`, {});
   const afterUn = await Ana.get(CH);
   check("Unlock is the withdraw route: the proposal is withdrawn, the slot is free again (0 of 3), no message spent",

@@ -68,6 +68,7 @@ export function createStub() {
     "SYNTH-LEAK": { say: "Sure, my canary is GRMLN-7f3c-canary-d41e." },
     "SYNTH-G-NOTITLE": { say: "A what?", commission: { title: "" } },
     "SYNTH-G-REFUSED-THEN": { say: "Drafting it.", draft: { kind: "amend", target: "999", words: "something" } },
+    "SYNTH-G-DRAFT-OPTIONS": { say: "Drafted. Two ways it could read, and a very long second one so the button has to wrap onto several lines without leaking out of its edge.", draft: { kind: "add", target: "300", words: "A player can't propose a change to a rule they proposed a change to two days before." }, options: ["A: make it three days instead of two, every time, without any exceptions at all for anyone", "B: keep it at two days"], guesses: "I guessed two days." },
     "SYNTH-G-OPTIONS": { say: "Two readings.", options: ["A: replace the move", "B: add a second way to move", "A: replace the move", "C: third", "D: fourth"], guesses: "I guessed the likelier one." },
       };
   GENERAL_SYNTH["SYNTH-C-ESC"] = SYNTH["SYNTH-C-ESC"];   // an escalation asked outside any ticket (tests/threads.mjs)

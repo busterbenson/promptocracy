@@ -35,6 +35,22 @@ const SYMBOLS = `<svg width="0" height="0" style="position:absolute" aria-hidden
 </defs></svg>`;
 
 /** The settings a slip sets, as "key = value" (an object value as its numbers joined by x, a boolean as on / off): the drafter keeps a setting change out of the text. @rule 103.1 */
+/**
+ * Where his choices go in the log (Buster, 2026-11-26: the buttons come below any card, so it is obvious they need to be considered): `oi` is the line that
+ * offers them (-1 for none), `at` the line the slip follows (-1 when the slip sits at the end). "line" = right after the line, "slip" = after the slip
+ * that follows the same line, "end" = after the slip at the end of the log. @rule 106.3
+ */
+export function optionsPlace(oi, at) {
+  if (oi < 0) return "none";
+  if (at < 0) return "end";
+  return at === oi ? "slip" : "line";
+}
+/** The Summary bar's pills: today's proposals as the window's Today row has them, and how many are left. @rule 103.2 */
+export function barPills(state) {
+  const t = state && state.today;
+  if (!t) return null;
+  return { list: (t.list || []).slice(), tickets: { ...(t.tickets || {}) }, left: Math.max(0, t.limit - t.made), limit: t.limit };
+}
 export const settingsLine = (settings) => Object.entries(settings || {}).map(([k, v]) => `${k} = ${v && typeof v === "object" ? Object.values(v).join("x") : typeof v === "boolean" ? (v ? "on" : "off") : String(v)}`).join(", ");
 /** The tickets row's order (Buster, 2026-11-24): drafts first, then the rest, newest first. The server sends the same order. */
 const byDraftThenNewest = (a, b) => (b.state === "Draft") - (a.state === "Draft") || Number(b.n.slice(1)) - Number(a.n.slice(1));
@@ -258,19 +274,22 @@ ${sl.uses_note ? `<p class="cnote unote">${textHTML(sl.uses_note)}</p>` : ""}${s
     // landed above it). Only a draft no loaded line points at goes at the end.
     const live = general() ? liveId() : null;
     let at = -1;
+    const oi = optionsAt();
     if (live) S.msgs.forEach((m, i) => { if (m.proposal === live) at = i; });
     // Gremlin's ticket card likewise follows his last line about that ticket (Buster, day 1: "like the rules card")
     if (!general() && S.slip) S.msgs.forEach((m, i) => { if (m.role === "agent" && m.ticket === S.slip.n) at = i; });
+    const where = optionsPlace(oi, at);
     S.msgs.forEach((m, i) => {
       if (m.date && m.date !== day) { day = m.date; out.push(`<div class="cday">${esc(dayLabel(m.date))}</div>`); prev = null; }
       out.push(lineHTML(m, prev));
-      if (i === optionsAt()) out.push(optionsHTML(m));
-      if (i === at) { out.push(general() ? proposalSlipHTML() : slipHTML()); prev = null; }
+      if (i === oi && where === "line") out.push(optionsHTML(m));
+      if (i === at) { out.push(general() ? proposalSlipHTML() : slipHTML()); prev = null; if (i === oi && where === "slip") out.push(optionsHTML(m)); }
       else prev = m;
     });
     if (!S.msgs.length && general() && agent.greeting) out.push(`<div class="msg cher greet">${portrait(true)}<div class="bub">${esc(agent.greeting)}</div></div>`);
     if (S.busy) out.push(`<div class="msg cher">${portrait(true)}<div class="bub"><span class="typing" aria-label="${esc(agent.name)} is typing"><i></i><i></i><i></i></span></div></div>`);
     if (at < 0) out.push(general() ? proposalSlipHTML() : slipHTML());
+    if (where === "end") out.push(optionsHTML(S.msgs[oi]));
     // the proposal being redrafted, above the box: what it said and why it was not applied (its fixes are in the box's reach)
     if (general() && S.redraft && redraftSlip()) out.push(pastSlipHTML(redraftSlip().id || "", redraftSlip()));
     return out.join("");
@@ -297,7 +316,7 @@ ${sl.uses_note ? `<p class="cnote unote">${textHTML(sl.uses_note)}</p>` : ""}${s
     if (!col) return;
     const p = player();
     col.hidden = !p;
-    if (!p) return;
+    if (!p) { drawBar(); return; }
     const log0 = col.querySelector(".ch-log");
     // whether to stay at the end is remembered (S.stick, set by the player's own scrolling), not read back from the old log: on iOS a
     // scrollTop set during the redraw before can still be pending, so the old log reads as "at the top" and the next redraw kept that
@@ -329,8 +348,34 @@ ${sl.uses_note ? `<p class="cnote unote">${textHTML(sl.uses_note)}</p>` : ""}${s
     if (ta) { autosize(ta); if (focus) { ta.focus(); try { ta.setSelectionRange(focus[0], focus[1]); } catch {} } }
     const tks = col.querySelector(".ch-row .its"), on = tks && tks.querySelector('[aria-pressed="true"]');
     if (on && (on.offsetLeft < tks.scrollLeft || on.offsetLeft + on.offsetWidth > tks.scrollLeft + tks.clientWidth)) tks.scrollLeft = on.offsetLeft;   // the selected pill is never scrolled out of the row
-    drawFab();
+    drawFab(); drawBar();
   }
+  // ---- the bar on the Summary: a collapsed Gremlin inside the page (Buster, 2026-11-26) ---------------------------------------------------------
+  /** His last line in the general conversation: the log's while the window shows it, the state's (sent with every answer) while it shows a ticket's. */
+  const lastLine = () => {
+    const m = general() ? [...S.msgs].reverse().find((x) => x.role === "agent") : null;
+    return m ? m.body : (S.state && S.state.line) || "";
+  };
+  /** His portrait, his last line and today's proposals as P-pills with "n of 3 left"; nothing for a visitor. A tap opens the window, a P-pill that proposal's slip. @rule 103.2, 106.3 */
+  function barHTML() {
+    const b = live() && barPills(S.state);
+    if (!b) return "";
+    const pills = b.list.map((n) => `<button type="button" class="gb-p" data-g="p" data-n="${esc(n)}"${b.tickets[n] ? ` data-w="${esc(b.tickets[n])}"` : ""} aria-label="${esc(n)}">${ppill(n)}</button>`).join("");
+    return `<div class="gbar" role="group" aria-label="${esc(agent.name)}" data-g="open"><button type="button" class="gb-main" data-g="open">${portrait(true)}<span class="gb-line">${esc(lastLine())}</span></button><div class="gb-today">${pills}<span class="gb-n">${esc(b.left)} of ${esc(b.limit)} left</span></div></div>`;
+  }
+  /** Fills every bar slot on the page (the Summary has one). */
+  function drawBar() { document.querySelectorAll('[data-slot="gremlin-bar"]').forEach((el) => { const h = barHTML(); if (el.innerHTML !== h) el.innerHTML = h; }); }
+  document.addEventListener("click", async (e) => {
+    const bar = e.target.closest && e.target.closest(".gbar");
+    if (!bar || !live()) return;
+    const p = e.target.closest(".gb-p");
+    if (!p) { open(); return; }
+    if (p.dataset.w) { if (!S.busy) await attach(p.dataset.w, { open: true }); else open(); return; }   // a commission: its slip is its ticket's, not the general conversation's
+    const sl = Object.values(S.slips).find((x) => x && x.n === p.dataset.n) || (S.proposals || []).find((x) => x.n === p.dataset.n);
+    open();
+    const id = (sl && sl.id) || ((S.proposals || []).find((x) => x.n === p.dataset.n) || {}).id;
+    if (id && !S.busy) await pickProposal(id);
+  });
   function autosize(ta) { ta.style.height = "auto"; ta.style.height = Math.min(120, ta.scrollHeight) + "px"; }
   function drawFab() {
     if (!fab) return;
@@ -627,5 +672,5 @@ ${sl.uses_note ? `<p class="cnote unote">${textHTML(sl.uses_note)}</p>` : ""}${s
   }
   /** Can he be reached? True until the server says there is no key. @rule 106.3 */
   const ready = () => !S.state || S.state.ready !== false;
-  return { sync, attach, attachRule, redraft, showTicket, open, load, minimize, ready, prefill, state: () => S, draw, reduced };
+  return { sync, attach, attachRule, redraft, showTicket, open, load, minimize, ready, prefill, state: () => S, draw, drawBar, barHTML, reduced };
 }
