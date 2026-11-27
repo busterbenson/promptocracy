@@ -655,6 +655,8 @@ import { hold } from "/js/busy.js";
     if (here.length) { SEL = null; if (VIEW) VIEW.select(null, null); drawMoveBar(); openPlayer(here[0].color.key); return; }
     const things = t ? thingsAt(t) : [];   // no piece here: a creature (or any other thing) on the tile opens its card
     if (things.length) { SEL = null; if (VIEW) VIEW.select(null, null); drawMoveBar(); CARDS.open({ kind: things[0].kind, key: things[0].key }); return; }
+    const mv = t && t.entry ? myMove() : null;
+    if (t && t.entry && !(mv.ok && canMoveTo(t))) { SEL = null; if (VIEW) VIEW.select(null, null); drawMoveBar(); CARDS.open({ kind: "entry", key: t.entry }); return; }   // nothing stands here and you can't move there: a tile that is a catalog entry opens its card (701.1); a tile you may move to is still picked as a move
     SEL = q == null ? null : { x: q, y: r };
     if (VIEW) VIEW.select(q, r);
     drawMoveBar();
@@ -663,7 +665,7 @@ import { hold } from "/js/busy.js";
   function drawBoard(b) {
     BOARD = b;
     if (VIEW) VIEW.setData(b, myKey());
-    $("tile-list").innerHTML = b.tiles.filter(t => t.z === 0).map(t => `<li><button type="button" data-x="${t.x}" data-y="${t.y}">${esc("Tile " + t.label + (piecesAt(t).length ? ", " + piecesAt(t).map(p => `${p.name} (${p.color.name})`).join(", ") : "") + thingsAt(t).map(h => ", " + h.thing.name + (h.thing.resting ? " (resting)" : "")).join(""))}</button></li>`).join("");
+    $("tile-list").innerHTML = b.tiles.filter(t => t.z === 0).map(t => `<li><button type="button" data-x="${t.x}" data-y="${t.y}">${esc("Tile " + t.label + (piecesAt(t).length ? ", " + piecesAt(t).map(p => `${p.name} (${p.color.name})`).join(", ") : "") + thingsAt(t).map(h => ", " + h.thing.name + (h.thing.resting ? " (resting)" : "")).join("") + (t.name ? ", " + t.name : ""))}</button></li>`).join("");
     drawMoveBar(); drawBar();
     if (TAB === "summary") drawBook();
   }

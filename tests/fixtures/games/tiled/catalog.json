@@ -1,0 +1,84 @@
+[
+ {
+  "id": "I1",
+  "name": "Very large hat",
+  "kind": "item",
+  "attrs": {
+   "acquired": "801"
+  },
+  "flavor": {
+   "smell": "tar"
+  },
+  "madeBy": "W5",
+  "day": 3
+ },
+ {
+  "id": "I2",
+  "name": "Lantern",
+  "kind": "item",
+  "attrs": {},
+  "flavor": {}
+ },
+ {
+  "id": "C1",
+  "name": "Blob",
+  "kind": "creature",
+  "attrs": {
+   "hearts": 3,
+   "speed": 2
+  },
+  "flavor": {
+   "colour": "green",
+   "mood": "grumpy",
+   "habitat": "bogs",
+   "smell": "of old tar"
+  },
+  "madeBy": "W2",
+  "day": 1
+ },
+ {
+  "id": "C2",
+  "name": "Crow",
+  "kind": "creature",
+  "attrs": {
+   "hearts": 1
+  },
+  "flavor": {}
+ },
+ {
+  "id": "T1",
+  "name": "Grass",
+  "kind": "tile",
+  "attrs": {},
+  "flavor": {
+   "look": "soft green grass"
+  },
+  "art": {
+   "saved": [
+    {
+     "key": "082f6da2ebcfc648649a920fb91e76e510a2cec41cc3bbde3b94b7074ef19434",
+     "prompt": "A square patch of soft, even green grass, seen from above."
+    }
+   ],
+   "default": "082f6da2ebcfc648649a920fb91e76e510a2cec41cc3bbde3b94b7074ef19434"
+  }
+ },
+ {
+  "id": "F1",
+  "name": "Forum",
+  "kind": "feature",
+  "attrs": {},
+  "flavor": {
+   "shows_in": "the Workshop"
+  }
+ },
+ {
+  "id": "T2",
+  "name": "Bog",
+  "kind": "tile",
+  "attrs": {},
+  "flavor": {
+   "wet": true
+  }
+ }
+]

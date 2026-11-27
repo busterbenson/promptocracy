@@ -7,7 +7,7 @@ Every function that carries out the game should say which rule it implements, wi
 `src/` is only reported for now: these functions have no claim yet. Site plumbing such as sign-in and email goes
 under rule 101 or 102; a follow-up change claims them and moves `src/` into the strict set.
 
-198 of 634 functions outside `src/engine/` are unclaimed.
+199 of 642 functions outside `src/engine/` are unclaimed.
 
 ## src/index.ts (6)
 
@@ -54,12 +54,10 @@ under rule 101 or 102; a follow-up change claims them and moves `src/` into the 
 - line 39: `getPlayer`
 - line 51: `destroySession`
 
-## src/lib/board.ts (4)
+## src/lib/board.ts (2)
 
-- line 9: `chartTile`
-- line 15: `chartAll`
-- line 24: `ensureTiles`
-- line 33: `loadTiles`
+- line 17: `chartAll`
+- line 26: `ensureTiles`
 
 ## src/lib/build.js (3)
 
@@ -118,10 +116,10 @@ under rule 101 or 102; a follow-up change claims them and moves `src/` into the 
 
 ## src/lib/gremlin.js (4)
 
-- line 140: `who`
-- line 378: `def`
-- line 453: `readGremlinAnswer`
-- line 590: `clip`
+- line 156: `who`
+- line 394: `def`
+- line 469: `readGremlinAnswer`
+- line 606: `clip`
 
 ## src/lib/history.js (1)
 
@@ -158,6 +156,15 @@ under rule 101 or 102; a follow-up change claims them and moves `src/` into the 
 - line 70: `ins`
 - line 80: `playerForToken`
 - line 88: `bearerOf`
+
+## src/lib/open-work.js (2)
+
+- line 16: `clip`
+- line 17: `json`
+
+## src/lib/open-work.ts (1)
+
+- line 14: `marks`
 
 ## src/lib/pages.ts (1)
 
@@ -252,13 +259,13 @@ under rule 101 or 102; a follow-up change claims them and moves `src/` into the 
 
 ## src/routes/api-chat.ts (7)
 
-- line 308: `stateNow`
-- line 394: `ask`
-- line 402: `read`
-- line 406: `stateNow`
-- line 437: `tryDraft`
-- line 449: `after`
-- line 450: `log`
+- line 310: `stateNow`
+- line 397: `ask`
+- line 405: `read`
+- line 409: `stateNow`
+- line 440: `tryDraft`
+- line 452: `after`
+- line 453: `log`
 
 ## src/routes/api-day.ts (1)
 

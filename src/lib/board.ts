@@ -1,13 +1,15 @@
-// Reading and charting a game's board. A tile is CHARTED (it has a row) or it is not; a charted tile has
-// no properties. Charting happens in ONE place, chartTile, so a later rule that gives new tiles some
-// content has one function to change. Charting a charted tile does nothing.
+// Reading and charting a game's board. A tile is CHARTED (it has a row) or it is not; a charted tile is blank
+// or a catalog tile entry (`entry_id`, set once when a rule's code charts it). Charting happens in ONE place,
+// chartTile, so a later rule that gives new tiles some content has one function to change. Charting a charted
+// tile does nothing: its entry never changes.
 import { islandCoords } from "./geometry.js";
 import { getSettings } from "./settings.js";
 import { Env, nowIso } from "./util";
 
-// The statement that charts one tile: a blank row, inserted only if absent.
-export function chartTile(env: Env, gameId: string, x: number, y: number, z = 0, now = nowIso()) {
-  return env.DB.prepare("INSERT OR IGNORE INTO tiles (game_id, x, y, z, charted_at) VALUES (?, ?, ?, ?, ?)").bind(gameId, x, y, z, now);
+// The statement that charts one tile: a row (blank, or a catalog tile entry), inserted only if absent.
+/** @rule 501, 701.1 */
+export function chartTile(env: Env, gameId: string, x: number, y: number, z = 0, now = nowIso(), entry: string | null = null) {
+  return env.DB.prepare("INSERT OR IGNORE INTO tiles (game_id, x, y, z, charted_at, entry_id) VALUES (?, ?, ?, ?, ?, ?)").bind(gameId, x, y, z, now, entry);
 }
 
 const BATCH = 80; // statements per D1 batch
@@ -28,9 +30,10 @@ export async function ensureTiles(env: Env, game: { id: string; settings: string
   await chartAll(env, game.id, islandCoords(width, height));
 }
 
-export type TileRow = { x: number; y: number; z: number };
+export type TileRow = { x: number; y: number; z: number; entry: string | null };
 
+/** @rule 501, 701.1 */
 export async function loadTiles(env: Env, gameId: string): Promise<TileRow[]> {
-  const r = await env.DB.prepare("SELECT x, y, z FROM tiles WHERE game_id = ? ORDER BY z, x, y").bind(gameId).all();
+  const r = await env.DB.prepare("SELECT x, y, z, entry_id AS entry FROM tiles WHERE game_id = ? ORDER BY z, x, y").bind(gameId).all();
   return r.results as TileRow[];
 }

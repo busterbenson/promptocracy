@@ -344,7 +344,7 @@ try {
   const pb2 = raw.data;
   check("it is public and never cached", raw.status === 200 && raw.headers.get("cache-control") === "no-store");
   check("it has no email addresses and no ids", !raw.text.includes("@") && !/"(id|player_id|owner_player_id|game_id|email)"/.test(raw.text), raw.text.slice(0, 200));
-  check("a tile is only a place: x, y, z and a label, with no properties, terrain, owner or name", pb2.tiles.every((t) => J(Object.keys(t).sort()) === '["label","x","y","z"]') && !/terrain|props|owner|description/.test(raw.text));
+  check("a tile is a place and, at most, its catalog entry (entry, name, art: all null on a blank tile): no properties, terrain or owner", pb2.tiles.every((t) => J(Object.keys(t).sort()) === '["art","entry","label","name","x","y","z"]' && t.entry === null && t.name === null && t.art === null) && !/terrain|props|owner|description/.test(raw.text));
   check("every tile and piece carries x, y, z and a full label like '3N 2E 1U'", pb2.tiles.every((t) => t.z === 0 && /^[1-9][0-9]*[NS] [1-9][0-9]*[EW] 1U$/.test(t.label)) && pb2.pieces.length === 3 && pb2.pieces.every((p) => Number.isInteger(p.at.x) && Number.isInteger(p.at.y) && p.at.z === 0 && /^[1-9][0-9]*[NS] [1-9][0-9]*[EW] 1U$/.test(p.at.label)));
   check("pieces report color, score and place; the board reports its settings and the move rules", pb2.pieces[0].color.key === "teal" && pb2.pieces[0].score === 0 && J(pb2.settings) === J(getSettings(d1(state, "SELECT settings FROM games WHERE slug = 'hex'")[0].settings)) && pb2.rules.move_distance === 1 && pb2.rules.diagonal_moves === true && pb2.rules.shared_tiles === false);
   check("an unknown game is 404", (await client(A).get("/nope/api/board")).status === 404);

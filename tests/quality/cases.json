@@ -819,6 +819,34 @@
       "known_fail": null
     },
     {
+      "id": "r-tile-entry-p14",
+      "agent": "gremlin",
+      "start": "general",
+      "title": "P14's words: a charted tile is a catalog tile entry (engine tile entries)",
+      "turns": [
+        "Add this clause to rule 504: A tile charted by a move is a random tile entry from the catalog, else blank."
+      ],
+      "if_asked": [],
+      "intent": "The engine can chart a tile as a catalog tile entry (the chart effect's entry, read back as ctx.tiles.get(x, y, z).entry), and the catalog may have none (then the tile is blank), so nothing is missing: the check passes it (status ok) with no engine note, and Lock it in is allowed. Before the capability the rule check judged P14 an engine gap and it could not be applied.",
+      "expect": {
+        "ends_in": "proposal",
+        "no_escalation": true,
+        "first_answer": {
+          "check": "ok",
+          "engine_note": false,
+          "kind": [
+            "add",
+            "addclause"
+          ],
+          "words_re": [
+            "tile",
+            "catalog"
+          ]
+        }
+      },
+      "known_fail": null
+    },
+    {
       "id": "r-dott-edge",
       "agent": "gremlin",
       "start": "general",
