@@ -8,8 +8,10 @@ import { GAMES, STARTER } from "../generated/games";
 import { chartTile, loadTiles } from "../lib/board";
 import { getSettings } from "../lib/settings.js";
 import { GONE_REASON } from "../lib/votes.js";
+import { parseBook } from "../lib/proposals.js";
 import { Env, nowIso, who } from "../lib/util";
 import { applyBoard } from "./board-night.js";
+import { choosePlacements } from "./capabilities/placement.js";
 import { endGameStatements } from "../lib/end";
 import { grantStatements } from "../lib/items";
 import { tileLabel } from "../lib/geometry.js";
@@ -73,10 +75,30 @@ async function loadCreatures(env: Env, gameId: string) {
 /** @rule 602.4 */
 const creaturesOf = (rows: CreatureRow[], tonight: number | null) => rows.map((c) => ({ id: c.id, entry: c.entry_id, x: c.x, y: c.y, z: c.z, hearts: c.hearts, resting: tonight !== null && c.rests_night === tonight }));
 /** The game's catalog entries as the rules read them (rule 701): with the name and the commission that made it, so a rule can find an entry by either (rule 703.4). @rule 701.1, 703.4 */
-function catalogOf(game: { slug: string }) {
+function catalogOf(game: { slug: string }, requesters: Map<number, string> = new Map()) {
   const { bundle } = bundleFor(game);
-  return ((bundle as any).catalog ?? []).map((e: any) => ({ id: e.id, kind: e.kind, name: e.name ?? null, madeBy: e.madeBy ?? null, attrs: e.attrs ?? {} }));
+  return ((bundle as any).catalog ?? []).map((e: any) => ({ id: e.id, kind: e.kind, name: e.name ?? null, madeBy: e.madeBy ?? null,
+    requester: (e.madeBy ? requesters.get(Number(String(e.madeBy).slice(1))) : null) ?? null, attrs: e.attrs ?? {} }));
 }
+/**
+ * The catalog with each entry's requester: the player (ref) whose commission made it, found from the ticket number in its madeBy, one SELECT. Never put in the bundle or
+ * the public catalog: a player's id stays out of the game's repo (rule 703.4). @rule 703.4
+ */
+async function catalogWithRequesters(env: Env, game: { id: string; slug: string }) {
+  const made = ((bundleFor(game).bundle as any).catalog ?? []).some((e: any) => e.madeBy);
+  const rows = made ? ((await env.DB.prepare("SELECT number, player_id FROM tickets WHERE game_id = ?").bind(game.id).all()).results as { number: number; player_id: string }[]) : [];
+  return catalogOf(game, new Map(rows.map((r) => [r.number, r.player_id])));
+}
+
+type StructureRow = { id: number; entry_id: string; x: number; y: number; z: number; w: number; h: number };
+/** The structures on the board (not gone), in the order they were placed (rule 701.5). @rule 701.5 */
+async function loadStructures(env: Env, gameId: string) {
+  return (await env.DB.prepare("SELECT id, entry_id, x, y, z, w, h FROM structures WHERE game_id = ? AND gone_day IS NULL ORDER BY id").bind(gameId).all()).results as StructureRow[];
+}
+/** @rule 701.5 */
+const structuresOf = (rows: StructureRow[]) => rows.map((r) => ({ id: r.id, entry: r.entry_id, x: r.x, y: r.y, z: r.z, w: r.w, h: r.h }));
+/** The modules ctx.mayBite asks (rule 602.5). @rule 602.5 */
+const biteRulesOf = (game: { slug: string }) => bundleFor(game).bundle.modules;
 // The acting player's turn today (rule 202.1: one turn a day each). `turn.moved` is whether they have moved in it; the
 // legacy round/turn numbers stay in ctx for the modules written against them (the engine is additive only).
 // `given` is what they gave today of items (rule 704.1).
@@ -99,16 +121,18 @@ export function lightContext(game: any, today?: Today, me?: PlayerRow) {
 // The full context for a move or a spawn: the settings, every piece and every charted tile.
 /** @rule 501 */
 export async function boardContext(env: Env, game: any, today?: Today) {
-  const [tiles, pieces, creatures, held] = await Promise.all([
+  const [tiles, pieces, creatures, structures, catalog, held] = await Promise.all([
     loadTiles(env, game.id),
     env.DB.prepare(`SELECT ${PLAYER_COLS} FROM players WHERE game_id = ?`).bind(game.id).all(),
     loadCreatures(env, game.id),
+    loadStructures(env, game.id),
+    catalogWithRequesters(env, game),
     loadHeld(env, game.id),
   ]);
   return makeContext({
     day: game.day || null, now: nowIso(), settings: gameSettings(game), players: playersOf(pieces.results as PlayerRow[], held),
-    creatures: creaturesOf(creatures, game.day || null), catalog: catalogOf(game),
-    tiles: makeTiles(tiles), turn: turnOf(game, today), rng: cryptoRng(),
+    creatures: creaturesOf(creatures, game.day || null), structures: structuresOf(structures), catalog,
+    tiles: makeTiles(tiles), turn: turnOf(game, today), rng: cryptoRng(), biteRules: biteRulesOf(game),
   });
 }
 
@@ -226,7 +250,8 @@ export async function chooseSpawn(env: Env, game: any) {
 async function nightContext(env: Env, game: any, nowMs: number) {
   const pieces = await env.DB.prepare(`SELECT ${PLAYER_COLS} FROM players WHERE game_id = ?`).bind(game.id).all();
   return makeContext({ day: game.day || null, now: nowIso(nowMs), settings: gameSettings(game), players: playersOf(pieces.results as PlayerRow[], await loadHeld(env, game.id)),
-    creatures: creaturesOf(await loadCreatures(env, game.id), game.day || null), catalog: catalogOf(game) });
+    creatures: creaturesOf(await loadCreatures(env, game.id), game.day || null), structures: structuresOf(await loadStructures(env, game.id)),
+    catalog: await catalogWithRequesters(env, game), biteRules: biteRulesOf(game) });
 }
 
 // The order the passed proposals are applied in (rule 107.2), by the game's own rule for it (the applyOrder hook).
@@ -376,6 +401,47 @@ export function heartsStart(game: { slug: string; settings: string }): number {
   return gameSettings(game)["hearts.start"];
 }
 
+// Whether the night places what was built: the game's deployed rulebook has clause 701.5 (the same gate as 701.4 and 803.2). A game that has not adopted it,
+// or repealed it, places nothing: no behaviour a rule does not state.
+const placementBooks = new WeakMap<object, boolean>();
+/** @rule 701.5 */
+export function placementOn(game: { slug: string }): boolean {
+  const { bundle } = bundleFor(game);
+  let on = placementBooks.get(bundle);
+  if (on === undefined) { on = !!parseBook(bundle.rulesMd).byNum["701"]?.clauses.some((c: any) => c.num === "701.5"); placementBooks.set(bundle, on); }
+  return on;
+}
+
+/**
+ * The creatures and structures built tonight that no row on the board has yet, and where each goes (rule 701.5): the game's `placement` hook decides (a tile, or null for
+ * "not placed"); with no answer the placement capability picks at random (src/engine/capabilities/placement.js). Returns its appear / place effects, the creatures and structures
+ * they make (for the night's own context) and `noRoom`. @rule 701.5
+ */
+async function placeBuilt(env: Env, game: any, n: number, ctx: any, nextId: number) {
+  if (!placementOn(game)) return { effects: [], creatures: [], structures: [], noRoom: [] as string[] };
+  const day = new Map<string, number>(((bundleFor(game).bundle as any).catalog ?? []).map((b: any) => [b.id, b.day]));
+  const fresh = ctx.catalog.filter((e: any) => (e.kind === "creature" || e.kind === "structure") && day.get(e.id) === n);
+  if (!fresh.length) return { effects: [], creatures: [], structures: [], noRoom: [] as string[] };
+  const had = new Set(((await env.DB.prepare("SELECT entry_id FROM creatures WHERE game_id = ? UNION SELECT entry_id FROM structures WHERE game_id = ?").bind(game.id, game.id).all()).results as any[]).map((r) => r.entry_id));
+  const rules = rulesFor(game);
+  return choosePlacements({ entries: fresh.filter((e: any) => !had.has(e.id)), ask: (e: any) => rules.placement(ctx, e), ctx, nextId });
+}
+
+/**
+ * The drawing the board shows for each creature on it (rule 701.1): the entry id the game's creatureDrawing hook answers, as {creature id: entry id}; a creature the rules
+ * have no say about, or whose answer names no catalog entry, is left out (its own drawing). A rule that throws is logged and leaves the creatures with their own.
+ * @rule 701.1
+ */
+export function creatureDrawings(game: any, ctx: any): Record<number, string> {
+  const rules = rulesFor(game), known = new Set(ctx.catalog.map((e: any) => e.id)), out: Record<number, string> = {};
+  if (!rules.implementers("creatureDrawing").length) return out;
+  for (const c of ctx.creatures) {
+    try { const id = rules.creatureDrawing(ctx, c); if (id !== undefined && known.has(id)) out[c.id] = id; }
+    catch (e: any) { console.error(e?.message || e); }
+  }
+  return out;
+}
+
 /**
  * The statements for night n's board, or null when the game's rules have nothing to run (no `night` hook) or it already ran. Builds the context, asks
  * rules.night(ctx, {applied}) (every night, a quiet one included), applies its effects in order to an in-memory copy (applyBoard), asks rules.ending
@@ -392,11 +458,15 @@ export async function nightBoardStatements(env: Env, game: any, n: number, nowMs
   const maxId: any = await env.DB.prepare("SELECT COALESCE(MAX(id), 0) AS m FROM creatures").first(); // creatures.id is one key across every game in the database
   const nextId = (maxId?.m ?? 0) + 1;
   const tiles = makeTiles(await loadTiles(env, game.id));
-  const full = makeContext({ day: game.day || null, now: nowIso(nowMs), settings: ctx.settings, players: ctx.players.map((p: any) => ({ ...p })), creatures: ctx.creatures, catalog: ctx.catalog, tiles, rng: cryptoRng(), nextCreatureId: nextId });
-  const effects = rules.night(full, { applied });
+  const rng = cryptoRng(), biteRules = biteRulesOf(game);
+  // What was built tonight is placed first (rule 701.5), and the night's own rules see it on the board (the creature ids it takes come before theirs).
+  const placed = await placeBuilt(env, game, n, makeContext({ day: game.day || null, now: nowIso(nowMs), settings: ctx.settings, players: ctx.players.map((p: any) => ({ ...p })), creatures: ctx.creatures, structures: ctx.structures, catalog: ctx.catalog, tiles, rng, biteRules }), nextId);
+  const full = makeContext({ day: game.day || null, now: nowIso(nowMs), settings: ctx.settings, players: ctx.players.map((p: any) => ({ ...p })), creatures: [...ctx.creatures, ...placed.creatures],
+    structures: [...ctx.structures, ...placed.structures], catalog: ctx.catalog, tiles, rng, nextCreatureId: nextId + placed.creatures.length, biteRules });
+  const effects = [...placed.effects, ...rules.night(full, { applied })];
   const rows = await loadCreatures(env, game.id);
   const res = applyBoard({
-    n, effects, tiles, catalog: ctx.catalog, nextId,
+    n, effects, tiles, catalog: ctx.catalog, nextId, structures: ctx.structures,
     players: ctx.players.map((p: any) => ({ ...p })),
     creatures: rows.map((c) => ({ id: c.id, entry: c.entry_id, x: c.x, y: c.y, z: c.z, hearts: c.hearts, restsNight: c.rests_night, resting: false })),
   });
@@ -417,11 +487,16 @@ export async function nightBoardStatements(env: Env, game: any, n: number, nowMs
        SELECT ?, ?, ?, ?, ?, 'night', ?, json(?), ?, ${NEXT_NIGHT_SEQ} WHERE ${open}`,
     ).bind(game.id, kind, text, now, n, template, JSON.stringify(args), player, game.id, n, ...ob));
   const byId = new Map<number, any>();
+  // A built entry that found no room is not placed, and History says so (rule 701.5: "If no tile qualifies, none appears", as in 602.3).
+  for (const id of placed.noRoom) ev("no_room", `${entryName(id)} found no room.`, "no_room", { entry: id }, null);
   for (const op of res.ops) {
     if (op.op === "appear") {
       byId.set(op.id, op);
       stmts.push(env.DB.prepare(`INSERT INTO creatures (id, game_id, entry_id, x, y, z, hearts, appeared_day) SELECT ?, ?, ?, ?, ?, ?, ?, ? WHERE ${open}`).bind(op.id, game.id, op.entry, op.x, op.y, op.z, op.hearts, n, ...ob));
       ev("appeared", `${entryName(op.entry)} appeared at ${tileOf(op.x, op.y, op.z)}.`, "appeared", { creature: op.id, entry: op.entry }, null);
+    } else if (op.op === "place") {
+      stmts.push(env.DB.prepare(`INSERT INTO structures (game_id, entry_id, x, y, z, w, h, placed_day) SELECT ?, ?, ?, ?, ?, ?, ?, ? WHERE ${open}`).bind(game.id, op.entry, op.x, op.y, op.z, op.w, op.h, n, ...ob));
+      ev("placed", `${entryName(op.entry)} was placed at ${tileOf(op.x, op.y, op.z)}.`, "placed", { entry: op.entry }, null);
     } else if (op.op === "step") {
       stmts.push(env.DB.prepare(`UPDATE creatures SET x = ?, y = ?, z = ? WHERE game_id = ? AND id = ? AND ${open}`).bind(op.x, op.y, op.z, game.id, op.id, ...ob));
     } else if (op.op === "move") {
@@ -431,6 +506,9 @@ export async function nightBoardStatements(env: Env, game: any, n: number, nowMs
         `UPDATE players SET x = ?, y = ?, z = ?, mirrored = ? WHERE game_id = ? AND id = ? AND x = ? AND y = ? AND z = ? AND ${open}`,
       ).bind(op.x, op.y, op.z, toRight > 0 ? 1 : toRight < 0 ? 0 : (names.get(op.player)?.mirrored ?? 0), game.id, op.player, op.from.x, op.from.y, op.from.z, ...ob));
       ev("piece_moved", `${pn(op.player)} was moved to ${tileOf(op.x, op.y, op.z)}${op.reason ? ` (${op.reason})` : ""}.`, "moved", { to: { x: op.x, y: op.y, z: op.z }, reason: op.reason }, op.player);
+    } else if (op.op === "step_refused") {
+      // One History line per blocked creature: the steps it skips after the block say nothing new.
+      if (!op.why.startsWith("an earlier step")) ev("step_refused", `${entryName(op.entry)} stayed where it was: ${tileOf(op.x, op.y, op.z)} was taken.`, "step_refused", { creature: op.id, entry: op.entry, to: { x: op.x, y: op.y, z: op.z } }, null);
     } else if (op.op === "move_refused") {
       ev("move_refused", `${pn(op.player)} could not be moved to ${tileOf(op.x, op.y, op.z)}: ${op.why}.`, "move_refused", { to: { x: op.x, y: op.y, z: op.z }, why: op.why }, names.has(op.player) ? op.player : null);
     } else if (op.op === "rest") {
@@ -452,7 +530,7 @@ export async function nightBoardStatements(env: Env, game: any, n: number, nowMs
   }
   if (res.died.length) {
     const after = makeContext({ day: game.day || null, now, settings: ctx.settings, tiles, rng: cryptoRng(), catalog: ctx.catalog,
-      players: res.players.map((p: any) => ({ ...p })), creatures: res.creatures.map((c: any) => ({ id: c.id, entry: c.entry, x: c.x, y: c.y, z: c.z, hearts: c.hearts, resting: false })) });
+      players: res.players.map((p: any) => ({ ...p })), creatures: res.creatures.map((c: any) => ({ id: c.id, entry: c.entry, x: c.x, y: c.y, z: c.z, hearts: c.hearts, resting: false })), structures: res.structures.map((o: any, i: number) => ({ id: i + 1, ...o })), biteRules });
     const end = rules.ending(after, { died: res.died });
     if (end) stmts.push(...endGameStatements(env, game, n, { ending: end.ending, player: end.player, reason: end.reason }, end.player ? names.get(end.player)?.name ?? null : null, now, open, ob));
   }

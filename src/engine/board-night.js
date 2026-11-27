@@ -1,8 +1,11 @@
 // The night's board, as a pure function (rules 601-603): the effects the game's `night` hook returned, applied in order to an in-memory copy of the
 // players and the creatures. Plain JavaScript with no D1 in it, so the Worker (src/engine/host.ts, which turns the result into one batch) and the tests
 // (plain node) share ONE implementation. An effect the board can't take (an uncharted or occupied tile, an unknown creature, a rise for someone who
-// isn't dead) THROWS: refused, never dropped, so a rule can't pass its tests with an effect that silently does nothing.
+// isn't dead) THROWS: refused, never dropped, so a rule can't pass its tests with an effect that silently does nothing. Two exceptions, a rule's
+// move and a step onto a tile already taken that night: those are skipped and logged as ops (move_refused, step_refused), because each rule picks
+// its tiles from the same starting board and a collision between two rules must not hold the whole night open.
 import { attr } from "./api.js";
+import { placeOp } from "./capabilities/structures.js";
 
 /** @rule 602.2 */
 const here = (x, y, z) => (o) => o.x === x && o.y === y && o.z === z;
@@ -26,14 +29,16 @@ function moveOp(P, e, tiles, occupied) {
 
 /**
  * Applies `effects` for night `n`. `players`: [{ref, x, y, z, hearts, state, deadDay}], `creatures`: the live ones [{id, entry, x, y, z, hearts, resting, restsNight}],
- * `catalog`: [{id, kind, attrs}], `tiles`: has(x, y, z), `nextId`: the id the first appearing creature gets.
- * Returns {players, creatures, ops, died, rose} where ops are the records the host writes (in order).
+ * `catalog`: [{id, kind, attrs}], `tiles`: has(x, y, z), `nextId`: the id the first appearing creature gets, `structures`: the structures already on the board
+ * [{entry, x, y, z, w, h}] (optional). Returns {players, creatures, structures, ops, died, rose} where ops are the records the host writes (in order).
  * @rule 602.4, 603.1, 603.3
  */
-export function applyBoard({ n, effects, players, creatures, catalog, tiles, nextId }) {
+export function applyBoard({ n, effects, players, creatures, catalog, tiles, nextId, structures = [] }) {
   const P = new Map(players.map((p) => [p.ref, { ...p }]));
   const C = creatures.map((c) => ({ ...c }));
+  const S = structures.map((x) => ({ ...x }));
   const ops = [], died = [], rose = [];
+  const blocked = new Set(); // creatures with a refused step tonight
   let id = nextId;
   /** @rule 602.2 */
   const occupied = (x, y, z) => [...P.values()].some(here(x, y, z)) || C.some((c) => !c.gone && here(x, y, z)(c));
@@ -53,12 +58,22 @@ export function applyBoard({ n, effects, players, creatures, catalog, tiles, nex
         ops.push({ op: "appear", id: c.id, entry: c.entry, x, y, z, hearts: c.hearts });
         break;
       }
+      case "place": {
+        const o = placeOp(e, catalog, tiles, occupied, S);
+        S.push({ entry: o.entry, x: o.x, y: o.y, z: o.z, w: o.w, h: o.h });
+        ops.push(o);
+        break;
+      }
       case "step": {
         const c = live(e.creature);
         if (!c) throw new Error(`step: no creature ${e.creature} on the board`);
         const { x, y, z } = e.to;
         if (!tiles.has(x, y, z)) throw new Error(`step: ${x},${y},${z} is not charted`);
-        if (occupied(x, y, z)) throw new Error(`step: ${x},${y},${z} is occupied`);
+        // Each rule's night sees the same board, so two rules (602's Blob, 606's Pancake) can pick one tile in a night. The later step is skipped and
+        // logged, as a refused move is: the creature stays where it is (602.4), and one collision does not hold the whole night open.
+        // Its later steps tonight were planned from the tile it didn't reach, so they are skipped too: it stays where it is, never jumps a tile.
+        if (blocked.has(c.id)) { ops.push({ op: "step_refused", id: c.id, entry: c.entry, x, y, z, why: "an earlier step was refused" }); break; }
+        if (occupied(x, y, z)) { blocked.add(c.id); ops.push({ op: "step_refused", id: c.id, entry: c.entry, x, y, z, why: `${x},${y},${z} is occupied` }); break; }
         c.x = x; c.y = y; c.z = z;
         ops.push({ op: "step", id: c.id, x, y, z });
         break;
@@ -106,5 +121,5 @@ export function applyBoard({ n, effects, players, creatures, catalog, tiles, nex
         throw new Error(`the board can't apply a ${e.type} effect`);
     }
   }
-  return { players: [...P.values()], creatures: C.filter((c) => !c.gone), ops, died, rose };
+  return { players: [...P.values()], creatures: C.filter((c) => !c.gone), structures: S, ops, died, rose };
 }

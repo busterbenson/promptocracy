@@ -15,7 +15,8 @@ export { DEFAULT_SETTINGS };
 /** @rule 503 */
 export const island = (width = 8, height = width) => islandCoords(width, height).map(([x, y]) => ({ x, y, z: 0 }));
 
-// A frozen ctx. `players` are {ref, x, y, z?}; `tiles` default to the 8x8 island; `settings` are overrides on the defaults.
+// A frozen ctx. `players` are {ref, x, y, z?}; `tiles` default to the 8x8 island; `settings` are overrides on the defaults; `structures` are [{id, entry, x, y, z?, w, h}];
+// `modules` are rule modules whose biteAllowed answers ctx.mayBite (none: always true).
 /** @rule 101 */
 export function makeCtx(o = {}) {
   return makeContext({
@@ -25,6 +26,8 @@ export function makeCtx(o = {}) {
     players: (o.players ?? []).map((p) => ({ color: "teal", score: 0, z: 0, ...p })),
     creatures: o.creatures,
     catalog: o.catalog,
+    structures: o.structures,
+    biteRules: o.modules,
     nextCreatureId: o.nextCreatureId,
     tiles: makeTiles(o.tiles ?? island()),
     rulebook: o.rulebook,

@@ -540,8 +540,13 @@ import { hold } from "/js/busy.js";
   // Things on the board that are not a player's piece. Each is an instance of a catalog entry, and its card is keyed by the entry's kind
   // (creature today). A new kind (an item, a structure) adds one line here and its rows below: the tap, the card host, the tile list
   // and the entry link are shared.
-  const THINGS = { creature: { list: () => (BOARD && BOARD.creatures) || [], rows: creatureRows } };
-  const thingsAt = t => Object.entries(THINGS).flatMap(([kind, T]) => T.list().filter(c => c.at.x === t.x && c.at.y === t.y && c.at.z === t.z).map(c => ({ kind, key: c.id, thing: c })));
+  const THINGS = { creature: { list: () => (BOARD && BOARD.creatures) || [], rows: creatureRows }, structure: { list: () => (BOARD && BOARD.structures) || [], rows: structureRows } };
+  // a thing is on a tile when the tile is in its footprint (a structure covers w by h tiles from its corner; anything else is one tile)
+  const thingsAt = t => Object.entries(THINGS).flatMap(([kind, T]) => T.list().filter(c => c.at.z === t.z && t.x >= c.at.x && t.x < c.at.x + (c.w || 1) && t.y >= c.at.y && t.y < c.at.y + (c.h || 1)).map(c => ({ kind, key: c.id, thing: c })));
+  /** @rule 701.5, 704.1 */
+  function structureRows(c, chip, row) {
+    return [row("Size", `${esc(c.w)}×${esc(c.h)} tiles`, chip("704.1")), row("At", esc(noLevel(c.at.label)), chip("701.5"))];
+  }
   /** @rule 602.1, 602.3, 602.4, 602.5, 601 */
   function creatureRows(c, chip, row) {
     const hostile = c.temper === "hostile";
@@ -558,7 +563,7 @@ import { hold } from "/js/busy.js";
     if (!c) return null;
     const chip = (num) => `<button type="button" class="rref" data-seecard="${num}" data-clause="${num}" aria-haspopup="dialog" aria-label="Preview rule ${num}">${num}</button>`;
     const row = (k, v, refs) => `<div class="cs"><dt>${k}</dt><dd>${v}</dd><span class="rr">${refs}</span></div>`;
-    const art = (WS && c.entry && WS.entryArt(c.entry)) || `<span class="arttile" aria-hidden="true">${esc(String(c.name || "?").charAt(0))}</span>`;
+    const art = (c.art && /^\/[A-Za-z0-9_-]+\/art\/[0-9a-f]{64}$/.test(c.art) && `<img class="artimg big" src="${esc(c.art)}" alt="${esc(c.name)}">`) || (WS && c.entry && WS.entryArt(c.entry)) || `<span class="arttile" aria-hidden="true">${esc(String(c.name || "?").charAt(0))}</span>`;
     const link = c.entry && WS && WS.entryArt(c.entry) ? `<div class="cs"><dt>Entry</dt><dd><button type="button" class="linkbtn" data-entry="${esc(c.entry)}">${esc(c.entry)} ${esc(c.name)}</button></dd></div>` : "";
     return { cls: "crit", label: c.name, backLabel: c.name,
       html: `<div class="mtop"><div class="cart">${art}</div><h2>${esc(c.name)}</h2><span class="mmeta">${esc(c.kind || spec.kind)}${c.temper ? " · " + esc(c.temper) : ""}</span>${c.resting ? '<span class="mpill">Resting</span>' : ""}</div><dl class="cstats">${T.rows(c, chip, row).join("")}${link}</dl>` };

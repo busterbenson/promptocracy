@@ -57,6 +57,15 @@ console.log("the board: effects applied in order to a copy");
   const thrown = (e, ps = [P("a", 0, 0)], cs = []) => { try { run(e, ps, cs); return ""; } catch (x) { return x.message; } };
   check("an uncharted or occupied tile, an unknown creature and a rise for someone not dead are refused, not dropped",
     /not charted/.test(thrown([effects.appear("C1", t(9, 9))])) && /occupied/.test(thrown([effects.appear("C1", t(0, 0))])) && /no creature/.test(thrown([effects.step(7, t(1, 1))])) && /not a dead player/.test(thrown([effects.rise("a")])) && /occupied/.test(thrown([effects.appear("C1", t(2, 2)), effects.appear("C1", t(2, 2))])));
+  const two = [{ id: 1, entry: "C1", x: 0, y: 2, z: 0, hearts: 3, restsNight: null }, { id: 2, entry: "C1", x: 2, y: 2, z: 0, hearts: 3, restsNight: null }];
+  const s1 = run([effects.step(1, t(1, 2)), effects.step(2, t(1, 2)), effects.bite({ player: "a" }, 1)], [P("a", 0, 0, 3)], two);
+  check("step: two creatures sent to one tile in a night (two rules, one board): the first lands, the second stays put and is logged, and the night goes on",
+    s1.ops[0].op === "step" && s1.ops[1].op === "step_refused" && s1.ops[1].id === 2 && /occupied/.test(s1.ops[1].why)
+    && s1.creatures.find((c) => c.id === 2).x === 2 && s1.ops[2].op === "bite", J(s1.ops));
+  const s2 = run([effects.step(1, t(1, 2)), effects.step(2, t(1, 2)), effects.step(2, t(1, 1))], [P("a", 0, 0, 3)], two);
+  check("step: after a refused step, that creature's later steps tonight are skipped too (planned from a tile it never reached; it never jumps)",
+    s2.ops[2].op === "step_refused" && /earlier step/.test(s2.ops[2].why) && s2.creatures.find((c) => c.id === 2).x === 2 && s2.creatures.find((c) => c.id === 2).y === 2, J(s2.ops));
+  check("step: onto a player's tile is skipped and logged too", run([effects.step(1, t(0, 0))], [P("a", 0, 0)], two).ops[0].op === "step_refused");
   // the move effect: a night rule moves a player's piece (rule 504.2's guards: charted, unoccupied by a piece or a creature, and a living player)
   const mv = (e, ps, cs = []) => run(e, ps, cs);
   const m1 = mv([effects.move("a", t(1, 0), "x")], [P("a", 0, 0), P("b", 3, 3)]);

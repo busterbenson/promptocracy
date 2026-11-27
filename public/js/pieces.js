@@ -94,6 +94,18 @@ export function creatureSVG(c, { scale = 1.1, part = "" } = {}) {
   return CREATURE_PIECES.includes(key) ? pieceSVG({ shape: key, color: null, scale, part }) : null;
 }
 
+// A creature with no traced piece but a drawing in the catalog (rule 701.1): the drawing, a small upright figure standing on the tile, its feet on the tile's centre, with
+// the shadow a piece has. `art` is an address the Worker serves (only that is ever drawn). `part` as in pieceSVG; null when the creature has no drawing to draw.
+const ART_ADDR = /^\/[A-Za-z0-9_-]+\/art\/[0-9a-f]{64}$/;
+export function creatureArtSVG(c, { part = "" } = {}) {
+  if (!c || typeof c.art !== "string" || !ART_ADDR.test(c.art)) return null;
+  const side = HEIGHT * 1.35, half = side * 0.3, k = HH / HW;
+  const e = (w, fill) => `<ellipse cx="0" cy="0" rx="${(half * w).toFixed(2)}" ry="${(half * w * k).toFixed(2)}" fill="url(#${fill})"/>`;
+  const under = `<g clip-path="url(#tt)">${e(SHADOW.soft, "gAO")}${e(SHADOW.core, "gContact")}</g>`;
+  const over = `<image class="cart-img" href="${c.art}" x="${(-side / 2).toFixed(2)}" y="${(-side + 2).toFixed(2)}" width="${side.toFixed(2)}" height="${side.toFixed(2)}" preserveAspectRatio="xMidYMax meet"/>`;
+  return part === "shadow" ? under : part === "art" ? over : under + over;
+}
+
 // A creature's board piece as a picture for a card (the catalog card, the Makes card): the same traced art the board draws, standing on
 // nothing, cropped to the figure. For a creature with no saved drawing; null when it has no piece (looked up by name, any case).
 // @rule 701.1

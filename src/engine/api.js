@@ -4,6 +4,7 @@
 export { defineRule, refuse, effects, HOOKS, ACTION_KINDS } from "./hooks.js";
 export { chartOffsets, chartedAround, withinSteps, tileLabel, validCoord } from "../lib/geometry.js";
 export { DIAGONAL_MOVES, SHARED_TILES } from "../lib/board-rules.js";
+export { structureAt } from "./capabilities/structures.js";
 export const ENGINE_VERSION = 1;
 
 /**
@@ -26,3 +27,4 @@ export function entryMadeBy(catalog, ticket, kind, name) {
   const want = String(name ?? "").trim().toLowerCase();
   return want ? made.find((e) => String(e.name ?? "").toLowerCase() === want) : undefined;
 }
+
