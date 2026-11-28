@@ -204,12 +204,12 @@ under rule 101 or 102; a follow-up change claims them and moves `src/` into the 
 - line 68: `evenInt`
 - line 72: `max_players`
 - line 76: `mcp_enabled`
-- line 93: `exactly`
-- line 102: `spawnSpots`
-- line 103: `inside`
-- line 111: `validateSettings`
-- line 131: `getSettings`
-- line 145: `settingsForSize`
+- line 90: `exactly`
+- line 99: `spawnSpots`
+- line 100: `inside`
+- line 108: `validateSettings`
+- line 128: `getSettings`
+- line 142: `settingsForSize`
 
 ## src/lib/tickets.js (1)
 

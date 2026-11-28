@@ -63,7 +63,8 @@ console.log("the slip shows what a setting change sets (the drafter keeps it out
 
 console.log("her cap, a setting (rule 106.7)");
 {
-  check("starling.messages_per_day is no default any more, but a tag that still names it validates (0-200), until Rickshaw's next tag drops it", !("starling.messages_per_day" in DEFAULT_SETTINGS) && !validateSettings({ ...DEFAULT_SETTINGS, "starling.messages_per_day": 100 }).length && validateSettings({ ...DEFAULT_SETTINGS, "starling.messages_per_day": 201 }).length === 1);
+  // Starling left with Rickshaw #36; no game's settings.json names her cap any more (Rickshaw's live settings and D1 checked 2026-11-28), so it is an unknown setting again.
+  check("starling.messages_per_day is gone: no default, and a settings file that still names it is refused as an unknown setting", !("starling.messages_per_day" in DEFAULT_SETTINGS) && validateSettings({ ...DEFAULT_SETTINGS, "starling.messages_per_day": 100 }).some((e) => /unknown setting starling\.messages_per_day/.test(e)));
 }
 
 console.log("her answer: what the platform keeps");
