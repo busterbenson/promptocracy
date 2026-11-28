@@ -62,14 +62,19 @@ with sync_playwright() as p:
         arts = {cr["id"]: cr["art"] for cr in board["creatures"]}
         check(f"{tag}: the board data has one structure with a drawing and two Pancakes with different drawings (awake, sleeping)", len(board["structures"]) == 1 and bool(house_art) and len(set(arts.values())) == 2 and None not in arts.values(), str(board["structures"]) + str(arts))
         s = page.locator("polygon.structure")
-        check(f"{tag}: the House is one polygon filled with its drawing's pattern", s.count() == 1 and "url(#mb-a" in (s.first.get_attribute("style") or ""))
+        stand = page.locator(f"g.structure-art image.sart-img[data-art='{house_art}']")
+        check(f"{tag}: the House is one footprint on the land, and its drawing stands up on it as one picture (not painted into the tiles)", s.count() == 1 and stand.count() == 1 and "url(#" not in (s.first.get_attribute("style") or ""))
         sb, tb = s.first.bounding_box(), page.locator(top(1, 1)).bounding_box()
         check(f"{tag}: it covers 2 tiles across: its box is about twice a tile's ({sb['width']:.0f} vs {tb['width']:.0f})", 1.8 < sb["width"] / tb["width"] < 2.2 and 1.8 < sb["height"] / tb["height"] < 2.2)
         order = page.evaluate("(() => { const k = [...document.querySelectorAll('svg > *')]; const i = k.findIndex(n => n.matches('polygon.structure')); const j = k.findIndex(n => n.matches('g.piece, g.creature, g.piece-shadow, g.creature-shadow')); return [i, j]; })()")
-        check(f"{tag}: it is drawn after the land and before every shadow and figure ({order})", 0 <= order[0] < order[1])
-        href = page.get_attribute("pattern[id^='mb-a'] image", "href")
+        check(f"{tag}: its footprint is drawn after the land and before every shadow and figure ({order})", 0 <= order[0] < order[1])
+        ana_after = page.evaluate("(() => { const k = [...document.querySelectorAll('svg > g')]; const h = k.findIndex(n => n.matches('g.structure-art')); const front = k.filter(n => n.matches('g.piece')).map(n => k.indexOf(n)); return h >= 0 && front.length > 0 && front.every(i => i > h); })()")
+        bb, hb = page.locator("g.structure-art").bounding_box(), page.locator(top(1, 1)).bounding_box()
+        check(f"{tag}: the House stands with the pieces: both pieces (in front of it) draw over it, and its base sits on its front tile", ana_after and abs((bb["y"] + bb["height"]) - (hb["y"] + hb["height"])) < 4, str((ana_after, bb, hb)))
+        href = stand.first.get_attribute("href")
         res = page.evaluate("(u) => fetch(u).then(r => [r.status, r.headers.get('content-type')])", house_art)
         check(f"{tag}: the drawing really loads from the Worker ({res})", res[0] == 200 and "image" in (res[1] or "") and href is not None)
+        check(f"{tag}: a structure drawing with no white page at its edges (the stub's) is drawn as served", href == house_art, str(href))
         imgs = page.evaluate("[...document.querySelectorAll('g.creature image.cart-img')].map(i => i.getAttribute('data-art'))")
         check(f"{tag}: both Pancakes are drawn as their catalog drawings, two different pictures, standing on their tiles", len(imgs) == 2 and len(set(imgs)) == 2 and set(imgs) == set(arts.values()), str(imgs))
         hrefs = page.evaluate("[...document.querySelectorAll('g.creature image.cart-img')].map(i => i.getAttribute('href'))")
@@ -106,8 +111,9 @@ with sync_playwright() as p:
     # drawing is served as one; the board keeps its address in data-art and swaps the picture for the cut one.
     for scheme in ["light", "dark"]:
         tag = f"white page {scheme}"
-        probe = b.new_context(); arts = {cr["id"]: cr["art"] for cr in probe.request.get(base + f"/{SLUG}/api/board").json()["creatures"]}; probe.close()
-        c, page, errors = new_page(b, 1280, 900, scheme, routes={base + arts[1]: white_page_png()})
+        probe = b.new_context(); pb = probe.request.get(base + f"/{SLUG}/api/board").json(); probe.close()
+        arts, house_art = {cr["id"]: cr["art"] for cr in pb["creatures"]}, pb["structures"][0]["art"]
+        c, page, errors = new_page(b, 1280, 900, scheme, routes={base + arts[1]: white_page_png(), base + house_art: white_page_png()})
         sel = f"g.creature image.cart-img[data-art='{arts[1]}']"
         try: swapped = page.wait_for_function(f"(() => {{ const i = document.querySelector(\"{sel}\"); return i && i.getAttribute('href').startsWith('blob:'); }})()", timeout=10000) is not None
         except Exception: swapped = False
@@ -117,11 +123,25 @@ with sync_playwright() as p:
           const img = new Image(); img.src = document.querySelector("{sel}").getAttribute('href'); await img.decode();
           const cv = Object.assign(document.createElement('canvas'), {{ width: img.width, height: img.height }}), cx = cv.getContext('2d'); cx.drawImage(img, 0, 0);
           const at = (x, y) => [...cx.getImageData(x, y, 1, 1).data];
-          return [at(1, 1), at(img.width / 2, img.height / 2), at(img.width / 2 + img.width * 0.2, img.height / 2)];
+          return [at(1, 1), at(img.width / 2, img.width / 2), at(img.width / 2 + img.width * 0.2, img.width / 2)];   // y by width: the trim takes rows off the bottom only, so the drawing's centre stays where it was
         }})()""")
         check(f"{tag}: the page is gone (a corner is transparent: {corner})", corner[3] == 0)
         check(f"{tag}: white inside the figure stays (the eye is white and opaque: {eye})", eye[3] == 255 and min(eye[:3]) > 240)
         check(f"{tag}: the figure stays opaque navy ({disc})", disc[3] == 255 and disc[2] > disc[0])
+        size = page.evaluate(f"""(async () => {{ const img = new Image(); img.src = document.querySelector("{sel}").getAttribute('href'); await img.decode(); return [img.width, img.height]; }})()""")
+        check(f"{tag}: the cut creature is trimmed below its feet, same width, so it stands on its tile instead of floating ({size})", size[1] < size[0] * 0.9 and size[0] == 96, str(size))
+        hsel = f"g.structure-art image.sart-img[data-art='{house_art}']"
+        try: hswapped = page.wait_for_function(f"(() => {{ const i = document.querySelector(\"{hsel}\"); return i && i.getAttribute('href').startsWith('blob:'); }})()", timeout=10000) is not None
+        except Exception: hswapped = False
+        hhref = lambda: page.evaluate(f"(() => {{ const i = document.querySelector(\"{hsel}\"); return i ? i.getAttribute('href') : null; }})()")   # no wait: the element may not be there
+        check(f"{tag}: the House's drawing loses its white page too (a blob: picture)", hswapped, str(hhref()))
+        if hswapped:
+            hc, hsize = page.evaluate(f"""(async () => {{
+              const img = new Image(); img.src = document.querySelector("{hsel}").getAttribute('href'); await img.decode();
+              const cv = Object.assign(document.createElement('canvas'), {{ width: img.width, height: img.height }}), cx = cv.getContext('2d'); cx.drawImage(img, 0, 0);
+              return [[...cx.getImageData(1, 1, 1, 1).data], [img.width, img.height]];
+            }})()""")
+            check(f"{tag}: the House's page is gone at its corners ({hc}) and it is trimmed below its base, same width ({hsize})", hc[3] == 0 and hsize[0] == 96 and hsize[1] < 96 * 0.9)
         other = page.get_attribute(f"g.creature image.cart-img[data-art='{arts[2]}']", "href")
         check(f"{tag}: the other (full bleed) drawing is left as served", other == arts[2], str(other))
         shot(page, f"board-white-page-{scheme}")
@@ -129,6 +149,7 @@ with sync_playwright() as p:
         x, y = centre(page, top(0, 0)); page.mouse.click(x, y); page.wait_for_timeout(50)
         redrawn = page.get_attribute(sel, "data-before") is None
         check(f"{tag}: after a redraw (a tile selected) the cut picture is drawn straight away, not the page first", redrawn and page.get_attribute(sel, "href").startswith("blob:"), str((redrawn, page.get_attribute(sel, "href"))))
+        check(f"{tag}: after the redraw the House is drawn cut straight away too", (hhref() or "").startswith("blob:"), str(hhref()))
         check(f"{tag}: no page errors", not errors, "; ".join(errors))
         c.close()
     b.close()

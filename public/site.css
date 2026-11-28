@@ -133,7 +133,7 @@ mark{background:color-mix(in srgb,var(--accent) 28%,transparent);color:inherit;b
 .rim{fill:none;stroke-width:2.6;stroke-linejoin:round;pointer-events:none}
 .selected{fill:none;stroke:var(--accent);stroke-width:2.6;stroke-linejoin:round;pointer-events:none}
 .hover{fill:none;stroke:var(--ink);stroke-width:1.6;pointer-events:none}
-.piece,.piece-shadow,.creature,.creature-shadow,.structure{pointer-events:none}   /* a tap on a figure lands on its tile */
+.piece,.piece-shadow,.creature,.creature-shadow,.structure,.structure-art{pointer-events:none}   /* a tap on a figure lands on its tile */
 .board-ctl{position:absolute;right:12px;bottom:12px;display:flex;gap:6px}
 .board-ctl button{width:36px;height:36px;border-radius:10px;border:1.5px solid var(--line);background:var(--surface);cursor:pointer;font-family:var(--font-mono);font-weight:700;padding:0}
 .board-ctl button.wide{width:auto;padding:0 10px;font-size:.66rem}
@@ -149,6 +149,7 @@ mark{background:color-mix(in srgb,var(--accent) 28%,transparent);color:inherit;b
 .prow b{font-family:var(--font-mono);font-size:.8rem}
 .players li.mine .prow{font-weight:700}
 .players .you{font-weight:400}
+.structure{fill:none}
 .structure.plain{fill:var(--land);stroke:var(--line);stroke-width:1.5;fill-opacity:.55}
 .cring{fill:var(--land);stroke:#b3261e;stroke-width:2.2}
 .cletter{font-size:12px;font-weight:700;fill:var(--ink)}

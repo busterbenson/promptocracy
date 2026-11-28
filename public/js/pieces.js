@@ -6,7 +6,7 @@
 // keeps that offset, so the shading survives. A shape's FIXED fills (an eye's highlight) never change. Ink fills follow
 // the page's --outline.
 import { TRACED, ROLES, FIXED, CANVAS, HEIGHT, FIT, HALF_WIDTH, MID } from "./pieces-data.js";
-import { cutPage } from "./cutout.js";
+import { cutPage, opaqueBottom } from "./cutout.js";
 
 export const HW = 28, HH = HW * Math.sin(42 * Math.PI / 180), DEPTH = 9;   // a tile: half width, half height, slab depth
 
@@ -103,15 +103,27 @@ export function creatureArtSVG(c, { part = "" } = {}) {
   const side = HEIGHT * 1.35, half = side * 0.3, k = HH / HW;
   const e = (w, fill) => `<ellipse cx="0" cy="0" rx="${(half * w).toFixed(2)}" ry="${(half * w * k).toFixed(2)}" fill="url(#${fill})"/>`;
   const under = `<g clip-path="url(#tt)">${e(SHADOW.soft, "gAO")}${e(SHADOW.core, "gContact")}</g>`;
-  const over = `<image class="cart-img" data-art="${c.art}" href="${CUT.get(c.art) || c.art}" x="${(-side / 2).toFixed(2)}" y="${(-side + 2).toFixed(2)}" width="${side.toFixed(2)}" height="${side.toFixed(2)}" preserveAspectRatio="xMidYMax meet"/>`;
+  const over = `<image class="cart-img" data-art="${c.art}" href="${cutHref(c.art)}" x="${(-side / 2).toFixed(2)}" y="${(-side + 2).toFixed(2)}" width="${side.toFixed(2)}" height="${side.toFixed(2)}" preserveAspectRatio="xMidYMax meet"/>`;
   return part === "shadow" ? under : part === "art" ? over : under + over;
 }
 
+// A structure's drawing standing on its footprint (rule 701.5), drawn at the structure's front corner: as wide as the footprint, its
+// base on that corner, like a piece on its tile. null when the structure has no drawing to draw.
+export function structureArtSVG(o) {
+  if (!o || typeof o.art !== "string" || !ART_ADDR.test(o.art)) return null;
+  const wide = (o.w + o.h) * HW, tall = wide * 2;
+  return `<image class="sart-img" data-art="${o.art}" href="${cutHref(o.art)}" x="${(-wide / 2).toFixed(2)}" y="${(-tall + 1).toFixed(2)}" width="${wide.toFixed(2)}" height="${tall.toFixed(2)}" preserveAspectRatio="xMidYMax meet"/>`;
+}
+
 // The drawing without its white page (public/js/cutout.js), made once per drawing in the browser and kept for the page's life. The
-// board first draws the drawing as served, then swaps in the cut one; a redraw after that uses the cut one straight away (CUT).
-// A drawing that cannot be cut (no canvas, a failed fetch) stays as served.
+// board first draws the drawing as served, then swaps in the cut one; a redraw after that uses the cut one straight away (cutHref).
+// A drawing that cannot be cut (no canvas, a failed fetch) stays as served. The cut also drops the empty page below the figure, so
+// a creature's feet and a structure's base stand on the ground instead of floating where the page's bottom edge was; the picture
+// keeps its width, so the board draws it at the same size.
 const CUT = new Map(), CUTTING = new Map();
-const CUT_SIZE = 384;   // the board shows a creature at well under this, even zoomed in
+const CUT_SIZE = 384;   // the board shows a drawing at well under this, even zoomed in
+/** The address to draw for a drawing: its cut picture once made, else the drawing as served. */
+export function cutHref(addr) { return CUT.get(addr) || addr; }
 function cutArt(addr) {
   if (!CUTTING.has(addr)) CUTTING.set(addr, (async () => {
     try {
@@ -122,7 +134,13 @@ function cutArt(addr) {
       const img = cx.getImageData(0, 0, w, h);
       if (!cutPage(img)) return null;   // no page at its edges: nothing to take off
       cx.putImageData(img, 0, 0);
-      const blob = await new Promise((r) => cv.toBlob(r, "image/png"));
+      let out = cv;
+      const bottom = opaqueBottom(img);
+      if (bottom >= 0 && bottom < h - 1) {
+        out = Object.assign(document.createElement("canvas"), { width: w, height: bottom + 1 });
+        out.getContext("2d").drawImage(cv, 0, 0);
+      }
+      const blob = await new Promise((r) => out.toBlob(r, "image/png"));
       if (!blob) return null;
       const url = URL.createObjectURL(blob);
       CUT.set(addr, url);
@@ -131,9 +149,9 @@ function cutArt(addr) {
   })());
   return CUTTING.get(addr);
 }
-/** After the board's markup is in the page: swap each creature drawing still showing its page for the cut one. */
-export function cutCreatureArt(root) {
-  for (const el of root.querySelectorAll("image.cart-img[data-art]")) {
+/** After the board's markup is in the page: swap each creature or structure drawing still showing its page for the cut one. */
+export function cutBoardArt(root) {
+  for (const el of root.querySelectorAll("image.cart-img[data-art], image.sart-img[data-art]")) {
     const addr = el.getAttribute("data-art");
     if (el.getAttribute("href") !== addr) continue;
     cutArt(addr).then((url) => { if (url && el.isConnected && el.getAttribute("href") === addr) el.setAttribute("href", url); });

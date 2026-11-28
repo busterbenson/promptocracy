@@ -48,3 +48,11 @@ export function cutPage(img) {
   for (let p = 0; p < n; p++) if (page[p]) d[p * 4 + 3] = 0;
   return cleared;
 }
+
+/** The lowest row of a cut picture that has any of the figure in it (alpha above a faint haze), or -1 if none. A creature's picture is
+ *  trimmed to it so the figure's feet sit at the bottom of its box, on its tile. */
+export function opaqueBottom(img) {
+  const { data: d, width: w, height: h } = img;
+  for (let y = h - 1; y >= 0; y--) for (let x = 0; x < w; x++) if (d[(y * w + x) * 4 + 3] > 16) return y;
+  return -1;
+}
