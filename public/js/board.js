@@ -95,7 +95,8 @@ export function sceneSVG(board, { sel = null, me = null, id = "b", showFog = tru
   const creatures = (board.creatures || []).filter((c) => c.at.z === 0);
   const drawn = structures.filter((o) => structureArtSVG(o));
   const onStructure = (at) => drawn.find((o) => at.x >= o.at.x && at.x < o.at.x + o.w && at.y >= o.at.y && at.y < o.at.y + o.h);
-  const depth = ({ p, c, o }) => { if (o) return o.at.x + o.at.y; const at = (p || c).at, on = onStructure(at); return on ? Math.min(at.x + at.y, on.at.x + on.at.y - .5) : at.x + at.y; };
+  // an occupant draws just in front of its structure, and the occupants keep their own back-to-front order among themselves
+  const depth = ({ p, c, o }) => { if (o) return o.at.x + o.at.y; const at = (p || c).at, on = onStructure(at), d = at.x + at.y; return on ? on.at.x + on.at.y - .5 + (d - on.at.x - on.at.y) / 64 : d; };
   const standing = [...pieces.map((p) => ({ p })), ...creatures.map((c) => ({ c })), ...drawn.map((o) => ({ o }))].sort((a, b) => depth(b) - depth(a));
   for (const { p, c } of standing) {
     if (!p && !c) continue;

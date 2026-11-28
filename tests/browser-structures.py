@@ -103,6 +103,14 @@ with sync_playwright() as p:
         page.keyboard.press("Escape"); page.wait_for_selector(".mcard", state="detached")
         btn = page.locator("#tile-list button[data-x='2'][data-y='2']").inner_text()
         check(f"{tag}: the tile list names the House on each of its tiles ({btn})", "House" in btn and "House" in page.locator("#tile-list button[data-x='1'][data-y='1']").inner_text())
+        occ = page.evaluate("""import('/js/board.js').then(({ sceneSVG }) => {
+          const art = '/housed/art/' + 'a'.repeat(64), col = { key: 'teal', main: '#22817E', shade: '#135553', tint: '#73A3A0', deep: '#0F3433', hex: '#22817E' };
+          const tiles = []; for (let x = -1; x < 3; x++) for (let y = -1; y < 3; y++) tiles.push({ x, y, z: 0 });
+          const m = sceneSVG({ tiles, pieces: [{ name: 'P', color: col, shape: 'pawn', at: { x: 0, y: 0, z: 0 } }], creatures: [{ id: 9, name: 'C', art, at: { x: 1, y: 1, z: 0 } }],
+            structures: [{ id: 1, name: 'S', art, w: 2, h: 2, at: { x: 0, y: 0, z: 0 } }] }, { id: 'occ' }).markup;
+          return [m.indexOf('class="structure-art"'), m.indexOf('<g class="creature"'), m.indexOf('<g class="piece"')];
+        })""")
+        check(f"{tag}: two figures standing on one structure both draw in front of it, the nearer one last (structure {occ[0]}, creature behind {occ[1]}, player in front {occ[2]})", 0 <= occ[0] < occ[1] < occ[2], str(occ))
         sw = page.evaluate("document.documentElement.scrollWidth")
         check(f"{tag}: no sideways scroll ({sw} <= {w})", sw <= w)
         check(f"{tag}: no page errors", not errors, "; ".join(errors))
