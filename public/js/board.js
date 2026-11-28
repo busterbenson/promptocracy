@@ -10,7 +10,7 @@
 //   b.setReach(tiles)         dashed highlight on the tiles you may move to ([{x, y}]); none clears
 //   b.screenPos(x, y)         page coordinates of a tile's centre (tests use this to click it)
 //   b.recenter(meKey)         back to the whole island, or onto the viewer's piece
-import { HW, HH, DEPTH, ensureDefs, pieceSVG, creatureSVG, creatureArtSVG } from "/js/pieces.js";
+import { HW, HH, DEPTH, ensureDefs, pieceSVG, creatureSVG, creatureArtSVG, cutCreatureArt } from "/js/pieces.js";
 
 export const LONG_PRESS_MS = 500;
 const f1 = (n) => n.toFixed(1);
@@ -152,6 +152,7 @@ export async function createBoard(container, { onSelect } = {}) {
     if (!board) return;
     const r = sceneSVG(board, { sel, me, id: "mb", reach });
     svg.innerHTML = r.markup;
+    cutCreatureArt(svg);   // a creature drawing's white page comes off once it is cut (cutout.js)
     box = r.box;
     labels = new Map(r.tiles.map((t) => [K(t.x, t.y), t.label]));
     // names show only on hover (mouse) or press-and-hold (touch): the tile's tip leads with whoever stands on it
