@@ -129,6 +129,10 @@ with sync_playwright() as p:
         check(f"{tag}: white inside the figure stays (the eye is white and opaque: {eye})", eye[3] == 255 and min(eye[:3]) > 240)
         check(f"{tag}: the figure stays opaque navy ({disc})", disc[3] == 255 and disc[2] > disc[0])
         size = page.evaluate(f"""(async () => {{ const img = new Image(); img.src = document.querySelector("{sel}").getAttribute('href'); await img.decode(); return [img.width, img.height]; }})()""")
+        page.wait_for_timeout(300)   # the board redraws once the cut is in, placing it by its floor ellipse
+        geo = page.evaluate(f"""(() => {{ const i = document.querySelector("{sel}"); return ['x','y','width','height','preserveAspectRatio'].map(a => i.getAttribute(a)); }})()""")
+        gx, gy, gw, gh = map(float, geo[:4])
+        check(f"{tag}: placed by its floor ellipse: centred across the tile ({gx + gw / 2:.2f}) and its front just below the tile's centre, inside the tile ({gy + gh:.2f})", geo[4] == "none" and abs(gx + gw / 2) < 1.5 and 0 < gy + gh < 18.7, str(geo))
         check(f"{tag}: the cut creature is trimmed below its feet, same width, so it stands on its tile instead of floating ({size})", size[1] < size[0] * 0.9 and size[0] == 96, str(size))
         hsel = f"g.structure-art image.sart-img[data-art='{house_art}']"
         try: hswapped = page.wait_for_function(f"(() => {{ const i = document.querySelector(\"{hsel}\"); return i && i.getAttribute('href').startsWith('blob:'); }})()", timeout=10000) is not None

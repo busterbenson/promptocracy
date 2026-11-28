@@ -10,7 +10,7 @@
 //   b.setReach(tiles)         dashed highlight on the tiles you may move to ([{x, y}]); none clears
 //   b.screenPos(x, y)         page coordinates of a tile's centre (tests use this to click it)
 //   b.recenter(meKey)         back to the whole island, or onto the viewer's piece
-import { HW, HH, DEPTH, ensureDefs, pieceSVG, creatureSVG, creatureArtSVG, structureArtSVG, cutBoardArt } from "/js/pieces.js";
+import { HW, HH, DEPTH, ensureDefs, pieceSVG, creatureSVG, creatureArtSVG, structureArtSVG, structureArt, creatureZ, cutBoardArt } from "/js/pieces.js";
 
 export const LONG_PRESS_MS = 500;
 const f1 = (n) => n.toFixed(1);
@@ -113,10 +113,16 @@ export function sceneSVG(board, { sel = null, me = null, id = "b", showFog = tru
     } else {
       const at = P(c.at.x + .5, c.at.y + .5);
       const art = creatureArtSVG(c, { part: "art" }) || creatureSVG(c, { part: "art" }) || `<circle cy="-13" r="11" class="cring"/><text y="-8.5" text-anchor="middle" class="cletter">${esc(String(c.entry || c.kind || "C").charAt(0))}</text>`;
-      s += `<g class="creature" data-creature="${c.id}" transform="translate(${f1(at[0])},${f1(at[1])})">${art}${c.resting ? '<text x="12" y="-26" class="czz">z</text>' : ""}</g>`;
+      s += `<g class="creature" data-creature="${c.id}" transform="translate(${f1(at[0])},${f1(at[1])})">${art}${c.resting ? (({ x, y }) => `<text x="${f1(x)}" y="${f1(y)}" class="czz">z</text>`)(creatureZ(c)) : ""}</g>`;
     }
   }
-  return { markup: s, box: bbox(new Set([...charted, ...ring(charted, 1)])), tiles };
+  // the fitted view takes in every standing structure's picture, which can rise above the land's own bounds
+  const box = bbox(new Set([...charted, ...ring(charted, 1)]));
+  for (const o of drawn) {
+    const a = structureArt(o), f = P(o.at.x, o.at.y), top = f[1] + a.y;
+    if (top < box.y) { box.h += box.y - top; box.y = top; }
+  }
+  return { markup: s, box, tiles };
 }
 
 export async function createBoard(container, { onSelect } = {}) {
@@ -160,7 +166,7 @@ export async function createBoard(container, { onSelect } = {}) {
     if (!board) return;
     const r = sceneSVG(board, { sel, me, id: "mb", reach });
     svg.innerHTML = r.markup;
-    cutBoardArt(svg);   // a creature drawing's white page comes off once it is cut (cutout.js)
+    cutBoardArt(svg, draw);   // a creature drawing's white page comes off once it is cut (cutout.js)
     box = r.box;
     labels = new Map(r.tiles.map((t) => [K(t.x, t.y), t.label]));
     // names show only on hover (mouse) or press-and-hold (touch): the tile's tip leads with whoever stands on it
