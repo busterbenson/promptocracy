@@ -8,14 +8,9 @@
 // The art is VTracer output: absolute M / C / L / Z paths, each with a translate(). Hand-placed parts (an eye in a <g>) sit
 // inside the figure, so they never change its outline and are skipped.
 
-// The board's tile is a square seen at elevation ~42 degrees, so a circle on the floor is drawn sin(42) as deep as it is wide
-// (HH / HW in public/js/pieces.js: 18.74 / 28 = 0.669).
-export const FLOOR_RATIO = Math.sin(42 * Math.PI / 180);
-// The ground-contact band: the bottom 16% of the figure. A column whose lowest opaque pixel is in it touches the floor. A far
-// foot stands behind the near one, so its lowest pixel is higher on screen: 12% saw only the near boot of the astronaut and the
-// diver, and stopped short of the osprey's far toes. Wider bands start catching what hangs low but stands off the floor (the crow's belly and the diver's
-// suit at 18%, the robot's side panel at 22%).
-export const CONTACT_BAND = 0.16;
+import { FLOOR_RATIO, CONTACT_BAND, MAX_BAND, profile, floorEllipse as fitEllipse } from "../public/js/floor-ellipse.js";
+export { FLOOR_RATIO, CONTACT_BAND, MAX_BAND };
+
 // Where a piece's far foot is higher than that, by hand (each says why):
 export const BAND_FOR = {
   frog: 0.18,  // sitting: the far front foot is behind the body, its toes 17% of the figure up; 16% stops short of it and of the haunch's side
@@ -72,41 +67,11 @@ export function silhouette(body, w, h) {
   return mask;
 }
 
-/**
- * The floor ellipse: the circle on the floor a piece stands in, drawn as the board draws a circle on its floor (FLOOR_RATIO
- * as deep as it is wide). Fitted to the drawing (Buster, 2026-11-22: "the ellipses strategy"):
- * - its two ends are the widest floor contact: the left-most and right-most columns whose lowest pixel is in the contact
- *   band, all feet together (a near foot, a far foot, a hem, a haunch on the floor);
- * - its front (lowest) point is on the visible bottom of the base or feet;
- * - it is as wide as that contact, so it is width x FLOOR_RATIO deep, and its centre is half that above the front, across at
- *   the contact's middle.
- * The band starts at CONTACT_BAND of the figure and grows to the ellipse's own half depth when that is deeper: the side of a
- * round base (a pawn, a belly) meets the floor at the ellipse's widest point, half its depth above the front, so a fixed band
- * would cut the base short. It stops growing at MAX_BAND.
- * Returns { cx, cy, rx, ry, left, right, front } in the mask's units.
- */
-export const MAX_BAND = 0.3;
+/** The floor ellipse (public/js/floor-ellipse.js), with the piece's own contact band (BAND_FOR). */
 export function floorEllipse(mask, w, h, key = "") {
-  const { low, top, bottom } = profile(mask, w, h), tall = bottom - top;
-  let band = (BAND_FOR[key] || CONTACT_BAND) * tall, left = 0, right = 0;
-  for (let i = 0; i < 20; i++) {
-    const touch = [...low.keys()].filter((x) => low[x] >= 0 && low[x] + 1 >= bottom - band);
-    left = touch[0]; right = touch[touch.length - 1] + 1;
-    const want = Math.min((right - left) * FLOOR_RATIO / 2, MAX_BAND * tall);
-    if (want <= band + 0.5) break;
-    band = want;
-  }
-  const rx = (right - left) / 2, ry = rx * FLOOR_RATIO;
-  return { cx: (left + right) / 2, cy: bottom - ry, rx, ry, left, right, front: bottom };
-}
-
-// Each column's lowest opaque pixel (-1 for an empty column), the figure's top row and the row below its bottom.
-function profile(mask, w, h) {
-  const low = new Int32Array(w).fill(-1);
-  for (let x = 0; x < w; x++) for (let y = h - 1; y >= 0; y--) if (mask[y * w + x]) { low[x] = y; break; }
-  let top = h;
-  for (let i = 0; i < mask.length && top === h; i++) if (mask[i]) top = Math.floor(i / w);
-  return { low, top, bottom: Math.max(...low) + 1 };
+  const e = fitEllipse(mask, w, h, BAND_FOR[key] || CONTACT_BAND);
+  const { top, ...rest } = e;   // the pieces' callers never had `top`
+  return rest;
 }
 
 /**

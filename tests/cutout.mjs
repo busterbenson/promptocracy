@@ -1,6 +1,6 @@
 // A creature drawing's white page comes off before the board shows it (public/js/cutout.js). Plain node, no Worker.
 // Run: npm test.
-import { cutPage } from "../public/js/cutout.js";
+import { cutPage, opaqueBottom } from "../public/js/cutout.js";
 
 let pass = 0, fail = 0;
 const check = (name, ok, detail = "") => {
@@ -41,6 +41,17 @@ console.log("what is not a page stays");
   check("a picture with no white at its edges is left exactly as it was (returns 0)", n === 0 && full.data.every((v, i) => v === before[i]));
   const pale = drawing({ page: () => [250, 236, 190] });   // a pale yellow ground is a colour, not the page
   check("a pale coloured ground is not taken for the page", cutPage(pale) === 0);
+}
+
+console.log("a creature's picture is trimmed to its feet");
+{
+  const img = drawing(); cutPage(img);
+  // the figure's soft edge runs to row 16 (partly see-through, still the figure); rows 17..23 are cleared page
+  check("the lowest row with any figure in it is the soft edge's bottom (16), not the page's (23)", opaqueBottom(img) === 16, String(opaqueBottom(img)));
+  const blank = { data: new Uint8ClampedArray(W * W * 4), width: W, height: W };
+  check("a picture with nothing left in it says so (-1)", opaqueBottom(blank) === -1);
+  const full = drawing({ page: (x, y) => [40, 120 + x, 200 - y] });
+  check("an uncut full-bleed picture reaches its last row (nothing to trim)", opaqueBottom(full) === W - 1);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

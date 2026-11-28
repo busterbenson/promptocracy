@@ -10,7 +10,7 @@
 //   b.setReach(tiles)         dashed highlight on the tiles you may move to ([{x, y}]); none clears
 //   b.screenPos(x, y)         page coordinates of a tile's centre (tests use this to click it)
 //   b.recenter(meKey)         back to the whole island, or onto the viewer's piece
-import { HW, HH, DEPTH, ensureDefs, pieceSVG, creatureSVG, creatureArtSVG, cutCreatureArt } from "/js/pieces.js";
+import { HW, HH, DEPTH, ensureDefs, pieceSVG, creatureSVG, creatureArtSVG, structureArtSVG, structureArt, creatureZ, cutBoardArt } from "/js/pieces.js";
 
 export const LONG_PRESS_MS = 500;
 const f1 = (n) => n.toFixed(1);
@@ -42,7 +42,7 @@ const artPatterns = (arts, id) => arts.map((a, i) => `<pattern id="${id}-a${i}" 
 
 // The whole scene as markup. `sel` is the selected tile; `me` the color key of the viewer. Used by the board and the landing page.
 export function sceneSVG(board, { sel = null, me = null, id = "b", showFog = true, reach = [] } = {}) {
-  const tiles = board.tiles.filter((t) => t.z === 0), structures = (board.structures || []).filter((o) => o.at.z === 0), arts = artList([...tiles, ...structures]);
+  const tiles = board.tiles.filter((t) => t.z === 0), structures = (board.structures || []).filter((o) => o.at.z === 0), arts = artList(tiles);
   const charted = new Set(tiles.map((t) => K(t.x, t.y)));
   const fog = showFog ? ring(charted, 2) : new Set(), fog1 = showFog ? ring(charted, 1) : new Set();
   let s = `<defs><radialGradient id="${id}-g" cx="50%" cy="50%" r="50%"><stop offset=".35" stop-color="#fff"/><stop offset="1" stop-color="#000"/></radialGradient>
@@ -71,10 +71,10 @@ export function sceneSVG(board, { sel = null, me = null, id = "b", showFog = tru
     const ai = t.art ? arts.indexOf(t.art) : -1;
     s += `<polygon class="top" data-x="${x}" data-y="${y}" points="${pts(q)}"${ai >= 0 ? ` style="fill:url(#${id}-a${ai})"` : ""}/>`;
   }
-  // Structures (rule 701.5): the entry's drawing over its whole footprint, w by h tiles, on the land and under every piece. Back to front. A tap goes through to the tile under it.
-  for (const o of [...structures].sort((a, b) => (b.at.x + b.at.y + b.w + b.h) - (a.at.x + a.at.y + a.w + a.h))) {
-    const q = [P(o.at.x, o.at.y), P(o.at.x + o.w, o.at.y), P(o.at.x + o.w, o.at.y + o.h), P(o.at.x, o.at.y + o.h)], ai = o.art ? arts.indexOf(o.art) : -1;
-    s += `<polygon class="structure${ai >= 0 ? "" : " plain"}" data-structure="${o.id}" points="${pts(q)}"${ai >= 0 ? ` style="fill:url(#${id}-a${ai})"` : ""}/>`;
+  // Structures (rule 701.5): the footprint, w by h tiles, on the land; the drawing stands up on it with the pieces, below. A tap goes through to the tile under it.
+  for (const o of structures) {
+    const q = [P(o.at.x, o.at.y), P(o.at.x + o.w, o.at.y), P(o.at.x + o.w, o.at.y + o.h), P(o.at.x, o.at.y + o.h)];
+    s += `<polygon class="structure${o.art ? "" : " plain"}" data-structure="${o.id}" points="${pts(q)}"/>`;
   }
   if (fog.size) {
     const list = [...fog].map((k) => k.split(",").map(Number));
@@ -90,25 +90,40 @@ export function sceneSVG(board, { sel = null, me = null, id = "b", showFog = tru
   // Pieces and creatures (rule 602) together, back to front, so the nearer one draws on top. A creature is its own piece
   // (the Blob), or else a ring and the entry's kind letter; a resting one carries a z. Every shadow first, then every
   // figure: a shadow never paints over a piece, its own or a neighbour's.
+  // A structure's drawing stands among them, its front corner on its front tile: what is in front of it draws over it, what is
+  // behind it is hidden by it, and a piece standing on one of its tiles draws in front of it, so it is never lost inside.
   const creatures = (board.creatures || []).filter((c) => c.at.z === 0);
-  const standing = [...pieces.map((p) => ({ p })), ...creatures.map((c) => ({ c }))]
-    .sort((a, b) => ((b.p || b.c).at.x + (b.p || b.c).at.y) - ((a.p || a.c).at.x + (a.p || a.c).at.y));
+  const drawn = structures.filter((o) => structureArtSVG(o));
+  const onStructure = (at) => drawn.find((o) => at.x >= o.at.x && at.x < o.at.x + o.w && at.y >= o.at.y && at.y < o.at.y + o.h);
+  // an occupant draws just in front of its structure, and the occupants keep their own back-to-front order among themselves
+  const depth = ({ p, c, o }) => { if (o) return o.at.x + o.at.y; const at = (p || c).at, on = onStructure(at), d = at.x + at.y; return on ? on.at.x + on.at.y - .5 + (d - on.at.x - on.at.y) / 64 : d; };
+  const standing = [...pieces.map((p) => ({ p })), ...creatures.map((c) => ({ c })), ...drawn.map((o) => ({ o }))].sort((a, b) => depth(b) - depth(a));
   for (const { p, c } of standing) {
+    if (!p && !c) continue;
     const at = P((p || c).at.x + .5, (p || c).at.y + .5);
     const art = p ? pieceSVG({ shape: p.shape, color: p.color, mirrored: !!p.mirrored, state: p.state, part: "shadow" }) : creatureArtSVG(c, { part: "shadow" }) || creatureSVG(c, { part: "shadow" });
     if (art) s += `<g class="${p ? "piece-shadow" : "creature-shadow"}" transform="translate(${f1(at[0])},${f1(at[1])})">${art}</g>`;
   }
-  for (const { p, c } of standing) {
-    if (p) {
+  for (const { p, c, o } of standing) {
+    if (o) {
+      const at = P(o.at.x, o.at.y);
+      s += `<g class="structure-art" data-structure="${o.id}" transform="translate(${f1(at[0])},${f1(at[1])})">${structureArtSVG(o)}</g>`;
+    } else if (p) {
       const at = P(p.at.x + .5, p.at.y + .5);
       s += `<g class="piece" data-piece="${esc(p.color.key)}" transform="translate(${f1(at[0])},${f1(at[1])})">${pieceSVG({ shape: p.shape, color: p.color, mirrored: !!p.mirrored, state: p.state, part: "art" })}</g>`;
     } else {
       const at = P(c.at.x + .5, c.at.y + .5);
       const art = creatureArtSVG(c, { part: "art" }) || creatureSVG(c, { part: "art" }) || `<circle cy="-13" r="11" class="cring"/><text y="-8.5" text-anchor="middle" class="cletter">${esc(String(c.entry || c.kind || "C").charAt(0))}</text>`;
-      s += `<g class="creature" data-creature="${c.id}" transform="translate(${f1(at[0])},${f1(at[1])})">${art}${c.resting ? '<text x="12" y="-26" class="czz">z</text>' : ""}</g>`;
+      s += `<g class="creature" data-creature="${c.id}" transform="translate(${f1(at[0])},${f1(at[1])})">${art}${c.resting ? (({ x, y }) => `<text x="${f1(x)}" y="${f1(y)}" class="czz">z</text>`)(creatureZ(c)) : ""}</g>`;
     }
   }
-  return { markup: s, box: bbox(new Set([...charted, ...ring(charted, 1)])), tiles };
+  // the fitted view takes in every standing structure's picture, which can rise above the land's own bounds
+  const box = bbox(new Set([...charted, ...ring(charted, 1)]));
+  for (const o of drawn) {
+    const a = structureArt(o), f = P(o.at.x, o.at.y), top = f[1] + a.y;
+    if (top < box.y) { box.h += box.y - top; box.y = top; }
+  }
+  return { markup: s, box, tiles };
 }
 
 export async function createBoard(container, { onSelect } = {}) {
@@ -152,7 +167,7 @@ export async function createBoard(container, { onSelect } = {}) {
     if (!board) return;
     const r = sceneSVG(board, { sel, me, id: "mb", reach });
     svg.innerHTML = r.markup;
-    cutCreatureArt(svg);   // a creature drawing's white page comes off once it is cut (cutout.js)
+    cutBoardArt(svg, draw);   // a creature drawing's white page comes off once it is cut (cutout.js)
     box = r.box;
     labels = new Map(r.tiles.map((t) => [K(t.x, t.y), t.label]));
     // names show only on hover (mouse) or press-and-hold (touch): the tile's tip leads with whoever stands on it
