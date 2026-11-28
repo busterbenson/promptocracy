@@ -6,6 +6,7 @@
 // keeps that offset, so the shading survives. A shape's FIXED fills (an eye's highlight) never change. Ink fills follow
 // the page's --outline.
 import { TRACED, ROLES, FIXED, CANVAS, HEIGHT, FIT, HALF_WIDTH, MID } from "./pieces-data.js";
+import { cutPage } from "./cutout.js";
 
 export const HW = 28, HH = HW * Math.sin(42 * Math.PI / 180), DEPTH = 9;   // a tile: half width, half height, slab depth
 
@@ -102,8 +103,41 @@ export function creatureArtSVG(c, { part = "" } = {}) {
   const side = HEIGHT * 1.35, half = side * 0.3, k = HH / HW;
   const e = (w, fill) => `<ellipse cx="0" cy="0" rx="${(half * w).toFixed(2)}" ry="${(half * w * k).toFixed(2)}" fill="url(#${fill})"/>`;
   const under = `<g clip-path="url(#tt)">${e(SHADOW.soft, "gAO")}${e(SHADOW.core, "gContact")}</g>`;
-  const over = `<image class="cart-img" href="${c.art}" x="${(-side / 2).toFixed(2)}" y="${(-side + 2).toFixed(2)}" width="${side.toFixed(2)}" height="${side.toFixed(2)}" preserveAspectRatio="xMidYMax meet"/>`;
+  const over = `<image class="cart-img" data-art="${c.art}" href="${CUT.get(c.art) || c.art}" x="${(-side / 2).toFixed(2)}" y="${(-side + 2).toFixed(2)}" width="${side.toFixed(2)}" height="${side.toFixed(2)}" preserveAspectRatio="xMidYMax meet"/>`;
   return part === "shadow" ? under : part === "art" ? over : under + over;
+}
+
+// The drawing without its white page (public/js/cutout.js), made once per drawing in the browser and kept for the page's life. The
+// board first draws the drawing as served, then swaps in the cut one; a redraw after that uses the cut one straight away (CUT).
+// A drawing that cannot be cut (no canvas, a failed fetch) stays as served.
+const CUT = new Map(), CUTTING = new Map();
+const CUT_SIZE = 384;   // the board shows a creature at well under this, even zoomed in
+function cutArt(addr) {
+  if (!CUTTING.has(addr)) CUTTING.set(addr, (async () => {
+    try {
+      const bmp = await createImageBitmap(await (await fetch(addr)).blob());
+      const k = Math.min(1, CUT_SIZE / Math.max(bmp.width, bmp.height)), w = Math.round(bmp.width * k), h = Math.round(bmp.height * k);
+      const cv = Object.assign(document.createElement("canvas"), { width: w, height: h }), cx = cv.getContext("2d", { willReadFrequently: true });
+      cx.drawImage(bmp, 0, 0, w, h);
+      const img = cx.getImageData(0, 0, w, h);
+      if (!cutPage(img)) return null;   // no page at its edges: nothing to take off
+      cx.putImageData(img, 0, 0);
+      const blob = await new Promise((r) => cv.toBlob(r, "image/png"));
+      if (!blob) return null;
+      const url = URL.createObjectURL(blob);
+      CUT.set(addr, url);
+      return url;
+    } catch { return null; }
+  })());
+  return CUTTING.get(addr);
+}
+/** After the board's markup is in the page: swap each creature drawing still showing its page for the cut one. */
+export function cutCreatureArt(root) {
+  for (const el of root.querySelectorAll("image.cart-img[data-art]")) {
+    const addr = el.getAttribute("data-art");
+    if (el.getAttribute("href") !== addr) continue;
+    cutArt(addr).then((url) => { if (url && el.isConnected && el.getAttribute("href") === addr) el.setAttribute("href", url); });
+  }
 }
 
 // A creature's board piece as a picture for a card (the catalog card, the Makes card): the same traced art the board draws, standing on

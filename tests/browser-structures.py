@@ -17,9 +17,11 @@ def check(name, ok, detail=""):
 def shot(page, name, **kw):
     if out != "-": page.screenshot(path=f"{out}/{name}.png", **kw)
 
-def new_page(b, w, h, scheme="light"):
+def new_page(b, w, h, scheme="light", routes=None):
     c = b.new_context(viewport={"width": w, "height": h}, device_scale_factor=1, color_scheme=scheme, has_touch=w < 500)
     c.add_cookies([{"name": "s", "value": cookie, "domain": host, "path": "/" + SLUG}])
+    serve = lambda body: (lambda route: route.fulfill(status=200, content_type="image/png", body=body))   # one argument: Playwright passes the request to a second
+    for url, body in (routes or {}).items(): c.route(url, serve(body))
     page = c.new_page()
     errors = []
     page.on("pageerror", lambda e: errors.append(str(e)))
@@ -28,6 +30,18 @@ def new_page(b, w, h, scheme="light"):
     page.wait_for_selector("#scores li"); page.wait_for_function("document.getElementById('rules').textContent.indexOf('Loading') < 0")
     page.wait_for_selector("polygon.top"); page.wait_for_timeout(900)
     return c, page, errors
+
+def white_page_png(size=96):
+    # a drawing the way the model makes one (src/lib/art.js asks for "alone on a plain white background"): a navy disc with a white
+    # eye inside it, on a white page. The tests' stub drawings are full bleed, so without this the board never meets a page to take off.
+    import struct, zlib
+    def px(x, y):
+        dx, dy = x - size / 2, y - size / 2
+        if abs(dx) < 4 and abs(dy) < 4: return b"\xff\xff\xff"
+        return b"\x1f\x2a\x44" if dx * dx + dy * dy < (size * 0.32) ** 2 else b"\xfc\xfd\xfb"
+    raw = b"".join(b"\x00" + b"".join(px(x, y) for x in range(size)) for y in range(size))
+    ch = lambda t, d: struct.pack(">I", len(d)) + t + d + struct.pack(">I", zlib.crc32(t + d) & 0xffffffff)
+    return b"\x89PNG\r\n\x1a\n" + ch(b"IHDR", struct.pack(">IIBBBBB", size, size, 8, 2, 0, 0, 0)) + ch(b"IDAT", zlib.compress(raw)) + ch(b"IEND", b"")
 
 def text(page, sel): return " ".join(page.inner_text(sel).split())
 
@@ -56,8 +70,10 @@ with sync_playwright() as p:
         href = page.get_attribute("pattern[id^='mb-a'] image", "href")
         res = page.evaluate("(u) => fetch(u).then(r => [r.status, r.headers.get('content-type')])", house_art)
         check(f"{tag}: the drawing really loads from the Worker ({res})", res[0] == 200 and "image" in (res[1] or "") and href is not None)
-        imgs = page.evaluate("[...document.querySelectorAll('g.creature image.cart-img')].map(i => i.getAttribute('href'))")
+        imgs = page.evaluate("[...document.querySelectorAll('g.creature image.cart-img')].map(i => i.getAttribute('data-art'))")
         check(f"{tag}: both Pancakes are drawn as their catalog drawings, two different pictures, standing on their tiles", len(imgs) == 2 and len(set(imgs)) == 2 and set(imgs) == set(arts.values()), str(imgs))
+        hrefs = page.evaluate("[...document.querySelectorAll('g.creature image.cart-img')].map(i => i.getAttribute('href'))")
+        check(f"{tag}: a drawing with no white page at its edges (the stub's) is shown as served, not swapped", hrefs == imgs, str(hrefs))
         loaded = page.evaluate("Promise.all([...document.querySelectorAll('g.creature image.cart-img')].map(i => fetch(i.getAttribute('href')).then(r => r.status)))")
         check(f"{tag}: both drawings load ({loaded})", loaded == [200, 200])
         check(f"{tag}: the resting Pancake carries the z mark and the awake one does not", page.locator("g.creature .czz").count() == 1)
@@ -84,6 +100,35 @@ with sync_playwright() as p:
         check(f"{tag}: the tile list names the House on each of its tiles ({btn})", "House" in btn and "House" in page.locator("#tile-list button[data-x='1'][data-y='1']").inner_text())
         sw = page.evaluate("document.documentElement.scrollWidth")
         check(f"{tag}: no sideways scroll ({sw} <= {w})", sw <= w)
+        check(f"{tag}: no page errors", not errors, "; ".join(errors))
+        c.close()
+    # A drawing on a white page (what the model really makes): the board takes the page off (public/js/cutout.js). Pancake awake's
+    # drawing is served as one; the board keeps its address in data-art and swaps the picture for the cut one.
+    for scheme in ["light", "dark"]:
+        tag = f"white page {scheme}"
+        probe = b.new_context(); arts = {cr["id"]: cr["art"] for cr in probe.request.get(base + f"/{SLUG}/api/board").json()["creatures"]}; probe.close()
+        c, page, errors = new_page(b, 1280, 900, scheme, routes={base + arts[1]: white_page_png()})
+        sel = f"g.creature image.cart-img[data-art='{arts[1]}']"
+        try: swapped = page.wait_for_function(f"(() => {{ const i = document.querySelector(\"{sel}\"); return i && i.getAttribute('href').startsWith('blob:'); }})()", timeout=10000) is not None
+        except Exception: swapped = False
+        check(f"{tag}: the board swaps the drawing for a cut one (a blob: picture), keeping the catalog address in data-art", swapped, str(page.get_attribute(sel, "href")))
+        if not swapped: c.close(); continue
+        corner, eye, disc = page.evaluate(f"""(async () => {{
+          const img = new Image(); img.src = document.querySelector("{sel}").getAttribute('href'); await img.decode();
+          const cv = Object.assign(document.createElement('canvas'), {{ width: img.width, height: img.height }}), cx = cv.getContext('2d'); cx.drawImage(img, 0, 0);
+          const at = (x, y) => [...cx.getImageData(x, y, 1, 1).data];
+          return [at(1, 1), at(img.width / 2, img.height / 2), at(img.width / 2 + img.width * 0.2, img.height / 2)];
+        }})()""")
+        check(f"{tag}: the page is gone (a corner is transparent: {corner})", corner[3] == 0)
+        check(f"{tag}: white inside the figure stays (the eye is white and opaque: {eye})", eye[3] == 255 and min(eye[:3]) > 240)
+        check(f"{tag}: the figure stays opaque navy ({disc})", disc[3] == 255 and disc[2] > disc[0])
+        other = page.get_attribute(f"g.creature image.cart-img[data-art='{arts[2]}']", "href")
+        check(f"{tag}: the other (full bleed) drawing is left as served", other == arts[2], str(other))
+        shot(page, f"board-white-page-{scheme}")
+        page.evaluate(f"document.querySelector(\"{sel}\").dataset.before = '1'")   # gone if the board redraws its markup
+        x, y = centre(page, top(0, 0)); page.mouse.click(x, y); page.wait_for_timeout(50)
+        redrawn = page.get_attribute(sel, "data-before") is None
+        check(f"{tag}: after a redraw (a tile selected) the cut picture is drawn straight away, not the page first", redrawn and page.get_attribute(sel, "href").startswith("blob:"), str((redrawn, page.get_attribute(sel, "href"))))
         check(f"{tag}: no page errors", not errors, "; ".join(errors))
         c.close()
     b.close()
